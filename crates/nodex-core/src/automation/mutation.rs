@@ -181,7 +181,7 @@ pub(super) fn apply(
     let context = context.clone();
     let assets_root = assets_root.to_path_buf();
     writer.call(move |connection| {
-        with_immediate_transaction(connection, |transaction| {
+        let result = with_immediate_transaction(connection, |transaction| {
             assert_identity(transaction, &profile_id, &library_id)?;
             let store_epoch = transaction
                 .query_row(
@@ -508,7 +508,8 @@ pub(super) fn apply(
                     )
                 }
             }
-        })
+        });
+        crate::database::finish_order_attempt(connection, result)
     })
 }
 
@@ -2007,6 +2008,7 @@ mod tests {
             kernel,
             module,
             context: BoundModuleContext {
+                editor_history_owner: None,
                 profile_id: ProfileId("profile-1".to_owned()),
                 library_id: LibraryId("library-1".to_owned()),
                 project_id: None,
@@ -2108,6 +2110,7 @@ mod tests {
 
     fn project_context(harness: &Harness) -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             project_id: Some(ProjectId("project:default".to_owned())),
             ..harness.context.clone()
         }
@@ -3303,6 +3306,70 @@ mod tests {
     }
 
     #[test]
+    fn occurrence_order_preparation_survives_rollback_and_reaches_the_caller() {
+        let harness = harness();
+        let start = "2026-07-17T09:00:00Z"
+            .parse::<chrono::DateTime<Utc>>()
+            .unwrap();
+        let end = "2026-07-17T10:00:00Z"
+            .parse::<chrono::DateTime<Utc>>()
+            .unwrap();
+        seed_scheduled_page(
+            &harness,
+            "page:order-preparation",
+            "Order preparation",
+            start,
+            end,
+            json!({ "frequency": "daily", "interval": 1 }),
+            json!([]),
+        );
+        // Physical pressure fixture: no rank remains after the canonical source row.
+        harness.kernel.writer().call(|connection| {
+            connection.execute_batch(
+                "WITH RECURSIVE pressure(n) AS (VALUES(1) UNION ALL SELECT n + 1 FROM pressure WHERE n < 256) \
+                 INSERT INTO blocks(id, library_id, type, lifecycle, created_at, updated_at) \
+                 SELECT printf('a:retained:%03d', n), 'library-1', 'page', 'archived', 'created', 'updated' FROM pressure; \
+                 INSERT INTO database_view_order_rows(view_id, generation, page_block_id, rank_key, default_epoch, revision, is_active, is_task_root, created_at, updated_at) \
+                 SELECT position.view_id, position.generation, block.id, 'ffffffffffffffffffffffffffffffff', NULL, 1, 0, 1, 'created', 'updated' \
+                 FROM database_view_order_rows position CROSS JOIN blocks block \
+                 WHERE position.page_block_id = 'page:order-preparation' AND block.id LIKE 'a:retained:%';"
+            )?;
+            connection.execute("UPDATE database_view_order_rows SET rank_key = 'ffffffffffffffffffffffffffffffff' WHERE page_block_id = 'page:order-preparation'", [])?;
+            Ok(())
+        }).unwrap();
+        let created_page_id = "018f1000-0000-7000-8000-000000000199";
+        let error = apply_with_context(
+            &harness,
+            &project_context(&harness),
+            "occurrence:order-preparation",
+            AutomationIntent::CompletePageOccurrence {
+                page_id: "page:order-preparation".into(),
+                occurrence_start_ms: start.timestamp_millis(),
+                created_page_id: created_page_id.into(),
+            },
+        )
+        .expect_err("rank preparation required");
+        assert_eq!(
+            error.code,
+            nodex_core_contracts::CoreErrorCode::MaintenanceInProgress
+        );
+        let nodex_core_contracts::CoreErrorRecovery::DatabaseViewOrderPreparation { view_id } =
+            error.recovery
+        else {
+            panic!("Automation must preserve the exact preparation coordinate");
+        };
+        harness.kernel.readers().read_default(move |connection| {
+            let phase: String = connection.query_row("SELECT phase FROM database_view_order_state WHERE view_id = ?1", [view_id], |row| row.get(0))?;
+            assert_eq!(phase, "rebalance", "preparation survives semantic rollback");
+            let created: i64 = connection.query_row("SELECT count(*) FROM pages WHERE block_id = ?1", [created_page_id], |row| row.get(0))?;
+            assert_eq!(created, 0, "failed occurrence did not leave a copied Page");
+            let receipt: i64 = connection.query_row("SELECT count(*) FROM core_module_receipts WHERE operation_id = 'occurrence:order-preparation'", [], |row| row.get(0))?;
+            assert_eq!(receipt, 0, "failed occurrence has no success receipt");
+            Ok(())
+        }).unwrap();
+    }
+
+    #[test]
     fn occurrence_mutations_clone_advance_reject_and_replay_atomically() {
         let harness = harness();
         let start = "2026-07-17T09:00:00Z"
@@ -3436,6 +3503,7 @@ mod tests {
         let replay = apply_with_context(
             &harness,
             &BoundModuleContext {
+                editor_history_owner: None,
                 connection_id: "another-connection".to_owned(),
                 adapter: AdapterKind::NativeCli,
                 ..context.clone()

@@ -2,6 +2,7 @@ import {
   prosemirrorToYDoc,
   prosemirrorToYXmlFragment,
   yXmlFragmentToProseMirrorRootNode,
+  yXmlFragmentToProsemirrorJSON,
 } from "y-prosemirror";
 import * as Y from "yjs";
 
@@ -14,6 +15,7 @@ import {
   type StyleSchema,
   blockToNode,
   docToBlocks,
+  nodeToBlock,
 } from "../index.js";
 
 /**
@@ -93,6 +95,30 @@ export function _blocksToProsemirrorNode<
 }
 
 /** YJS / BLOCKNOTE conversions */
+
+/** Materializes one Block's fields without visiting its child Block group. */
+export function yXmlElementToBlockFields<
+  BSchema extends BlockSchema,
+  ISchema extends InlineContentSchema,
+  SSchema extends StyleSchema,
+>(editor: BlockNoteEditor<BSchema, ISchema, SSchema>, container: Y.XmlElement) {
+  const content = container.get(0);
+  if (container.nodeName !== "blockContainer" || !(content instanceof Y.XmlElement)) {
+    throw new Error("Expected a canonical Block container");
+  }
+  // The JSON conversion is read-only, unlike the binding's schema-repair conversion.
+  const inline = yXmlFragmentToProsemirrorJSON(content);
+  const node = editor.pmSchema.nodeFromJSON({
+    type: "blockContainer",
+    attrs: container.getAttributes(),
+    content: [{ type: content.nodeName, attrs: content.getAttributes(), content: inline.content.flat() }],
+  });
+  const doc = editor.pmSchema.topNodeType.create(
+    null,
+    editor.pmSchema.nodes["blockGroup"].create(null, node),
+  );
+  return nodeToBlock<BSchema, ISchema, SSchema>(node, doc);
+}
 
 /**
  * Turn a Y.XmlFragment collaborative doc into a BlockNote document (BlockNote style JSON of all blocks)

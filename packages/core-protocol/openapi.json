@@ -3212,6 +3212,16 @@
           "reference"
         ],
         "properties": {
+          "history_fence": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DocumentHistoryFence"
+              }
+            ]
+          },
           "inline_update": {
             "type": [
               "array",
@@ -7212,6 +7222,24 @@
           {
             "type": "object",
             "required": [
+              "view_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "database_view_order_preparation"
+                ]
+              },
+              "view_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "artifact_id",
               "document_id",
               "store_epoch",
@@ -7973,6 +8001,109 @@
           "jpy",
           "cny"
         ]
+      },
+      "DatabaseDataEditPositionRun": {
+        "type": "object",
+        "description": "Logical slots survive fractional-rank materialization and rebalance.",
+        "required": [
+          "page_ids"
+        ],
+        "properties": {
+          "before_page_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "DatabaseDataEditPositionState": {
+        "type": "object",
+        "required": [
+          "view_id",
+          "data_source_id",
+          "direction",
+          "before_runs",
+          "after_runs"
+        ],
+        "properties": {
+          "after_runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseDataEditPositionRun"
+            }
+          },
+          "before_runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseDataEditPositionRun"
+            }
+          },
+          "data_source_id": {
+            "type": "string"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/DatabaseViewSortDirection"
+          },
+          "view_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DatabaseDataEditPropertyState": {
+        "type": "object",
+        "required": [
+          "address",
+          "property_type",
+          "before_value",
+          "after_value"
+        ],
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/DatabasePagePropertyAddress"
+          },
+          "after_value": {
+            "$ref": "#/components/schemas/DatabasePropertyValueInput"
+          },
+          "before_value": {
+            "$ref": "#/components/schemas/DatabasePropertyValueInput"
+          },
+          "property_type": {
+            "$ref": "#/components/schemas/DatabasePropertyType"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DatabaseDataEditUndoRecipe": {
+        "type": "object",
+        "description": "One atomic gesture, not a sequence of independently replayable operations.\nCore revalidates authority and every logical post-image before writing.",
+        "required": [
+          "property_states",
+          "position_states"
+        ],
+        "properties": {
+          "position_states": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseDataEditPositionState"
+            }
+          },
+          "property_states": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseDataEditPropertyState"
+            }
+          }
+        },
+        "additionalProperties": false
       },
       "DatabaseDataSourceDescriptor": {
         "type": "object",
@@ -9072,6 +9203,24 @@
           {
             "type": "object",
             "required": [
+              "recipe",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reverse_data_edit"
+                ]
+              },
+              "recipe": {
+                "$ref": "#/components/schemas/DatabaseDataEditUndoRecipe"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "view_id",
               "expected_revision",
               "rules_override",
@@ -9394,21 +9543,18 @@
           "data_source_id",
           "property_states",
           "post_parent_guards",
-          "post_order_guard",
+          "post_order_runs",
           "restore_runs"
         ],
         "properties": {
           "data_source_id": {
             "type": "string"
           },
-          "post_before_page_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "post_order_guard": {
-            "type": "boolean"
+          "post_order_runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseListMoveRestoreRun"
+            }
           },
           "post_parent_guards": {
             "type": "array",
@@ -9595,6 +9741,43 @@
             "type": "object",
             "required": [
               "operation_index",
+              "operation_count",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "data_edit"
+                ]
+              },
+              "operation_count": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "operation_index": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "undo_recipe": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DatabaseDataEditUndoRecipe",
+                    "description": "None means a supported gesture made no logical change. Unsupported\nor over-budget gestures omit this outcome instead of claiming no-op."
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "operation_index",
               "moved_page_ids",
               "move_root_page_ids",
               "normalized_target",
@@ -9638,6 +9821,7 @@
             "required": [
               "operation_index",
               "restored_page_ids",
+              "undo_recipe",
               "kind"
             ],
             "properties": {
@@ -9657,6 +9841,9 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "undo_recipe": {
+                "$ref": "#/components/schemas/DatabaseListMoveUndoRecipe"
               }
             }
           }
@@ -12911,6 +13098,31 @@
           }
         }
       },
+      "DocumentHistoryFence": {
+        "type": "object",
+        "description": "Core-authored address invalidation over a bounded interval of Document heads.",
+        "required": [
+          "headSeq",
+          "blockIds",
+          "documentWide"
+        ],
+        "properties": {
+          "blockIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "documentWide": {
+            "type": "boolean"
+          },
+          "headSeq": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
       "DocumentInvalidationReason": {
         "type": "string",
         "enum": [
@@ -13834,6 +14046,87 @@
             "type": "string"
           }
         }
+      },
+      "EditorHistoryBlockChange": {
+        "type": "object",
+        "required": [
+          "blockId"
+        ],
+        "properties": {
+          "after": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EditorHistoryBlockState"
+              }
+            ]
+          },
+          "before": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/EditorHistoryBlockState"
+              }
+            ]
+          },
+          "blockId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorHistoryBlockState": {
+        "type": "object",
+        "description": "A bounded local edit group addressed by stable Block identity. Unchanged\nfields are observations, not overwrite authority; the compiler guards and\nreplaces only the difference between the two states.",
+        "required": [
+          "type",
+          "props"
+        ],
+        "properties": {
+          "beforeBlockId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content": {},
+          "parentBlockId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "props": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditorHistoryPatch": {
+        "type": "object",
+        "required": [
+          "changes"
+        ],
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditorHistoryBlockChange"
+            }
+          }
+        },
+        "additionalProperties": false
       },
       "EventEnvelope": {
         "type": "object",
@@ -15834,6 +16127,17 @@
               "type": "string"
             }
           },
+          "history": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LibraryStructuralHistoryToken",
+                "description": "A complete symmetric inverse for a surface timeline. Missing means the\nentire gesture is a barrier, even if an explicit one-way Undo is available."
+              }
+            ]
+          },
           "mode": {
             "$ref": "#/components/schemas/LibraryBlockTransferMode"
           },
@@ -16168,6 +16472,16 @@
             "items": {
               "$ref": "#/components/schemas/LibraryBlockTransferDocumentCommit"
             }
+          },
+          "history": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LibraryStructuralHistoryToken"
+              }
+            ]
           },
           "removed_page_ids": {
             "type": "array",
@@ -17615,6 +17929,47 @@
           "active",
           "archived"
         ]
+      },
+      "LibraryLocalHistoryRetention": {
+        "type": "object",
+        "required": [
+          "surfaceId",
+          "documentId",
+          "generation",
+          "revision",
+          "blockIds",
+          "retainDocument",
+          "closed"
+        ],
+        "properties": {
+          "blockIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "boolean"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "retainDocument": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "surfaceId": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "LibraryMoveDestinationEntry": {
         "type": "object",
@@ -22631,6 +22986,51 @@
           {
             "type": "object",
             "required": [
+              "retention",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_local_history_retention"
+                ]
+              },
+              "retention": {
+                "$ref": "#/components/schemas/LibraryLocalHistoryRetention"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "document_id",
+              "generation",
+              "patch",
+              "kind"
+            ],
+            "properties": {
+              "document_id": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "restore_editor_history"
+                ]
+              },
+              "patch": {
+                "$ref": "#/components/schemas/EditorHistoryPatch"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "selection",
               "kind"
             ],
@@ -22927,6 +23327,21 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "LibraryStructuralHistoryState": {
+        "type": "object",
+        "required": [
+          "token",
+          "state"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/StructuralHistoryState"
+          },
+          "token": {
+            "$ref": "#/components/schemas/LibraryStructuralHistoryToken"
           }
         }
       },
@@ -23605,6 +24020,24 @@
       },
       "LocalProjectionScope": {
         "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "project_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "structural_history"
+                ]
+              },
+              "project_id": {
+                "type": "string"
+              }
+            }
+          },
           {
             "type": "object",
             "required": [
@@ -24703,6 +25136,21 @@
                     "type": [
                       "string",
                       "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Ends an ephemeral editor lifetime authenticated by the desktop Host.",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "close_editor_history_owner"
                     ]
                   }
                 }
@@ -28498,6 +28946,24 @@
                 {
                   "type": "object",
                   "required": [
+                    "recipe",
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "reverse_data_edit"
+                      ]
+                    },
+                    "recipe": {
+                      "$ref": "#/components/schemas/DatabaseDataEditUndoRecipe"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
                     "view_id",
                     "expected_revision",
                     "rules_override",
@@ -29648,6 +30114,27 @@
               {
                 "type": "object",
                 "required": [
+                  "tokens",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "structural_history_states"
+                    ]
+                  },
+                  "tokens": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/LibraryStructuralHistoryToken"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "target",
                   "kind"
                 ],
@@ -30742,6 +31229,13 @@
                 "properties": {
                   "document_id": {
                     "type": "string"
+                  },
+                  "history_after_head_seq": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64"
                   },
                   "kind": {
                     "type": "string",
@@ -39589,6 +40083,27 @@
                       {
                         "type": "object",
                         "required": [
+                          "items",
+                          "kind"
+                        ],
+                        "properties": {
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/LibraryStructuralHistoryState"
+                            }
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "structural_history_states"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "profile_id",
                           "library_id",
                           "commit_seq",
@@ -40606,11 +41121,15 @@
                         "required": [
                           "descriptor",
                           "update",
+                          "history_fence",
                           "kind"
                         ],
                         "properties": {
                           "descriptor": {
                             "$ref": "#/components/schemas/OwnedDocumentDescriptor"
+                          },
+                          "history_fence": {
+                            "$ref": "#/components/schemas/DocumentHistoryFence"
                           },
                           "kind": {
                             "type": "string",
@@ -41965,6 +42484,15 @@
             "$ref": "#/components/schemas/StoreEpoch"
           }
         }
+      },
+      "StructuralHistoryState": {
+        "type": "string",
+        "enum": [
+          "available",
+          "consumed",
+          "superseded",
+          "unavailable"
+        ]
       },
       "VersionRange": {
         "type": "object",

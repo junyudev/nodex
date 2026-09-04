@@ -97,6 +97,7 @@ export interface CoreLibraryModuleAdapterInput {
   readonly libraryId: string;
   readonly profileId: string;
   readonly storeEpoch: string;
+  readonly editorHistoryOwnerId?: string;
 }
 
 export interface CoreLibraryModuleAdapter {
@@ -313,6 +314,15 @@ const toCoreRead = (request: LibraryModuleReadRequest): LibraryRead => {
     case "page_file_inventory":
     case "resolve_page_file":
       return toCoreLibraryFileRead(read);
+    case "structural_history_states":
+      return {
+        kind: "structural_history_states",
+        tokens: read.tokens.map((token) => ({
+          recipe_operation_id: token.recipeOperationId,
+          recipe_hash: token.recipeHash,
+          store_epoch: token.storeEpoch,
+        })),
+      };
     case "metadata":
       return { kind: "metadata" };
     case "resource_project_access":
@@ -448,6 +458,18 @@ const toCoreStructuralReplacementBlock = (
 
 const toCoreStructuralCommand = (command: StructuralEditCommand) => {
   switch (command.kind) {
+    case "set_local_history_retention":
+      return {
+        kind: command.kind,
+        retention: { ...command.retention, blockIds: [...command.retention.blockIds] },
+      } as const;
+    case "restore_editor_history":
+      return {
+        kind: command.kind,
+        document_id: command.documentId,
+        generation: command.generation,
+        patch: command.patch,
+      } as const;
     case "capture_clipboard":
       return {
         kind: command.kind,
@@ -910,6 +932,18 @@ const mapReadValue = (snapshot: LibraryReadSnapshot): LibraryReadValue => {
     case "resolved_page_file":
       return value;
 
+    case "structural_history_states":
+      return {
+        kind: value.kind,
+        items: value.items.map((item) => ({
+          state: item.state,
+          token: {
+            recipeOperationId: item.token.recipe_operation_id,
+            recipeHash: item.token.recipe_hash,
+            storeEpoch: item.token.store_epoch,
+          },
+        })),
+      };
     case "metadata":
       return { kind: value.kind } as const;
     case "resource_project_access":
@@ -1713,6 +1747,8 @@ const mapCoreError = (error: CoreModuleError): LibraryModuleError => {
         return "store_epoch_mismatch";
       case "idempotency_key_reused":
         return "identity_conflict";
+      case "idempotency_window_expired":
+        return "recovery_required";
       case "not_found":
       case "unauthorized":
         return "resource_not_found";
@@ -2060,10 +2096,12 @@ export const createCoreLibraryModuleAdapter = (
         };
       }
       try {
-        const committed = await input.client.libraryApply({
-          operationId: request.operationId,
-          intent: toCoreIntent(request.operation),
-        });
+        const committed = await input.client.libraryApply(
+          { operationId: request.operationId, intent: toCoreIntent(request.operation) },
+          input.editorHistoryOwnerId
+            ? { editorHistoryOwnerId: input.editorHistoryOwnerId }
+            : undefined,
+        );
         const receipt = committed.receipt;
         const storeEpoch = applyResultStoreEpoch(committed);
         return {

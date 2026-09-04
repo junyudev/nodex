@@ -70,6 +70,7 @@ import { toast } from "@/components/ui/toast";
 import { isWorkflowStatus } from "../../../shared/workflow-status";
 import {
   useDatabaseViewMutationHistory,
+  databaseViewHistoryScopeKey,
   type DatabaseViewMutationHistory,
 } from "./database-view-mutation-history";
 import type { DatabaseViewPageActionPort } from "./database-view-page-actions";
@@ -191,7 +192,10 @@ function DatabaseViewTabSurfaceContent({
   readonly onOpenPage: DatabaseViewPageOpenHandler;
   readonly pageActionPort?: DatabaseViewPageActionPort;
   readonly onCommitted?: () => void | Promise<void>;
-  readonly onMoveBoardPages?: (input: DatabaseViewBoardPageDropIntent) => Promise<boolean>;
+  readonly onMoveBoardPages?: (
+    input: DatabaseViewBoardPageDropIntent,
+    request: Parameters<typeof commitDatabaseViewOperations>[0],
+  ) => ReturnType<typeof commitDatabaseViewOperations>;
   readonly keyboardSurface?: {
     readonly surfaceId: string;
     readonly presentationId: string;
@@ -210,9 +214,7 @@ function DatabaseViewTabSurfaceContent({
   readonly mutationHistory?: DatabaseViewMutationHistory;
 }) {
   const pageChatRuntime = useDatabasePageChatActivityRuntime();
-  const localMutationHistory = useDatabaseViewMutationHistory(
-    `${model.storeEpoch}:${model.databaseViewId}`,
-  );
+  const localMutationHistory = useDatabaseViewMutationHistory(databaseViewHistoryScopeKey(model));
   const mutationHistory = providedMutationHistory ?? localMutationHistory;
   const presentation = effectivePresentation ?? {
     layout: presentationLayout,
@@ -359,7 +361,9 @@ export function DbViewSessionTab({
     activeViewId: String(databaseViewId),
   });
   const mutationHistory = useDatabaseViewMutationHistory(
-    `${databaseView?.storeEpoch ?? "pending"}:${databaseViewId}`,
+    databaseView
+      ? databaseViewHistoryScopeKey(databaseView)
+      : `pending:${projectId}:${databaseViewId}`,
   );
   const [publishingPresentation, setPublishingPresentation] = useState(false);
   const [rulePublishError, setRulePublishError] = useState<string | null>(null);

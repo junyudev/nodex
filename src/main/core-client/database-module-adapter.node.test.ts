@@ -29,6 +29,14 @@ const identity = {
 test("maps bounded Page-key failures without losing their typed recovery", () => {
   expect(
     mapCoreDatabaseModuleError({
+      code: "idempotency_window_expired",
+      message: "Receipt expired",
+      recovery: { kind: "none" },
+      retryable: false,
+    }).code,
+  ).toBe("recovery_required");
+  expect(
+    mapCoreDatabaseModuleError({
       code: "conflict",
       message: "Prefix was claimed",
       recovery: { kind: "none" },
@@ -1054,8 +1062,9 @@ describe("Core Database Module Adapter", () => {
       dataSourceId,
       propertyStates: [],
       postParentGuards: [{ pageId: "page:parent", parentPageId: null }],
-      postBeforePageId: "page:target",
-      postOrderGuard: true,
+      postOrderRuns: [
+        { pageIds: ["page:parent"], parentPageId: null, beforePageId: "page:target" },
+      ],
       restoreRuns: [
         {
           pageIds: ["page:parent"],
@@ -1126,8 +1135,9 @@ describe("Core Database Module Adapter", () => {
             parent_page_id: null,
           },
         ],
-        post_before_page_id: "page:target",
-        post_order_guard: true,
+        post_order_runs: [
+          { page_ids: ["page:parent"], parent_page_id: null, before_page_id: "page:target" },
+        ],
         restore_runs: [
           {
             page_ids: ["page:parent"],
@@ -1174,8 +1184,9 @@ describe("Core Database Module Adapter", () => {
                   parent_page_id: null,
                 },
               ],
-              post_before_page_id: "page:target",
-              post_order_guard: true,
+              post_order_runs: [
+                { page_ids: ["page:parent"], parent_page_id: null, before_page_id: "page:target" },
+              ],
               restore_runs: [
                 {
                   page_ids: ["page:parent"],
@@ -1189,6 +1200,27 @@ describe("Core Database Module Adapter", () => {
             kind: "list_occurrence_move_undo",
             operation_index: 1,
             restored_page_ids: ["page:parent", "page:child"],
+            undo_recipe: {
+              view_id: viewId,
+              data_source_id: dataSourceId,
+              property_states: [],
+              post_parent_guards: [
+                {
+                  page_id: "page:parent",
+                  parent_page_id: null,
+                },
+              ],
+              post_order_runs: [
+                { page_ids: ["page:parent"], parent_page_id: null, before_page_id: "page:target" },
+              ],
+              restore_runs: [
+                {
+                  page_ids: ["page:parent"],
+                  parent_page_id: null,
+                  before_page_id: "page:source-next",
+                },
+              ],
+            },
           },
         ],
         committed_revisions: { [`view:${viewId}`]: 8 },
@@ -1234,6 +1266,7 @@ describe("Core Database Module Adapter", () => {
             kind: "list_occurrence_move_undo",
             operationIndex: 1,
             restoredPageIds: ["page:parent", "page:child"],
+            undoRecipe,
           },
         ],
       },

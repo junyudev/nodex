@@ -151,6 +151,7 @@ pub(crate) fn finalize_idle_document_revisions(
         let actor_context = match context.project_id.as_ref() {
             Some(_) => context.clone(),
             None => BoundModuleContext {
+                editor_history_owner: None,
                 project_id: Some(ProjectId(crate::library::resolve_library_actor_project_id(
                     &transaction,
                     &authority.head.library_id,
@@ -454,6 +455,7 @@ mod tests {
                 let finalized = finalize_idle_document_revisions(
                     connection,
                     &BoundModuleContext {
+                        editor_history_owner: None,
                         profile_id: ProfileId("profile:revision-maintenance".to_owned()),
                         library_id: LibraryId("library:revision-maintenance".to_owned()),
                         project_id: None,

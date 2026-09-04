@@ -3,6 +3,7 @@ import type {
   DatabaseApplyResultV2,
   DatabaseApplyV2,
   DatabaseListMoveUndoRecipeV2,
+  DatabaseDataEditUndoRecipeV2,
   DatabaseModuleErrorV2,
   DatabaseOperationOutcomeV2,
   DatabasePropertyValueInputV2,
@@ -195,6 +196,8 @@ export const mapCoreDatabaseModuleError = (
         return "revision_conflict";
       case "idempotency_key_reused":
         return "operation_id_collision";
+      case "idempotency_window_expired":
+        return "recovery_required";
       case "resource_exhausted":
         return "resource_exhausted";
       case "conflict":
@@ -302,12 +305,48 @@ const toCoreDatabaseListMoveUndoRecipe = (
     page_id: guard.pageId,
     parent_page_id: guard.parentPageId,
   })),
-  post_before_page_id: recipe.postBeforePageId,
-  post_order_guard: recipe.postOrderGuard,
+  post_order_runs: recipe.postOrderRuns.map((run) => ({
+    page_ids: run.pageIds,
+    parent_page_id: run.parentPageId,
+    before_page_id: run.beforePageId,
+  })),
   restore_runs: recipe.restoreRuns.map((run) => ({
     page_ids: run.pageIds,
     parent_page_id: run.parentPageId,
     before_page_id: run.beforePageId,
+  })),
+});
+
+type CoreDatabaseDataEditUndoRecipe = Extract<
+  CoreDatabaseIntent,
+  { readonly kind: "reverse_data_edit" }
+>["recipe"];
+
+const toCoreDatabaseDataEditUndoRecipe = (
+  recipe: DatabaseDataEditUndoRecipeV2,
+): CoreDatabaseDataEditUndoRecipe => ({
+  property_states: recipe.propertyStates.map((state) => ({
+    address: {
+      page_id: state.address.pageId,
+      data_source_id: state.address.dataSourceId,
+      property_id: state.address.propertyId,
+    },
+    property_type: state.propertyType,
+    before_value: toCorePropertyValueInput(state.beforeValue),
+    after_value: toCorePropertyValueInput(state.afterValue),
+  })),
+  position_states: recipe.positionStates.map((state) => ({
+    view_id: state.viewId,
+    data_source_id: state.dataSourceId,
+    direction: state.direction,
+    before_runs: state.beforeRuns.map((run) => ({
+      page_ids: [...run.pageIds],
+      before_page_id: run.beforePageId,
+    })),
+    after_runs: state.afterRuns.map((run) => ({
+      page_ids: [...run.pageIds],
+      before_page_id: run.beforePageId,
+    })),
   })),
 });
 
@@ -645,6 +684,8 @@ export const toCoreDatabaseIntent = (operation: DatabaseApplyOperationV2): CoreD
         kind: operation.kind,
         recipe: toCoreDatabaseListMoveUndoRecipe(operation.recipe),
       };
+    case "reverse_data_edit":
+      return { kind: operation.kind, recipe: toCoreDatabaseDataEditUndoRecipe(operation.recipe) };
     case "put_view_personal_preferences":
       return {
         kind: operation.kind,
@@ -740,8 +781,11 @@ const fromCoreDatabaseListMoveUndoRecipe = (
     pageId: guard.page_id,
     parentPageId: guard.parent_page_id ?? null,
   })),
-  postBeforePageId: recipe.post_before_page_id ?? null,
-  postOrderGuard: recipe.post_order_guard,
+  postOrderRuns: recipe.post_order_runs.map((run) => ({
+    pageIds: run.page_ids,
+    parentPageId: run.parent_page_id ?? null,
+    beforePageId: run.before_page_id ?? null,
+  })),
   restoreRuns: recipe.restore_runs.map((run) => ({
     pageIds: run.page_ids,
     parentPageId: run.parent_page_id ?? null,
@@ -749,14 +793,58 @@ const fromCoreDatabaseListMoveUndoRecipe = (
   })),
 });
 
+const fromCoreDatabaseDataEditUndoRecipe = (
+  recipe: CoreDatabaseDataEditUndoRecipe,
+): DatabaseDataEditUndoRecipeV2 => ({
+  propertyStates: recipe.property_states.map((state) => {
+    if (state.property_type === "relation")
+      throw new Error("A data edit inverse cannot restore relations");
+    const propertyId = parseDataSourcePropertyId(state.address.property_id);
+    return {
+      address: {
+        pageId: state.address.page_id,
+        dataSourceId: parseDataSourceId(state.address.data_source_id),
+        propertyId,
+      },
+      propertyType: state.property_type,
+      beforeValue: fromCorePropertyValueInput(state.before_value, propertyId),
+      afterValue: fromCorePropertyValueInput(state.after_value, propertyId),
+    };
+  }),
+  positionStates: recipe.position_states.map((state) => ({
+    viewId: parseDatabaseViewId(state.view_id),
+    dataSourceId: parseDataSourceId(state.data_source_id),
+    direction: state.direction,
+    beforeRuns: state.before_runs.map((run) => ({
+      pageIds: run.page_ids,
+      beforePageId: run.before_page_id ?? null,
+    })),
+    afterRuns: state.after_runs.map((run) => ({
+      pageIds: run.page_ids,
+      beforePageId: run.before_page_id ?? null,
+    })),
+  })),
+});
+
 const fromCoreDatabaseOperationOutcome = (
   outcome: CoreDatabaseOperationOutcome,
 ): DatabaseOperationOutcomeV2 => {
+  if (outcome.kind === "data_edit") {
+    return {
+      kind: outcome.kind,
+      operationIndex: outcome.operation_index,
+      operationCount: outcome.operation_count,
+      undoRecipe: outcome.undo_recipe
+        ? fromCoreDatabaseDataEditUndoRecipe(outcome.undo_recipe)
+        : null,
+    };
+  }
   if (outcome.kind === "list_occurrence_move_undo") {
     return {
       kind: outcome.kind,
       operationIndex: outcome.operation_index,
       restoredPageIds: outcome.restored_page_ids,
+      undoRecipe: fromCoreDatabaseListMoveUndoRecipe(outcome.undo_recipe),
     };
   }
   return {

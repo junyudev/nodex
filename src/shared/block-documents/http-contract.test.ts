@@ -186,12 +186,14 @@ describe("Document HTTP contract", () => {
       documentId: "document-1",
       clientSessionId: "client-1",
       stateVector: bytes(0, 128, 255),
+      historyAfterHeadSeq: 2,
     } as const;
     const decodedSyncRequest = decodeDocumentSyncHttpRequest(
       syncRequest.documentId,
       encodeDocumentSyncHttpRequest(syncRequest),
     );
     expect(Array.from(decodedSyncRequest.stateVector).join(",")).toBe("0,128,255");
+    expect(decodedSyncRequest.historyAfterHeadSeq).toBe(2);
 
     const syncResponse = {
       documentId: "document-1",
@@ -200,12 +202,34 @@ describe("Document HTTP contract", () => {
       headSeq: 4,
       stateVector: bytes(1, 2),
       update: bytes(3, 4, 255),
+      historyFence: { headSeq: 4, blockIds: ["block:a"], documentWide: false },
     } as const;
     const decodedSyncResponse = decodeDocumentSyncHttpResponse(
       encodeDocumentSyncHttpResponse(syncResponse),
     );
     expect(Array.from(decodedSyncResponse.stateVector).join(",")).toBe("1,2");
     expect(Array.from(decodedSyncResponse.update).join(",")).toBe("3,4,255");
+    expect(decodedSyncResponse.historyFence).toEqual(syncResponse.historyFence);
+    expect(() =>
+      decodeDocumentSyncHttpResponse(
+        encodeDocumentSyncHttpResponse({
+          ...syncResponse,
+          historyFence: { headSeq: 5, blockIds: [], documentWide: true },
+        }),
+      ),
+    ).toThrow("History fence");
+    expect(() =>
+      decodeDocumentSyncHttpResponse(
+        encodeDocumentSyncHttpResponse({
+          ...syncResponse,
+          historyFence: {
+            headSeq: 4,
+            blockIds: Array.from({ length: 513 }, (_, i) => `block:${i}`),
+            documentWide: false,
+          },
+        }),
+      ),
+    ).toThrow("History fence");
 
     const applyRequest = {
       documentId: "document-1",

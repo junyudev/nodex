@@ -135,6 +135,16 @@ file. `core_store_metadata` records current Rust Core ownership state;
 `core_store_migration_history` retains completed migration evidence without
 duplicating the current revision.
 
+Supported formats are an explicit catalog, not a numeric interval. Migration
+paths may skip unpublished revisions; compatibility manifests advertise only
+catalog entries with a supported path. The current acceptance window retains
+v130 through v152 as predecessors, with a direct v152-to-v159 step. Existing
+v159 Stores retain their exact identity; v153 through v158 are not accepted.
+The direct upgrade preserves inline history, transfer capabilities, ledger
+evidence, and sparse View positions from supported predecessors for bounded,
+resumable maintenance. Those import paths are required for old Store content,
+not optional historical migration steps.
+
 `prepare_profile_store_with_observer` is the only live Store-open preparation
 entry point. An empty Store installs the complete `current.sql` snapshot and
 mints its Profile-specific singleton rows in the same transaction, so an
@@ -225,7 +235,7 @@ it does not imply the Store has been mutated.
 
 ## Validation owner
 
-The version-surface source gate, Store catalog continuity test, migration
+The version-surface source gate, Store catalog identity test, migration
 matrix, current/frozen inventory tests, previous-published reopen gate,
 process-lifecycle tests, and packaged runtime verification are executable
 authority. Every retained Rust and TypeScript version declaration is classified

@@ -13,6 +13,8 @@ import { CodexRendererConversationCoordinator } from "../codex-application/Codex
 import { CodexMedia, live as codexMediaLive } from "../codex-application/CodexMedia";
 import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
+import { DatabaseModule } from "../database-application/DatabaseModule";
+import { DesktopDocumentSessionRuntime } from "../core-client/desktop-document-sync-bridge";
 import { resolveBundledElectronPreload } from "../electron-preload-path";
 import {
   ComputerUseSettingsRuntime,
@@ -22,6 +24,10 @@ import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { ChromeControlRuntime } from "../host-runtime/ChromeControlRuntime";
 import { ComputerUseRuntime } from "../host-runtime/ComputerUseRuntime";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
+import {
+  EditorHistoryRuntime,
+  live as editorHistoryRuntimeLive,
+} from "../host-runtime/EditorHistoryRuntime";
 import {
   StructuralClipboardRuntime,
   live as structuralClipboardRuntimeLive,
@@ -252,6 +258,7 @@ export const live: Layer.Layer<
   | RemoteHostedPipRuntime
   | RendererClientRuntime
   | StructuralClipboardRuntime
+  | EditorHistoryRuntime
   | WindowSessionCatalog.WindowSessionCatalog
   | WindowShutdown,
   ApplicationHostRuntimeError,
@@ -268,6 +275,8 @@ export const live: Layer.Layer<
   | CodexThreadHostResolver
   | CodexRendererConversationCoordinator
   | CoreAuthority
+  | DatabaseModule
+  | DesktopDocumentSessionRuntime
   | DesktopToolRuntime
   | ChromeControlRuntime
   | ComputerUseRuntime
@@ -296,5 +305,6 @@ export const live: Layer.Layer<
   dictation,
   nodexAgentAuthorization,
   structuralClipboard,
+  editorHistoryRuntimeLive,
   windowSessions,
 );

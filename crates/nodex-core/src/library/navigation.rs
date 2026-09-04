@@ -150,6 +150,7 @@ pub(super) fn read(
             )?,
         }),
         LibraryRead::Metadata
+        | LibraryRead::StructuralHistoryStates { .. }
         | LibraryRead::ResourceProjectAccess { .. }
         | LibraryRead::FilterProjectionImpactForProject { .. } => {
             Err(invalid("Read is assembled by the Library Module"))

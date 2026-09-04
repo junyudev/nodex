@@ -10,6 +10,7 @@ import type {
   NativeContextMenuOptions,
 } from "../shared/native-context-menu";
 import type { WorkbenchCommandInvocation } from "../shared/workbench-commands";
+import type { SurfaceHistoryDirection } from "../shared/surface-history";
 import type {
   StructuralClipboardAwaitInput,
   StructuralClipboardBeginInput,
@@ -73,6 +74,7 @@ declare global {
       onWorkbenchCommand?: (
         callback: (invocation: WorkbenchCommandInvocation) => void,
       ) => () => void;
+      onHistoryCommand?: (callback: (direction: SurfaceHistoryDirection) => void) => () => void;
       resolveManagedAssetPath?: (source: string) => string | null;
       resolveManagedBlobPath?: (contentHash: string) => string | null;
       readPasteClipboard?: () => Promise<ClipboardPastePayload>;

@@ -45,6 +45,40 @@ pub fn materialize_order(ids: &[String]) -> Result<BTreeMap<String, String>, Fra
     make_rebalanced_ranks(ids)
 }
 
+/// Allocate a whole run inside an open interval without consuming its gap by
+/// repeated halving. `None` asks the caller for wider, bounded neighbor evidence.
+pub fn rank_run_between(
+    left: Option<&str>,
+    right: Option<&str>,
+    count: usize,
+) -> Option<Vec<String>> {
+    if count == 0 || count > MAX_REBALANCE_ITEMS {
+        return None;
+    }
+    let parse = |rank: &str| {
+        is_fractional_rank_key(rank)
+            .then(|| u128::from_str_radix(rank, 16).ok())
+            .flatten()
+    };
+    let left = left.map(parse).unwrap_or(Some(0))?;
+    let right = right.map(parse).unwrap_or(Some(u128::MAX))?;
+    let distance = right.checked_sub(left)?;
+    let divisor = count as u128 + 1;
+    if distance < divisor {
+        return None;
+    }
+    Some(
+        (1..=count)
+            .map(|ordinal| {
+                let ordinal = ordinal as u128;
+                let offset =
+                    (distance / divisor) * ordinal + ((distance % divisor) * ordinal) / divisor;
+                format!("{:032x}", left + offset)
+            })
+            .collect(),
+    )
+}
+
 pub fn plan(
     items: &[RankedItem],
     target_id: &str,
@@ -168,6 +202,34 @@ fn apply_rebalanced_ranks(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bounded_run_uses_open_interval_and_reports_insufficient_space() {
+        let left = "0000000000000000000000000000000a";
+        let right = "0000000000000000000000000000000d";
+        assert_eq!(
+            rank_run_between(Some(left), Some(right), 2),
+            Some(vec![
+                "0000000000000000000000000000000b".to_owned(),
+                "0000000000000000000000000000000c".to_owned(),
+            ])
+        );
+        for (lower, upper, count) in [
+            (Some(left), Some(right), 3),
+            (Some(left), Some(left), 1),
+            (Some(right), Some(left), 1),
+            (Some("bad-rank"), Some(right), 1),
+            (None, None, 0),
+            (None, None, MAX_REBALANCE_ITEMS + 1),
+        ] {
+            assert_eq!(rank_run_between(lower, upper, count), None);
+        }
+        let all = rank_run_between(None, None, MAX_REBALANCE_ITEMS).expect("full rank interval");
+        assert_eq!(all.len(), MAX_REBALANCE_ITEMS);
+        assert!(all.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(all.first().unwrap().as_str() > "00000000000000000000000000000000");
+        assert!(all.last().unwrap().as_str() < "ffffffffffffffffffffffffffffffff");
+    }
 
     #[test]
     fn matches_the_typescript_append_and_rebalance_vectors() {

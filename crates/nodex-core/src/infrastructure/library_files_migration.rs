@@ -1,7 +1,7 @@
 //! One-way v151 to v152 conversion from Page-owned attachments to Library Files.
 //!
 //! The migration deliberately has no compatibility mode. It rebuilds the few
-//! changed tables from the exact current schema artifact, converts every known
+//! changed tables from the immutable published v152 schema, converts every known
 //! durable byte owner, and only then publishes the new Store revision.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 use crate::domain::file_path::normalize_file_name;
 
 use super::managed_blobs::BlobWriter;
-use super::schema::{CURRENT_SCHEMA_SQL, read_schema_inventory};
+use super::schema::{read_schema_inventory, validate_schema_identity};
 use super::sqlite::{StoreError, StoreErrorCode};
 
 const BATCH_SIZE: i64 = 128;
@@ -134,7 +134,9 @@ pub(crate) fn migrate_v151_to_v152(
 
 fn target_schema_objects() -> Result<BTreeMap<(String, String), String>, StoreError> {
     let target = Connection::open_in_memory()?;
-    target.execute_batch(CURRENT_SCHEMA_SQL)?;
+    // Historical migrations must not borrow future tables, triggers, or columns.
+    target.execute_batch(include_str!("../../schema/published/v152.sql"))?;
+    validate_schema_identity(&target, 152)?;
     target
         .prepare(
             "SELECT type, name, sql FROM sqlite_schema \

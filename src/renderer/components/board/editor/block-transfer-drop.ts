@@ -1,10 +1,6 @@
 import { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { DropCursorExtension } from "@blocknote/core/extensions";
-import type { PublicBlockTransferIntent } from "../../../../shared/block-transfer-transport";
-import type {
-  BlockTransferCommandResult,
-  BlockTransferDocumentHead,
-} from "../../../../shared/block-transfer";
+import type { NfmReceivingPageTransferIntent } from "./nfm-history-command";
 import type { DocumentHeadFence } from "../../../lib/block-document-surface-runtime";
 import {
   blockTransferDropLabel,
@@ -61,19 +57,21 @@ export interface BlockTransferDropBoundary {
     sourceSurfaceId: string,
     options?: DocumentWaitOptions,
   ) => Promise<DocumentHeadFence>;
-  readonly transfer: (intent: PublicBlockTransferIntent) => Promise<BlockTransferCommandResult>;
+  readonly receivePages: (intent: NfmReceivingPageTransferIntent) => Promise<void>;
+  /** Admits the gesture synchronously; prepares heads only inside its history queue. */
   readonly structuralTransfer: (input: {
     readonly mode: "move" | "copy";
     readonly rootBlockIds: readonly string[];
-    readonly sourceHead: DocumentHeadFence;
-    readonly targetHead: DocumentHeadFence;
+    readonly prepareHeads: () => Promise<{
+      readonly sourceHead: DocumentHeadFence;
+      readonly targetHead: DocumentHeadFence;
+    }>;
     readonly target: {
       readonly parentBlockId: string | null;
       readonly beforeBlockId: string | null;
     };
     readonly preferredSelectionBlockId?: string;
   }) => Promise<void>;
-  readonly createOperationId: () => string;
   readonly reportError: (message: string) => void;
 }
 
@@ -395,24 +393,6 @@ export const setupBlockTransferDocumentDrop = (
     return tokens.filter((token): token is DocumentHeadFence => token !== undefined);
   };
 
-  const causalDependenciesFromTokens = (
-    boundary: BlockTransferDropBoundary,
-    tokens: readonly DocumentHeadFence[],
-  ): readonly BlockTransferDocumentHead[] => {
-    const dependencies = new Map<string, BlockTransferDocumentHead>();
-    for (const token of tokens) {
-      if (token.storeEpoch !== boundary.storeEpoch) {
-        throw new Error("Block transfer causal Document belongs to another store epoch");
-      }
-      dependencies.set(token.documentId, {
-        documentId: token.documentId,
-        generation: token.generation,
-        expectedHeadSeq: token.expectedHeadSeq,
-      });
-    }
-    return [...dependencies.values()];
-  };
-
   const reportFailure = (error: unknown, fallback: string): void => {
     readBoundary().reportError(error instanceof Error ? error.message : fallback);
   };
@@ -472,34 +452,20 @@ export const setupBlockTransferDocumentDrop = (
       );
       const target = plan.target;
       clear();
-      void prepareStructuralMutation(boundary)
-        .then((tokens) =>
-          boundary.transfer({
-            operationId: boundary.createOperationId(),
-            projectId: boundary.projectId,
-            storeEpoch: boundary.storeEpoch,
-            mode: resolveCrossSurfaceTransferMode(location.current.input),
-            rootBlockIds: sourceData.dragItems.map((item) => item.card.id),
-            causalDependencies: causalDependenciesFromTokens(boundary, tokens),
-            source: {
-              kind: "data_source",
-              dataSourceId: sourceData.dataSourceId,
-            },
-            target: boundary.hostPageId
-              ? { kind: "page", pageId: boundary.hostPageId, ...target }
-              : {
-                  kind: "document",
-                  documentId: boundary.documentId,
-                  ...target,
-                },
-            promotionPolicy: "literal",
-          }),
-        )
-        .then((result) => {
-          if (!result.ok) {
-            boundary.reportError(result.error.message);
-            return;
-          }
+      void boundary
+        .receivePages({
+          projectId: boundary.projectId,
+          storeEpoch: boundary.storeEpoch,
+          mode: resolveCrossSurfaceTransferMode(location.current.input),
+          rootBlockIds: sourceData.dragItems.map((item) => item.card.id),
+          dataSourceId: sourceData.dataSourceId,
+          target: boundary.hostPageId
+            ? { kind: "page", pageId: boundary.hostPageId, ...target }
+            : {
+                kind: "document",
+                documentId: boundary.documentId,
+                ...target,
+              },
         })
         .catch((error: unknown) => reportFailure(error, "Block transfer failed"));
     },
@@ -616,25 +582,27 @@ export const setupBlockTransferDocumentDrop = (
     ) {
       return;
     }
-    void prepareStructuralMutation(boundary, session.sourceSurfaceId)
-      .then(([targetHead, sourceHead = targetHead]) => {
-        if (!targetHead || !sourceHead)
-          throw new Error("The structural transfer has no durable document head.");
-        return boundary.structuralTransfer({
-          mode,
-          rootBlockIds: session.payload.rootBlockIds,
-          sourceHead,
-          targetHead,
-          target: {
-            parentBlockId: plan.target.parentBlockId ?? null,
-            beforeBlockId: plan.target.beforeBlockId ?? null,
-          },
-          ...(plan.kind === "append_children"
-            ? { preferredSelectionBlockId: plan.target.parentBlockId }
-            : {}),
-        });
+    void boundary
+      .structuralTransfer({
+        mode,
+        rootBlockIds: session.payload.rootBlockIds,
+        prepareHeads: async () => {
+          const [targetHead, sourceHead = targetHead] = await prepareStructuralMutation(
+            boundary,
+            session.sourceSurfaceId,
+          );
+          if (!targetHead || !sourceHead)
+            throw new Error("The structural transfer has no durable document head.");
+          return { targetHead, sourceHead };
+        },
+        target: {
+          parentBlockId: plan.target.parentBlockId ?? null,
+          beforeBlockId: plan.target.beforeBlockId ?? null,
+        },
+        ...(plan.kind === "append_children"
+          ? { preferredSelectionBlockId: plan.target.parentBlockId }
+          : {}),
       })
-      .then(() => undefined)
       .catch((error: unknown) => reportFailure(error, "Structural transfer failed"));
   };
 

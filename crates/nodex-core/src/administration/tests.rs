@@ -115,6 +115,7 @@ impl Fixture {
 
     fn context(&self) -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId(PROFILE_ID.to_owned()),
             library_id: LibraryId(LIBRARY_ID.to_owned()),
             project_id: None,
@@ -926,6 +927,174 @@ fn exact_no_op_retry_keeps_its_original_observation_after_an_unrelated_commit() 
         })
         .expect("no-op receipt coordinates");
     assert_eq!(receipt_coordinates, (None, None));
+}
+
+#[test]
+fn restores_a_turned_page_then_collects_only_its_dormant_document() {
+    use nodex_core_contracts::LIBRARY_CONTRACT_VERSION;
+    use nodex_core_contracts::library::{
+        LibraryDocumentHead, LibraryIntent, LibraryPageWriteDestination,
+        LibraryStructuralEditCommand, LibraryStructuralSelection, LibraryStructuralTurnIntoTarget,
+        LibraryWriteParent,
+    };
+
+    let fixture = Fixture::new();
+    let library = crate::library::LibraryModule::new(PROFILE_ID, LIBRARY_ID, &fixture.kernel);
+    let mut library_context = fixture.context();
+    library_context.project_id = Some(nodex_core_contracts::ProjectId(
+        "project:administration-test".into(),
+    ));
+    let apply = |operation_id: &str, intent| {
+        library
+            .apply(
+                &library_context,
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: operation_id.to_owned(),
+                    store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
+                    intent,
+                },
+            )
+            .expect("Library operation")
+            .committed
+            .value
+    };
+    const HOST_PAGE: &str = "018f0000-0000-7000-8000-000000000751";
+    const HOST_DOCUMENT: &str = "document:restore-turn-host";
+    apply(
+        "restore-turn:host",
+        LibraryIntent::CreatePage {
+            page_id: HOST_PAGE.into(),
+            document_id: HOST_DOCUMENT.into(),
+            title: "Host".into(),
+            parent: LibraryWriteParent::Library { before: None },
+        },
+    );
+    let child = apply(
+        "restore-turn:child",
+        LibraryIntent::CreatePageFromNfm {
+            title_markdown: "Child".into(),
+            nfm: "Preserved body".into(),
+            destination: LibraryPageWriteDestination::Page {
+                page_id: HOST_PAGE.into(),
+                at: None,
+            },
+        },
+    )
+    .page_create
+    .expect("child Page");
+    let head = fixture
+        .kernel
+        .readers()
+        .read_default(|connection| {
+            connection
+                .query_row(
+                    "SELECT generation, head_seq FROM documents WHERE id = ?1",
+                    [HOST_DOCUMENT],
+                    |row| {
+                        Ok(LibraryDocumentHead {
+                            document_id: HOST_DOCUMENT.into(),
+                            generation: row.get(0)?,
+                            head_seq: row.get(1)?,
+                        })
+                    },
+                )
+                .map_err(Into::into)
+        })
+        .unwrap();
+    let history = apply(
+        "restore-turn:turn",
+        LibraryIntent::ApplyStructuralEdit {
+            command: Box::new(LibraryStructuralEditCommand::TurnSelectionInto {
+                selection: LibraryStructuralSelection {
+                    source_document_id: HOST_DOCUMENT.into(),
+                    root_block_ids: vec![child.page_id.clone()],
+                    source_head: head,
+                },
+                target: LibraryStructuralTurnIntoTarget::ToggleList,
+            }),
+        },
+    )
+    .structural_edit
+    .unwrap()
+    .history
+    .expect("unowned history capability");
+    let backup = fixture.create_backup("restore-turn:backup", None, false);
+    let backup_id = backup.committed.value.backup_id.unwrap();
+    let restored = fixture.restore_backup("restore-turn:restore", &backup_id, false);
+    assert_ne!(restored.committed.store_epoch.0, STORE_EPOCH);
+    let retry = fixture.restore_backup("restore-turn:restore", &backup_id, false);
+    assert!(retry.committed.receipt.mutation.duplicate);
+    let old_inverse = library
+        .apply(
+            &library_context,
+            ModuleApplyRequest {
+                contract_version: LIBRARY_CONTRACT_VERSION,
+                operation_id: "restore-turn:stale-undo".into(),
+                store_epoch: StoreEpoch(STORE_EPOCH.into()),
+                intent: LibraryIntent::ReverseStructuralEdit { token: history },
+            },
+        )
+        .expect_err("old epoch cannot replay interactive Undo");
+    assert_eq!(old_inverse.code, CoreErrorCode::StaleStoreEpoch);
+    fixture
+        .kernel
+        .writer()
+        .call(move |connection| {
+            assert!(crate::document::is_known_dormant_document(
+                connection,
+                LIBRARY_ID,
+                &child.document_id
+            )?);
+            let before: String = connection.query_row(
+                "SELECT nfm FROM document_materializations WHERE document_id = ?1",
+                [HOST_DOCUMENT],
+                |row| row.get(0),
+            )?;
+            let barriers: i64 = connection.query_row(
+                "SELECT count(*) FROM document_structural_barriers WHERE document_id = ?1",
+                [&child.document_id],
+                |row| row.get(0),
+            )?;
+            assert!(barriers > 0, "turning nonempty content fences late updates");
+            let summary = crate::document::run_block_retention_pass(connection, 0)?;
+            assert_eq!(summary.collected_candidates, 1, "{summary:?}");
+            assert_eq!(
+                connection.query_row(
+                    "SELECT count(*) FROM documents WHERE id = ?1",
+                    [&child.document_id],
+                    |row| row.get::<_, i64>(0)
+                )?,
+                0
+            );
+            assert_eq!(
+                connection.query_row(
+                    "SELECT type FROM blocks WHERE id = ?1",
+                    [&child.page_id],
+                    |row| row.get::<_, String>(0)
+                )?,
+                "toggleListItem"
+            );
+            assert_eq!(
+                connection.query_row(
+                    "SELECT nfm FROM document_materializations WHERE document_id = ?1",
+                    [HOST_DOCUMENT],
+                    |row| row.get::<_, String>(0)
+                )?,
+                before
+            );
+            assert_eq!(
+                connection.query_row(
+                    "SELECT count(*) FROM document_structural_barriers WHERE document_id = ?1",
+                    [&child.document_id],
+                    |row| row.get::<_, i64>(0)
+                )?,
+                0
+            );
+            crate::infrastructure::store_validation::validate_store_semantics(connection)?;
+            Ok(())
+        })
+        .expect("only dormant content and its own barriers are collected");
 }
 
 #[test]

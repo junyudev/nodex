@@ -1,0 +1,423 @@
+diff --git a/dist/src/utils/UndoManager.d.ts b/dist/src/utils/UndoManager.d.ts
+index 97fd01c3f94a8518b3467f91ce2e720faa6a1869..46a54cbd98ee9e45e3306dae84f3a1f5c33dd833 100644
+--- a/dist/src/utils/UndoManager.d.ts
++++ b/dist/src/utils/UndoManager.d.ts
+@@ -142,6 +142,8 @@ export class UndoManager extends ObservableV2<{
+      *
+      * @return {boolean} `true` if undo is possible
+      */
++    replayStackItem(direction: 'undo' | 'redo', expected: StackItem): { consumed: StackItem; inverse: StackItem | null } | null;
++    discardStackItems(items: readonly StackItem[]): boolean;
+     canUndo(): boolean;
+     /**
+      * Are redo steps available?
+diff --git a/dist/yjs.cjs b/dist/yjs.cjs
+index 5b5690eb2f172cd99d244ff33394ff59f44fe103..06ed28f15b437d5435d4fa4e62815666cef505f1 100644
+--- a/dist/yjs.cjs
++++ b/dist/yjs.cjs
+@@ -3488,6 +3488,22 @@ class StackItem {
+  * @param {UndoManager} um
+  * @param {StackItem} stackItem
+  */
++/** @type {WeakMap<Doc, Set<UndoManager>>} */
++const liveUndoManagers = new WeakMap()
++
++/** Restore shared GC keeps before a clear transaction can collect them. */
++const restoreHistoryKeeps = (tr) => {
++  for (const manager of liveUndoManagers.get(tr.doc) || []) {
++    const entries = [...manager.undoStack, ...manager.redoStack]
++    if (manager.currStackItem) entries.push(manager.currStackItem)
++    for (const entry of entries) {
++      iterateDeletedStructs(tr, entry.deletions, item => {
++        if (item instanceof Item && manager.scope.some(type => type === tr.doc || isParentOf(type, item))) keepItem(item, true)
++      })
++    }
++  }
++}
++
+ const clearUndoManagerStackItem = (tr, um, stackItem) => {
+   iterateDeletedStructs(tr, stackItem.deletions, item => {
+     if (item instanceof Item && um.scope.some(type => type === tr.doc || isParentOf(/** @type {AbstractType<any>} */ (type), item))) {
+@@ -3502,7 +3518,7 @@ const clearUndoManagerStackItem = (tr, um, stackItem) => {
+  * @param {'undo'|'redo'} eventType
+  * @return {StackItem?}
+  */
+-const popStackItem = (undoManager, stack, eventType) => {
++const popStackItem = (undoManager, stack, eventType, maxItems = Infinity) => {
+   /**
+    * Keep a reference to the transaction so we can fire the event with the changedParentTypes
+    * @type {any}
+@@ -3511,7 +3527,7 @@ const popStackItem = (undoManager, stack, eventType) => {
+   const doc = undoManager.doc;
+   const scope = undoManager.scope;
+   transact(doc, transaction => {
+-    while (stack.length > 0 && undoManager.currStackItem === null) {
++    while (stack.length > 0 && undoManager.currStackItem === null && maxItems-- > 0) {
+       const store = doc.store;
+       const stackItem = /** @type {StackItem} */ (stack.pop());
+       /**
+@@ -3640,6 +3656,9 @@ class UndoManager extends observable.ObservableV2 {
+      * @type {Array<StackItem>}
+      */
+     this.redoStack = [];
++    const managers = liveUndoManagers.get(doc) || new Set()
++    managers.add(this)
++    liveUndoManagers.set(doc, managers)
+     /**
+      * Whether the client is currently undoing (calling UndoManager.undo)
+      *
+@@ -3764,6 +3783,7 @@ class UndoManager extends observable.ObservableV2 {
+           this.redoStack.forEach(item => clearUndoManagerStackItem(tr, this, item));
+           this.redoStack = [];
+         }
++        restoreHistoryKeeps(tr)
+         this.emit('stack-cleared', [{ undoStackCleared: clearUndoStack, redoStackCleared: clearRedoStack }]);
+       });
+     }
+@@ -3830,6 +3850,62 @@ class UndoManager extends observable.ObservableV2 {
+    *
+    * @return {boolean} `true` if undo is possible
+    */
++  /**
++   * Replay exactly the expected top item without skipping into an older group.
++   * A null result means the expected item was not on top (nothing consumed).
++   * A null inverse means the expected item was consumed without changing content.
++   * Existing undo()/redo() retain their skip-no-effect behavior.
++   *
++   * @param {'undo'|'redo'} direction
++   * @param {StackItem} expected
++   * @return {{ consumed: StackItem, inverse: StackItem|null }|null}
++   */
++  replayStackItem (direction, expected) {
++    const undo = direction === 'undo';
++    const source = undo ? this.undoStack : this.redoStack;
++    const target = undo ? this.redoStack : this.undoStack;
++    if (source[source.length - 1] !== expected || this.undoing || this.redoing) return null;
++    this.undoing = undo;
++    this.redoing = !undo;
++    try {
++      const applied = popStackItem(this, source, direction, 1);
++      return { consumed: expected, inverse: applied ? target[target.length - 1] || null : null };
++    } finally {
++      this.undoing = false;
++      this.redoing = false;
++    }
++  }
++
++  /**
++   * Release exact unreachable entries without disturbing newer history.
++   * @param {ReadonlyArray<StackItem>} items
++   * @return {boolean}
++   */
++  discardStackItems (items) {
++    if (this.undoing || this.redoing) return false
++    const selected = new Set(items)
++    const removed = []
++    const remove = stack => {
++      for (let index = stack.length - 1; index >= 0; index--) {
++        if (selected.has(stack[index])) removed.push(...stack.splice(index, 1))
++      }
++    }
++    const undoLength = this.undoStack.length
++    const redoLength = this.redoStack.length
++    remove(this.undoStack)
++    remove(this.redoStack)
++    if (removed.length === 0) return false
++    transact(this.doc, tr => {
++      removed.forEach(item => clearUndoManagerStackItem(tr, this, item))
++      restoreHistoryKeeps(tr)
++    }, this)
++    this.emit('stack-cleared', [{
++      undoStackCleared: undoLength !== this.undoStack.length,
++      redoStackCleared: redoLength !== this.redoStack.length
++    }])
++    return true
++  }
++
+   canUndo () {
+     return this.undoStack.length > 0
+   }
+@@ -3844,6 +3920,8 @@ class UndoManager extends observable.ObservableV2 {
+   }
+ 
+   destroy () {
++    this.clear()
++    liveUndoManagers.get(this.doc)?.delete(this)
+     this.trackedOrigins.delete(this);
+     this.doc.off('afterTransaction', this.afterTransactionHandler);
+     super.destroy();
+diff --git a/dist/yjs.mjs b/dist/yjs.mjs
+index 10d633d8e71171b2702c45376553832504921877..c4a4bdf2fb627b9f8c4235469242767fddfe0b7b 100644
+--- a/dist/yjs.mjs
++++ b/dist/yjs.mjs
+@@ -3451,6 +3451,22 @@ class StackItem {
+  * @param {UndoManager} um
+  * @param {StackItem} stackItem
+  */
++/** @type {WeakMap<Doc, Set<UndoManager>>} */
++const liveUndoManagers = new WeakMap()
++
++/** Restore shared GC keeps before a clear transaction can collect them. */
++const restoreHistoryKeeps = (tr) => {
++  for (const manager of liveUndoManagers.get(tr.doc) || []) {
++    const entries = [...manager.undoStack, ...manager.redoStack]
++    if (manager.currStackItem) entries.push(manager.currStackItem)
++    for (const entry of entries) {
++      iterateDeletedStructs(tr, entry.deletions, item => {
++        if (item instanceof Item && manager.scope.some(type => type === tr.doc || isParentOf(type, item))) keepItem(item, true)
++      })
++    }
++  }
++}
++
+ const clearUndoManagerStackItem = (tr, um, stackItem) => {
+   iterateDeletedStructs(tr, stackItem.deletions, item => {
+     if (item instanceof Item && um.scope.some(type => type === tr.doc || isParentOf(/** @type {AbstractType<any>} */ (type), item))) {
+@@ -3465,7 +3481,7 @@ const clearUndoManagerStackItem = (tr, um, stackItem) => {
+  * @param {'undo'|'redo'} eventType
+  * @return {StackItem?}
+  */
+-const popStackItem = (undoManager, stack, eventType) => {
++const popStackItem = (undoManager, stack, eventType, maxItems = Infinity) => {
+   /**
+    * Keep a reference to the transaction so we can fire the event with the changedParentTypes
+    * @type {any}
+@@ -3474,7 +3490,7 @@ const popStackItem = (undoManager, stack, eventType) => {
+   const doc = undoManager.doc;
+   const scope = undoManager.scope;
+   transact(doc, transaction => {
+-    while (stack.length > 0 && undoManager.currStackItem === null) {
++    while (stack.length > 0 && undoManager.currStackItem === null && maxItems-- > 0) {
+       const store = doc.store;
+       const stackItem = /** @type {StackItem} */ (stack.pop());
+       /**
+@@ -3603,6 +3619,9 @@ class UndoManager extends ObservableV2 {
+      * @type {Array<StackItem>}
+      */
+     this.redoStack = [];
++    const managers = liveUndoManagers.get(doc) || new Set()
++    managers.add(this)
++    liveUndoManagers.set(doc, managers)
+     /**
+      * Whether the client is currently undoing (calling UndoManager.undo)
+      *
+@@ -3727,6 +3746,7 @@ class UndoManager extends ObservableV2 {
+           this.redoStack.forEach(item => clearUndoManagerStackItem(tr, this, item));
+           this.redoStack = [];
+         }
++        restoreHistoryKeeps(tr)
+         this.emit('stack-cleared', [{ undoStackCleared: clearUndoStack, redoStackCleared: clearRedoStack }]);
+       });
+     }
+@@ -3793,6 +3813,62 @@ class UndoManager extends ObservableV2 {
+    *
+    * @return {boolean} `true` if undo is possible
+    */
++  /**
++   * Replay exactly the expected top item without skipping into an older group.
++   * A null result means the expected item was not on top (nothing consumed).
++   * A null inverse means the expected item was consumed without changing content.
++   * Existing undo()/redo() retain their skip-no-effect behavior.
++   *
++   * @param {'undo'|'redo'} direction
++   * @param {StackItem} expected
++   * @return {{ consumed: StackItem, inverse: StackItem|null }|null}
++   */
++  replayStackItem (direction, expected) {
++    const undo = direction === 'undo';
++    const source = undo ? this.undoStack : this.redoStack;
++    const target = undo ? this.redoStack : this.undoStack;
++    if (source[source.length - 1] !== expected || this.undoing || this.redoing) return null;
++    this.undoing = undo;
++    this.redoing = !undo;
++    try {
++      const applied = popStackItem(this, source, direction, 1);
++      return { consumed: expected, inverse: applied ? target[target.length - 1] || null : null };
++    } finally {
++      this.undoing = false;
++      this.redoing = false;
++    }
++  }
++
++  /**
++   * Release exact unreachable entries without disturbing newer history.
++   * @param {ReadonlyArray<StackItem>} items
++   * @return {boolean}
++   */
++  discardStackItems (items) {
++    if (this.undoing || this.redoing) return false
++    const selected = new Set(items)
++    const removed = []
++    const remove = stack => {
++      for (let index = stack.length - 1; index >= 0; index--) {
++        if (selected.has(stack[index])) removed.push(...stack.splice(index, 1))
++      }
++    }
++    const undoLength = this.undoStack.length
++    const redoLength = this.redoStack.length
++    remove(this.undoStack)
++    remove(this.redoStack)
++    if (removed.length === 0) return false
++    transact(this.doc, tr => {
++      removed.forEach(item => clearUndoManagerStackItem(tr, this, item))
++      restoreHistoryKeeps(tr)
++    }, this)
++    this.emit('stack-cleared', [{
++      undoStackCleared: undoLength !== this.undoStack.length,
++      redoStackCleared: redoLength !== this.redoStack.length
++    }])
++    return true
++  }
++
+   canUndo () {
+     return this.undoStack.length > 0
+   }
+@@ -3807,6 +3883,8 @@ class UndoManager extends ObservableV2 {
+   }
+ 
+   destroy () {
++    this.clear()
++    liveUndoManagers.get(this.doc)?.delete(this)
+     this.trackedOrigins.delete(this);
+     this.doc.off('afterTransaction', this.afterTransactionHandler);
+     super.destroy();
+diff --git a/src/utils/UndoManager.js b/src/utils/UndoManager.js
+index 98410e4deafbf24e7fa6d6a2226700b09276b6dc..4f9496131798af2acacffb3ab7573908f085ed3e 100644
+--- a/src/utils/UndoManager.js
++++ b/src/utils/UndoManager.js
+@@ -32,6 +32,25 @@ export class StackItem {
+     this.meta = new Map()
+   }
+ }
++/** @type {WeakMap<Doc, Set<UndoManager>>} */
++const liveUndoManagers = new WeakMap()
++
++/**
++ * Restore shared GC keeps before a clear transaction can collect them.
++ * @param {Transaction} tr
++ */
++const restoreHistoryKeeps = (tr) => {
++  for (const manager of liveUndoManagers.get(tr.doc) || []) {
++    const entries = [...manager.undoStack, ...manager.redoStack]
++    if (manager.currStackItem) entries.push(manager.currStackItem)
++    for (const entry of entries) {
++      iterateDeletedStructs(tr, entry.deletions, item => {
++        if (item instanceof Item && manager.scope.some(type => type === tr.doc || isParentOf(/** @type {AbstractType<any>} */ (type), item))) keepItem(item, true)
++      })
++    }
++  }
++}
++
+ /**
+  * @param {Transaction} tr
+  * @param {UndoManager} um
+@@ -51,7 +70,7 @@ const clearUndoManagerStackItem = (tr, um, stackItem) => {
+  * @param {'undo'|'redo'} eventType
+  * @return {StackItem?}
+  */
+-const popStackItem = (undoManager, stack, eventType) => {
++const popStackItem = (undoManager, stack, eventType, maxItems = Infinity) => {
+   /**
+    * Keep a reference to the transaction so we can fire the event with the changedParentTypes
+    * @type {any}
+@@ -60,7 +79,7 @@ const popStackItem = (undoManager, stack, eventType) => {
+   const doc = undoManager.doc
+   const scope = undoManager.scope
+   transact(doc, transaction => {
+-    while (stack.length > 0 && undoManager.currStackItem === null) {
++    while (stack.length > 0 && undoManager.currStackItem === null && maxItems-- > 0) {
+       const store = doc.store
+       const stackItem = /** @type {StackItem} */ (stack.pop())
+       /**
+@@ -189,6 +208,9 @@ export class UndoManager extends ObservableV2 {
+      * @type {Array<StackItem>}
+      */
+     this.redoStack = []
++    const managers = liveUndoManagers.get(doc) || new Set()
++    managers.add(this)
++    liveUndoManagers.set(doc, managers)
+     /**
+      * Whether the client is currently undoing (calling UndoManager.undo)
+      *
+@@ -313,6 +335,7 @@ export class UndoManager extends ObservableV2 {
+           this.redoStack.forEach(item => clearUndoManagerStackItem(tr, this, item))
+           this.redoStack = []
+         }
++        restoreHistoryKeeps(tr)
+         this.emit('stack-cleared', [{ undoStackCleared: clearUndoStack, redoStackCleared: clearRedoStack }])
+       })
+     }
+@@ -379,6 +402,64 @@ export class UndoManager extends ObservableV2 {
+    *
+    * @return {boolean} `true` if undo is possible
+    */
++  /**
++   * Replay exactly the expected top item without skipping into an older group.
++   * A null result means the expected item was not on top (nothing consumed).
++   * A null inverse means the expected item was consumed without changing content.
++   * Existing undo()/redo() retain their skip-no-effect behavior.
++   *
++   * @param {'undo'|'redo'} direction
++   * @param {StackItem} expected
++   * @return {{ consumed: StackItem, inverse: StackItem|null }|null}
++   */
++  replayStackItem (direction, expected) {
++    const undo = direction === 'undo';
++    const source = undo ? this.undoStack : this.redoStack;
++    const target = undo ? this.redoStack : this.undoStack;
++    if (source[source.length - 1] !== expected || this.undoing || this.redoing) return null;
++    this.undoing = undo;
++    this.redoing = !undo;
++    try {
++      const applied = popStackItem(this, source, direction, 1);
++      return { consumed: expected, inverse: applied ? target[target.length - 1] || null : null };
++    } finally {
++      this.undoing = false;
++      this.redoing = false;
++    }
++  }
++
++  /**
++   * Release exact unreachable entries without disturbing newer history.
++   * @param {ReadonlyArray<StackItem>} items
++   * @return {boolean}
++   */
++  discardStackItems (items) {
++    if (this.undoing || this.redoing) return false
++    const selected = new Set(items)
++    /** @type {Array<StackItem>} */
++    const removed = []
++    /** @param {Array<StackItem>} stack */
++    const remove = stack => {
++      for (let index = stack.length - 1; index >= 0; index--) {
++        if (selected.has(stack[index])) removed.push(...stack.splice(index, 1))
++      }
++    }
++    const undoLength = this.undoStack.length
++    const redoLength = this.redoStack.length
++    remove(this.undoStack)
++    remove(this.redoStack)
++    if (removed.length === 0) return false
++    transact(this.doc, tr => {
++      removed.forEach(item => clearUndoManagerStackItem(tr, this, item))
++      restoreHistoryKeeps(tr)
++    }, this)
++    this.emit('stack-cleared', [{
++      undoStackCleared: undoLength !== this.undoStack.length,
++      redoStackCleared: redoLength !== this.redoStack.length
++    }])
++    return true
++  }
++
+   canUndo () {
+     return this.undoStack.length > 0
+   }
+@@ -393,6 +474,8 @@ export class UndoManager extends ObservableV2 {
+   }
+ 
+   destroy () {
++    this.clear()
++    liveUndoManagers.get(this.doc)?.delete(this)
+     this.trackedOrigins.delete(this)
+     this.doc.off('afterTransaction', this.afterTransactionHandler)
+     super.destroy()

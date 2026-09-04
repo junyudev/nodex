@@ -41,7 +41,11 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
         ).pipe(Effect.asVoid),
       on: () => Effect.void,
     });
-    const menus = ApplicationMenuRuntime.of({ refresh: () => undefined });
+    const menus = ApplicationMenuRuntime.of({
+      refresh: () => undefined,
+      bindHistory: () => Effect.succeed(1),
+      publishHistory: () => Effect.void,
+    });
     let keymapAdmissionsInFlight = 0;
     let peakKeymapAdmissions = 0;
     const dictation = DictationRuntime.of({

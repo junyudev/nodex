@@ -837,30 +837,23 @@ mod tests {
             nodex_core::infrastructure::schema::CURRENT_STORE_REVISION,
             "Core protocol and storage current Store versions must match",
         );
-        let actual = (nodex_core_protocol::MIN_SUPPORTED_STORE_REVISION
-            ..=nodex_core_protocol::CURRENT_STORE_VERSION)
-            .map(|version| {
-                (
-                    version,
-                    nodex_core::infrastructure::migration::expected_store_schema_fingerprint(
-                        i64::from(version),
-                    )
-                    .expect("expected Store schema"),
-                )
-            })
-            .collect::<Vec<_>>();
-        let published = (nodex_core_protocol::MIN_SUPPORTED_STORE_REVISION
-            ..=nodex_core_protocol::CURRENT_STORE_VERSION)
-            .map(|version| {
-                (
-                    version,
-                    nodex_core_protocol::store_format(version)
-                        .expect("published Store format")
-                        .schema_fingerprint,
-                )
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(published, actual, "actual={actual:?}");
+        let manifest = nodex_core_protocol::core_compatibility_manifest();
+        for format in manifest
+            .store
+            .migratable
+            .iter()
+            .chain(&manifest.store.readable)
+        {
+            let actual = nodex_core::infrastructure::migration::expected_store_schema_fingerprint(
+                i64::from(format.version),
+            )
+            .expect("expected Store schema");
+            assert_eq!(
+                format.schema_fingerprint, actual,
+                "Store v{}",
+                format.version
+            );
+        }
     }
 
     #[test]

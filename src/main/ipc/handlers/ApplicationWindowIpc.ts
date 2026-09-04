@@ -10,6 +10,8 @@ import { MainConfig } from "../../app/MainConfig";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { ApplicationWindowRuntime } from "../../window-runtime/ApplicationWindowRuntime";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
+import { ApplicationMenuRuntime } from "../../host-runtime/ApplicationMenuRuntime";
+import { FocusedHistoryPublicationSchema } from "../../../shared/schemas/surface-history";
 
 export class ApplicationWindowIpcError extends Schema.TaggedError<ApplicationWindowIpcError>()(
   "ApplicationWindowIpcError",
@@ -23,13 +25,18 @@ export interface ApplicationWindowIpcOptions {
 
 export const live = (
   options: ApplicationWindowIpcOptions = {},
-): Layer.Layer<never, never, ApplicationWindowRuntime | ElectronIpc | MainConfig | WindowRuntime> =>
+): Layer.Layer<
+  never,
+  never,
+  ApplicationWindowRuntime | ApplicationMenuRuntime | ElectronIpc | MainConfig | WindowRuntime
+> =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const applicationWindows = yield* ApplicationWindowRuntime;
       const config = yield* MainConfig;
       const ipc = yield* ElectronIpc;
       const windows = yield* WindowRuntime;
+      const menu = yield* ApplicationMenuRuntime;
       const runtimeCapabilities =
         options.runtimeCapabilities ??
         (() => {
@@ -68,6 +75,19 @@ export const live = (
       yield* ipc.handleQuery("electron-window:focus:get", (event) =>
         authorize(event, "Window focus state").pipe(
           Effect.andThen(Effect.sync(() => windows.get(event.sender.id)?.isFocused() ?? false)),
+        ),
+      );
+      yield* ipc.handleControl("surface-history:bind", (event) =>
+        authorize(event, "Surface history observation").pipe(
+          Effect.andThen(menu.bindHistory(event.sender.id)),
+        ),
+      );
+      yield* ipc.handleControl("surface-history:publish", (event, input: unknown) =>
+        authorize(event, "Surface history observation").pipe(
+          Effect.andThen(
+            parse("parse-history-publication", () => FocusedHistoryPublicationSchema.parse(input)),
+          ),
+          Effect.flatMap((publication) => menu.publishHistory(event.sender.id, publication)),
         ),
       );
       yield* ipc.handleQuery("app:runtime-capabilities:get", (event) =>

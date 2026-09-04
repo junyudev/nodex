@@ -1,5 +1,9 @@
 import { BlockNoteEditor } from "@blocknote/core";
-import { blocksToYXmlFragment, yXmlFragmentToBlocks } from "@blocknote/core/yjs";
+import {
+  blocksToYXmlFragment,
+  yXmlElementToBlockFields,
+  yXmlFragmentToBlocks,
+} from "@blocknote/core/yjs";
 import * as Y from "yjs";
 import { createUuidV7 } from "../uuid-v7";
 import { extractPlainText } from "../nfm/extract-text";
@@ -255,6 +259,10 @@ const toBlockTree = (blocks: readonly BlockNoteBlockValue[]): readonly BlockTree
       children: toBlockTree(block.children ?? []),
     };
   });
+
+/** A local history record never serializes an unchanged descendant subtree. */
+export const materializeBlockFields = (container: Y.XmlElement): BlockTreeNode =>
+  toBlockTree([yXmlElementToBlockFields(headlessEditor, container)])[0]!;
 
 const flattenBlockTree = (
   blocks: readonly BlockTreeNode[],

@@ -9,7 +9,7 @@ use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::events::ProjectionSnapshotAuthority;
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const DATABASE_CONTRACT_VERSION: u32 = 24;
+pub const DATABASE_CONTRACT_VERSION: u32 = 25;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -1343,6 +1343,9 @@ pub enum DatabaseIntent {
     UndoListOccurrenceMove {
         recipe: DatabaseListMoveUndoRecipe,
     },
+    ReverseDataEdit {
+        recipe: DatabaseDataEditUndoRecipe,
+    },
     PutViewPersonalPreferences {
         view_id: String,
         expected_revision: i64,
@@ -1529,14 +1532,56 @@ pub struct DatabaseListMoveUndoRecipe {
     pub data_source_id: String,
     pub property_states: Vec<DatabaseListMovePropertyState>,
     pub post_parent_guards: Vec<DatabaseListMoveParentGuard>,
-    pub post_before_page_id: Option<String>,
-    pub post_order_guard: bool,
+    pub post_order_runs: Vec<DatabaseListMoveRestoreRun>,
     pub restore_runs: Vec<DatabaseListMoveRestoreRun>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DatabaseDataEditPropertyState {
+    pub address: DatabasePagePropertyAddress,
+    pub property_type: DatabasePropertyType,
+    pub before_value: DatabasePropertyValueInput,
+    pub after_value: DatabasePropertyValueInput,
+}
+
+/// Logical slots survive fractional-rank materialization and rebalance.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DatabaseDataEditPositionRun {
+    pub page_ids: Vec<String>,
+    pub before_page_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DatabaseDataEditPositionState {
+    pub view_id: String,
+    pub data_source_id: String,
+    pub direction: DatabaseViewSortDirection,
+    pub before_runs: Vec<DatabaseDataEditPositionRun>,
+    pub after_runs: Vec<DatabaseDataEditPositionRun>,
+}
+
+/// One atomic gesture, not a sequence of independently replayable operations.
+/// Core revalidates authority and every logical post-image before writing.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DatabaseDataEditUndoRecipe {
+    pub property_states: Vec<DatabaseDataEditPropertyState>,
+    pub position_states: Vec<DatabaseDataEditPositionState>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DatabaseOperationOutcome {
+    DataEdit {
+        operation_index: u32,
+        operation_count: u32,
+        /// None means a supported gesture made no logical change. Unsupported
+        /// or over-budget gestures omit this outcome instead of claiming no-op.
+        undo_recipe: Option<Box<DatabaseDataEditUndoRecipe>>,
+    },
     ListOccurrenceMove {
         operation_index: u32,
         moved_page_ids: Vec<String>,
@@ -1547,6 +1592,7 @@ pub enum DatabaseOperationOutcome {
     ListOccurrenceMoveUndo {
         operation_index: u32,
         restored_page_ids: Vec<String>,
+        undo_recipe: Box<DatabaseListMoveUndoRecipe>,
     },
 }
 

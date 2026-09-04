@@ -65,6 +65,49 @@ describe("Library Module transport", () => {
     ).toThrow();
   });
 
+  test("history reconciliation is bounded and accepts only exact lifecycle capabilities", () => {
+    const tokens = Array.from({ length: 200 }, (_, index) => ({
+      recipeOperationId: uuidV7(index),
+      recipeHash: structuralDigest,
+      storeEpoch: "epoch-1",
+    }));
+    const request = { read: { mode: "structural_history_states", tokens } };
+    expect(bindLibraryModuleRead(request)).toEqual(request);
+    expect(() =>
+      bindLibraryModuleRead({ read: { ...request.read, tokens: [...tokens, tokens[0]] } }),
+    ).toThrow("token bound");
+    expect(() =>
+      bindLibraryModuleRead({ read: { ...request.read, tokens: [tokens[0], tokens[0]] } }),
+    ).toThrow("unique");
+    const items = ["available", "consumed", "superseded", "unavailable"].map((state, index) => ({
+      token: tokens[index],
+      state,
+    }));
+    const result = readResult({ kind: "structural_history_states", items });
+    expect(parseLibraryModuleReadResult(result)).toEqual(result);
+    expect(() =>
+      parseLibraryModuleReadResult(
+        readResult({
+          kind: "structural_history_states",
+          items: [{ token: tokens[0], state: "available", recipe: {} }],
+        }),
+      ),
+    ).toThrow("recipe is not supported");
+    expect(() =>
+      parseLibraryModuleReadResult(
+        readResult({
+          kind: "structural_history_states",
+          items: [{ token: tokens[0], state: "maybe" }],
+        }),
+      ),
+    ).toThrow("state is invalid");
+    expect(() =>
+      parseLibraryModuleReadResult(
+        readResult({ kind: "structural_history_states", items: [items[0], items[0]] }),
+      ),
+    ).toThrow("unique");
+  });
+
   test("binds canonical atomic Page mention creation and rejects widened destinations", () => {
     const existingDocumentId = `document:${uuidV7(5)}`;
     const request = {

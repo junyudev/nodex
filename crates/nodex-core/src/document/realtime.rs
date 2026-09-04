@@ -226,6 +226,7 @@ impl OwnedDocumentRealtimeAdapter {
         client_session_id: &str,
         document_id: String,
         state_vector: Vec<u8>,
+        history_after_head_seq: Option<i64>,
     ) -> Result<ModuleReadSnapshot<OwnedDocumentReadValue>, CoreError> {
         let subscription =
             self.require_subscription(&context.connection_id, client_session_id, &document_id)?;
@@ -239,6 +240,7 @@ impl OwnedDocumentRealtimeAdapter {
                 read: OwnedDocumentRead::SyncYjs {
                     document_id,
                     state_vector,
+                    history_after_head_seq,
                 },
             },
         )

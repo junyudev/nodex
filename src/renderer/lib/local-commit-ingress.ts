@@ -243,6 +243,7 @@ const prepareDocumentEvent = async (
       effectSequence: effect.reference.effect_order,
       updateId: effect.reference.update_id,
       clientSessionId: "core:apply-response",
+      ...(effect.history_fence ? { historyFence: effect.history_fence } : {}),
       update,
     },
   };

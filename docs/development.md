@@ -507,7 +507,10 @@ Store creation, exact-schema validation, upgrades, recovery, and profile-secret
 generation retain dedicated tests against the real startup path.
 
 Run `vp run core:test:nightly` when changing Canvas incremental storage,
-large-data reliability, or relation projection boundaries. Store preparation
+large-data reliability, relation projection, or manual-order boundaries. The focused
+`vp run core:test:manual-order-scale` gate exercises 4,096-Page Forward/Undo/Redo
+at 10k and 100k Source sizes; run it without competing workloads. Ordinary tests
+retain the 1- and 64-Page bounded-work matrix. Store preparation
 and supported-baseline migration changes belong in `core:test:migration` and
 the ordinary workspace suite. `vp run core:test` includes both the full and
 nightly tiers for final source verification.

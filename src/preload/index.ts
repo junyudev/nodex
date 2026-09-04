@@ -1,4 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import {
+  EXECUTE_FOCUSED_HISTORY_CHANNEL,
+  type SurfaceHistoryDirection,
+} from "../shared/surface-history";
 import type { AppInitializationStep } from "../shared/app-startup";
 import {
   CORE_AUTHORITY_STATUS_CHANNEL,
@@ -232,6 +236,15 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.on(EXECUTE_WORKBENCH_COMMAND_HOST_CHANNEL, listener);
     return () => {
       ipcRenderer.removeListener(EXECUTE_WORKBENCH_COMMAND_HOST_CHANNEL, listener);
+    };
+  },
+  onHistoryCommand: (callback: (direction: SurfaceHistoryDirection) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, direction: unknown) => {
+      if (direction === "undo" || direction === "redo") callback(direction);
+    };
+    ipcRenderer.on(EXECUTE_FOCUSED_HISTORY_CHANNEL, listener);
+    return () => {
+      ipcRenderer.removeListener(EXECUTE_FOCUSED_HISTORY_CHANNEL, listener);
     };
   },
   resolveManagedAssetPath,

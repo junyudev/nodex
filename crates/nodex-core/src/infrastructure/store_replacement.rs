@@ -1156,6 +1156,7 @@ mod tests {
             .call(|connection| {
                 with_immediate_transaction(connection, |transaction| {
                     let context = BoundModuleContext {
+                        editor_history_owner: None,
                         profile_id: ProfileId("profile:test".to_owned()),
                         library_id: LibraryId("library:test".to_owned()),
                         project_id: None,

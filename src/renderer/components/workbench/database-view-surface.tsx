@@ -10,6 +10,8 @@ import {
   type DragEvent as ReactDragEvent,
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { SurfaceHistoryStatus } from "@/components/shared/surface-history-status";
+import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
 import {
   type DatabaseViewLayout,
   type EffectiveDatabaseView,
@@ -93,11 +95,13 @@ import { DropIndicator } from "../board/drop-indicator";
 import { resolveDropIndicatorPlacement } from "../board/drop-indicator-placement";
 import { DatabaseList } from "./database-list/database-list";
 import {
+  DatabaseViewHistoryCommandError,
+  databaseViewHistoryScopeKey,
   handleDatabaseViewMutationHistoryKeyDown,
   useDatabaseViewMutationHistory,
+  useDatabaseViewHistoryInput,
   type DatabaseViewMutationHistory,
 } from "./database-view-mutation-history";
-import { undoDatabaseViewBlockTransfer } from "./database-view-block-transfer-undo";
 import { commitDatabaseViewBlockDrop } from "./database-view-block-drop-command";
 import { projectDatabaseBoardGroup } from "./database-board/database-board-model";
 import { DatabaseBoardGroupMarker } from "./database-board/database-board-group-marker";
@@ -172,7 +176,10 @@ interface DatabaseViewSurfaceProps {
   readonly pageActionPort?: DatabaseViewPageActionPort;
   readonly onCommitted?: () => void | Promise<void>;
   readonly commitOperations?: typeof commitDatabaseViewOperations;
-  readonly onMoveBoardPages?: (input: DatabaseViewBoardPageDropIntent) => Promise<boolean>;
+  readonly onMoveBoardPages?: (
+    input: DatabaseViewBoardPageDropIntent,
+    request: Parameters<typeof commitDatabaseViewOperations>[0],
+  ) => ReturnType<typeof commitDatabaseViewOperations>;
   readonly mutationHistory?: DatabaseViewMutationHistory;
   readonly keyboardSurface?: {
     readonly surfaceId: string;
@@ -223,6 +230,8 @@ const searchablePropertyValues = (
 };
 
 export const databaseViewMutationErrorMessage = (error: unknown, pageMutation: boolean): string => {
+  if (error instanceof DatabaseViewHistoryCommandError && error.status === "recovering")
+    return "Confirming your last edit. Earlier history is paused.";
   if (
     error instanceof DatabaseViewMutationError &&
     error.commandError.code === "revision_conflict"
@@ -256,7 +265,7 @@ function DatabaseViewSurfaceContent(props: DatabaseViewSurfaceProps) {
   const { onSelectedPageIdsChange } = props;
   const pageChatRuntime = useDatabasePageChatActivityRuntime();
   const localMutationHistory = useDatabaseViewMutationHistory(
-    `${props.model.storeEpoch}:${props.model.databaseViewId}`,
+    databaseViewHistoryScopeKey(props.model),
   );
   const mutationHistory = props.mutationHistory ?? localMutationHistory;
   const [selectedPageIds, setSelectedPageIds] = useState<ReadonlySet<string>>(
@@ -305,6 +314,7 @@ function DatabaseViewSurfaceContent(props: DatabaseViewSurfaceProps) {
   return (
     <BoardDatabaseViewSurface
       {...props}
+      mutationHistory={mutationHistory}
       effectivePresentation={effectivePresentation}
       initialSelectedPageIds={selectedPageIds}
       onSelectedPageIdsChange={handleSelectedPageIdsChange}
@@ -339,9 +349,7 @@ function BoardDatabaseViewSurface({
   readonly pageChatActivityByPageId: ReadonlyMap<string, PageChatActivitySummary>;
   readonly onRemovePageChatRelation: (pageId: string, sessionId: string) => Promise<void>;
 }) {
-  const localMutationHistory = useDatabaseViewMutationHistory(
-    `${model.storeEpoch}:${model.databaseViewId}`,
-  );
+  const localMutationHistory = useDatabaseViewMutationHistory(databaseViewHistoryScopeKey(model));
   const reducedMotion = useResolvedReducedMotion();
   const columnWidthTransition = reducedMotion
     ? DATABASE_BOARD_COLUMN_REDUCED_MOTION_TRANSITION
@@ -649,6 +657,7 @@ function BoardDatabaseViewSurface({
     operations: Parameters<typeof commitDatabaseViewOperations>[0]["operations"],
     mutationKeys: readonly string[],
     propagateError = false,
+    submitForward?: typeof commitDatabaseViewOperations,
   ) => {
     if (operations.length === 0) return null;
     setPendingMutationKeys((current) => {
@@ -662,9 +671,11 @@ function BoardDatabaseViewSurface({
       return next;
     });
     try {
-      const receipt = await commitOperations({
+      const receipt = await mutationHistory.executeOperations({
         model: mutationModel,
         operations,
+        commitOperations,
+        submitForward,
       });
       await onCommitted?.();
       return receipt;
@@ -822,43 +833,6 @@ function BoardDatabaseViewSurface({
       endPageDrag();
       return;
     }
-    if (onMoveBoardPages) {
-      // The store publishes the optimistic projection synchronously before
-      // this Promise reaches its first await. Start that handoff before
-      // clearing gesture-only state so the old layout is never exposed.
-      const mutationKeys = pageIds.map((pageId) => `page:${pageId}`);
-      setMutationErrors((current) => {
-        const next = new Map(current);
-        for (const key of mutationKeys) next.delete(key);
-        return next;
-      });
-      const move = onMoveBoardPages({
-        pageIds,
-        presentation: effectivePresentation,
-        target,
-        propertyValues,
-      });
-      endPageDrag();
-      void move
-        .then((committed) => {
-          if (committed) return;
-          setMutationErrors((current) => {
-            const next = new Map(current);
-            for (const key of mutationKeys) next.set(key, "Couldn’t move this Page. Try again.");
-            return next;
-          });
-        })
-        .catch((error: unknown) => {
-          console.error("[database-view:mutation]", error);
-          const message = databaseViewMutationErrorMessage(error, true);
-          setMutationErrors((current) => {
-            const next = new Map(current);
-            for (const key of mutationKeys) next.set(key, message);
-            return next;
-          });
-        });
-      return;
-    }
     const optimistic: DatabaseViewBoardOptimisticDrop = {
       sessionId: ++optimisticDropSessionIdRef.current,
       storeEpoch: mutationModel.storeEpoch,
@@ -874,6 +848,19 @@ function BoardDatabaseViewSurface({
       const receipt = await commit(
         operations,
         pageIds.map((pageId) => `page:${pageId}`),
+        false,
+        onMoveBoardPages
+          ? (request) =>
+              onMoveBoardPages(
+                {
+                  pageIds,
+                  presentation: effectivePresentation,
+                  target,
+                  propertyValues,
+                },
+                request,
+              )
+          : undefined,
       );
       setOptimisticDrop((current) => {
         if (current?.sessionId !== optimistic.sessionId) return current;
@@ -904,6 +891,7 @@ function BoardDatabaseViewSurface({
       return;
     }
     await commitDatabaseViewBlockDrop({
+      historyScopeKey: databaseViewHistoryScopeKey(mutationModel),
       session,
       projectId: model.accessContext.kind === "project" ? model.accessContext.projectId : null,
       storeEpoch: model.storeEpoch,
@@ -1334,23 +1322,19 @@ function BoardDatabaseViewSurface({
       onDragStartPage: startPageDrag,
       onDragEndPage: endPageDrag,
     }) as const;
-  const mutationHistoryProjectId =
-    model.accessContext.kind === "project" ? model.accessContext.projectId : null;
+  const historyInput = {
+    history: mutationHistory,
+    onCommitted,
+    onBlocked: (reason: string) => toast.info(reason),
+  };
+  useDatabaseViewHistoryInput(surfaceRef, historyInput);
+  useSurfaceHistoryFocus(surfaceRef, mutationHistory);
 
   const handleListKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (
-      mutationHistoryProjectId &&
       handleDatabaseViewMutationHistoryKeyDown({
+        ...historyInput,
         event,
-        history: mutationHistory,
-        undoListMove: async () => false,
-        undoBlockTransfer: async (token) =>
-          await undoDatabaseViewBlockTransfer({
-            projectId: mutationHistoryProjectId,
-            storeEpoch: model.storeEpoch,
-            token,
-            onCommitted,
-          }),
       })
     )
       return;
@@ -1387,6 +1371,7 @@ function BoardDatabaseViewSurface({
 
   return (
     <DatabaseViewPageContextMenuHost
+      returnFocusRef={surfaceRef}
       resolveSession={(targetKey) => {
         const row = allRows.find((candidate) => candidate.pageId === targetKey);
         return row
@@ -1398,12 +1383,16 @@ function BoardDatabaseViewSurface({
     >
       <div
         ref={surfaceRef}
+        tabIndex={0}
         className="flex h-full min-h-0 flex-col bg-token-main-surface-primary"
         data-database-view-id={model.databaseViewId}
+        data-embedded-surface-input="true"
+        contentEditable={false}
         onFocusCapture={() => markContextualKeyboardActionTargetActive(surfaceId)}
         onPointerDownCapture={() => markContextualKeyboardActionTargetActive(surfaceId)}
         onKeyDown={handleListKeyDown}
       >
+        <SurfaceHistoryStatus controls={mutationHistory} />
         {failedContinuations.length > 0 && onLoadMoreGroup ? (
           <div
             role="alert"

@@ -265,152 +265,156 @@ pub(super) fn execute_page_copy(
     let operation_id = request.operation_id;
     let expected_store_epoch = request.store_epoch.0;
     let result = writer.call(move |connection| {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        super::mutation::assert_identity(&transaction, &profile_id, &library_id)?;
-        let store_epoch = read_store_epoch(&transaction)?;
-        if store_epoch != expected_store_epoch {
-            return Err(StoreError::new(
-                StoreErrorCode::StaleStoreEpoch,
-                "Agent Page copy targets a stale store epoch",
-                true,
-            ));
-        }
-        let request_hash = request_hash(
-            &context,
-            &store_epoch,
-            &authorization.authorization,
-            &copy_request,
-        )?;
-        if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)? {
-            if stored.request_hash != request_hash {
+        let result = (|| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            super::mutation::assert_identity(&transaction, &profile_id, &library_id)?;
+            let store_epoch = read_store_epoch(&transaction)?;
+            if store_epoch != expected_store_epoch {
                 return Err(StoreError::new(
-                    StoreErrorCode::IdempotencyKeyReused,
-                    "operation_id is already bound to another Agent Page copy",
-                    false,
+                    StoreErrorCode::StaleStoreEpoch,
+                    "Agent Page copy targets a stale store epoch",
+                    true,
                 ));
             }
-            let mut committed = serde_json::from_value::<
-                crate::ModuleWriterResult<
-                    nodex_core_contracts::library::LibraryCommitValue,
-                    nodex_core_contracts::library::LibraryReceipt,
-                >,
-            >(stored.result)
-            .map_err(|_| corrupt("Stored Agent Page copy receipt is invalid"))?;
-            if committed.value.agent_page_copy.is_none() {
-                return Err(corrupt("Stored Library receipt is not an Agent Page copy"));
-            }
-            committed.receipt.mutation.duplicate = true;
-            transaction.commit()?;
-            return Ok((
-                LibraryApplyOutcome {
-                    committed,
-                    event: None,
-                },
-                None,
-            ));
-        }
-        let preflight = compile_preflight(
-            &transaction,
-            &context,
-            &library_id,
-            &operation_id,
-            &store_epoch,
-            &authorization.authorization,
-            &copy_request,
-            request_hash.clone(),
-        )?;
-        let token = authorization.token.as_deref().ok_or_else(stale)?;
-        let lease = registry.acquire(token, &preflight.binding)?;
-        let mut agent_context = context.clone();
-        agent_context.adapter = AdapterKind::Agent;
-        let committed_at = sqlite_now(&transaction)?;
-        let commit_result = durable_mutation::run(
-            &transaction,
-            OperationIdentity {
-                module: ModuleName::Library,
-                module_name: MODULE_NAME,
-                operation_id: &operation_id,
-                intent_hash: &request_hash,
-                store_epoch: &store_epoch,
-                committed_at: &committed_at,
-                context: &agent_context,
-            },
-            |scope| {
-                let execution = super::page_copy::execute_page_copy(
-                    &transaction,
-                    &agent_context,
-                    scope.evidence(),
-                    &store_epoch,
-                    &library_id,
-                    &operation_id,
-                    &copy_request.source_page_id,
-                    preflight.source.location_revision,
-                    preflight.source.parent_revision,
-                    preflight.source.active_membership_revision,
-                    preflight.source.document_generation,
-                    preflight.source.document_head_seq,
-                    &preflight.destination,
-                    PageCopyParentDocumentMode::Commit,
-                    true,
-                    &assets_root,
-                    &committed_at,
-                )?;
-                let result = agent_result(
-                    &transaction,
-                    &library_id,
-                    &copy_request,
-                    preflight.body_block_count,
-                    &execution,
-                )?;
-                let affected_block_ids = execution
-                    .result
-                    .block_ids
-                    .values()
-                    .cloned()
-                    .collect::<Vec<_>>();
-                seal_mutation(
-                    scope,
-                    &agent_context,
-                    &operation_id,
-                    MutationEffects {
-                        page_file_entries: Vec::new(),
-                        file_revisions: BTreeMap::new(),
-                        file_mutation: Default::default(),
-                        project_id: execution.actor_project_id,
-                        operation_kind: "agent_duplicate_page",
-                        change_kind: "library.changed",
-                        did_mutate: true,
-                        created_target: Some(LibraryResourceTarget::Page {
-                            page_id: execution.result.page_id.clone(),
-                        }),
-                        affected_parent_keys: vec![execution.parent_key],
-                        affected_block_ids,
-                        affected_page_ids: execution.affected_page_ids,
-                        affected_database_ids: execution.affected_database_ids,
-                        affected_view_ids: execution.affected_view_ids,
-                        affected_document_ids: execution.affected_document_ids,
-                        committed_revisions: execution.committed_revisions,
-                        page_create: None,
-                        page_copy: Some(execution.result),
-                        canvas_mutation: None,
-                        block_transfer: None,
-                        block_transfer_undo: None,
-                        page_relocation_undo: None,
-                        structural_edit: None,
-                        page_lifecycle: None,
-                        block_property_mutation: None,
-                        agent_page_copy: Some(result),
-                        agent_create_pages: None,
-                        agent_move_pages: None,
-                        change_payload: None,
-                        committed_at: execution.committed_at,
+            let request_hash = request_hash(
+                &context,
+                &store_epoch,
+                &authorization.authorization,
+                &copy_request,
+            )?;
+            if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)? {
+                if stored.request_hash != request_hash {
+                    return Err(StoreError::new(
+                        StoreErrorCode::IdempotencyKeyReused,
+                        "operation_id is already bound to another Agent Page copy",
+                        false,
+                    ));
+                }
+                let mut committed = serde_json::from_value::<
+                    crate::ModuleWriterResult<
+                        nodex_core_contracts::library::LibraryCommitValue,
+                        nodex_core_contracts::library::LibraryReceipt,
+                    >,
+                >(stored.result)
+                .map_err(|_| corrupt("Stored Agent Page copy receipt is invalid"))?;
+                if committed.value.agent_page_copy.is_none() {
+                    return Err(corrupt("Stored Library receipt is not an Agent Page copy"));
+                }
+                committed.receipt.mutation.duplicate = true;
+                transaction.commit()?;
+                return Ok((
+                    LibraryApplyOutcome {
+                        committed,
+                        event: None,
                     },
-                )
-            },
-        )?;
-        let outcome = library_commit_result(&transaction, commit_result)?;
-        transaction.commit()?;
-        Ok((outcome, Some(lease)))
+                    None,
+                ));
+            }
+            let preflight = compile_preflight(
+                &transaction,
+                &context,
+                &library_id,
+                &operation_id,
+                &store_epoch,
+                &authorization.authorization,
+                &copy_request,
+                request_hash.clone(),
+            )?;
+            let token = authorization.token.as_deref().ok_or_else(stale)?;
+            let lease = registry.acquire(token, &preflight.binding)?;
+            let mut agent_context = context.clone();
+            agent_context.adapter = AdapterKind::Agent;
+            let committed_at = sqlite_now(&transaction)?;
+            let commit_result = durable_mutation::run(
+                &transaction,
+                OperationIdentity {
+                    module: ModuleName::Library,
+                    module_name: MODULE_NAME,
+                    operation_id: &operation_id,
+                    intent_hash: &request_hash,
+                    store_epoch: &store_epoch,
+                    committed_at: &committed_at,
+                    context: &agent_context,
+                },
+                |scope| {
+                    let execution = super::page_copy::execute_page_copy(
+                        &transaction,
+                        &agent_context,
+                        scope.evidence(),
+                        &store_epoch,
+                        &library_id,
+                        &operation_id,
+                        &copy_request.source_page_id,
+                        preflight.source.location_revision,
+                        preflight.source.parent_revision,
+                        preflight.source.active_membership_revision,
+                        preflight.source.document_generation,
+                        preflight.source.document_head_seq,
+                        &preflight.destination,
+                        PageCopyParentDocumentMode::Commit,
+                        true,
+                        &assets_root,
+                        &committed_at,
+                    )?;
+                    let result = agent_result(
+                        &transaction,
+                        &library_id,
+                        &copy_request,
+                        preflight.body_block_count,
+                        &execution,
+                    )?;
+                    let affected_block_ids = execution
+                        .result
+                        .block_ids
+                        .values()
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    seal_mutation(
+                        scope,
+                        &agent_context,
+                        &operation_id,
+                        MutationEffects {
+                            page_file_entries: Vec::new(),
+                            file_revisions: BTreeMap::new(),
+                            file_mutation: Default::default(),
+                            project_id: execution.actor_project_id,
+                            operation_kind: "agent_duplicate_page",
+                            change_kind: "library.changed",
+                            did_mutate: true,
+                            created_target: Some(LibraryResourceTarget::Page {
+                                page_id: execution.result.page_id.clone(),
+                            }),
+                            affected_parent_keys: vec![execution.parent_key],
+                            affected_block_ids,
+                            affected_page_ids: execution.affected_page_ids,
+                            affected_database_ids: execution.affected_database_ids,
+                            affected_view_ids: execution.affected_view_ids,
+                            affected_document_ids: execution.affected_document_ids,
+                            committed_revisions: execution.committed_revisions,
+                            page_create: None,
+                            page_copy: Some(execution.result),
+                            canvas_mutation: None,
+                            block_transfer: None,
+                            block_transfer_undo: None,
+                            page_relocation_undo: None,
+                            structural_edit: None,
+                            page_lifecycle: None,
+                            block_property_mutation: None,
+                            agent_page_copy: Some(result),
+                            agent_create_pages: None,
+                            agent_move_pages: None,
+                            change_payload: None,
+                            committed_at: execution.committed_at,
+                        },
+                    )
+                },
+            )?;
+            let outcome = library_commit_result(&transaction, commit_result)?;
+            transaction.commit()?;
+            Ok((outcome, Some(lease)))
+        })();
+        crate::database::finish_order_attempt(connection, result)
     })?;
     if let Some(lease) = result.1 {
         lease.consume()?;
@@ -780,17 +784,18 @@ fn resolve_data_source_destination(
         .optional()?
         .ok_or_else(|| not_found("Destination View is unavailable"))?;
     let ids = connection
-        .prepare(
+        .prepare(&format!(
             "SELECT membership.page_block_id FROM data_source_page_memberships membership \
              JOIN pages page ON page.block_id = membership.page_block_id \
-             LEFT JOIN database_view_page_positions position \
-               ON position.view_id = ?1 AND position.page_block_id = membership.page_block_id \
+             {joins} \
              WHERE membership.data_source_id = ?2 AND membership.removed_at IS NULL \
                AND EXISTS(SELECT 1 FROM blocks block WHERE block.id = page.block_id \
                  AND block.library_id = page.library_id AND block.lifecycle = 'active') \
-             ORDER BY CASE WHEN position.rank_key IS NULL THEN 1 ELSE 0 END, \
-               position.rank_key, membership.page_block_id",
-        )?
+             ORDER BY CASE WHEN {rank} IS NULL THEN 1 ELSE 0 END, \
+               {rank}, membership.page_block_id",
+            joins = crate::database::view_position_joins("?1", "membership.page_block_id"),
+            rank = crate::database::view_order_rank("membership.page_block_id")
+        ))?
         .query_map(params![view_id, data_source_id], |row| {
             row.get::<_, String>(0)
         })?

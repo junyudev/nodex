@@ -50,6 +50,15 @@ pub struct BoundModuleContext {
     pub project_id: Option<ProjectId>,
     pub connection_id: String,
     pub adapter: AdapterKind,
+    /// Main-authenticated editor lifetime; never accepted from command JSON.
+    #[serde(default)]
+    pub editor_history_owner: Option<BoundEditorHistoryOwner>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct BoundEditorHistoryOwner {
+    pub id: String,
+    pub peer_pid: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -101,6 +110,9 @@ pub enum CoreErrorRecovery {
         head_seq: i64,
     },
     ReconnectDocumentSubscription,
+    DatabaseViewOrderPreparation {
+        view_id: String,
+    },
     DocumentRecoveryArtifact {
         artifact_id: String,
         document_id: String,

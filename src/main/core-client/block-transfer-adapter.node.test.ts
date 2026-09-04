@@ -106,6 +106,44 @@ const committedApply = (
 });
 
 describe("Core Block Transfer Adapter", () => {
+  test.each([true, false])(
+    "preserves Core's complete inverse capability: %s",
+    async (symmetric) => {
+      const client = new FakeCoreClient();
+      const result = committedApply();
+      const blockTransfer = {
+        ...coreResult(),
+        ...(symmetric
+          ? {
+              history: {
+                recipe_operation_id: "transfer:test",
+                recipe_hash: "a".repeat(64),
+                store_epoch: identity.storeEpoch,
+              },
+            }
+          : {}),
+      };
+      client.enqueueApply({
+        ...result,
+        outcome: { ...result.outcome, block_transfer: blockTransfer },
+      });
+      const committed = await createCoreBlockTransferAdapter({ client, ...identity }).commit(
+        intent,
+      );
+      expect(committed).toMatchObject({
+        ok: true,
+        value: {
+          history: symmetric
+            ? {
+                recipeOperationId: "transfer:test",
+                recipeHash: "a".repeat(64),
+                storeEpoch: identity.storeEpoch,
+              }
+            : null,
+        },
+      });
+    },
+  );
   test("commits one logical intent without a client-visible preparation round trip", async () => {
     const client = new FakeCoreClient();
     const adapter = createCoreBlockTransferAdapter({ client, ...identity });

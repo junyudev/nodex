@@ -175,8 +175,51 @@ mod tests {
     }
 
     #[test]
+    fn manual_order_projection_exposes_only_explicit_active_generation_positions() {
+        let mut connection = Connection::open_in_memory().expect("Store");
+        install_current_schema(&mut connection).expect("current schema");
+        // Exercise the physical projection without unrelated content aggregates.
+        connection
+            .pragma_update(None, "foreign_keys", false)
+            .unwrap();
+        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+            &connection,
+        )
+        .unwrap();
+        connection.execute_batch(
+            "INSERT INTO database_views(id, database_block_id, data_source_id, name, layout, rank_key, created_at, updated_at) \
+             VALUES ('view', 'database', 'source', 'Order', 'list', 'a', 'created', 'updated'); \
+             INSERT INTO database_view_order_rows(view_id, generation, page_block_id, rank_key, default_epoch, revision, is_active, is_task_root, created_at, updated_at) VALUES \
+             ('view', 1, 'implicit', '11111111111111111111111111111111', 1, 0, 1, 1, 'created', 'updated'), \
+             ('view', 1, 'explicit', '22222222222222222222222222222222', NULL, 0, 1, 1, 'created', 'updated'), \
+             ('view', 2, 'future', '33333333333333333333333333333333', NULL, 8, 1, 1, 'created', 'updated');"
+        ).expect("physical order fixture");
+        let positions = || {
+            connection.prepare("SELECT page_block_id, revision FROM database_view_page_positions ORDER BY page_block_id").unwrap()
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))).unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>().unwrap()
+        };
+        assert_eq!(positions(), vec![("explicit".into(), 1)]);
+        connection
+            .execute(
+                "UPDATE database_view_order_state SET default_epoch = 2 WHERE view_id = 'view'",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            positions(),
+            vec![("explicit".into(), 1), ("implicit".into(), 1)]
+        );
+        assert!(
+            connection
+                .execute("DELETE FROM database_view_page_positions", [])
+                .is_err()
+        );
+    }
+
+    #[test]
     fn current_schema_artifact_matches_catalog() {
-        assert_eq!(CURRENT_STORE_REVISION, 152);
+        assert_eq!(CURRENT_STORE_REVISION, 159);
         let mut artifact = Connection::open_in_memory().expect("artifact Store");
         install_current_schema(&mut artifact).expect("current schema artifact");
         let artifact_inventory = read_schema_inventory(&artifact).expect("artifact inventory");
@@ -204,6 +247,8 @@ mod tests {
             "structural_clipboard_leases",
             "structural_cut_claims",
             "structural_history_recipes",
+            "editor_history_owners",
+            "editor_history_recipes",
             "structural_retention_members",
             "document_version_retention_index",
             "document_version_retention_members",

@@ -14,6 +14,7 @@ import type { applyLibraryModule } from "../../../lib/api";
 import { EditorSurfaceLease } from "../../../lib/document-session-registry";
 import { createNfmEditorModeOptions } from "./nfm-editor-source";
 import { NfmStructuralEditingSession } from "./nfm-structural-editing-extension";
+import { availableHistoryReconciliation } from "./testing/nfm-history-reconciliation";
 
 const settleEditor = async () => {
   await new Promise<void>((resolve) => {
@@ -231,6 +232,37 @@ describe("collaborative NFM undo in Chromium", () => {
     );
     const commands: unknown[] = [];
     const apply: typeof applyLibraryModule = async (_access, request) => {
+      if (
+        request.operation.kind === "apply_structural_edit" &&
+        request.operation.command.kind === "set_local_history_retention"
+      ) {
+        return {
+          ok: true,
+          localCommit: {
+            status: "no_op",
+            observed: { store_epoch: "epoch:backward-merge", commit_head: 2 },
+          },
+          value: {
+            operationId: request.operationId,
+            profileId: "profile:test",
+            storeEpoch: "epoch:backward-merge",
+            libraryId: "library:test",
+            operationKind: "apply_structural_edit",
+            duplicate: false,
+            didMutate: false,
+            createdTarget: null,
+            canvasMutation: null,
+            structuralEdit: null,
+            affectedParentKeys: [],
+            affectedPageIds: [],
+            affectedDatabaseIds: [],
+            affectedViewIds: [],
+            committedRevisions: {},
+            commitSeq: 2,
+            committedAt: "2026-08-25T00:00:00.000Z",
+          },
+        };
+      }
       commands.push(request.operation);
       const target = editor.getBlock("block-target");
       const source = editor.getBlock("block-source");
@@ -289,6 +321,7 @@ describe("collaborative NFM undo in Chromium", () => {
       };
     };
     const session = new NfmStructuralEditingSession({
+      historyReconciliation: availableHistoryReconciliation,
       editor,
       apply,
       runtime: {

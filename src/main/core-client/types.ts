@@ -235,6 +235,8 @@ export interface CoreRequestOptions {
   readonly class?: CoreRequestClass;
   readonly deadlineMs?: number;
   readonly signal?: AbortSignal;
+  /** Main-owned lifetime, carried in an authenticated header, never command JSON. */
+  readonly editorHistoryOwnerId?: string;
 }
 
 export interface CoreClientPort {

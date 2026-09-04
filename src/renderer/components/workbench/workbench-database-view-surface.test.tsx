@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import {
@@ -14,8 +14,21 @@ import { TestQueryProvider } from "../../test/query";
 import { AUTHORIZED_READ_STAMP_EXAMPLE } from "../../../shared/testing/authorized-read-stamp-example";
 import { upgradeDatabaseViewConfigV2 } from "../../../shared/database-view-presentation";
 import { WorkbenchDatabaseViewSurface } from "./workbench-database-view-surface";
+import type { DatabaseViewMutationHistory } from "./database-view-mutation-history";
+import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
+import { useBoard } from "@/lib/use-board";
+import { createBoardStoreRegistry } from "@/lib/board-store";
+import {
+  createDatabaseViewMutationHistory,
+  databaseViewHistoryScopeKey,
+} from "./database-view-mutation-history";
+import { committedLocalCommit } from "../../../shared/testing/local-commit";
 
 const api = vi.hoisted(() => ({
+  applyDatabaseModule: vi.fn<(typeof import("../../lib/api"))["applyDatabaseModule"]>(),
+  applyLibraryDatabaseModule: vi.fn(),
+  transferBlocks: vi.fn(),
+  undoBlockTransfer: vi.fn(),
   commitPageLifecycleIntent: vi.fn(),
   readDatabaseViewGroups: vi.fn(),
   readDatabaseViewWindow: vi.fn(),
@@ -25,9 +38,21 @@ const api = vi.hoisted(() => ({
 
 const presenter = vi.hoisted(() => ({
   props: null as Record<string, unknown> | null,
+  store: null as ReturnType<ReturnType<typeof createBoardStoreRegistry>["getStore"]> | null,
 }));
 
-vi.mock("../../lib/api", () => api);
+vi.mock("../../lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/api")>()),
+  ...api,
+}));
+vi.mock("../../lib/board-store", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../lib/board-store")>();
+  return {
+    ...original,
+    getBoardProjectStore: (...args: Parameters<typeof original.getBoardProjectStore>) =>
+      presenter.store ?? original.getBoardProjectStore(...args),
+  };
+});
 vi.mock("./workbench-db-view-panel", () => ({
   DatabaseViewTabSurface: (props: Record<string, unknown>) => {
     presenter.props = props;
@@ -166,6 +191,7 @@ const makeGroups = <ProjectScope extends string | null>(
 beforeEach(() => {
   vi.clearAllMocks();
   presenter.props = null;
+  presenter.store = null;
   api.readLibraryDatabaseViewGroups.mockResolvedValue(makeGroups(null));
   api.readLibraryDatabaseViewWindow.mockResolvedValue(makeWindow(null));
   api.readDatabaseViewGroups.mockResolvedValue(makeGroups("project-alpha"));
@@ -177,6 +203,134 @@ beforeEach(() => {
 });
 
 describe("WorkbenchDatabaseViewSurface", () => {
+  test("the production Board runtime carries each delegated receipt into the View owner", async () => {
+    let commitSeq = 1;
+    const window = makeWindow("project-alpha");
+    const registry = createBoardStoreRegistry({
+      readViewWindow: async () => ({
+        ...window,
+        commitSeq,
+        projection: { ...window.projection, coveredCommitSeq: commitSeq },
+      }),
+      readViewGroups: async () => ({
+        ...makeGroups("project-alpha"),
+        commitSeq,
+        projection: { ...window.projection, coveredCommitSeq: commitSeq },
+      }),
+      subscribeBoardChanges: () => () => {},
+      getProjectionInvalidationRegistry: () => null,
+    });
+    presenter.store = registry.getStore("project-alpha", viewId);
+    await presenter.store.fetchBoard();
+    const hook = renderHook(() => useBoard({ projectId: "project-alpha", databaseViewId: viewId }));
+    await waitFor(() =>
+      expect(
+        hook.result.current.databaseView,
+        JSON.stringify(presenter.store?.getSnapshot()),
+      ).not.toBeNull(),
+    );
+    const model = hook.result.current.databaseView!;
+    const history = createDatabaseViewMutationHistory(databaseViewHistoryScopeKey(model));
+    api.applyDatabaseModule.mockImplementation(async (_projectId, request) => {
+      commitSeq++;
+      const pageId =
+        request.operations[0]?.kind === "position_pages"
+          ? request.operations[0].pages[0]!.pageId
+          : "inverse";
+      return {
+        ok: true,
+        localCommit: committedLocalCommit(model.storeEpoch, commitSeq),
+        value: {
+          operationId: request.operationId,
+          projectId: "project-alpha",
+          libraryId: model.libraryId,
+          storeEpoch: model.storeEpoch,
+          duplicate: false,
+          operationKinds: request.operations.map((operation) => operation.kind),
+          operationOutcomes: [
+            {
+              kind: "data_edit",
+              operationIndex: 0,
+              operationCount: 1,
+              undoRecipe: {
+                propertyStates: [],
+                positionStates: [
+                  {
+                    viewId,
+                    dataSourceId,
+                    direction: "asc",
+                    beforeRuns: [{ pageIds: [pageId], beforePageId: "previous-neighbor" }],
+                    afterRuns: [{ pageIds: [pageId], beforePageId: null }],
+                  },
+                ],
+              },
+            },
+          ],
+          affectedDatabaseIds: [],
+          affectedDataSourceIds: [],
+          affectedPageIds: [pageId],
+          affectedViewIds: [viewId],
+          committedRevisions: {},
+          commitSeq,
+          committedAt: timestamp,
+        },
+      };
+    });
+    const config = model.query.view.config;
+    const drop = (pageId: string) =>
+      history.executeOperations({
+        model,
+        operations: [
+          { kind: "position_pages", viewId, pages: [{ pageId, expectedPositionRevision: 0 }] },
+        ],
+        submitForward: (request) =>
+          hook.result.current.moveDatabaseViewPages(
+            {
+              pageIds: [pageId],
+              presentation: {
+                layout: "board",
+                rules: config.rules,
+                presentation: config.presentation,
+              },
+              target: { groupKey: null, subgroupKey: null },
+              propertyValues: [],
+            },
+            request,
+          ),
+      });
+    try {
+      await act(async () => {
+        await drop("older");
+        await drop("newer");
+      });
+      await act(async () => {
+        expect(await history.undoLast()).toBe(true);
+      });
+      expect(api.applyDatabaseModule.mock.calls.at(-1)?.[1].operations).toEqual([
+        {
+          kind: "reverse_data_edit",
+          recipe: {
+            propertyStates: [],
+            positionStates: [
+              {
+                viewId,
+                dataSourceId,
+                direction: "asc",
+                beforeRuns: [{ pageIds: ["newer"], beforePageId: "previous-neighbor" }],
+                afterRuns: [{ pageIds: ["newer"], beforePageId: null }],
+              },
+            ],
+          },
+        },
+      ]);
+      expect(history.snapshot().undo.status).toBe("ready");
+    } finally {
+      hook.unmount();
+      history.close();
+      presenter.store = null;
+    }
+  });
+
   test("routes a Project Board through the shared Database View presenter", async () => {
     const onOpenPageInNewChat = vi.fn();
     const onSendPageToChat = vi.fn();
@@ -233,6 +387,47 @@ describe("WorkbenchDatabaseViewSurface", () => {
         operationId: expect.any(String),
       }),
     );
+  });
+
+  test("preserves a committed history barrier across equivalent presentation rerenders", async () => {
+    const content = () => (
+      <TestQueryProvider>
+        <WorkbenchDatabaseViewSurface
+          accessContext={{ kind: "library" }}
+          target={{ kind: "database-default", databaseId }}
+          onOpenPage={() => undefined}
+        />
+      </TestQueryProvider>
+    );
+    const view = render(content());
+    await waitFor(() => expect(presenter.props?.model).toBeTruthy());
+    const history = presenter.props?.mutationHistory as DatabaseViewMutationHistory;
+    await history.executeOperations({
+      model: presenter.props?.model as DatabaseViewRenderModel,
+      operations: [{ kind: "position_pages", viewId, pages: [] }],
+      commitOperations: async () => ({
+        operationId: "operation",
+        accessContext: { kind: "library" },
+        libraryId: "library:test",
+        storeEpoch: "epoch:test",
+        duplicate: false,
+        operationKinds: ["position_pages"],
+        operationOutcomes: [],
+        affectedDatabaseIds: [],
+        affectedDataSourceIds: [],
+        affectedPageIds: [],
+        affectedViewIds: [viewId],
+        committedRevisions: {},
+        commitSeq: 2,
+        committedAt: timestamp,
+      }),
+    });
+    await act(async () => {
+      view.rerender(content());
+      await Promise.resolve();
+    });
+    expect(presenter.props?.mutationHistory).toBe(history);
+    expect(history.snapshot().undo.status).toBe("blocked");
   });
 
   test("uses Library reads and the shared Database View presenter", async () => {

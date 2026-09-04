@@ -1,4 +1,5 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
+import { CoreModuleResponseError } from "./core-client";
 
 import { plainTextToPortableRichText, primaryCanvasBlockId } from "../../shared/block-documents";
 import type { BlockPropertyMutationRequestV2 } from "../../shared/block-property-mutations-v2";
@@ -2197,6 +2198,33 @@ describe("Core Library Module Adapter", () => {
       error: { code: "store_epoch_mismatch" },
     });
     expect(client.applies).toHaveLength(1);
+  });
+
+  test("receipt expiry requires recovery instead of another unknown retry", async () => {
+    const client = new FakeCoreClient();
+    vi.spyOn(client, "libraryApply").mockRejectedValueOnce(
+      new CoreModuleResponseError({
+        code: "idempotency_window_expired",
+        message: "The original outcome can no longer be confirmed",
+        retryable: false,
+        recovery: { kind: "none" },
+      }),
+    );
+    const adapter = createCoreLibraryModuleAdapter({ client, ...identity });
+    await expect(
+      adapter.apply({
+        operationId: "operation:expired",
+        storeEpoch: identity.storeEpoch,
+        operation: {
+          kind: "apply_structural_edit",
+          command: { kind: "release_history", tokens: [] },
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "recovery_required", retryable: false },
+    });
+    expect(client.libraryApply).toHaveBeenCalledTimes(1);
   });
 
   test("maps atomic Page mention creation and its destination fence", async () => {

@@ -14,8 +14,36 @@ use crate::{
 mod recovery;
 pub use recovery::*;
 
-pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 12;
+pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 13;
 pub const OWNED_DOCUMENT_DESCRIPTOR_VERSION: u32 = 3;
+
+/// A bounded local edit group addressed by stable Block identity. Unchanged
+/// fields are observations, not overwrite authority; the compiler guards and
+/// replaces only the difference between the two states.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EditorHistoryBlockState {
+    #[serde(rename = "type")]
+    pub block_type: String,
+    pub props: BTreeMap<String, Value>,
+    pub content: Option<Value>,
+    pub parent_block_id: Option<String>,
+    pub before_block_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EditorHistoryBlockChange {
+    pub block_id: String,
+    pub before: Option<EditorHistoryBlockState>,
+    pub after: Option<EditorHistoryBlockState>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EditorHistoryPatch {
+    pub changes: Vec<EditorHistoryBlockChange>,
+}
 
 /// Exact rejected input, retained separately from committed content. It is not a full document backup.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
@@ -211,6 +239,7 @@ pub enum OwnedDocumentRead {
     SyncYjs {
         document_id: String,
         state_vector: Vec<u8>,
+        history_after_head_seq: Option<i64>,
     },
     FetchUpdate {
         document_id: String,
@@ -265,6 +294,7 @@ pub enum OwnedDocumentReadValue {
     YjsSync {
         descriptor: OwnedDocumentDescriptor,
         update: Vec<u8>,
+        history_fence: DocumentHistoryFence,
     },
     UpdateResource {
         resource: DocumentUpdateResource,
@@ -678,6 +708,15 @@ pub struct DocumentMutationEffect {
     pub write_fence_block_ids: Vec<String>,
     pub title_changed: bool,
     pub coordination: DocumentMutationCoordination,
+}
+
+/// Core-authored address invalidation over a bounded interval of Document heads.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DocumentHistoryFence {
+    pub head_seq: i64,
+    pub block_ids: Vec<String>,
+    pub document_wide: bool,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

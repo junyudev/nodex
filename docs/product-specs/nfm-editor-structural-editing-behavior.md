@@ -57,7 +57,7 @@ Electron Main owns one application-scoped, ephemeral Structural Clipboard runtim
 
 Copy claims the native clipboard synchronously with the portable presentation and private preparing descriptor while Core captures the snapshot. An immediate paste in the same or another window waits for that exact claim. Session registration does not synchronously read the native slot because the browser may still be committing its clipboard event. The later final publication compares the exact claim carried by standard HTML before replacing the native presentation, so a newer copy inside or outside Nodex always wins. If the host runtime is unavailable or has restarted, a valid ready capability carried by the standard rich presentation may still be revalidated by Core; otherwise paste uses the portable fallback. Missing, foreign, malformed, expired, superseded, or unauthorized private data cannot create an owning Block or a live foreign-Profile Library File reference.
 
-The structural command queue and history lane have the same lifetime as their BlockNote editor. Page Stage may detach and remount a tab's React view while retaining that editor; each active view rebinds its current Document participant to the retained structural controller before input is accepted. Consecutive copy or cut commands therefore remain ordered while a prior commit updates the surface or the user switches tabs. Every pending capture reaches a terminal result; an unavailable or stalled session leaves the source unchanged and never silently degrades an owner to title-only clipboard content.
+The structural command queue and history lane have the same lifetime as their BlockNote editor. Page Stage may detach and remount a tab's React view while retaining that editor; each active view rebinds its current Document participant to the retained structural controller before input is accepted. Rebinding cannot change Library, authorization scope, Document, generation, or Store epoch; those changes require a new owner. External commands use the same admission, preparation lifetime, and focus-resume rules, never a late result-adoption path. Consecutive copy or cut commands therefore remain ordered while a prior commit updates the surface or the user switches tabs. Every pending capture reaches a terminal result; an unavailable or stalled session leaves the source unchanged and never silently degrades an owner to title-only clipboard content.
 
 Copy never changes the source. Cut follows the fixed order `capture → native clipboard claim verification → source delete and durable cut claim → source LocalCommit admission`. Main exposes a Cut as structurally ready only after the final step. A failure before source deletion leaves the complete source unchanged; if the claimed portable presentation is still valid, Paste inserts that safe copy instead. The first valid paste of an available Core cut claim moves the original identities, whether it inserts at a caret or replaces a selected forest. Later pastes clone the immutable snapshot with fresh Block, Document, Canvas, Database, Data Source, View, and row identities.
 
@@ -119,14 +119,162 @@ operation is pending always wins over that default resume target.
 
 Each mounted editor surface owns one chronological history lane. Local Yjs StackItems and opaque Core structural history tokens appear in the lane in the order the user acted. Remote collaborative changes do not create local entries.
 
-The lane follows the editor surface rather than an individual runtime binding. Embedded Page Documents therefore keep structural undo across provider updates and session rebinding just like top-level Page editors, even when no local Yjs UndoManager is available at the instant the surface mounts.
+Project-bound and trusted Library editor surfaces use the same structural and
+text-history operations. Project surfaces still require their Project's current
+content access; Library surfaces retain Library authority instead of borrowing
+the Project used to attribute a receipt. Capability reads, Cut consumption,
+Undo and release follow the original access scope, and lifecycle changes notify
+the affected recipe's Project even when a Library surface performs the inverse.
+A retained local surface cannot change between Library and Project authority.
+
+The lane follows the editor surface rather than an individual runtime binding. Its collaborative backend exists when the editor is registered, before any EditorView mounts. Embedded Page Documents keep the same local text and structural history across provider updates and retained-view remounts. A missing collaborative backend is an initialization error, never permission to create an incomplete structural-only history.
+
+Structural gestures reserve their chronological position before asynchronous preparation; the response fills that position rather than becoming the newest action. Forward structural commands and history replay share one executor. Later independent text can still be edited and undone while an earlier structural command is pending. Repeated Undo/Redo gestures queue at their owning surface instead of falling through to another history stack. Each request is limited to gestures admitted before that request, so it cannot wait on a later command queued behind itself. Text capture closes at structural admission and completion.
+
+Content commands enter the same SurfaceHistory Module used by Database Views.
+Move to Database belongs to the source editor's timeline. It reserves the gesture
+before fencing the source or resolving the destination; its complete transfer
+request remains available for exact recovery if the response is lost. A target
+Database Drop instead belongs only to that target View's timeline. Neither path
+may expose an older action while the transfer outcome is unknown.
+Dropping Data Source Pages into an editor belongs to that receiving editor's
+timeline, for both Move and Copy. Admission precedes its destination fence;
+recovery retries the identical ownership-transfer request. A receipt without a
+complete inverse leaves a whole-action barrier, never exposes older Undo, and
+releases any unused single-direction history token. It is not a Document-to-Document
+Block selection edit and does not borrow the source View's history.
+The NFM Adapter supplies native captures, semantic inverse evidence and typed
+request preparation; it does not keep a second command queue or history stack.
+A response that cannot confirm the outcome retains the original request and
+blocks dependent commands and earlier Undo. Local typing remains captured.
+Recovery confirms that exact attempt before any new request is prepared;
+selection, focus and File notifications never decide whether content committed.
+The native Edit menu shows the focused surface's next action and availability.
+Embedded Views and native inputs keep their own history; a stale focus or owner
+snapshot cannot replace a newer menu observation. Waiting and blocked actions
+show a compact notice in their surface, with Check again or Retry when safe.
+Reset history requires confirmation, changes no content, and retires the entire
+surface timeline without interrupting confirmation of submitted requests.
+If the original receipt can no longer be confirmed, the action stays blocked
+until Reset history. Receipt expiry is neither a rejection nor permission to
+repeat the edit under a new identity, and cannot settle a Cut as source-preserved.
+An inverse retired before preparation finishes is not submitted. Retirement
+after submission transfers recovery responsibility without erasing the attempt.
+
+Portable fallback is part of its reserved Paste gesture, including when Undo
+was requested while the clipboard was still preparing. Ordinary local fallback
+records one native inverse in that gesture. Replacing a selection containing
+an owning Block still uses one Core replacement, even with portable content.
+An unconfirmed Cut never reports that its source was preserved: the exact delete
+must first be confirmed as committed or authoritatively rejected.
+
+External Block drops and all Block Move-to-Page actions follow that same
+admission rule: both source and destination Document preparation run inside the
+reserved command. Waiting for either Document cannot reorder the gesture after
+text entered during that wait.
+
+Keyboard shortcuts, committed `historyUndo`/`historyRedo` input, and the editor's programmatic Undo/Redo all use the same owner. An empty history still owns its input. Text replay consumes at most one specified engine item; a no-effect item is considered in the chronological lane before proceeding, so the engine cannot skip past a structural action. New input during an asynchronous inverse remains recorded and makes that inverse's redo unreachable.
+
+Capture-phase shortcuts respect the same embedded event boundary as BlockNote
+NodeViews. A nested Page body owns its own input even inside such a boundary;
+its title, Canvas scene, Database View and native input controls never invoke
+the containing Page's history. Composer history remains independent of Page
+history. The application menu routes to the focused surface, not the most
+recently edited Page.
 
 Undoing a structural edit executes a new Core transaction from its single-use inverse token. Core returns a fresh inverse token for redo; it never rewinds SQLite or replays the original command. Deleting and restoring an owner therefore preserves the same owner and Document identities while leaving unrelated collaborator changes intact. Replacement history swaps the currently active closure with the retained opposite closure, so paste and direct typing do not create a separate delete entry. Exact File identities and any Page-entry relationships are part of that same forward transaction and LocalCommit; they are never patched optimistically by the renderer. A conflict keeps the entry at the top of history instead of skipping to an earlier action.
 
+Core's ordinary Block Promotion into Library or Data Source returns the opposite
+structural history capability. Repeated reversal preserves the same generated
+Page, Document generation, rich body and wrapper identities. Copy retirement
+keeps its owned Document intact; Move restores the original source forest and
+retains the target Document for replay. Data Source membership, Page Key,
+Properties and manual positions keep their identities while the row is retired.
+Library order uses surviving neighbors outside the retired batch. Promotion
+history preserves exact File identities and Page relationship clocks without
+changing shared File heads or copying the source Page's path entries. A later
+shared File content update does not block structural Undo or Redo. Detached
+history bodies retain their File identities until the capability is released.
+Closed or released history cannot
+reactivate those identities, while an exact committed request still returns its
+original receipt. A symmetric capability is not returned for schema-changing
+or Relation-carrying batches. The editor admits only the complete structural
+capability into its timeline; an incomplete batch leaves a whole-action barrier
+and releases its unused single-direction token. Promotion Undo and Redo share
+the ordinary structural replay, reconciliation and release path.
+
 A new local branch clears both kinds of redo entry together. Structural tokens that leave the reachable lane are explicitly released, including when the editor surface ends, so retention does not keep deleted closure state indefinitely. Releasing a cut history token also gives up its move claim; the immutable clipboard snapshot may still be pasted as a copy.
+
+Promoting a restored ordinary Block again is a new command, not Redo. It keeps
+the Block identity but creates a new Page Document lifetime; a retained dormant
+Document from the earlier branch cannot collide with or replace it. Returning
+the same Page to the same Data Source reactivates its stable membership and Page
+Key with advancing revisions. The earlier branch cannot overwrite this work.
+
+Surface shutdown cancels its local preparation and hands cleanup to Main;
+accepting that handoff is not a fabricated Core commit. Pending writes remain
+owned while their result is recovered, including forward Promotion and ordinary
+structural commands. Confirmation and release continue when the surface closes
+but its window remains open; late inverse tokens never reopen a closed surface.
+Window reload, renderer loss and window destruction close only
+that window generation's retention lifetime. Other windows' history survives.
+Suspension and temporary disconnection do not expire interactive history.
+
+Core history-state notifications reach independently subscribed windows. A source
+Cut superseded by a destination Paste is removed by its exact capability, while
+the source's other actions remain. Reconnection and structural replay reconcile
+reachable tokens in bounded reads. Consumed or unavailable actions are not
+silently skipped; an uncertain inverse still recovers its original receipt.
+
+Structural restoration can replace collaborative addresses while preserving
+Block identity. A local capture group therefore retains only its affected
+fields and stable forest coordinates. Core-authored address fences mark the
+affected history for semantic replay. Undo then validates the recorded
+post-state of changed fields and restores their prior state in one Library
+transaction, producing a fresh inverse token. Text, rich-text formatting,
+properties, ordinary creation/deletion, split/merge, and nesting use the same
+contract. Unchanged fields and unrelated collaborator edits remain intact;
+ambiguous anchors or concurrent changes to the same field block the entry.
+The bridge cannot create/delete a typed owner or rewrite its separate Document.
+
+First-child-group insertion and removal participate in the same local semantic
+history as existing children. Creating and then deleting an ordinary Block
+before the first sync remains undoable after structural address replacement.
+If that Block was never registered in Core, Undo registers its fresh identity
+through the normal ordinary-Block creation guards; it cannot reuse a collected
+identity, take a Block from another Document, or mint an owning shell.
+
+Semantic replay restores the capture group's original caret or selection using
+stable Block identities and content offsets; redo restores its final selection.
+These bookmarks survive collaborative address replacement and retained-view
+remounts. A missing Block never redirects the selection into an unrelated one,
+and focus chosen by the user while a replay is pending always takes precedence.
+
+A source surface cannot use its old content history to edit a Block currently
+in another Document. That history remains blocked until the structural move
+returns the Block to its authorized source placement. Other surfaces' history
+and retention remain independent, even when they share one live Y.Doc.
 
 ## Bounds and recovery
 
 One structural selection is bounded to 10,000 roots and 10,000 Blocks; ordinary replacement trees are additionally bounded to 128 levels; an ownership closure is bounded to 1,024 owned Documents and a 64 MiB canonical payload. Every command is Store-epoch-bound, exact-head-fenced, Project-authorized, and idempotent by operation identity and request hash.
 
-Clipboard bundles and history recipes hold normalized retention edges only while active. A consumed, superseded, or explicitly released recipe cannot be replayed. Transport response loss is recovered by idempotent receipt replay and canonical Document synchronization; renderer code does not construct compensation edits.
+A semantic history patch is bounded to 10,000 changed identities and 8 MiB of
+JSON. Core rejects an invalid patch atomically, without consuming the entry or
+undoing an earlier action.
+
+Each editor retains at most 500 reachable history entries, including reserved gestures, and a conservative
+64 MiB encoded-evidence budget across text and structural entries, with at most
+10,000 retained Block/ancestor/sibling identities. The budget
+includes changed fields, capture-group update bytes and retained deletion
+payload, even when a group's net semantic change becomes empty. There are at
+most one executing command and 100 waiting commands per surface;
+excess commands fail before execution, without falling through to another owner.
+Normal eviction removes the oldest Undo prefix and, if necessary, the farthest
+Redo future. A local group beyond its byte or semantic replay limit keeps its
+content, retires the inaccessible earlier prefix, and reports that Undo is no
+longer available for that edit. New subsequent edits can be undone normally.
+An evicted pending inverse cannot make a late Redo reachable; Main recovers the
+exact outcome before releasing its original and resulting capabilities.
+
+Clipboard bundles and history recipes hold normalized retention edges while active. Ending history immediately prevents replay; physical reference removal runs in bounded maintenance slices and conservatively retains content until committed. Local text history separately retains its reachable identities before a pending Document save can delete them, including before its first structural bridge. Repeated typing on the same Block does not create per-keystroke retention writes. Closing the surface releases its set; late updates cannot reactivate it. A consumed, superseded, or explicitly released recipe cannot be replayed. Transport response loss is recovered by idempotent receipt replay and canonical Document synchronization; renderer code does not construct compensation edits.

@@ -1,4 +1,9 @@
-import { useState, type MouseEvent as ReactMouseEvent, type ReactElement } from "react";
+import {
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactElement,
+  type RefObject,
+} from "react";
 
 import { NodexContextMenuRoot, NodexContextMenuTrigger } from "@/components/ui/context-menu";
 import {
@@ -11,6 +16,7 @@ export const DATABASE_VIEW_PAGE_MENU_TARGET_ATTRIBUTE = "data-database-view-page
 export interface DatabaseViewPageContextMenuHostProps {
   readonly children: ReactElement;
   readonly resolveSession: (targetKey: string) => DatabaseViewPageMenuSession | null;
+  readonly returnFocusRef?: RefObject<HTMLElement | null>;
 }
 
 /**
@@ -21,6 +27,7 @@ export interface DatabaseViewPageContextMenuHostProps {
 export function DatabaseViewPageContextMenuHost({
   children,
   resolveSession,
+  returnFocusRef,
 }: DatabaseViewPageContextMenuHostProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [targetKey, setTargetKey] = useState<string | null>(null);
@@ -61,6 +68,7 @@ export function DatabaseViewPageContextMenuHost({
           {...session}
           menuOpen={menuOpen}
           onMenuOpenChange={handleMenuOpenChange}
+          returnFocusRef={returnFocusRef}
         />
       ) : null}
     </NodexContextMenuRoot>

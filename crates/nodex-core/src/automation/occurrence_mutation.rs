@@ -198,7 +198,6 @@ fn complete(
         .ok_or_else(|| invalid("Occurrence completion exceeds the timestamp range"))?;
     let occurrence_start = timestamp_to_iso(occurrence_start_ms)?;
     let occurrence_end = timestamp_to_iso(occurrence_end_ms)?;
-    let primary_rank = format!("~archive:{now}:{created_page_id}");
     let clone = clone_page_for_occurrence(
         connection,
         library_id,
@@ -218,7 +217,7 @@ fn complete(
             recurrence_json: "null",
             reminders_json: "[]",
             schedule_timezone: target.page.schedule_timezone.as_deref(),
-            primary_rank_key: Some(&primary_rank),
+            primary_placement: crate::database::ViewOrderPlacement::End,
             now,
         },
     )?;
@@ -436,7 +435,6 @@ fn update(
             None => target.page.schedule_timezone.as_deref(),
             Some(value) => value.as_deref(),
         };
-        let primary_rank = clone_primary_rank(connection, page_id, created_page_id)?;
         let clone = clone_page_for_occurrence(
             connection,
             library_id,
@@ -456,7 +454,7 @@ fn update(
                 recurrence_json: "null",
                 reminders_json: &reminders_json,
                 schedule_timezone: timezone,
-                primary_rank_key: primary_rank.as_deref(),
+                primary_placement: crate::database::ViewOrderPlacement::After(page_id),
                 now,
             },
         )?;
@@ -564,7 +562,6 @@ fn update(
         .unwrap_or_else(|| split_drag_shift.or_else(|| target.page.recurrence.clone()));
     let recurrence_json = serde_json::to_string(&next_recurrence)
         .map_err(|_| internal("Occurrence recurrence cannot be encoded"))?;
-    let primary_rank = clone_primary_rank(connection, page_id, created_page_id)?;
     let clone = clone_page_for_occurrence(
         connection,
         library_id,
@@ -584,7 +581,7 @@ fn update(
             recurrence_json: &recurrence_json,
             reminders_json: &reminders_json,
             schedule_timezone: next_timezone,
-            primary_rank_key: primary_rank.as_deref(),
+            primary_placement: crate::database::ViewOrderPlacement::After(page_id),
             now,
         },
     )?;
@@ -1378,29 +1375,6 @@ fn normalize_timing(
     timestamp_to_iso(start)?;
     timestamp_to_iso(end)?;
     Ok((start, end))
-}
-
-fn clone_primary_rank(
-    connection: &Connection,
-    page_id: &str,
-    created_page_id: &str,
-) -> Result<Option<String>, StoreError> {
-    connection
-        .query_row(
-            "SELECT position.rank_key FROM data_source_page_memberships membership \
-             JOIN data_sources source ON source.id = membership.data_source_id \
-             JOIN database_containers container ON container.block_id = source.home_database_block_id \
-             JOIN database_views view ON view.id = container.default_view_id \
-               AND view.data_source_id = source.id AND view.lifecycle = 'active' \
-             JOIN database_view_page_positions position ON position.view_id = view.id \
-               AND position.page_block_id = membership.page_block_id \
-             WHERE membership.page_block_id = ?1 AND membership.removed_at IS NULL",
-            [page_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()
-        .map(|value| value.map(|rank| format!("{rank}~{created_page_id}")))
-        .map_err(Into::into)
 }
 
 fn upsert_skip_exception(

@@ -1032,6 +1032,24 @@ fn validate_structural_edit_evidence(
         return Ok(());
     }
 
+    let detached_payloads: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'structural_history_payloads')",
+        [], |row| row.get(0),
+    )?;
+    if detached_payloads {
+        let missing: i64 = connection.query_row(
+            "SELECT count(*) FROM structural_history_recipes recipe \
+             WHERE recipe.state = 'available' AND recipe.payload_ref_json = '{\"kind\":\"detached\"}' \
+               AND NOT EXISTS(SELECT 1 FROM structural_history_payloads payload \
+                 WHERE payload.recipe_operation_id = recipe.recipe_operation_id AND payload.part = 0)",
+            [], |row| row.get(0),
+        )?;
+        expect_zero(
+            missing,
+            "available structural history without an inverse payload",
+        )?;
+    }
+
     let invalid_authority: i64 = connection.query_row(
         "SELECT \
            (SELECT count(*) FROM structural_clipboard_bundles bundle \
@@ -1047,7 +1065,7 @@ fn validate_structural_edit_evidence(
               ON mutation.mutation_id = recipe.recipe_operation_id \
             LEFT JOIN projects project ON project.id = mutation.project_id \
             WHERE mutation.mutation_id IS NULL \
-               OR mutation.mutation_kind <> 'structural_edit' \
+               OR mutation.mutation_kind NOT IN ('structural_edit', 'block_transfer') \
                OR mutation.store_epoch <> recipe.store_epoch \
                OR project.library_id <> recipe.library_id) + \
            (SELECT count(*) FROM structural_cut_claims claim \

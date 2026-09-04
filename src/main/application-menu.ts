@@ -1,4 +1,5 @@
 import type { MenuItemConstructorOptions } from "electron";
+import type { SurfaceHistoryDirection } from "../shared/surface-history";
 import {
   getPrimaryCommandAccelerator,
   toElectronAccelerator,
@@ -12,6 +13,44 @@ import {
 export const TOGGLE_BOTTOM_PANEL_MENU_ITEM_ID = "view.toggleBottomPanel";
 export const INSTALL_CLI_MENU_ITEM_ID = "app.installCli";
 export const SET_UP_AGENT_SKILLS_MENU_ITEM_ID = "app.setupAgentSkills";
+
+/** History is application-owned; the other edit actions retain their native roles. */
+export function buildWindowEditMenu(
+  platform: NodeJS.Platform,
+  execute: (direction: SurfaceHistoryDirection) => void,
+): MenuItemConstructorOptions {
+  return {
+    role: "editMenu",
+    submenu: [
+      {
+        id: "edit.undo",
+        label: "Undo",
+        accelerator: "CommandOrControl+Z",
+        click: () => execute("undo"),
+      },
+      {
+        id: "edit.redo",
+        label: "Redo",
+        accelerator: platform === "darwin" ? "CommandOrControl+Shift+Z" : "Control+Y",
+        click: () => execute("redo"),
+      },
+      { type: "separator" },
+      { role: "cut" },
+      { role: "copy" },
+      { role: "paste" },
+      { role: "pasteAndMatchStyle" },
+      { role: "delete" },
+      { type: "separator" },
+      { role: "selectAll" },
+      ...(platform === "darwin"
+        ? ([
+            { type: "separator" },
+            { label: "Speech", submenu: [{ role: "startSpeaking" }, { role: "stopSpeaking" }] },
+          ] satisfies MenuItemConstructorOptions[])
+        : []),
+    ],
+  };
+}
 
 interface NodexSetupMenuOptions {
   enabled: boolean;

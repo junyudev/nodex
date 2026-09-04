@@ -1,5 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
+mod data_history;
+pub(crate) mod property_value_history;
+
 use nodex_core_contracts::database::{
     DatabaseCommitValue, DatabaseDuplicatePropertyOption, DatabaseEvent, DatabaseEventKind,
     DatabaseIntent, DatabaseListMoveSelection, DatabaseListMoveTarget, DatabaseListMoveUndoRecipe,
@@ -29,9 +32,7 @@ use crate::domain::fractional_rank::{
     FractionalRankError, FractionalRankErrorCode, RankedItem, plan as plan_fractional_rank,
 };
 use crate::domain::identity::stable_uuid_v7;
-use crate::domain::ordered_position::{
-    LogicalPositionItem, PositionPlanError, SiblingRankWriteKind, plan_position_run,
-};
+use crate::domain::ordered_position::LogicalPositionRun;
 use crate::infrastructure::durable_mutation::{
     self, CommitResult, DurableMutationScope, OperationIdentity, ReceiptMetadata, SealedOutcome,
 };
@@ -135,9 +136,10 @@ pub(super) fn apply(
     let library_id = library_id.to_owned();
     let context = context.clone();
     writer.call(move |connection| {
-        with_immediate_transaction(connection, |transaction| {
+        let result = with_immediate_transaction(connection, |transaction| {
             apply_in_transaction(transaction, &profile_id, &library_id, &context, &request)
-        })
+        });
+        super::finish_order_attempt(connection, result)
     })
 }
 
@@ -184,6 +186,9 @@ pub(crate) fn apply_in_transaction(
         },
         |scope| {
             let mut effects = MutationEffects::default();
+            data_history::authorize_replays(connection, library_id, &authority, &request.intent)?;
+            let history =
+                data_history::capture(connection, library_id, &authority, &request.intent)?;
             for (operation_index, intent) in request.intent.iter().enumerate() {
                 apply_intent(
                     scope.connection(),
@@ -196,6 +201,10 @@ pub(crate) fn apply_in_transaction(
                     &now,
                     &mut effects,
                 )?;
+            }
+            if let Some(outcome) = data_history::finish(connection, history, request.intent.len())?
+            {
+                effects.operation_outcomes.push(outcome);
             }
             refresh_scheduled_page_indexes(scope.connection(), &effects.page_ids, &now)?;
             seal_commit(
@@ -368,6 +377,14 @@ fn validate_request(request: &ModuleApplyRequest<Vec<DatabaseIntent>>) -> Result
         if let DatabaseIntent::UndoListOccurrenceMove { recipe } = intent {
             validate_list_move_undo_recipe(recipe)?;
         }
+        if let DatabaseIntent::ReverseDataEdit { recipe } = intent {
+            if request.intent.len() != 1 {
+                return Err(invalid(
+                    "A Database history inverse must be one atomic command",
+                ));
+            }
+            data_history::validate(recipe)?;
+        }
     }
     Ok(())
 }
@@ -450,8 +467,37 @@ fn validate_list_move_undo_recipe(recipe: &DatabaseListMoveUndoRecipe) -> Result
             validate_id(parent_page_id, "recipe.parent_page_id", MAX_ID_LENGTH)?;
         }
     }
-    if let Some(before_page_id) = &recipe.post_before_page_id {
-        validate_id(before_page_id, "recipe.post_before_page_id", MAX_ID_LENGTH)?;
+    if recipe.post_order_runs.len() > MAX_BULK_VALUES {
+        return Err(invalid(
+            "List move order evidence exceeds its bounded shape",
+        ));
+    }
+    let mut ordered_pages = HashSet::new();
+    for run in &recipe.post_order_runs {
+        if run.page_ids.is_empty() || run.page_ids.len() > MAX_BULK_VALUES {
+            return Err(invalid("List move order run is empty or too large"));
+        }
+        if let Some(before_page_id) = &run.before_page_id {
+            validate_id(
+                before_page_id,
+                "recipe.post_order_before_page_id",
+                MAX_ID_LENGTH,
+            )?;
+            if guard_pages.contains(before_page_id.as_str()) {
+                return Err(invalid("List move order anchor belongs to the moved roots"));
+            }
+        }
+        for page_id in &run.page_ids {
+            if !ordered_pages.insert(page_id.as_str())
+                || !recipe.post_parent_guards.iter().any(|guard| {
+                    guard.page_id == *page_id && guard.parent_page_id == run.parent_page_id
+                })
+            {
+                return Err(invalid(
+                    "List move order evidence does not match its guarded roots",
+                ));
+            }
+        }
     }
     let mut restored_pages = HashSet::new();
     for run in &recipe.restore_runs {
@@ -522,6 +568,7 @@ fn database_intent_kind(intent: &DatabaseIntent) -> &'static str {
         DatabaseIntent::SetTaskParent { .. } => "set_task_parent",
         DatabaseIntent::MoveListOccurrences { .. } => "move_list_occurrences",
         DatabaseIntent::UndoListOccurrenceMove { .. } => "undo_list_occurrence_move",
+        DatabaseIntent::ReverseDataEdit { .. } => "reverse_data_edit",
         DatabaseIntent::PutViewPersonalPreferences { .. } => "put_view_personal_preferences",
         DatabaseIntent::SetViewOccurrenceDisclosure { .. } => "set_view_occurrence_disclosure",
     }
@@ -563,6 +610,7 @@ fn page_detail_dependency_ids(intents: &[DatabaseIntent]) -> (BTreeSet<String>, 
             | DatabaseIntent::SetTaskParent { .. }
             | DatabaseIntent::MoveListOccurrences { .. }
             | DatabaseIntent::UndoListOccurrenceMove { .. }
+            | DatabaseIntent::ReverseDataEdit { .. }
             | DatabaseIntent::PutViewPersonalPreferences { .. }
             | DatabaseIntent::SetViewOccurrenceDisclosure { .. } => {}
         }
@@ -1022,12 +1070,21 @@ fn apply_intent(
         DatabaseIntent::UndoListOccurrenceMove { recipe } => undo_list_occurrence_move(
             connection,
             library_id,
-            project_id,
+            authority,
             recipe,
             operation_index,
             now,
             effects,
-            library_scope,
+        ),
+        DatabaseIntent::ReverseDataEdit { recipe } => data_history::reverse(
+            connection,
+            profile_id,
+            library_id,
+            authority,
+            recipe,
+            operation_index,
+            now,
+            effects,
         ),
         DatabaseIntent::PutViewPersonalPreferences {
             view_id,
@@ -3283,6 +3340,7 @@ pub(crate) struct PageCopyDataSourcePlacement {
     pub(crate) database_id: String,
     pub(crate) data_source_id: String,
     pub(crate) membership_id: String,
+    pub(crate) membership_revision: i64,
     pub(crate) affected_view_ids: Vec<String>,
     pub(crate) location_revision: i64,
     pub(crate) metadata_revision: i64,
@@ -3607,17 +3665,20 @@ fn page_copy_position_anchor(
 ) -> Result<PageCopyPositionAnchor, StoreError> {
     let expected_position_revision = connection
         .query_row(
-            "SELECT COALESCE(position.revision, 0) \
+            &format!(
+                "SELECT COALESCE({}, 0) \
              FROM data_source_page_memberships membership \
              JOIN pages page ON page.block_id = membership.page_block_id \
              JOIN blocks block ON block.id = page.block_id \
                AND block.library_id = page.library_id \
-             LEFT JOIN database_view_page_positions position \
-               ON position.view_id = ?1 AND position.page_block_id = page.block_id \
+             {} \
              WHERE membership.data_source_id = ?2 \
                AND membership.page_block_id = ?3 AND membership.removed_at IS NULL \
                AND page.parent_kind = 'data_source' AND page.parent_id = ?2 \
                AND block.lifecycle = 'active'",
+                super::POSITION_REVISION,
+                super::view_position_joins("?1", "page.block_id")
+            ),
             params![view_id, data_source_id, page_id],
             |row| row.get::<_, i64>(0),
         )
@@ -3966,16 +4027,29 @@ fn place_staged_page_in_data_source_with_access(
         })
         .transpose()?
         .flatten();
-    let membership_id = deterministic_membership_id(&destination.data_source_id, staged_page_id);
-    if connection
+    // A demoted Block may be promoted again as a new command. Its retired
+    // membership still names the same Data Source/Page pair, just as on re-entry.
+    let retired_membership = connection
         .query_row(
-            "SELECT 1 FROM data_source_page_memberships WHERE id = ?1 \
-             OR (data_source_id = ?2 AND page_block_id = ?3)",
-            params![membership_id, destination.data_source_id, staged_page_id],
-            |_| Ok(()),
+            "SELECT id FROM data_source_page_memberships \
+             WHERE data_source_id = ?1 AND page_block_id = ?2 AND removed_at IS NOT NULL",
+            params![destination.data_source_id, staged_page_id],
+            |row| row.get::<_, String>(0),
         )
-        .optional()?
-        .is_some()
+        .optional()?;
+    let membership_id = retired_membership.clone().unwrap_or_else(|| {
+        deterministic_membership_id(&destination.data_source_id, staged_page_id)
+    });
+    if retired_membership.is_none()
+        && connection
+            .query_row(
+                "SELECT 1 FROM data_source_page_memberships WHERE id = ?1 \
+             OR (data_source_id = ?2 AND page_block_id = ?3)",
+                params![membership_id, destination.data_source_id, staged_page_id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some()
     {
         return Err(StoreError::new(
             StoreErrorCode::AlreadyOwned,
@@ -4006,17 +4080,20 @@ fn place_staged_page_in_data_source_with_access(
             if let Some(anchor) = &placement.before {
                 let anchor_revision = connection
                     .query_row(
-                        "SELECT COALESCE(position.revision, 0) \
+                        &format!(
+                            "SELECT COALESCE({}, 0) \
                          FROM data_source_page_memberships membership \
                          JOIN pages page ON page.block_id = membership.page_block_id \
                          JOIN blocks block ON block.id = page.block_id \
                            AND block.library_id = page.library_id \
-                         LEFT JOIN database_view_page_positions position \
-                           ON position.view_id = ?1 AND position.page_block_id = page.block_id \
+                         {} \
                          WHERE membership.data_source_id = ?2 \
                            AND membership.page_block_id = ?3 AND membership.removed_at IS NULL \
                            AND page.parent_kind = 'data_source' AND page.parent_id = ?2 \
                            AND block.lifecycle = 'active'",
+                            super::POSITION_REVISION,
+                            super::view_position_joins("?1", "page.block_id")
+                        ),
                         params![
                             placement.view_id,
                             destination.data_source_id,
@@ -4073,7 +4150,8 @@ fn place_staged_page_in_data_source_with_access(
     connection.execute(
         "INSERT INTO data_source_page_memberships( \
            id, data_source_id, page_block_id, revision, created_at, removed_at \
-         ) VALUES (?1, ?2, ?3, 1, ?4, NULL)",
+         ) VALUES (?1, ?2, ?3, 1, ?4, NULL) \
+         ON CONFLICT(id) DO UPDATE SET removed_at = NULL, revision = revision + 1",
         params![
             membership_id,
             destination.data_source_id,
@@ -4145,6 +4223,11 @@ fn place_staged_page_in_data_source_with_access(
         )?;
     }
     if let (Some(placement), Some(_)) = (&destination.view, view) {
+        let expected_position_revision = connection.query_row(
+            "SELECT revision FROM database_view_page_positions WHERE view_id = ?1 AND page_block_id = ?2",
+            params![placement.view_id, staged_page_id],
+            |row| row.get::<_, i64>(0),
+        ).optional()?.unwrap_or(0);
         position_pages(
             connection,
             library_id,
@@ -4152,7 +4235,7 @@ fn place_staged_page_in_data_source_with_access(
             &placement.view_id,
             &[DatabasePagePosition {
                 page_id: staged_page_id.to_owned(),
-                expected_position_revision: 0,
+                expected_position_revision,
             }],
             placement
                 .before
@@ -4200,6 +4283,11 @@ fn place_staged_page_in_data_source_with_access(
     Ok(PageCopyDataSourcePlacement {
         database_id: source.database_id,
         data_source_id: source.id,
+        membership_revision: connection.query_row(
+            "SELECT revision FROM data_source_page_memberships WHERE id = ?1",
+            [&membership_id],
+            |row| row.get(0),
+        )?,
         membership_id,
         affected_view_ids: effects.view_ids.into_iter().collect(),
         location_revision,
@@ -4718,10 +4806,6 @@ fn transfer_page(
             library_scope,
         )?;
     }
-    let positioned_views = connection
-        .prepare("SELECT view_id FROM database_view_page_positions WHERE page_block_id = ?1")?
-        .query_map([page_id], |row| row.get::<_, String>(0))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
     if let Some(membership) = &active_membership {
         let relation_outcomes = super::relation::remove_membership_task_parent_edges(
             connection,
@@ -4751,11 +4835,9 @@ fn transfer_page(
             removed_revision,
         );
     }
-    connection.execute(
-        "DELETE FROM database_view_page_positions WHERE page_block_id = ?1",
-        [page_id],
-    )?;
-    effects.view_ids.extend(positioned_views);
+    effects
+        .view_ids
+        .extend(super::manual_order::forget_page(connection, page_id)?);
     connection.execute(
         "DELETE FROM library_block_placements WHERE block_id = ?1 AND library_id = ?2",
         params![page_id, library_id],
@@ -5159,6 +5241,7 @@ pub(crate) fn refresh_transferred_page_projection(
     target_data_source_id: Option<&str>,
     now: &str,
 ) -> Result<(), StoreError> {
+    super::manual_order::join_page(connection, page_id, now)?;
     let authority = connection
         .query_row(
             "SELECT block.library_id, block.lifecycle, block.placement_revision, \
@@ -5519,9 +5602,6 @@ fn put_view(
         .as_ref()
         .is_some_and(|view| view.data_source_id != data_source_id);
     let group_changed = existing.is_some() && existing_group != next_group;
-    if source_changed || group_changed {
-        clear_view_positions(connection, view_id, now)?;
-    }
     if source_changed {
         clear_view_projection(connection, view_id, now)?;
     }
@@ -5561,6 +5641,14 @@ fn put_view(
             now,
         ],
     )?;
+    if source_changed
+        || group_changed
+        || existing
+            .as_ref()
+            .is_some_and(|view| view.lifecycle != "active")
+    {
+        super::manual_order::reset_view(connection, view_id)?;
+    }
     if preserve_rank.is_none() {
         reorder_views(connection, database_id, view_id, before_view_id)?;
     }
@@ -5848,10 +5936,7 @@ fn delete_view(
         |row| row.get::<_, i64>(0),
     )?;
     clear_view_projection(connection, view_id, now)?;
-    connection.execute(
-        "DELETE FROM database_view_page_positions WHERE view_id = ?1",
-        [view_id],
-    )?;
+    super::manual_order::retire_view(connection, view_id)?;
     connection.execute(
         "UPDATE database_views SET lifecycle = 'deleted', revision = revision + 1, \
            updated_at = ?1 WHERE id = ?2",
@@ -5885,6 +5970,34 @@ fn position_pages(
     effects: &mut MutationEffects,
     library_scope: bool,
 ) -> Result<(), StoreError> {
+    position_page_runs(
+        connection,
+        library_id,
+        project_id,
+        view_id,
+        pages,
+        &[LogicalPositionRun {
+            page_ids: pages.iter().map(|page| page.page_id.clone()).collect(),
+            before_page_id: before_page_id.map(str::to_owned),
+        }],
+        now,
+        effects,
+        library_scope,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn position_page_runs(
+    connection: &Connection,
+    library_id: &str,
+    project_id: &str,
+    view_id: &str,
+    pages: &[DatabasePagePosition],
+    runs: &[LogicalPositionRun],
+    now: &str,
+    effects: &mut MutationEffects,
+    library_scope: bool,
+) -> Result<(), StoreError> {
     if pages.is_empty() || pages.len() > MAX_BULK_VALUES {
         return Err(invalid(format!(
             "View positioning requires between 1 and {MAX_BULK_VALUES} Pages"
@@ -5897,7 +6010,18 @@ fn position_pages(
     if page_ids.len() != pages.len() {
         return Err(invalid("View position Page IDs must be unique"));
     }
-    if before_page_id.is_some_and(|page_id| page_ids.contains(page_id)) {
+    let run_page_ids = runs
+        .iter()
+        .flat_map(|run| run.page_ids.iter().map(String::as_str))
+        .collect::<HashSet<_>>();
+    if run_page_ids != page_ids {
+        return Err(invalid("View runs must match the revision-fenced Page set"));
+    }
+    if runs.iter().any(|run| {
+        run.before_page_id
+            .as_deref()
+            .is_some_and(|page_id| page_ids.contains(page_id))
+    }) {
         return Err(invalid(
             "View position anchor must be outside the moved Page set",
         ));
@@ -5918,100 +6042,34 @@ fn position_pages(
     )?;
     let definition =
         super::view_contract::decode_definition_json(&view.config_json).map_err(corrupt)?;
-    let mut existing_revisions = std::collections::HashMap::new();
+    let order = super::manual_order::require_ready(connection, view_id)?;
     for page in pages {
         active_row_membership(connection, &view.data_source_id, &page.page_id)?;
-        let existing_revision = connection
-            .query_row(
-                "SELECT revision FROM database_view_page_positions \
-                 WHERE view_id = ?1 AND page_block_id = ?2",
-                params![view_id, page.page_id],
-                |row| row.get::<_, i64>(0),
-            )
-            .optional()?
-            .unwrap_or(0);
+        let existing_revision =
+            super::manual_order::position_revision(connection, &order, &page.page_id)?;
         require_revision(
             page.expected_position_revision,
             existing_revision,
             "Database View position revision changed",
         )?;
-        existing_revisions.insert(page.page_id.as_str(), existing_revision);
     }
 
-    let logical = read_logical_view(connection, &view, &page_ids)?;
     let descending = view_fractional_direction(&definition) == DatabaseViewSortDirection::Desc;
-    let moved_page_ids = pages
-        .iter()
-        .map(|page| page.page_id.clone())
-        .collect::<Vec<_>>();
-    let rank_plan = plan_position_run(&logical, &moved_page_ids, before_page_id, descending)
-        .map_err(view_position_plan_error)?;
-    let mut put = connection.prepare(
-        "INSERT INTO database_view_page_positions(\
-           view_id, page_block_id, rank_key, revision, created_at, updated_at\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?5) \
-         ON CONFLICT(view_id, page_block_id) DO UPDATE SET \
-           rank_key = excluded.rank_key, revision = excluded.revision, updated_at = excluded.updated_at",
-    )?;
-    for write in &rank_plan.sibling_writes {
-        match write.kind {
-            SiblingRankWriteKind::Materialize => {
-                put.execute(params![view_id, write.page_id, write.rank_key, 1, now,])?;
-            }
-            SiblingRankWriteKind::Rebalance => {
-                let updated = connection.execute(
-                    "UPDATE database_view_page_positions SET rank_key = ?1, updated_at = ?2 \
-                     WHERE view_id = ?3 AND page_block_id = ?4",
-                    params![write.rank_key, now, view_id, write.page_id],
-                )?;
-                if updated != 1 {
-                    return Err(corrupt(
-                        "Database View sibling position disappeared during rank maintenance",
-                    ));
-                }
-            }
-        }
-        connection.execute(
-            "UPDATE page_read_model SET view_rank_key = ?1, \
-               projection_version = projection_version + 1, updated_at = ?2 \
-             WHERE page_block_id = ?3 AND view_id = ?4",
-            params![write.rank_key, now, write.page_id, view_id],
-        )?;
-    }
+    let writes = super::manual_order::position_runs(connection, &order, runs, descending, now)?;
     for page in pages {
-        let rank_key = rank_plan
-            .moved_rank_keys
+        let write = writes
             .get(&page.page_id)
             .ok_or_else(|| corrupt("Database View rank plan omitted a moved Page"))?;
-        let current = connection
-            .query_row(
-                "SELECT revision, created_at FROM database_view_page_positions \
-                 WHERE view_id = ?1 AND page_block_id = ?2",
-                params![view_id, page.page_id],
-                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
-            )
-            .optional()?;
-        let revision = existing_revisions
-            .get(page.page_id.as_str())
-            .copied()
-            .unwrap_or(0)
-            + 1;
-        put.execute(params![
-            view_id,
-            page.page_id,
-            rank_key,
-            revision,
-            current.as_ref().map_or(now, |(_, created_at)| created_at),
-        ])?;
         connection.execute(
             "UPDATE page_read_model SET view_rank_key = ?1, \
                projection_version = projection_version + 1, updated_at = ?2 \
              WHERE page_block_id = ?3 AND view_id = ?4",
-            params![rank_key, now, page.page_id, view_id,],
+            params![write.rank_key, now, page.page_id, view_id,],
         )?;
-        effects
-            .revisions
-            .insert(format!("position:{view_id}:{}", page.page_id), revision);
+        effects.revisions.insert(
+            format!("position:{view_id}:{}", page.page_id),
+            write.revision,
+        );
     }
     for page in pages {
         let metadata_revision = bump_page_metadata_revision(connection, &page.page_id, now)?;
@@ -6160,6 +6218,7 @@ fn move_list_occurrences(
             library_scope,
         )?;
     }
+    let undo_recipe = super::list_drag::finish_list_inverse(connection, plan.undo_recipe)?;
     effects.database_ids.insert(plan.database_id);
     effects.data_source_ids.insert(plan.data_source_id);
     effects.view_ids.insert(plan.view_id);
@@ -6170,7 +6229,7 @@ fn move_list_occurrences(
             moved_page_ids: plan.moved_page_ids,
             move_root_page_ids: plan.move_root_page_ids,
             normalized_target: plan.normalized_target,
-            undo_recipe: Box::new(plan.undo_recipe),
+            undo_recipe: Box::new(undo_recipe),
         });
     Ok(())
 }
@@ -6179,13 +6238,15 @@ fn move_list_occurrences(
 fn undo_list_occurrence_move(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
+    authority: &DatabaseMutationAuthority,
     recipe: &DatabaseListMoveUndoRecipe,
     operation_index: u32,
     now: &str,
     effects: &mut MutationEffects,
-    library_scope: bool,
 ) -> Result<(), StoreError> {
+    data_history::authorize_list_recipe(connection, library_id, authority, recipe)?;
+    let project_id = authority.actor_project_id.as_str();
+    let library_scope = authority.is_library();
     let plan = super::list_drag::plan_list_occurrence_move_undo(connection, recipe)?;
     for edit in &plan.property_edits {
         edit_property_value(
@@ -6212,19 +6273,33 @@ fn undo_list_occurrence_move(
             library_scope,
         )?;
     }
-    for position_run in &plan.position_runs {
-        position_pages(
+    if !plan.position_runs.is_empty() {
+        let pages = plan
+            .position_runs
+            .iter()
+            .flat_map(|run| run.pages.iter().cloned())
+            .collect::<Vec<_>>();
+        let runs = plan
+            .position_runs
+            .iter()
+            .map(|run| LogicalPositionRun {
+                page_ids: run.pages.iter().map(|page| page.page_id.clone()).collect(),
+                before_page_id: run.before_page_id.clone(),
+            })
+            .collect::<Vec<_>>();
+        position_page_runs(
             connection,
             library_id,
             project_id,
             &plan.view_id,
-            &position_run.pages,
-            position_run.before_page_id.as_deref(),
+            &pages,
+            &runs,
             now,
             effects,
             library_scope,
         )?;
     }
+    let undo_recipe = super::list_drag::finish_list_inverse(connection, plan.undo_recipe)?;
     effects.view_ids.insert(plan.view_id);
     effects.data_source_ids.insert(plan.data_source_id);
     effects
@@ -6232,6 +6307,7 @@ fn undo_list_occurrence_move(
         .push(DatabaseOperationOutcome::ListOccurrenceMoveUndo {
             operation_index,
             restored_page_ids: plan.restored_page_ids,
+            undo_recipe: Box::new(undo_recipe),
         });
     Ok(())
 }
@@ -7037,57 +7113,6 @@ fn view_fractional_direction(definition: &DatabaseViewDefinition) -> DatabaseVie
         .unwrap_or(DatabaseViewSortDirection::Asc)
 }
 
-fn read_logical_view(
-    connection: &Connection,
-    view: &ViewRow,
-    excluded_page_ids: &HashSet<&str>,
-) -> Result<Vec<LogicalPositionItem>, StoreError> {
-    let rows = connection
-        .prepare(
-            "SELECT membership.id, membership.page_block_id, position.rank_key \
-             FROM data_source_page_memberships membership \
-             JOIN pages page ON page.block_id = membership.page_block_id \
-               AND page.parent_kind = 'data_source' AND page.parent_id = membership.data_source_id \
-             JOIN blocks block ON block.id = page.block_id \
-               AND block.library_id = page.library_id AND block.lifecycle = 'active' \
-             LEFT JOIN database_view_page_positions position \
-               ON position.view_id = ?1 AND position.page_block_id = membership.page_block_id \
-             WHERE membership.data_source_id = ?2 AND membership.removed_at IS NULL \
-             ORDER BY CASE WHEN position.rank_key IS NULL THEN 1 ELSE 0 END, \
-               position.rank_key, membership.page_block_id",
-        )?
-        .query_map(params![view.id, view.data_source_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, Option<String>>(2)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut result = Vec::new();
-    for (_membership_id, page_id, rank_key) in rows {
-        if excluded_page_ids.contains(page_id.as_str()) {
-            continue;
-        }
-        result.push(LogicalPositionItem { page_id, rank_key });
-    }
-    let definition =
-        super::view_contract::decode_definition_json(&view.config_json).map_err(corrupt)?;
-    if view_fractional_direction(&definition) == DatabaseViewSortDirection::Desc {
-        result.reverse();
-    }
-    Ok(result)
-}
-
-fn view_position_plan_error(error: PositionPlanError) -> StoreError {
-    match error {
-        PositionPlanError::InvalidInput(message) | PositionPlanError::AnchorNotFound(message) => {
-            invalid(message)
-        }
-        PositionPlanError::FractionalRank(error) => invalid(error.message),
-    }
-}
-
 fn active_row_membership(
     connection: &Connection,
     data_source_id: &str,
@@ -7138,23 +7163,6 @@ fn reorder_views(
     connection.execute(
         "UPDATE database_views SET rank_key = ?1 WHERE database_block_id = ?2 AND id = ?3",
         params![plan.rank_key, database_id, view_id],
-    )?;
-    Ok(())
-}
-
-fn clear_view_positions(
-    connection: &Connection,
-    view_id: &str,
-    now: &str,
-) -> Result<(), StoreError> {
-    connection.execute(
-        "DELETE FROM database_view_page_positions WHERE view_id = ?1",
-        [view_id],
-    )?;
-    connection.execute(
-        "UPDATE page_read_model SET view_group_key = NULL, view_rank_key = NULL, \
-           projection_version = projection_version + 1, updated_at = ?1 WHERE view_id = ?2",
-        params![now, view_id],
     )?;
     Ok(())
 }

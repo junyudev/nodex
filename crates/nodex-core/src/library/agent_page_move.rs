@@ -305,135 +305,139 @@ pub(super) fn execute_move_pages(
         })
         .transpose()?;
     let result = writer.call(move |connection| {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        super::mutation::assert_identity(&transaction, &profile_id, &library_id)?;
-        let store_epoch = read_store_epoch(&transaction)?;
-        if store_epoch != expected_store_epoch {
-            return Err(stale_epoch());
-        }
-        let request_hash = request_hash(
-            &context,
-            &store_epoch,
-            &authorization.authorization,
-            &move_request,
-        )?;
-        if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)? {
-            if stored.request_hash != request_hash {
-                return Err(reused());
+        let result = (|| {
+            let transaction =
+                connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            super::mutation::assert_identity(&transaction, &profile_id, &library_id)?;
+            let store_epoch = read_store_epoch(&transaction)?;
+            if store_epoch != expected_store_epoch {
+                return Err(stale_epoch());
             }
-            let mut committed = serde_json::from_value::<
-                crate::ModuleWriterResult<
-                    nodex_core_contracts::library::LibraryCommitValue,
-                    nodex_core_contracts::library::LibraryReceipt,
-                >,
-            >(stored.result)
-            .map_err(|_| corrupt("Stored Agent Page-move receipt is invalid"))?;
-            if committed.value.agent_move_pages.is_none() {
-                return Err(corrupt("Stored Library receipt is not an Agent Page move"));
+            let request_hash = request_hash(
+                &context,
+                &store_epoch,
+                &authorization.authorization,
+                &move_request,
+            )?;
+            if let Some(stored) = read_module_receipt(&transaction, MODULE_NAME, &operation_id)? {
+                if stored.request_hash != request_hash {
+                    return Err(reused());
+                }
+                let mut committed = serde_json::from_value::<
+                    crate::ModuleWriterResult<
+                        nodex_core_contracts::library::LibraryCommitValue,
+                        nodex_core_contracts::library::LibraryReceipt,
+                    >,
+                >(stored.result)
+                .map_err(|_| corrupt("Stored Agent Page-move receipt is invalid"))?;
+                if committed.value.agent_move_pages.is_none() {
+                    return Err(corrupt("Stored Library receipt is not an Agent Page move"));
+                }
+                committed.receipt.mutation.duplicate = true;
+                transaction.commit()?;
+                return Ok((
+                    LibraryApplyOutcome {
+                        committed,
+                        event: None,
+                    },
+                    None,
+                ));
             }
-            committed.receipt.mutation.duplicate = true;
-            transaction.commit()?;
-            return Ok((
-                LibraryApplyOutcome {
-                    committed,
-                    event: None,
+            let mut preflight = prepared_preflight.ok_or_else(|| {
+                corrupt("Agent Page move lost its execution preparation before commit")
+            })?;
+            revalidate_preflight(
+                &transaction,
+                &context,
+                &library_id,
+                &authorization.authorization,
+                &move_request,
+                &preflight,
+            )?;
+            let lease = prepared_lease.ok_or_else(stale_token)?;
+            let mut agent_context = context.clone();
+            agent_context.adapter = AdapterKind::Agent;
+            let committed_at = sqlite_now(&transaction)?;
+            let committed = durable_mutation::run(
+                &transaction,
+                OperationIdentity {
+                    module: ModuleName::Library,
+                    module_name: "library",
+                    operation_id: &operation_id,
+                    intent_hash: &request_hash,
+                    store_epoch: &store_epoch,
+                    committed_at: &committed_at,
+                    context: &agent_context,
                 },
-                None,
-            ));
-        }
-        let mut preflight = prepared_preflight.ok_or_else(|| {
-            corrupt("Agent Page move lost its execution preparation before commit")
-        })?;
-        revalidate_preflight(
-            &transaction,
-            &context,
-            &library_id,
-            &authorization.authorization,
-            &move_request,
-            &preflight,
-        )?;
-        let lease = prepared_lease.ok_or_else(stale_token)?;
-        let mut agent_context = context.clone();
-        agent_context.adapter = AdapterKind::Agent;
-        let committed_at = sqlite_now(&transaction)?;
-        let committed = durable_mutation::run(
-            &transaction,
-            OperationIdentity {
-                module: ModuleName::Library,
-                module_name: "library",
-                operation_id: &operation_id,
-                intent_hash: &request_hash,
-                store_epoch: &store_epoch,
-                committed_at: &committed_at,
-                context: &agent_context,
-            },
-            |scope| {
-                let execution = apply_pages(
-                    &transaction,
-                    scope,
-                    &agent_context,
-                    &library_id,
-                    &operation_id,
-                    &store_epoch,
-                    &move_request,
-                    &mut preflight,
-                    &authorization.authorization,
-                    &assets_root,
-                    &committed_at,
-                )?;
-                let document_batch = execution.document_batch;
-                seal_mutation_with(
-                    scope,
-                    &agent_context,
-                    &operation_id,
-                    MutationEffects {
-                        page_file_entries: Vec::new(),
-                        file_revisions: BTreeMap::new(),
-                        file_mutation: Default::default(),
-                        project_id: preflight.actor_project_id,
-                        operation_kind: "agent_move_pages",
-                        change_kind: "library.changed",
-                        did_mutate: true,
-                        created_target: None,
-                        affected_parent_keys: execution.affected_parent_keys,
-                        affected_block_ids: move_request.page_ids.clone(),
-                        affected_page_ids: execution.affected_page_ids,
-                        affected_database_ids: execution.result.affected_database_ids.clone(),
-                        affected_view_ids: execution.affected_view_ids,
-                        affected_document_ids: execution.affected_document_ids,
-                        committed_revisions: execution.committed_revisions,
-                        page_create: None,
-                        page_copy: None,
-                        canvas_mutation: None,
-                        block_transfer: None,
-                        block_transfer_undo: None,
-                        page_relocation_undo: None,
-                        structural_edit: None,
-                        page_lifecycle: None,
-                        block_property_mutation: None,
-                        agent_page_copy: None,
-                        agent_create_pages: None,
-                        agent_move_pages: Some(execution.result),
-                        change_payload: None,
-                        committed_at: execution.committed_at,
-                    },
-                    |_, event_sequence| {
-                        super::block_transfer::persist_agent_page_document_batch_checkpoints(
-                            &transaction,
-                            &agent_context,
-                            &operation_id,
-                            &agent_actor(&authorization.authorization),
-                            &document_batch,
-                            event_sequence,
-                            &committed_at,
-                        )
-                    },
-                )
-            },
-        )?;
-        let outcome = library_commit_result(&transaction, committed)?;
-        transaction.commit()?;
-        Ok((outcome, Some(lease)))
+                |scope| {
+                    let execution = apply_pages(
+                        &transaction,
+                        scope,
+                        &agent_context,
+                        &library_id,
+                        &operation_id,
+                        &store_epoch,
+                        &move_request,
+                        &mut preflight,
+                        &authorization.authorization,
+                        &assets_root,
+                        &committed_at,
+                    )?;
+                    let document_batch = execution.document_batch;
+                    seal_mutation_with(
+                        scope,
+                        &agent_context,
+                        &operation_id,
+                        MutationEffects {
+                            page_file_entries: Vec::new(),
+                            file_revisions: BTreeMap::new(),
+                            file_mutation: Default::default(),
+                            project_id: preflight.actor_project_id,
+                            operation_kind: "agent_move_pages",
+                            change_kind: "library.changed",
+                            did_mutate: true,
+                            created_target: None,
+                            affected_parent_keys: execution.affected_parent_keys,
+                            affected_block_ids: move_request.page_ids.clone(),
+                            affected_page_ids: execution.affected_page_ids,
+                            affected_database_ids: execution.result.affected_database_ids.clone(),
+                            affected_view_ids: execution.affected_view_ids,
+                            affected_document_ids: execution.affected_document_ids,
+                            committed_revisions: execution.committed_revisions,
+                            page_create: None,
+                            page_copy: None,
+                            canvas_mutation: None,
+                            block_transfer: None,
+                            block_transfer_undo: None,
+                            page_relocation_undo: None,
+                            structural_edit: None,
+                            page_lifecycle: None,
+                            block_property_mutation: None,
+                            agent_page_copy: None,
+                            agent_create_pages: None,
+                            agent_move_pages: Some(execution.result),
+                            change_payload: None,
+                            committed_at: execution.committed_at,
+                        },
+                        |_, event_sequence| {
+                            super::block_transfer::persist_agent_page_document_batch_checkpoints(
+                                &transaction,
+                                &agent_context,
+                                &operation_id,
+                                &agent_actor(&authorization.authorization),
+                                &document_batch,
+                                event_sequence,
+                                &committed_at,
+                            )
+                        },
+                    )
+                },
+            )?;
+            let outcome = library_commit_result(&transaction, committed)?;
+            transaction.commit()?;
+            Ok((outcome, Some(lease)))
+        })();
+        crate::database::finish_order_attempt(connection, result)
     })?;
     if let Some(lease) = result.1 {
         lease.consume()?;

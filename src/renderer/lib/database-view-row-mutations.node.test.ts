@@ -330,7 +330,7 @@ describe("selected Database View Page mutations", () => {
     });
   });
 
-  test("retains the exact request identity across one transport retry", async () => {
+  test("preserves the owner's identity and returns uncertain delivery without an independent retry", async () => {
     const requests: string[] = [];
     let calls = 0;
     const operations = buildDatabaseViewPropertyValueOperations({
@@ -359,27 +359,32 @@ describe("selected Database View Page mutations", () => {
         committedAt: timestamp,
       },
     } satisfies DatabaseApplyResultV2;
-    const receipt = await commitDatabaseViewOperations({
-      model: model(),
-      operations,
-      dependencies: {
-        applyProject: async (_projectId, request) => {
-          requests.push(JSON.stringify(request));
-          calls += 1;
-          if (calls === 1) throw new Error("transport lost ACK");
-          return {
-            ...result,
-            value: { ...result.value, operationId: request.operationId },
-          };
+    const submit = () =>
+      commitDatabaseViewOperations({
+        model: model(),
+        operations,
+        operationId: "owner-operation",
+        dependencies: {
+          applyProject: async (_projectId, request) => {
+            requests.push(JSON.stringify(request));
+            calls += 1;
+            if (calls === 1) throw new Error("transport lost ACK");
+            return {
+              ...result,
+              value: { ...result.value, operationId: request.operationId },
+            };
+          },
+          applyLibrary: async () => {
+            throw new Error("Unexpected Library authority");
+          },
         },
-        applyLibrary: async () => {
-          throw new Error("Unexpected Library authority");
-        },
-      },
-    });
+      });
+    await expect(submit()).rejects.toThrow("transport lost ACK");
+    expect(requests).toHaveLength(1);
+    const receipt = await submit();
     expect(requests).toHaveLength(2);
     expect(requests[0]).toBe(requests[1]);
-    expect(receipt?.operationId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(receipt?.operationId).toBe("owner-operation");
   });
 
   test("uses the Library apply contract without a synthetic Project", async () => {

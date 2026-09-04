@@ -43,6 +43,7 @@ const recoveryKinds = {
   current_revision: true,
   current_document_head: true,
   supported_schema: true,
+  database_view_order_preparation: true,
 } satisfies Record<CoreRecovery["kind"], true>;
 
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -92,6 +93,10 @@ const parseRecovery = (value: unknown): CoreRecovery => {
     case "current_store_epoch":
       if (typeof value.store_epoch === "string" && value.store_epoch.length > 0)
         return { kind: value.kind, store_epoch: value.store_epoch };
+      break;
+    case "database_view_order_preparation":
+      if (typeof value.view_id === "string" && value.view_id.length > 0)
+        return { kind: value.kind, view_id: value.view_id };
       break;
     case "current_revision":
       if (uint(value.revision)) return { kind: value.kind, revision: value.revision };

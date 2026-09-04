@@ -200,6 +200,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 152,
         apply: migrate_v151_to_v152,
     },
+    MigrationStep {
+        from_revision: 152,
+        to_revision: 159,
+        apply: migrate_v152_to_v159,
+    },
 ];
 
 fn resolve_migration_path(
@@ -467,8 +472,7 @@ fn unsupported_schema(version: i64) -> StoreError {
     StoreError::new(
         StoreErrorCode::UnsupportedSchema,
         format!(
-            "Rust Core accepts the current v{CURRENT_STORE_REVISION} Store or migrates revisions v{BASELINE_STORE_REVISION} through v{}; received v{version}",
-            CURRENT_STORE_REVISION - 1
+            "Rust Core accepts the current v{CURRENT_STORE_REVISION} Store or a published predecessor with a registered migration path; received v{version}"
         ),
         false,
     )
@@ -1997,6 +2001,29 @@ fn migrate_v151_to_v152(
             context.backup_name,
             context.completed_at_unix_ms,
             evidence,
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v152_to_v159(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v152_to_v159.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(
+           source_revision, target_revision, source_schema_fingerprint,
+           target_schema_fingerprint, backup_name, completed_at_unix_ms, evidence_json
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, json_object('surface_history_and_complete_view_order', 1))",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms
         ],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
@@ -3533,12 +3560,16 @@ mod tests {
     }
 
     fn install_v148_fixture(home: &Path) {
+        install_intermediate_fixture(home, 148);
+    }
+
+    fn install_intermediate_fixture(home: &Path, target_revision: i64) {
         install_v136_fixture(home);
         let mut connection = open_writer(&home.join("nodex.db")).expect("v136 writer");
         with_schema_rebuild_transaction(&mut connection, |transaction| {
             for step in MIGRATION_STEPS
                 .iter()
-                .filter(|step| step.from_revision >= 136 && step.to_revision <= 148)
+                .filter(|step| step.from_revision >= 136 && step.to_revision <= target_revision)
             {
                 let source = published_format(step.from_revision)?;
                 let target = published_format(step.to_revision)?;
@@ -3547,7 +3578,7 @@ mod tests {
                     &MigrationContext {
                         source_revision: step.from_revision,
                         target_revision: step.to_revision,
-                        backup_name: "published-v148-fixture.db".to_owned(),
+                        backup_name: format!("published-v{target_revision}-fixture.db"),
                         source_schema_fingerprint: source.schema_fingerprint,
                         target_schema_fingerprint: target.schema_fingerprint,
                         completed_at_unix_ms: 1,
@@ -3557,35 +3588,11 @@ mod tests {
             }
             Ok(())
         })
-        .expect("published v148 fixture");
+        .expect("published intermediate fixture");
     }
 
     fn install_v151_fixture(home: &Path) {
-        install_v136_fixture(home);
-        let mut connection = open_writer(&home.join("nodex.db")).expect("v136 writer");
-        with_schema_rebuild_transaction(&mut connection, |transaction| {
-            for step in MIGRATION_STEPS
-                .iter()
-                .filter(|step| step.from_revision >= 136 && step.to_revision <= 151)
-            {
-                let source = published_format(step.from_revision)?;
-                let target = published_format(step.to_revision)?;
-                (step.apply)(
-                    transaction,
-                    &MigrationContext {
-                        source_revision: step.from_revision,
-                        target_revision: step.to_revision,
-                        backup_name: "published-v151-fixture.db".to_owned(),
-                        source_schema_fingerprint: source.schema_fingerprint,
-                        target_schema_fingerprint: target.schema_fingerprint,
-                        completed_at_unix_ms: 1,
-                    },
-                )?;
-                validate_schema_identity(transaction, step.to_revision)?;
-            }
-            Ok(())
-        })
-        .expect("published v151 fixture");
+        install_intermediate_fixture(home, 151);
     }
 
     fn profile_secrets(connection: &Connection) -> (Vec<u8>, String) {
@@ -3890,7 +3897,11 @@ mod tests {
                 .schema_fingerprint
         );
         assert!(history.iter().all(|row| row.4 == history[0].4));
-        assert!(history[0].4.starts_with("v130-to-v152-"));
+        assert!(
+            history[0]
+                .4
+                .starts_with(&format!("v130-to-v{CURRENT_STORE_REVISION}-"))
+        );
         assert!(history[0].4.ends_with(".db"));
         assert!(history.iter().all(|row| row.5 > 0));
         let backup_path = directory
@@ -4096,8 +4107,11 @@ mod tests {
                 },
             )
             .expect("v136 migration history");
-        assert_eq!((source_revision, target_revision), (151, 152));
-        assert!(backup_name.starts_with("v136-to-v152-"));
+        assert_eq!(
+            (source_revision, target_revision),
+            (152, CURRENT_STORE_REVISION)
+        );
+        assert!(backup_name.starts_with(&format!("v136-to-v{CURRENT_STORE_REVISION}-")));
         let backup_path = directory
             .path()
             .join("backups/core-migrations")
@@ -4125,6 +4139,31 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn exact_v152_predecessor_adds_ephemeral_history_without_replacing_file_identity() {
+        let directory = tempdir().expect("Profile");
+        install_intermediate_fixture(directory.path(), 152);
+        let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
+        validate_schema_identity(&connection, 152).expect("published independent File Store");
+        let secrets = profile_secrets(&connection);
+        let preparation =
+            prepare_profile_store(&mut connection, directory.path()).expect("migrate");
+        assert_eq!(preparation.migrated_from_version, Some(152));
+        assert_eq!(preparation.schema_version, CURRENT_STORE_REVISION);
+        validate_current_store(&connection).expect("current Store");
+        assert_eq!(profile_secrets(&connection), secrets);
+        let owners: i64 = connection
+            .query_row("SELECT count(*) FROM editor_history_owners", [], |row| {
+                row.get(0)
+            })
+            .expect("owners");
+        assert_eq!(owners, 0);
+        let history: i64 = connection.query_row("SELECT count(*) FROM core_store_migration_history WHERE source_revision = 152 AND target_revision = 159", [], |row| row.get(0)).expect("migration evidence");
+        assert_eq!(history, 1);
+        let reopened = prepare_profile_store(&mut connection, directory.path()).expect("reopen");
+        assert_eq!(reopened.migrated_from_version, None);
     }
 
     #[test]
@@ -4909,6 +4948,253 @@ mod tests {
     }
 
     #[test]
+    fn complete_order_migration_preserves_sparse_positions_without_materializing_members() {
+        let profile = tempdir().expect("Profile");
+        install_intermediate_fixture(profile.path(), 152);
+        let database_path = profile.path().join("nodex.db");
+        let mut connection = open_writer(&database_path).expect("predecessor");
+        // Storage-shape fixture: only the coordinates read by this metadata migration matter.
+        connection
+            .pragma_update(None, "foreign_keys", false)
+            .unwrap();
+        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+            &connection,
+        )
+        .unwrap();
+        let membership_guard: String = connection.query_row(
+            "SELECT sql FROM sqlite_schema WHERE name = 'data_source_memberships_require_page_parent_insert'",
+            [], |row| row.get(0),
+        ).unwrap();
+        connection
+            .execute_batch("DROP TRIGGER data_source_memberships_require_page_parent_insert")
+            .unwrap();
+        connection.execute_batch(
+            "INSERT INTO database_views(id, database_block_id, data_source_id, name, layout, rank_key, created_at, updated_at) \
+             VALUES ('order-view', 'database', 'source', 'Order', 'list', 'a', 'created', 'updated'); \
+             INSERT INTO data_source_page_memberships(id, data_source_id, page_block_id, created_at) \
+             VALUES ('membership', 'source', 'page', 'created'); \
+             INSERT INTO database_view_page_positions(view_id, page_block_id, rank_key, revision, created_at, updated_at) \
+             VALUES ('order-view', 'page', 'legacy-rank', 7, 'created', 'updated');"
+        ).expect("sparse predecessor");
+        connection
+            .execute_batch(&membership_guard)
+            .expect("restore predecessor guard");
+        with_immediate_transaction(&mut connection, |transaction| {
+            migrate_v152_to_v159(
+                transaction,
+                &MigrationContext {
+                    source_revision: 152,
+                    target_revision: 159,
+                    backup_name: "complete-order-fixture".into(),
+                    source_schema_fingerprint: published_format(152)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(159)?.schema_fingerprint,
+                    completed_at_unix_ms: 1,
+                },
+            )
+        })
+        .expect("metadata migration");
+        validate_schema_identity(&connection, 159).expect("published schema");
+        let state: (Option<i64>, i64, String, i64) = connection.query_row(
+            "SELECT active_generation, pending_generation, phase, semantic_reset_epoch FROM database_view_order_state WHERE view_id = 'order-view'",
+            [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        ).unwrap();
+        assert_eq!(state, (None, 1, "explicit".into(), 1));
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM database_view_order_rows", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            0
+        );
+        assert!(
+            connection
+                .execute(
+                    "UPDATE database_view_page_positions SET rank_key = 'changed'",
+                    []
+                )
+                .is_err()
+        );
+        drop(connection);
+        let reopened = open_writer(&database_path).expect("reopen migrated storage");
+        validate_schema_identity(&reopened, 159).expect("reopened schema identity");
+        let retained: (String, i64, String, String) = reopened.query_row(
+            "SELECT rank_key, revision, created_at, updated_at FROM database_view_page_positions WHERE view_id = 'order-view' AND page_block_id = 'page'",
+            [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        ).unwrap();
+        assert_eq!(
+            retained,
+            ("legacy-rank".into(), 7, "created".into(), "updated".into())
+        );
+        assert_eq!(reopened.query_row("SELECT count(*) FROM core_store_migration_history WHERE source_revision = 152 AND target_revision = 159", [], |row| row.get::<_, i64>(0)).unwrap(), 1);
+    }
+
+    #[test]
+    fn complete_order_predecessor_reopens_without_repeating_migration() {
+        let profile = tempdir().expect("Profile");
+        install_intermediate_fixture(profile.path(), 152);
+        let database_path = profile.path().join("nodex.db");
+        let mut connection = open_writer(&database_path).expect("predecessor");
+        let migrated =
+            prepare_profile_store(&mut connection, profile.path()).expect("migrate predecessor");
+        assert_eq!(migrated.migrated_from_version, Some(152));
+        validate_current_store(&connection).expect("valid current Store");
+        drop(connection);
+        let mut reopened = open_writer(&database_path).expect("reopen");
+        let preparation =
+            prepare_profile_store(&mut reopened, profile.path()).expect("reopen Profile");
+        assert_eq!(preparation.migrated_from_version, None);
+        assert_eq!(preparation.schema_version, 159);
+        validate_current_store(&reopened).expect("valid reopened Store");
+    }
+
+    #[test]
+    fn ledger_body_migration_preserves_inline_evidence_for_resumable_collection() {
+        let profile = tempdir().expect("Profile");
+        install_intermediate_fixture(profile.path(), 152);
+        let mut connection = open_writer(&profile.path().join("nodex.db")).expect("predecessor");
+        connection
+            .pragma_update(None, "foreign_keys", false)
+            .unwrap();
+        connection.execute("INSERT OR IGNORE INTO block_store_metadata VALUES (1, 'epoch', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')", []).unwrap();
+        let epoch: String = connection
+            .query_row("SELECT store_epoch FROM block_store_metadata", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let body = serde_json::json!({ "body": "正文".repeat(100_000) }).to_string();
+        connection.execute(
+            "INSERT INTO block_mutations(mutation_id, project_id, store_epoch, mutation_kind, request_hash, request_json, outcome, result_json, recorded_at) \
+             VALUES ('legacy-ledger', 'project', ?1, 'block_transfer', ?2, ?3, 'rejected', ?3, '2026-01-01T00:00:00Z')",
+            params![epoch, crate::document::sha256(body.as_bytes()), body],
+        ).unwrap();
+        with_immediate_transaction(&mut connection, |transaction| {
+            migrate_v152_to_v159(
+                transaction,
+                &MigrationContext {
+                    source_revision: 152,
+                    target_revision: 159,
+                    backup_name: "fixture".into(),
+                    source_schema_fingerprint: published_format(152)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(159)?.schema_fingerprint,
+                    completed_at_unix_ms: 1,
+                },
+            )
+        })
+        .expect("metadata-only migration");
+        validate_schema_identity(&connection, 159).expect("published schema");
+        let retained: (String, String) = connection.query_row("SELECT request_json, result_json FROM block_mutations WHERE mutation_id = 'legacy-ledger'", [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
+        assert_eq!(retained, (body.clone(), body));
+        assert!(
+            !connection
+                .query_row(
+                    "SELECT complete FROM block_mutation_body_backfill",
+                    [],
+                    |row| row.get::<_, bool>(0)
+                )
+                .unwrap()
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM block_mutation_body_gc", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn history_payload_migration_keeps_bodies_inline_until_resumable_maintenance() {
+        let profile = tempdir().expect("Profile");
+        install_intermediate_fixture(profile.path(), 152);
+        let mut connection = open_writer(&profile.path().join("nodex.db")).expect("predecessor");
+        connection
+            .pragma_update(None, "foreign_keys", false)
+            .expect("historical storage fixture");
+        let body =
+            serde_json::json!({"action": {"kind": "fixture"}, "content": "正文".repeat(100_000)})
+                .to_string();
+        let hash = crate::document::sha256(body.as_bytes());
+        connection.execute(
+            "INSERT INTO structural_history_recipes(recipe_operation_id, library_id, project_id, store_epoch, recipe_hash, recipe_json, state, created_at) \
+             VALUES ('migration-payload', 'library', 'project', 'epoch', ?1, ?2, 'available', '2026-01-01T00:00:00Z')",
+            params![hash, body],
+        ).expect("inline source");
+        with_immediate_transaction(&mut connection, |transaction| {
+            migrate_v152_to_v159(
+                transaction,
+                &MigrationContext {
+                    source_revision: 152,
+                    target_revision: 159,
+                    backup_name: "fixture".into(),
+                    source_schema_fingerprint: published_format(152)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(159)?.schema_fingerprint,
+                    completed_at_unix_ms: 1,
+                },
+            )
+        })
+        .expect("metadata-only migration");
+        validate_schema_identity(&connection, 159).expect("published schema");
+        let unchanged: (String, String) = connection.query_row(
+            "SELECT recipe_hash, payload_ref_json FROM structural_history_recipes WHERE recipe_operation_id = 'migration-payload'",
+            [], |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+        assert_eq!(unchanged, (hash, body));
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM structural_history_payloads",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        assert!(
+            !connection
+                .query_row(
+                    "SELECT complete FROM structural_history_payload_backfill",
+                    [],
+                    |row| row.get::<_, bool>(0)
+                )
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn unpublished_source_is_rejected_without_backup_or_mutation() {
+        let directory = tempdir().expect("Profile");
+        install_intermediate_fixture(directory.path(), 152);
+        let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
+        connection
+            .pragma_update(None, "user_version", 153)
+            .expect("unpublished revision");
+        let inventory =
+            super::super::schema::read_schema_inventory(&connection).expect("inventory");
+        let secrets = profile_secrets(&connection);
+        let mut events = Vec::new();
+        let error =
+            prepare_profile_store_with_observer(&mut connection, directory.path(), &mut |event| {
+                events.push(event)
+            })
+            .expect_err("unpublished Store must be rejected");
+        assert_eq!(error.code, StoreErrorCode::UnsupportedSchema);
+        assert!(events.is_empty());
+        assert!(!directory.path().join("backups").exists());
+        assert_eq!(
+            connection
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            153
+        );
+        assert_eq!(
+            super::super::schema::read_schema_inventory(&connection).expect("unchanged inventory"),
+            inventory
+        );
+        assert_eq!(profile_secrets(&connection), secrets);
+    }
+
+    #[test]
     fn unsupported_or_drifted_source_fails_before_backup() {
         let unsupported = tempdir().expect("unsupported Profile");
         install_baseline_fixture(unsupported.path());
@@ -5149,8 +5435,10 @@ mod tests {
         install_baseline_fixture(non_file.path());
         let backup_directory = non_file.path().join("backups/core-migrations");
         fs::create_dir_all(&backup_directory).expect("backup directory");
-        fs::create_dir(backup_directory.join(".v130-to-v152.pending.db"))
-            .expect("non-file pending candidate");
+        fs::create_dir(
+            backup_directory.join(format!(".v130-to-v{CURRENT_STORE_REVISION}.pending.db")),
+        )
+        .expect("non-file pending candidate");
         let mut connection = open_writer(&non_file.path().join("nodex.db")).expect("writer");
         let error = prepare_profile_store(&mut connection, non_file.path())
             .expect_err("non-file pending backup must fail");
@@ -5312,11 +5600,22 @@ mod tests {
     }
 
     #[test]
-    fn migration_registry_is_contiguous_and_forward_only() {
-        assert_eq!(
-            i64::try_from(MIGRATION_STEPS.len()).expect("migration count fits i64"),
-            CURRENT_STORE_REVISION - BASELINE_STORE_REVISION
-        );
+    fn migration_registry_covers_every_published_source_and_is_forward_only() {
+        for format in nodex_store_format::PUBLISHED_STORE_FORMATS {
+            if i64::from(format.revision) == CURRENT_STORE_REVISION {
+                continue;
+            }
+            assert!(
+                resolve_migration_path(
+                    i64::from(format.revision),
+                    CURRENT_STORE_REVISION,
+                    MIGRATION_STEPS
+                )
+                .is_some(),
+                "Published Store v{} has no upgrade path",
+                format.revision
+            );
+        }
         for (index, step) in MIGRATION_STEPS.iter().enumerate() {
             assert!(step.from_revision < step.to_revision);
             if let Some(next) = MIGRATION_STEPS.get(index + 1) {

@@ -135,8 +135,10 @@ pub fn core_compatibility_manifest() -> CoreCompatibilityManifest {
             .collect(),
         store: StoreFormatSupport {
             readable: vec![store_format(CURRENT_STORE_VERSION).expect("current Store format")],
-            migratable: (MIN_SUPPORTED_STORE_REVISION..CURRENT_STORE_VERSION)
-                .map(|version| store_format(version).expect("supported Store format"))
+            migratable: nodex_store_format::PUBLISHED_STORE_FORMATS
+                .iter()
+                .filter(|format| format.revision != CURRENT_STORE_VERSION)
+                .map(|format| store_format(format.revision).expect("published Store format"))
                 .collect(),
             current: store_format(CURRENT_STORE_VERSION).expect("current Store format"),
         },
@@ -1313,6 +1315,22 @@ mod tests {
             ),
             Ok(()),
         );
+    }
+
+    #[test]
+    fn migration_advertisement_does_not_infer_support_for_unpublished_revisions() {
+        let manifest = core_compatibility_manifest();
+        let advertised = manifest
+            .store
+            .migratable
+            .iter()
+            .map(|format| format.version)
+            .collect::<Vec<_>>();
+        assert_eq!(advertised, (130..=152).collect::<Vec<_>>());
+        assert_eq!(manifest.store.readable, vec![manifest.store.current]);
+        for revision in 153..159 {
+            assert_eq!(store_format(revision), None);
+        }
     }
 
     #[test]

@@ -76,14 +76,27 @@ The authoring preview is deliberately visible but non-authoritative.
 
 ## Undo
 
-Every successful Block → Page transfer can return an opaque Undo token, whether shorthand was applied or the title stayed literal.
-Core persists the inverse recipe with the durable transfer mutation; the renderer keeps only the bounded token in the active Database View session.
-List reorders and Block promotions share one chronological session history, so Command/Ctrl+Z reverses the latest Database View action after Board/List layout changes.
-The success notification invokes that same history rather than retaining a separate callback snapshot.
+Core persists the inverse recipe with the durable Block → Page mutation and
+explicitly identifies batches with a complete symmetric capability. Those
+promotions and List reorders share one chronological session history, so
+Command/Ctrl+Z reverses the latest eligible Database View action after Board/List
+layout changes. The success notification invokes that same history rather than
+retaining a separate callback snapshot. A batch without a complete inverse leaves
+a barrier and no notification Undo action; the unused one-way token is released.
 
-Move Undo removes the promoted Page ownership, membership, values, position, and owned Document, then restores the original source Block tree and rich title in one durable mutation.
-Copy Undo removes only the copied ownership closure and leaves the source unchanged.
-Tag options created solely by the transfer are removed and the Tags schema is restored when the batch is undone.
+Move Undo removes the promoted Page from its destination and restores the original source Block tree and rich title in one durable mutation.
+Copy Undo removes only the copied Page from its destination and leaves the source unchanged.
+The explicit Core-only single-direction transfer Undo can also remove tag options
+created solely by the transfer and restore the Tags schema. That capability is
+not admitted into interactive surface history without complete symmetric coverage.
+
+Core separately returns a structural `history` capability for a complete
+symmetric inverse. It retains the same Page, Document, membership, Page Key,
+Property values and manual positions across repeated Undo and Redo. Schema
+changes and Relation-carrying batches do not advertise that capability; their
+explicit transfer Undo token must not be treated as a promise of symmetric
+surface history. Required destination access, schema and Relation evidence,
+Document heads and File versions are checked before replay changes content.
 
 Undo is revision-fenced.
 Core rejects the entire inverse mutation if the source Document, promoted Page, target projection, relevant schema, or created tag options changed after promotion.

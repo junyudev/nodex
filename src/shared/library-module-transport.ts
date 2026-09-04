@@ -26,6 +26,7 @@ import {
   MAX_LIBRARY_QUERY_LENGTH,
   MAX_LIBRARY_PROJECT_ACCESS_CHANGES,
   MAX_LIBRARY_READ_LIMIT,
+  MAX_STRUCTURAL_HISTORY_RECONCILIATION_TOKENS,
   type LibraryCatalogEntry,
   type LibraryCanvasDestination,
   type LibraryCanvasTarget,
@@ -50,6 +51,7 @@ import {
   type LibraryRouteTarget,
   type LibraryResourceTarget,
   type LibraryStructuralReplacementBlock,
+  type LibraryStructuralHistoryState,
   type LibraryWriteParent,
 } from "./library-module";
 import { isWorkflowStatus } from "./workflow-status";
@@ -62,6 +64,7 @@ import {
 } from "./project-appearance";
 import { assertUuidV7 } from "./uuid-v7";
 import { canonicalizePortableRichText } from "./block-documents/portable-rich-text";
+import type { BlockHistoryPatch, BlockHistoryState } from "./block-documents/block-history-patch";
 
 const MAX_ID_LENGTH = 512;
 const MAX_TITLE_LENGTH = 1_000_000;
@@ -373,6 +376,44 @@ const parseStructuralReplacementBlocks = (value: unknown, label: string) => {
   const blocks = value.map((block, index) => parseBlock(block, `${label}[${index}]`, 0));
   parseStructuralJson(blocks, label);
   return blocks;
+};
+
+const parseEditorHistoryPatch = (value: unknown): BlockHistoryPatch => {
+  const label = "libraryModuleApply.operation.command.patch";
+  const patch = record(value, label);
+  exactKeys(patch, label, ["changes"]);
+  if (
+    !Array.isArray(patch.changes) ||
+    patch.changes.length === 0 ||
+    patch.changes.length > MAX_STRUCTURAL_ROOTS
+  )
+    throw new TypeError(`${label} must contain a bounded local edit group`);
+  const state = (value: unknown): BlockHistoryState | null => {
+    if (value === null) return null;
+    const fields = record(value, label);
+    exactKeys(fields, label, ["type", "props", "content", "parentBlockId", "beforeBlockId"]);
+    return {
+      type: string(fields.type, `${label}.type`, 128),
+      props: parseStructuralJson(record(fields.props, label), label) as BlockHistoryState["props"],
+      content: parseStructuralJson(fields.content, label) as BlockHistoryState["content"],
+      parentBlockId:
+        fields.parentBlockId === null ? null : string(fields.parentBlockId, label, MAX_ID_LENGTH),
+      beforeBlockId:
+        fields.beforeBlockId === null ? null : string(fields.beforeBlockId, label, MAX_ID_LENGTH),
+    };
+  };
+  const changes = patch.changes.map((value) => {
+    const change = record(value, label);
+    exactKeys(change, label, ["blockId", "before", "after"]);
+    return {
+      blockId: string(change.blockId, label, MAX_ID_LENGTH),
+      before: state(change.before),
+      after: state(change.after),
+    };
+  });
+  if (new TextEncoder().encode(JSON.stringify(changes)).byteLength > 8 * 1024 * 1024)
+    throw new TypeError(`${label} exceeds its byte bound`);
+  return { changes };
 };
 
 const parseStructuralTurnIntoTarget = (value: unknown, label: string) => {
@@ -1264,6 +1305,76 @@ export const bindLibraryModuleApply = (value: unknown): LibraryModuleApplyReques
   if (operation.kind === "apply_structural_edit") {
     exactKeys(operation, "libraryModuleApply.operation", ["kind", "command"]);
     const command = record(operation.command, "libraryModuleApply.operation.command");
+    if (command.kind === "set_local_history_retention") {
+      exactKeys(command, "libraryModuleApply.operation.command", ["kind", "retention"]);
+      const value = record(command.retention, "historyRetention");
+      exactKeys(value, "historyRetention", [
+        "surfaceId",
+        "documentId",
+        "generation",
+        "revision",
+        "blockIds",
+        "retainDocument",
+        "closed",
+      ]);
+      const generation = revision(value.generation, "historyRetention.generation");
+      const membershipRevision = revision(value.revision, "historyRetention.revision");
+      if (generation < 1 || membershipRevision < 1)
+        throw new TypeError("History retention revisions must be positive");
+      if (!Array.isArray(value.blockIds) || value.blockIds.length > MAX_STRUCTURAL_ROOTS)
+        throw new TypeError("History retention exceeds its identity bound");
+      const blockIds = value.blockIds.map((id) =>
+        string(id, "historyRetention.blockId", MAX_ID_LENGTH),
+      );
+      if (new Set(blockIds).size !== blockIds.length)
+        throw new TypeError("History retention identities must be unique");
+      const retainDocument = boolean(value.retainDocument, "historyRetention.retainDocument");
+      const closed = boolean(value.closed, "historyRetention.closed");
+      if ((closed && retainDocument) || (!retainDocument && blockIds.length > 0))
+        throw new TypeError("Released history cannot retain identities");
+      return {
+        operationId,
+        storeEpoch,
+        operation: {
+          kind: operation.kind,
+          command: {
+            kind: command.kind,
+            retention: {
+              surfaceId: string(value.surfaceId, "historyRetention.surfaceId", MAX_ID_LENGTH),
+              documentId: string(value.documentId, "historyRetention.documentId", MAX_ID_LENGTH),
+              generation,
+              revision: membershipRevision,
+              blockIds,
+              retainDocument,
+              closed,
+            },
+          },
+        },
+      };
+    }
+    if (command.kind === "restore_editor_history") {
+      exactKeys(command, "libraryModuleApply.operation.command", [
+        "kind",
+        "documentId",
+        "generation",
+        "patch",
+      ]);
+      const generation = revision(command.generation, "generation");
+      if (generation < 1) throw new TypeError("History generation must be positive");
+      return {
+        operationId,
+        storeEpoch,
+        operation: {
+          kind: operation.kind,
+          command: {
+            kind: command.kind,
+            documentId: string(command.documentId, "documentId", MAX_ID_LENGTH),
+            generation,
+            patch: parseEditorHistoryPatch(command.patch),
+          },
+        },
+      };
+    }
     if (command.kind === "capture_clipboard") {
       exactKeys(command, "libraryModuleApply.operation.command", ["kind", "selection"]);
       return {
@@ -1534,6 +1645,20 @@ export const bindLibraryModuleRead = (value: unknown): LibraryModuleReadRequest 
   exactKeys(request, "libraryModuleRead", ["read"]);
   const read = record(request.read, "libraryModuleRead.read");
   if (isLibraryFileReadMode(read.mode)) return { read: libraryFileReadSchema.parse(read) };
+  if (read.mode === "structural_history_states") {
+    exactKeys(read, "libraryModuleRead.read", ["mode", "tokens"]);
+    if (
+      !Array.isArray(read.tokens) ||
+      read.tokens.length > MAX_STRUCTURAL_HISTORY_RECONCILIATION_TOKENS
+    )
+      throw new TypeError("Structural history reconciliation exceeds its token bound");
+    const tokens = read.tokens.map((token, index) =>
+      parseStructuralHistoryToken(token, `libraryModuleRead.read.tokens[${index}]`),
+    );
+    if (new Set(tokens.map((token) => token.recipeOperationId)).size !== tokens.length)
+      throw new TypeError("Structural history reconciliation tokens must be unique");
+    return { read: { mode: "structural_history_states", tokens } };
+  }
   if (read.mode === "metadata") {
     exactKeys(read, "libraryModuleRead.read", ["mode"]);
     return { read: { mode: "metadata" } };
@@ -2160,6 +2285,33 @@ const parseReadValue = (value: unknown): LibraryReadValue => {
   const readValue = record(value, "libraryModuleReadResult.value.value");
   if (isLibraryFileReadValueKind(readValue.kind))
     return libraryFileReadValueSchema.parse(readValue);
+  if (readValue.kind === "structural_history_states") {
+    exactKeys(readValue, "libraryModuleReadResult.value.value", ["kind", "items"]);
+    if (
+      !Array.isArray(readValue.items) ||
+      readValue.items.length > MAX_STRUCTURAL_HISTORY_RECONCILIATION_TOKENS
+    )
+      throw new TypeError("Structural history reconciliation exceeds its result bound");
+    const items = readValue.items.map((item, index): LibraryStructuralHistoryState => {
+      const label = `libraryModuleReadResult.value.value.items[${index}]`;
+      const entry = record(item, label);
+      exactKeys(entry, label, ["token", "state"]);
+      if (
+        entry.state !== "available" &&
+        entry.state !== "consumed" &&
+        entry.state !== "superseded" &&
+        entry.state !== "unavailable"
+      )
+        throw new TypeError("Structural history reconciliation state is invalid");
+      return {
+        token: parseStructuralHistoryToken(entry.token, `${label}.token`),
+        state: entry.state,
+      };
+    });
+    if (new Set(items.map((item) => item.token.recipeOperationId)).size !== items.length)
+      throw new TypeError("Structural history reconciliation results must be unique");
+    return { kind: "structural_history_states", items };
+  }
   if (readValue.kind === "metadata") {
     exactKeys(readValue, "libraryModuleReadResult.value.value", ["kind"]);
     return { kind: "metadata" };

@@ -528,19 +528,20 @@ fn resolve_destination(
                     .or_else(|| (group_property_id == Some("status")).then(|| "triage".to_owned())),
             };
             let ids = connection
-                .prepare(
+                .prepare(&format!(
                     "SELECT membership.page_block_id \
                      FROM data_source_page_memberships membership \
                      JOIN pages page ON page.block_id = membership.page_block_id \
                      JOIN blocks block ON block.id = page.block_id \
                        AND block.library_id = page.library_id \
-                     LEFT JOIN database_view_page_positions position \
-                       ON position.view_id = ?1 AND position.page_block_id = membership.page_block_id \
+                     {joins} \
                      WHERE membership.data_source_id = ?2 AND membership.removed_at IS NULL \
                        AND block.lifecycle = 'active' \
-                     ORDER BY CASE WHEN position.rank_key IS NULL THEN 1 ELSE 0 END, \
-                       position.rank_key, membership.page_block_id",
-                )?
+                     ORDER BY CASE WHEN {rank} IS NULL THEN 1 ELSE 0 END, \
+                       {rank}, membership.page_block_id",
+                    rank = crate::database::view_order_rank("membership.page_block_id"),
+                    joins = crate::database::view_position_joins("?1", "membership.page_block_id")
+                ))?
                 .query_map(params![view_id, data_source_id], |row| {
                     row.get::<_, String>(0)
                 })?

@@ -1375,6 +1375,8 @@ mod tests {
         mutation_id: &str,
         committed_at: &str,
         payload_request_hash: &str,
+        mutation_kind: &str,
+        redundant_body: &str,
     ) -> rusqlite::Result<i64> {
         connection.execute(
             "INSERT INTO change_log( \
@@ -1400,10 +1402,10 @@ mod tests {
                affected_database_block_ids_json, field_intents_json, expected_revisions_json, \
                outcome, result_json, committed_revisions_json, document_heads_json, \
                change_log_seq, recorded_at \
-             ) VALUES (?1, ?2, ?3, 'property_batch', \
-               '{\"displayName\":\"History editor\"}', ?4, '{}', ?5, ?6, '[]', \
+             ) VALUES (?1, ?2, ?3, ?9, \
+               '{\"displayName\":\"History editor\"}', ?4, ?10, ?5, ?6, '[]', \
                '[{\"path\":\"title\",\"operation\":\"set\"}]', '{}', 'committed', \
-               '{}', '{}', '{}', ?7, ?8)",
+               ?10, '{}', '{}', ?7, ?8)",
             params![
                 mutation_id,
                 PROJECT,
@@ -1413,6 +1415,8 @@ mod tests {
                 format!("[\"{DOCUMENT}\"]"),
                 change_seq,
                 committed_at,
+                mutation_kind,
+                redundant_body,
             ],
         )?;
         Ok(change_seq)
@@ -1516,12 +1520,14 @@ mod tests {
                            'block_tree_snapshot_v2', X'7B7D', X'', ?3, 2, ?4)",
                         params![DOCUMENT, PROJECT, HASH, LATEST],
                     )?;
-                    insert_mutation(transaction, "mutation:valid", LATEST, HASH)?;
+                    insert_mutation(transaction, "mutation:valid", LATEST, HASH, "property_batch", "{}")?;
                     let bad_change_seq = insert_mutation(
                         transaction,
                         "mutation:bad-evidence",
                         EARLIER,
                         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                        "property_batch",
+                        "{}",
                     )?;
                     Ok(bad_change_seq)
                 })
@@ -1608,6 +1614,49 @@ mod tests {
             }
         ));
         assert!(third.next_cursor.is_none());
+
+        // Historical storage shape: a structural event once duplicated its
+        // result body in the ledger. Every visible history field must survive
+        // body collection, including the separate Document checkpoint.
+        kernel.writer().call(|connection| {
+            with_immediate_transaction(connection, |transaction| {
+                let body = serde_json::json!({ "content": "正文".repeat(100_000) }).to_string();
+                insert_mutation(transaction, "mutation:structural", LATEST, HASH, "structural_edit", &body)?;
+                transaction.execute("INSERT INTO block_mutation_body_gc(mutation_id) VALUES ('mutation:structural')", [])?;
+                Ok(())
+            })
+        }).expect("historical body fixture");
+        let before_collection = kernel
+            .readers()
+            .read_default(|connection| {
+                page_history(connection, LIBRARY, Some(PROJECT), PAGE, None, None)
+            })
+            .unwrap();
+        kernel
+            .writer()
+            .call(|connection| {
+                with_immediate_transaction(connection, |transaction| {
+                    let now_ms: i64 = transaction.query_row(
+                        "SELECT CAST(unixepoch(?1, 'subsec') * 1000 AS INTEGER)",
+                        [LATEST],
+                        |row| row.get(0),
+                    )?;
+                    let collected = super::super::mutation_ledger::collect_one(
+                        transaction,
+                        now_ms + crate::infrastructure::module_receipts::RECEIPT_RETENTION_MS,
+                    )?;
+                    assert!(collected.bytes > 1_000_000);
+                    Ok(())
+                })
+            })
+            .expect("collect only redundant ledger bodies");
+        let after_collection = kernel
+            .readers()
+            .read_default(|connection| {
+                page_history(connection, LIBRARY, Some(PROJECT), PAGE, None, None)
+            })
+            .unwrap();
+        assert_eq!(after_collection, before_collection);
 
         let unauthorized = kernel
             .readers()

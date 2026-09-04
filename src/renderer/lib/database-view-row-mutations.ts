@@ -114,10 +114,7 @@ export const buildDatabaseViewMoveOperations = (input: {
   const [moving] = desired.splice(currentIndex, 1);
   if (!moving) return [];
   desired.splice(targetIndex, 0, moving);
-  const authorityOrder =
-    databaseViewPrimaryManualOrderDirection(input.model.query.view.config.rules.sorts) === "desc"
-      ? [...desired].reverse()
-      : desired;
+  // Position commands take visual order. Core alone maps it to physical rank direction.
 
   if (hasEmptyAndFilter(input.model) && input.groupComplete === true) {
     if (visibleGroup.length > MAX_DATABASE_MODULE_V2_BULK_ENTRIES) {
@@ -127,7 +124,7 @@ export const buildDatabaseViewMoveOperations = (input: {
       {
         kind: "position_pages",
         viewId: input.model.databaseViewId,
-        pages: authorityOrder.map((candidate) => ({
+        pages: desired.map((candidate) => ({
           pageId: candidate.page.pageId,
           expectedPositionRevision: candidate.position?.revision ?? 0,
         })),
@@ -135,10 +132,8 @@ export const buildDatabaseViewMoveOperations = (input: {
     ];
   }
 
-  const authorityIndex = authorityOrder.findIndex(
-    (candidate) => candidate.page.pageId === input.pageId,
-  );
-  const anchor = authorityOrder[authorityIndex + 1];
+  const desiredIndex = desired.findIndex((candidate) => candidate.page.pageId === input.pageId);
+  const anchor = desired[desiredIndex + 1];
   if (anchor && !anchor.position) return [];
   return [
     {
@@ -241,15 +236,11 @@ export const buildDatabaseViewMovePageRunOperations = (input: {
   }
 
   if (desired.every((row, index) => row === visibleGroup[index])) return [];
-  const authorityOrder =
-    databaseViewPrimaryManualOrderDirection(input.model.query.view.config.rules.sorts) === "desc"
-      ? [...desired].reverse()
-      : desired;
   return [
     {
       kind: "position_pages",
       viewId: input.model.databaseViewId,
-      pages: authorityOrder.map((candidate) => ({
+      pages: desired.map((candidate) => ({
         pageId: candidate.page.pageId,
         expectedPositionRevision: candidate.position?.revision ?? 0,
       })),
@@ -271,9 +262,13 @@ const defaultDependencies: DatabaseViewMutationDependencies = {
 };
 
 export type DatabaseViewMutationReceipt = DatabaseApplyReceiptV2 | LibraryDatabaseApplyReceiptV2;
+export type DatabaseViewMutationScope = Pick<
+  DatabaseViewRenderModel,
+  "accessContext" | "storeEpoch"
+>;
 
 export const commitDatabaseViewOperations = async (input: {
-  readonly model: DatabaseViewRenderModel;
+  readonly model: DatabaseViewMutationScope;
   readonly operations: readonly DatabaseApplyOperationV2[];
   readonly operationId?: string;
   readonly dependencies?: DatabaseViewMutationDependencies;
@@ -293,17 +288,7 @@ export const commitDatabaseViewOperations = async (input: {
           projectId: input.model.accessContext.projectId,
           actor: { kind: "renderer_database_view" as const },
         });
-  let result: DatabaseApplyResultV2 | LibraryDatabaseApplyResultV2;
-  let retried = false;
-  try {
-    result = await apply();
-  } catch {
-    retried = true;
-    result = await apply();
-  }
-  if (!result.ok && result.error.retryable && !retried) {
-    result = await apply();
-  }
+  const result = await apply();
   if (result.ok) return result.value;
   throw new DatabaseViewMutationError(result.error);
 };

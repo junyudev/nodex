@@ -227,6 +227,9 @@ type QueryEndpointPolicy =
   | "worktrees:thread:availability";
 
 type ControlEndpointPolicy =
+  | "editor-history:release"
+  | "editor-history:abandon"
+  | "editor-history:abandon-transfer"
   | "agent-backend:acp:session:observe"
   | "agent-backend:acp:session:unobserve"
   | "app:flush-before-close:done"
@@ -241,6 +244,8 @@ type ControlEndpointPolicy =
   | "clipboard:structural-begin"
   | "clipboard:structural-publish"
   | "clipboard:structural-settle"
+  | "surface-history:bind"
+  | "surface-history:publish"
   | "clipboard:write-claimed-presentation"
   | "remote-hosted-pip:host-layout:report"
   | "codex:approval:respond"

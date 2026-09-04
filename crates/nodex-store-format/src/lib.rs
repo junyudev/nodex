@@ -102,6 +102,10 @@ pub const PUBLISHED_STORE_FORMATS: &[PublishedStoreFormat] = &[
         152,
         "3b73eede1826e640113d7e25e4ec2eee0fa0a616fb3c5451c3f6a5bdcf356289",
     ),
+    format(
+        159,
+        "6f27a506b4572a15d3bfc544265972fb282e5e8da3cf48ece81a418464c8483a",
+    ),
 ];
 
 pub const CURRENT_STORE_FORMAT: PublishedStoreFormat =
@@ -128,15 +132,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn catalog_is_contiguous_and_current_is_last() {
+    fn catalog_is_ordered_and_every_published_identity_is_resolvable() {
         let revisions = PUBLISHED_STORE_FORMATS
             .iter()
             .map(|format| format.revision)
             .collect::<Vec<_>>();
-        assert_eq!(
-            revisions,
-            (MIN_SUPPORTED_STORE_REVISION..=CURRENT_STORE_FORMAT.revision).collect::<Vec<_>>()
-        );
+        assert_eq!(revisions.first(), Some(&MIN_SUPPORTED_STORE_REVISION));
+        assert!(revisions.windows(2).all(|pair| pair[0] < pair[1]));
+        for format in PUBLISHED_STORE_FORMATS {
+            assert_eq!(published_store_format(format.revision), Some(*format));
+        }
         assert_eq!(
             published_store_format(CURRENT_STORE_FORMAT.revision),
             Some(CURRENT_STORE_FORMAT)

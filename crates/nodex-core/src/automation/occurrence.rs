@@ -437,20 +437,52 @@ fn visit_scheduled_rows(
 ) -> Result<(), StoreError> {
     let window_start = timestamp_to_iso(window_start_ms)?;
     let window_end = timestamp_to_iso(window_end_ms)?;
+    // Single-Page reads need only one indexed ordinal count. Window reads rank
+    // once in bulk, avoiding a preceding-range scan for every scheduled Page.
+    let (order_cte, order_value, order_joins) = if page_id.is_some() {
+        (
+            "",
+            format!(
+                "CASE WHEN {} IS NULL THEN NULL ELSE ({}) END",
+                crate::database::POSITION_RANK,
+                crate::database::view_preceding_positions("position_view.id", "block.id")
+            ),
+            format!(
+                "LEFT JOIN database_containers position_container \
+                   ON position_container.block_id = source.home_database_block_id \
+                 LEFT JOIN database_views position_view \
+                   ON position_view.id = position_container.default_view_id \
+                   AND position_view.database_block_id = source.home_database_block_id \
+                   AND position_view.data_source_id = membership.data_source_id \
+                   AND position_view.layout = 'board' AND position_view.lifecycle = 'active' \
+                 {}",
+                crate::database::view_position_joins("position_view.id", "block.id")
+            ),
+        )
+    } else {
+        (
+            "WITH ranked_positions AS ( \
+               SELECT view.database_block_id, view.data_source_id, position.page_block_id, \
+                 CAST(ROW_NUMBER() OVER ( \
+                   PARTITION BY view.id \
+                   ORDER BY position.rank_key, position.page_block_id \
+                 ) - 1 AS INTEGER) AS view_order \
+               FROM database_views view \
+               JOIN database_containers container \
+                 ON container.default_view_id = view.id AND container.block_id = view.database_block_id \
+               JOIN database_view_page_positions position ON position.view_id = view.id \
+               WHERE view.layout = 'board' AND view.lifecycle = 'active' \
+             )",
+            "position.view_order".to_owned(),
+            "LEFT JOIN ranked_positions position \
+               ON position.database_block_id = source.home_database_block_id \
+               AND position.data_source_id = membership.data_source_id \
+               AND position.page_block_id = block.id"
+                .to_owned(),
+        )
+    };
     let mut statement = connection.prepare(
-        "WITH ranked_positions AS ( \
-           SELECT view.database_block_id, view.data_source_id, position.page_block_id, \
-             CAST(ROW_NUMBER() OVER ( \
-               PARTITION BY view.id \
-               ORDER BY position.rank_key, position.page_block_id \
-             ) - 1 AS INTEGER) AS view_order \
-           FROM database_views view \
-           JOIN database_containers container \
-             ON container.default_view_id = view.id AND container.block_id = view.database_block_id \
-           JOIN database_view_page_positions position ON position.view_id = view.id \
-           WHERE view.layout = 'board' AND view.lifecycle = 'active' \
-         ) \
-         SELECT schedule.page_block_id, schedule.library_id, schedule.lifecycle, block.lifecycle, \
+        &format!("{order_cte} SELECT schedule.page_block_id, schedule.library_id, schedule.lifecycle, block.lifecycle, \
            block.metadata_revision, schedule.source_metadata_revision, schedule.scheduled_start, \
            schedule.scheduled_end, schedule.is_all_day, schedule.recurrence_json, \
            schedule.reminders_json, schedule.schedule_timezone, block.created_at, block.updated_at, \
@@ -461,7 +493,7 @@ fn visit_scheduled_rows(
            membership.id, source.id, \
            CASE WHEN key_assignment.number IS NULL THEN NULL \
              ELSE key_prefix.normalized_prefix || '-' || key_assignment.number END, \
-           position.view_order \
+           {order_value} \
          FROM scheduled_page_index schedule \
          JOIN blocks block ON block.id = schedule.page_block_id \
            AND block.library_id = schedule.library_id AND block.type = 'page' \
@@ -484,16 +516,13 @@ fn visit_scheduled_rows(
            ON key_prefix.database_block_id = key_assignment.database_block_id \
            AND key_prefix.library_id = page.library_id \
            AND key_prefix.retired_at IS NULL \
-         LEFT JOIN ranked_positions position \
-           ON position.database_block_id = source.home_database_block_id \
-           AND position.data_source_id = membership.data_source_id \
-           AND position.page_block_id = block.id \
+         {order_joins} \
          WHERE block.lifecycle <> 'deleted' \
            AND schedule.scheduled_start IS NOT NULL AND schedule.scheduled_end IS NOT NULL \
            AND schedule.scheduled_start < ?2 \
            AND (schedule.recurrence_json <> 'null' OR schedule.scheduled_end > ?3) \
            AND (?4 IS NULL OR schedule.page_block_id = ?4) \
-         ORDER BY schedule.scheduled_start, schedule.page_block_id",
+         ORDER BY schedule.scheduled_start, schedule.page_block_id"),
     )?;
     let mut rows = statement.query(params![library_id, window_end, window_start, page_id])?;
     while let Some(row) = rows.next()? {

@@ -28,6 +28,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::authorization::{authorize_required, project_primary_database};
+use super::order_read::{POSITION_RANK, POSITION_REVISION, order_rank, position_joins};
 use super::view_contract::MAX_VIEW_SORT_RULES;
 use crate::infrastructure::collection_window::{WindowCandidate, assemble, normalize_request};
 use crate::infrastructure::cursor::{
@@ -1277,6 +1278,7 @@ fn list_window_for(
         .map_err(|_| invalid("Database List projection row total is invalid"))?;
     let fingerprint = cursor::query_fingerprint(&(
         "database_list_window_v1",
+        super::manual_order::keyset_identity(connection, &view.view_id)?,
         &view.view_id,
         &view.data_source_id,
         &view.config,
@@ -1428,6 +1430,7 @@ fn row_window_for(
     let normalized = normalize_request(request)?;
     let fingerprint = cursor::query_fingerprint(&(
         "database_view_window_v2",
+        super::manual_order::keyset_identity(connection, &view.view_id)?,
         view.query_scope,
         &view.view_id,
         &view.data_source_id,
@@ -1537,8 +1540,8 @@ fn row_window_for(
              model.document_generation, model.document_projected_seq, membership.id, \
              membership.revision, membership.created_at, model.created_at, model.updated_at, \
              {effective_group_select} AS effective_group_key, \
-             {effective_subgroup_select} AS effective_subgroup_key, position.rank_key, \
-             position.revision, NULL AS position_order, hierarchy.target_page_block_id, \
+             {effective_subgroup_select} AS effective_subgroup_key, {POSITION_RANK}, \
+             {POSITION_REVISION}, NULL AS position_order, hierarchy.target_page_block_id, \
              hierarchy.sibling_rank, parent_value.revision, {sort_projection} \
            FROM data_source_page_memberships membership \
            JOIN page_read_model model \
@@ -1559,9 +1562,7 @@ fn row_window_for(
            LEFT JOIN page_key_prefixes key_prefix \
              ON key_prefix.database_block_id = key_assignment.database_block_id \
              AND key_prefix.retired_at IS NULL \
-           LEFT JOIN database_view_page_positions position \
-             ON position.view_id = {position_view} \
-             AND position.page_block_id = membership.page_block_id \
+           {position_read_joins} \
            JOIN data_source_property_values parent_value \
              ON parent_value.data_source_id = membership.data_source_id \
              AND parent_value.membership_id = membership.id \
@@ -1590,7 +1591,8 @@ fn row_window_for(
              AND ({filter})\
          ) \
          SELECT * FROM candidate_rows {cursor_predicate} \
-         ORDER BY {order} LIMIT {limit}"
+         ORDER BY {order} LIMIT {limit}",
+        position_read_joins = position_joins(&position_view, "membership.page_block_id"),
     );
     let rows = connection
         .prepare(&sql)?
@@ -1750,15 +1752,14 @@ fn view_groups_for(
              AND materialization.generation = document.generation \
              AND materialization.projected_seq = document.head_seq \
              AND materialization.schema_version = document.schema_version \
-           LEFT JOIN database_view_page_positions position \
-             ON position.view_id = {position_view} \
-             AND position.page_block_id = membership.page_block_id \
+           {position_read_joins} \
              WHERE membership.data_source_id = {source} \
              AND membership.removed_at IS NULL \
              AND model.lifecycle = 'active' \
              AND ({completion})\
              AND ({filter})\
-         )"
+         )",
+        position_read_joins = position_joins(&position_view, "membership.page_block_id"),
     );
     let total_rows = connection.query_row(
         &format!("{candidate_cte} SELECT count(*) FROM candidate_rows"),
@@ -2245,19 +2246,18 @@ fn mint_page_move_etag_with_authority(
         .map(|view| {
             connection
                 .query_row(
-                    "SELECT membership.id, membership.revision, value.value_json, value.revision, \
-                       position.rank_key, position.revision \
+                    &format!("SELECT membership.id, membership.revision, value.value_json, value.revision, \
+                       {POSITION_RANK}, {POSITION_REVISION} \
                      FROM data_source_page_memberships membership \
                      LEFT JOIN data_source_property_values value \
                        ON value.data_source_id = membership.data_source_id \
                        AND value.membership_id = membership.id \
                        AND value.property_id = ?3 \
-                     LEFT JOIN database_view_page_positions position \
-                       ON position.view_id = ?4 \
-                       AND position.page_block_id = membership.page_block_id \
+                     {position_read_joins} \
                      WHERE membership.data_source_id = ?1 \
                        AND membership.page_block_id = ?2 \
                        AND membership.removed_at IS NULL",
+                       position_read_joins = position_joins("?4", "membership.page_block_id")),
                     params![
                         view.data_source_id,
                         page_id,
@@ -2422,17 +2422,17 @@ fn has_exact_active_position(
 ) -> Result<bool, StoreError> {
     connection
         .query_row(
-            "SELECT 1 FROM database_view_page_positions position \
-             JOIN data_source_page_memberships membership \
-               ON membership.page_block_id = position.page_block_id \
-               AND membership.data_source_id = ?2 AND membership.removed_at IS NULL \
+            &format!(
+                "SELECT 1 FROM data_source_page_memberships membership \
              JOIN page_read_model model \
                ON model.page_block_id = membership.page_block_id \
                AND model.membership_id = membership.id AND model.lifecycle = 'active' \
                AND model.view_id = ?1 \
-               AND model.view_rank_key = position.rank_key \
-             WHERE position.view_id = ?1 AND position.page_block_id = ?3 \
-               AND position.rank_key = ?4",
+             {position_read_joins} \
+             WHERE membership.data_source_id = ?2 AND membership.removed_at IS NULL \
+               AND membership.page_block_id = ?3 AND {POSITION_RANK} = ?4",
+                position_read_joins = position_joins("?1", "membership.page_block_id")
+            ),
             params![view.view_id, view.data_source_id, page_id, rank_key],
             |_| Ok(()),
         )
@@ -2449,17 +2449,17 @@ fn exact_manual_position_order(
 ) -> Result<i64, StoreError> {
     connection
         .query_row(
-            "SELECT count(*) FROM database_view_page_positions peer \
-             JOIN data_source_page_memberships membership \
-               ON membership.page_block_id = peer.page_block_id \
-               AND membership.data_source_id = ?2 AND membership.removed_at IS NULL \
+            &format!(
+                "SELECT count(*) FROM data_source_page_memberships membership \
              JOIN page_read_model model \
                ON model.page_block_id = membership.page_block_id \
                AND model.membership_id = membership.id AND model.lifecycle = 'active' \
                AND model.view_id = ?1 \
-               AND model.view_rank_key = peer.rank_key \
-             WHERE peer.view_id = ?1 \
-               AND (peer.rank_key < ?3 OR (peer.rank_key = ?3 AND peer.page_block_id < ?4))",
+             {position_read_joins} \
+             WHERE membership.data_source_id = ?2 AND membership.removed_at IS NULL \
+               AND ({POSITION_RANK}, membership.page_block_id) < (?3, ?4)",
+                position_read_joins = position_joins("?1", "membership.page_block_id")
+            ),
             params![view.view_id, view.data_source_id, rank_key, page_id],
             |row| row.get(0),
         )
@@ -3102,13 +3102,8 @@ fn summary_by_id(
                model.document_generation, model.document_projected_seq, membership.id, \
                membership.revision, membership.created_at, model.created_at, model.updated_at, \
                {effective_group_select} AS effective_group_key, \
-               {effective_subgroup_select} AS effective_subgroup_key, position.rank_key, \
-               position.revision, \
-               (SELECT count(*) FROM database_view_page_positions peer \
-                WHERE peer.view_id = position.view_id \
-                  AND (peer.rank_key < position.rank_key \
-                    OR (peer.rank_key = position.rank_key \
-                      AND peer.page_block_id < position.page_block_id))), \
+               {effective_subgroup_select} AS effective_subgroup_key, {POSITION_RANK}, \
+               {POSITION_REVISION}, ({position_order}), \
                hierarchy.target_page_block_id, hierarchy.sibling_rank, \
                parent_value.revision \
              FROM data_source_page_memberships membership \
@@ -3130,9 +3125,7 @@ fn summary_by_id(
              LEFT JOIN page_key_prefixes key_prefix \
                ON key_prefix.database_block_id = key_assignment.database_block_id \
                  AND key_prefix.retired_at IS NULL \
-             LEFT JOIN database_view_page_positions position \
-               ON position.view_id = {view_parameter} \
-                 AND position.page_block_id = model.page_block_id \
+             {position_read_joins} \
              JOIN data_source_property_values parent_value \
                ON parent_value.data_source_id = membership.data_source_id \
                AND parent_value.membership_id = membership.id \
@@ -3155,7 +3148,10 @@ fn summary_by_id(
                ) \
              WHERE membership.data_source_id = {source_parameter} \
                AND membership.removed_at IS NULL \
-               AND model.lifecycle <> 'deleted' AND model.page_block_id = {page_parameter}"
+               AND model.lifecycle <> 'deleted' AND model.page_block_id = {page_parameter}",
+        position_read_joins = position_joins(&view_parameter, "model.page_block_id"),
+        position_order =
+            super::order_read::preceding_positions(&view_parameter, "model.page_block_id"),
     );
     connection
         .query_row(&sql, params_from_iter(parameters.iter()), |row| {
@@ -3411,7 +3407,7 @@ fn group_scope_predicate(
 
 /// One effective-group-major total order shared by flat and group-scoped
 /// windows: rows cluster by effective group (unassigned last), then manual
-/// rank (positioned rows first) or the configured sort rules, then the stable
+/// complete physical rank or the configured sort rules, then the stable
 /// Page identity appended by the caller.
 fn sort_components(
     config: &ViewConfig,
@@ -3459,7 +3455,7 @@ fn sort_components(
         None => expression,
     };
     if config.rules.sorts.is_empty() {
-        let rank = active_expression("position.rank_key".to_owned());
+        let rank = active_expression(order_rank("membership.page_block_id"));
         components.push(SortComponent {
             expression: format!("CASE WHEN {rank} IS NULL THEN 1 ELSE 0 END"),
             direction: SortDirection::Asc,
@@ -3480,7 +3476,7 @@ fn sort_components(
     }
     for rule in &config.rules.sorts {
         let expression = active_expression(match &rule.field {
-            ViewSortField::Manual => "position.rank_key".to_owned(),
+            ViewSortField::Manual => order_rank("membership.page_block_id"),
             ViewSortField::Title => "model.title".to_owned(),
             ViewSortField::Created => "model.created_at".to_owned(),
             ViewSortField::Property { property_id } => {
@@ -3513,7 +3509,7 @@ fn sort_components(
     if !has_explicit_manual
         && super::view_contract::fractional_order_direction(&config.rules.sorts).is_some()
     {
-        let rank = active_expression("position.rank_key".to_owned());
+        let rank = active_expression(order_rank("membership.page_block_id"));
         components.push(SortComponent {
             expression: format!("CASE WHEN {rank} IS NULL THEN 1 ELSE 0 END"),
             direction: SortDirection::Asc,

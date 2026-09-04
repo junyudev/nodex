@@ -5,7 +5,7 @@
 - Owners: Nodex maintainers
 - Supersedes in part: ADR 0001 and ADR 0003
 - Superseded in part by: ADR 0020 (independent root allocation and compact
-  Source-scoped schema identity)
+  Source-scoped schema identity), ADR 0059 (complete View order)
 
 ## Context
 
@@ -110,13 +110,10 @@ It owns filter, sort, grouping, display configuration, and Page-specific manual
 positions. View positions use `(viewId, pageId)`; callers never need a separate
 row identity for an active Page.
 
-A View position remains optional until a caller expresses manual-order intent.
-The writer resolves stable Page anchors against the complete unfiltered logical
-group order, including members without position rows. If that group contains
-unpositioned Pages, the same transaction first materializes the entire existing
-logical order into evenly spaced ranks and then inserts the moved Page run.
-Materialized siblings begin at position revision 1; order-preserving physical
-rank rebalances do not advance existing sibling revisions.
+Database owns a complete unfiltered View order, including Pages not yet manually
+positioned. Commands and history resolve stable Page anchors without materializing
+an entire View. Explicit-position metadata and physical maintenance remain
+distinct; see [ADR 0059](0059-complete-view-order-and-semantic-position-history.md).
 
 Creating a Database is one atomic convenience command that creates the
 Container, a deterministic initial Data Source, an initial View targeting that

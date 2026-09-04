@@ -1193,6 +1193,7 @@ fn observe_visibility(
 
 fn authorization_context(library_id: &str, project_id: Option<&str>) -> BoundModuleContext {
     BoundModuleContext {
+        editor_history_owner: None,
         profile_id: ProfileId("profile:visibility-delta-journal".to_owned()),
         library_id: LibraryId(library_id.to_owned()),
         project_id: project_id.map(|id| ProjectId(id.to_owned())),

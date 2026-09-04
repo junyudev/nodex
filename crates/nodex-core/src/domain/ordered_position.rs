@@ -1,13 +1,54 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
-use super::fractional_rank::{
-    FractionalRankError, RankedItem, materialize_order, plan as plan_fractional_rank,
-};
+use super::fractional_rank::{FractionalRankError, materialize_order, rank_run_between};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LogicalPositionItem {
     pub page_id: String,
     pub rank_key: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LogicalPositionRun {
+    pub page_ids: Vec<String>,
+    pub before_page_id: Option<String>,
+}
+
+/// Snapshot only selected runs and their next unselected anchors. Technical
+/// rank changes and unrelated edits outside these slots do not invalidate them.
+pub fn capture_position_runs(
+    ordered_page_ids: &[String],
+    selected_page_ids: &HashSet<&str>,
+) -> Result<Vec<LogicalPositionRun>, PositionPlanError> {
+    let mut runs = Vec::new();
+    let mut current = Vec::new();
+    let mut present = 0;
+    for page_id in ordered_page_ids {
+        if selected_page_ids.contains(page_id.as_str()) {
+            current.push(page_id.clone());
+            present += 1;
+            continue;
+        }
+        if current.is_empty() {
+            continue;
+        }
+        runs.push(LogicalPositionRun {
+            page_ids: std::mem::take(&mut current),
+            before_page_id: Some(page_id.clone()),
+        });
+    }
+    if present != selected_page_ids.len() {
+        return Err(PositionPlanError::InvalidInput(
+            "An affected Page is no longer in its ordered scope".to_owned(),
+        ));
+    }
+    if !current.is_empty() {
+        runs.push(LogicalPositionRun {
+            page_ids: current,
+            before_page_id: None,
+        });
+    }
+    Ok(runs)
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -172,77 +213,35 @@ fn plan_ranked_run(
     moved_page_ids: &[String],
     before_page_id: Option<&str>,
 ) -> Result<PositionRunPlan, PositionPlanError> {
-    let original_ranks = remaining
-        .iter()
-        .map(|item| {
-            item.rank_key
-                .clone()
-                .map(|rank_key| (item.page_id.clone(), rank_key))
-                .ok_or_else(|| {
-                    PositionPlanError::InvalidInput(format!(
-                        "Ranked order contains unpositioned Page {}",
-                        item.page_id
-                    ))
-                })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let mut effective_ranks = original_ranks.iter().cloned().collect::<HashMap<_, _>>();
-    let mut virtual_items = original_ranks
-        .iter()
-        .map(|(id, rank_key)| RankedItem {
-            id: id.clone(),
-            rank_key: rank_key.clone(),
-        })
-        .collect::<Vec<_>>();
-
-    for page_id in moved_page_ids {
-        let plan = plan_fractional_rank(&virtual_items, page_id, before_page_id)
-            .map_err(PositionPlanError::FractionalRank)?;
-        for (sibling_id, rank_key) in plan.rebalanced_rank_keys {
-            effective_ranks.insert(sibling_id, rank_key);
-        }
-        effective_ranks.insert(page_id.clone(), plan.rank_key);
-        virtual_items = effective_ranks
+    let anchor = match before_page_id {
+        None => remaining.len(),
+        Some(id) => remaining
             .iter()
-            .map(|(id, rank_key)| RankedItem {
-                id: id.clone(),
-                rank_key: rank_key.clone(),
-            })
-            .collect();
-        virtual_items.sort_by(|left, right| {
-            left.rank_key
-                .cmp(&right.rank_key)
-                .then_with(|| left.id.cmp(&right.id))
+            .position(|item| item.page_id == id)
+            .ok_or_else(|| {
+                PositionPlanError::AnchorNotFound(format!(
+                    "Ordered Page anchor does not exist: {id}"
+                ))
+            })?,
+    };
+    let left = anchor
+        .checked_sub(1)
+        .and_then(|index| remaining[index].rank_key.as_deref());
+    let right = remaining
+        .get(anchor)
+        .and_then(|item| item.rank_key.as_deref());
+    if let Some(ranks) = rank_run_between(left, right, moved_page_ids.len()) {
+        return Ok(PositionRunPlan {
+            moved_rank_keys: moved_page_ids.iter().cloned().zip(ranks).collect(),
+            sibling_writes: Vec::new(),
         });
     }
-
-    let moved_rank_keys = moved_page_ids
+    let mut physical_page_ids = remaining
         .iter()
-        .map(|page_id| {
-            effective_ranks
-                .get(page_id)
-                .cloned()
-                .map(|rank_key| (page_id.clone(), rank_key))
-                .ok_or_else(|| {
-                    PositionPlanError::InvalidInput(format!("Rank plan omitted Page {page_id}"))
-                })
-        })
-        .collect::<Result<BTreeMap<_, _>, _>>()?;
-    let sibling_writes = original_ranks
-        .iter()
-        .filter_map(|(page_id, original_rank_key)| {
-            let rank_key = effective_ranks.get(page_id)?;
-            (rank_key != original_rank_key).then(|| SiblingRankWrite {
-                kind: SiblingRankWriteKind::Rebalance,
-                page_id: page_id.clone(),
-                rank_key: rank_key.clone(),
-            })
-        })
-        .collect();
-    Ok(PositionRunPlan {
-        moved_rank_keys,
-        sibling_writes,
-    })
+        .map(|item| item.page_id.clone())
+        .collect::<Vec<_>>();
+    physical_page_ids.splice(anchor..anchor, moved_page_ids.iter().cloned());
+    plan_materialized_run(remaining, moved_page_ids, &physical_page_ids)
 }
 
 #[cfg(test)]
@@ -270,14 +269,7 @@ mod tests {
         )
         .expect("bulk append plan");
 
-        assert_eq!(
-            plan.moved_rank_keys["source"],
-            "7fffffffffffffffffffffffffffffff"
-        );
-        assert_eq!(
-            plan.moved_rank_keys["anchor"],
-            "bfffffffffffffffffffffffffffffff"
-        );
+        assert!(plan.moved_rank_keys["source"] < plan.moved_rank_keys["anchor"]);
         assert!(plan.sibling_writes.is_empty());
     }
 
@@ -304,5 +296,49 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn allocates_a_full_bulk_run_without_rebalancing_available_neighbor_space() {
+        let items = vec![
+            ranked("left", "00000000000000000000000000001000"),
+            ranked("right", "00000000000000000000000000003000"),
+        ];
+        let moved = (0..4096)
+            .map(|index| format!("moved-{index}"))
+            .collect::<Vec<_>>();
+        for descending in [false, true] {
+            let mut logical = items.clone();
+            if descending {
+                logical.reverse();
+            }
+            let plan = plan_position_run(
+                &logical,
+                &moved,
+                Some(if descending { "left" } else { "right" }),
+                descending,
+            )
+            .expect("one bulk run fits between its neighbors");
+            assert!(
+                plan.sibling_writes.is_empty(),
+                "available rank space must not move neighbors"
+            );
+            let ranks = moved
+                .iter()
+                .map(|id| plan.moved_rank_keys[id].as_str())
+                .collect::<Vec<_>>();
+            assert_eq!(ranks.len(), 4096);
+            assert!(
+                ranks
+                    .iter()
+                    .all(|rank| *rank > "00000000000000000000000000001000"
+                        && *rank < "00000000000000000000000000003000")
+            );
+            assert!(ranks.windows(2).all(|pair| if descending {
+                pair[0] > pair[1]
+            } else {
+                pair[0] < pair[1]
+            }));
+        }
     }
 }

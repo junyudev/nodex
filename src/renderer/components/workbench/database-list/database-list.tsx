@@ -42,7 +42,6 @@ import {
   buildDatabaseViewPropertyValueOperations,
   canMoveDatabaseViewPage,
   commitDatabaseViewOperations,
-  DatabaseViewMutationError,
   type DatabaseViewMutationReceipt,
 } from "@/lib/database-view-row-mutations";
 import { databaseViewSupportsSortedSlotInference } from "@/lib/database-view-drag-operations";
@@ -62,7 +61,6 @@ import type {
 import { isPriority } from "../../../../shared/priority";
 import type {
   DatabaseApplyOperationV2,
-  DatabaseListMoveUndoRecipeV2,
   DatabaseViewDisclosureTargetV2,
 } from "../../../../shared/database-module-v2";
 import type {
@@ -129,19 +127,18 @@ import {
   DatabaseListGroupDropTarget,
   type DatabaseListDndCommit,
 } from "./database-list-dnd";
+import { databaseListPreferencesOverride, useDatabaseListWindow } from "./use-database-list-window";
 import {
-  databaseListPreferencesOverride,
-  useDatabaseListWindow,
-  type DatabaseListWindowState,
-} from "./use-database-list-window";
-import {
+  databaseViewHistoryScopeKey,
   handleDatabaseViewMutationHistoryKeyDown,
   useDatabaseViewMutationHistory,
+  useDatabaseViewHistoryInput,
   type DatabaseViewMutationHistory,
 } from "../database-view-mutation-history";
 import { databaseListNestingContinuations } from "./database-list-nesting-lines";
 import { DATABASE_LIST_THEME_CLASS_NAME } from "./database-list-theme";
-import { undoDatabaseViewBlockTransfer } from "../database-view-block-transfer-undo";
+import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
+import { SurfaceHistoryStatus } from "@/components/shared/surface-history-status";
 import {
   endLocalBlockDragSession,
   hasDragType,
@@ -202,7 +199,6 @@ interface DatabaseListCommitOptions {
   readonly errorMessage?: string;
   readonly inlineError?: boolean;
   readonly propagateError?: boolean;
-  readonly deferError?: boolean;
   readonly modelOverride?: DatabaseViewRenderModel;
 }
 
@@ -434,9 +430,7 @@ export function DatabaseList({
   pageChatActivityByPageId,
   onRemovePageChatRelation,
 }: DatabaseListProps) {
-  const localMutationHistory = useDatabaseViewMutationHistory(
-    `${model.storeEpoch}:${model.databaseViewId}`,
-  );
+  const localMutationHistory = useDatabaseViewMutationHistory(databaseViewHistoryScopeKey(model));
   const mutationHistory = providedMutationHistory ?? localMutationHistory;
   const hostRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -1033,17 +1027,16 @@ export function DatabaseList({
       });
     }
     try {
-      const receipt = await commitOperations({
+      const receipt = await mutationHistory.executeOperations({
         model: options.modelOverride ?? mutationModel,
         operations,
+        commitOperations,
       });
       await onCommitted?.();
       return receipt;
     } catch (cause) {
       const message = options.errorMessage ?? "Couldn’t update these pages. Refresh and try again.";
-      if (options.deferError) {
-        // A semantic caller may rebase once before surfacing the conflict.
-      } else if (options.inlineError && mutationKeys.length > 0) {
+      if (options.inlineError && mutationKeys.length > 0) {
         setInlineMutationErrors((current) => {
           const next = new Map(current);
           for (const key of mutationKeys) next.set(key, message);
@@ -1298,28 +1291,6 @@ export function DatabaseList({
     onRelationValueStale: () => void onCommitted?.(),
   };
 
-  const undoListMove = async (recipe: DatabaseListMoveUndoRecipeV2): Promise<boolean> => {
-    try {
-      const receipt = await commit(
-        [
-          {
-            kind: "undo_list_occurrence_move",
-            recipe,
-          },
-        ],
-        {
-          mutationKeys: recipe.postParentGuards.map((guard) => pageMutationKey(guard.pageId)),
-          errorMessage: "Couldn’t safely undo this List move.",
-          propagateError: true,
-        },
-      );
-      return receipt !== null;
-    } catch {
-      setMutationError("This move can’t be undone because one of its Pages changed afterward.");
-      return false;
-    }
-  };
-
   const dropPages = (drop: DatabaseListDndCommit): void => {
     const windowState = coreWindowRef.current;
     if (!windowState.active || !windowState.projection) {
@@ -1357,66 +1328,46 @@ export function DatabaseList({
     };
     setOptimisticMove(optimistic);
     setMutationError(null);
-    void (async () => {
-      let attemptWindow: DatabaseListWindowState = windowState;
-      for (let attemptIndex = 0; attemptIndex < 2; attemptIndex += 1) {
-        const latestProjection = attemptWindow.projection;
-        if (!attemptWindow.active || !latestProjection) break;
-        const operation: DatabaseApplyOperationV2 = {
-          kind: "move_list_occurrences",
-          viewId: model.databaseViewId,
-          preferencesOverride: databaseListPreferencesOverride(effectiveRef.current),
-          expectedProjection: {
-            scopeKey: latestProjection.scopeKey,
-            schemaVersion: latestProjection.schemaVersion,
-            revision: latestProjection.revision,
-            coveredCommitSeq: latestProjection.coveredCommitSeq,
-            effectHash: latestProjection.effectHash,
-          },
-          initiatorOccurrenceKey: drop.initiatorOccurrenceKey,
-          selection: drop.sources.selection,
-          target: drop.target,
-        };
-        try {
-          const receipt = await commit([operation], {
-            mutationKeys: drop.sources.rootRows.map((row) => pageMutationKey(row.pageId)),
-            errorMessage: "Couldn’t move these Pages. Try again.",
-            propagateError: true,
-            deferError: attemptIndex === 0,
-            modelOverride: mutationModelRef.current,
-          });
-          const outcome = receipt?.operationOutcomes.find(
-            (candidate) =>
-              candidate.kind === "list_occurrence_move" && candidate.operationIndex === 0,
-          );
-          if (!receipt || !outcome || outcome.kind !== "list_occurrence_move") {
-            throw new Error("The List move receipt omitted its semantic outcome");
-          }
-          mutationHistory.registerListMove(outcome.undoRecipe);
-          setOptimisticMove((current) =>
-            current && current.sessionId === optimistic.sessionId
-              ? {
-                  ...current,
-                  receiptCommitSeq: receipt.commitSeq,
-                  normalizedTarget: outcome.normalizedTarget,
-                }
-              : current,
-          );
-          return;
-        } catch (cause) {
-          const canRebase =
-            attemptIndex === 0 &&
-            cause instanceof DatabaseViewMutationError &&
-            cause.commandError.code === "revision_conflict";
-          if (!canRebase) break;
-          attemptWindow = await coreWindowRef.current.refresh();
-        }
+    const latestProjection = windowState.projection;
+    const operation: DatabaseApplyOperationV2 = {
+      kind: "move_list_occurrences",
+      viewId: model.databaseViewId,
+      preferencesOverride: databaseListPreferencesOverride(effectiveRef.current),
+      expectedProjection: {
+        scopeKey: latestProjection.scopeKey,
+        schemaVersion: latestProjection.schemaVersion,
+        revision: latestProjection.revision,
+        coveredCommitSeq: latestProjection.coveredCommitSeq,
+        effectHash: latestProjection.effectHash,
+      },
+      initiatorOccurrenceKey: drop.initiatorOccurrenceKey,
+      selection: drop.sources.selection,
+      target: drop.target,
+    };
+    void commit([operation], {
+      mutationKeys: drop.sources.rootRows.map((row) => pageMutationKey(row.pageId)),
+      errorMessage: "Couldn’t move these Pages. Review the latest hierarchy and try again.",
+      modelOverride: mutationModelRef.current,
+    }).then((receipt) => {
+      const outcome = receipt?.operationOutcomes.find(
+        (candidate) => candidate.kind === "list_occurrence_move" && candidate.operationIndex === 0,
+      );
+      if (!receipt || !outcome || outcome.kind !== "list_occurrence_move") {
+        setOptimisticMove((current) =>
+          current?.sessionId === optimistic.sessionId ? null : current,
+        );
+        return;
       }
       setOptimisticMove((current) =>
-        current?.sessionId === optimistic.sessionId ? null : current,
+        current?.sessionId === optimistic.sessionId
+          ? {
+              ...current,
+              receiptCommitSeq: receipt.commitSeq,
+              normalizedTarget: outcome.normalizedTarget,
+            }
+          : current,
       );
-      setMutationError("Couldn’t move these Pages. Review the latest hierarchy and try again.");
-    })();
+    });
   };
 
   const updateCollapsedOccurrences = (
@@ -1532,6 +1483,7 @@ export function DatabaseList({
     setBlockDropPreview(null);
     setBlockDropMessage(null);
     await commitDatabaseViewBlockDrop({
+      historyScopeKey: databaseViewHistoryScopeKey(model),
       session,
       projectId: mutationHistoryProjectId,
       storeEpoch: model.storeEpoch,
@@ -1571,22 +1523,20 @@ export function DatabaseList({
     };
   }, [blockDropMessage, blockDropPreview]);
 
+  const historyInput = {
+    history: mutationHistory,
+    onCommitted,
+    onBlocked: (reason: string) => toast.info(reason),
+  };
+  useDatabaseViewHistoryInput(hostRef, historyInput);
+  useSurfaceHistoryFocus(hostRef, mutationHistory);
+
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.defaultPrevented || dndActive) return;
     if (
       handleDatabaseViewMutationHistoryKeyDown({
+        ...historyInput,
         event,
-        history: mutationHistory,
-        undoListMove,
-        undoBlockTransfer: mutationHistoryProjectId
-          ? async (token) =>
-              await undoDatabaseViewBlockTransfer({
-                projectId: mutationHistoryProjectId,
-                storeEpoch: model.storeEpoch,
-                token,
-                onCommitted,
-              })
-          : undefined,
       })
     )
       return;
@@ -1857,16 +1807,23 @@ export function DatabaseList({
       onActiveChange={setDndActive}
       onCommit={dropPages}
     >
-      <DatabaseViewPageContextMenuHost resolveSession={resolvePageMenuSession}>
+      <DatabaseViewPageContextMenuHost
+        resolveSession={resolvePageMenuSession}
+        returnFocusRef={hostRef}
+      >
         <div
           ref={hostRef}
+          tabIndex={0}
           data-database-view-id={model.databaseViewId}
+          data-embedded-surface-input="true"
+          contentEditable={false}
           data-page-create-surface-id={pageCreateSurfaceId}
           className={cn(
-            "relative h-full min-h-0 min-w-0 bg-[var(--database-list-surface)] text-[var(--database-list-text-primary)]",
+            "relative flex h-full min-h-0 min-w-0 flex-col bg-[var(--database-list-surface)] text-[var(--database-list-text-primary)]",
             DATABASE_LIST_THEME_CLASS_NAME,
           )}
         >
+          <SurfaceHistoryStatus controls={mutationHistory} />
           <div
             ref={scrollerRef}
             role="grid"
@@ -1875,7 +1832,7 @@ export function DatabaseList({
             aria-busy={mutationPending || coreWindow.loading || undefined}
             data-list-container="true"
             className={cn(
-              "h-full min-h-0 overflow-auto overscroll-contain [scrollbar-gutter:stable]",
+              "min-h-0 flex-1 overflow-auto overscroll-contain [scrollbar-gutter:stable]",
               selectionCount > 0 ? "pb-16" : "pb-2",
               pointerSuppressed && !dndActive && "[&_[data-list-row=true]]:pointer-events-none",
             )}

@@ -2,15 +2,23 @@ import { getBlockInfo, getNodeById, type BlockNoteEditor } from "@blocknote/core
 import { TextSelection } from "@tiptap/pm/state";
 
 import {
+  abandonPromotion,
+  abandonStructuralHistory,
+  promotionRetentionResources,
+  releaseStructuralHistory,
+} from "../../../lib/surface-history/structural-resources";
+import {
   contentAccessContextKey,
   type ContentAccessContext,
 } from "../../../../shared/content-access-context";
+import { canRetryNfmHistory } from "./nfm-history-command";
 import type {
   NodexClipboardEnvelopeV1,
   NodexStructuralClipboardDescriptorV1,
   StructuralClipboardResolution,
 } from "../../../../shared/clipboard-paste";
 import type {
+  LibraryApplyOperation,
   LibraryModuleApplyResult,
   LibraryStructuralClipboardToken,
   LibraryStructuralEditResult,
@@ -20,15 +28,54 @@ import type {
 } from "../../../../shared/library-module";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { hasTypedOwnerBlock, type TypedOwnerBlockLike } from "../../../lib/typed-owner-blocks";
-import type { BlockDocumentStructuralMutationParticipant } from "../../../lib/block-document-mutation-registry";
+import {
+  resolveBlockDocumentStructuralMutationParticipantByDocumentId,
+  type BlockDocumentStructuralMutationParticipant,
+} from "../../../lib/block-document-mutation-registry";
 import {
   applyLibraryModule,
+  readLibraryModule,
   awaitStructuralClipboard,
   beginStructuralClipboard,
   publishStructuralClipboard,
   settleStructuralClipboard,
+  transferBlocks,
 } from "../../../lib/api";
-import { NfmHistoryLane, resolveNfmUndoManager } from "./nfm-editor-history";
+import {
+  prepareNfmBlockPromotion,
+  type NfmBlockMoveRequest,
+} from "../../../lib/nfm-block-move-runtime";
+import type { SurfaceHistorySelectionPair, YUndoExtension } from "@blocknote/core/yjs";
+import { NfmHistoryLane } from "./nfm-editor-history";
+import type { SurfaceHistoryControls } from "../../../lib/surface-history/controls";
+import type {
+  HistoryCommandHandle,
+  HistoryCommandOutcome,
+  HistoryPreparation,
+} from "../../../lib/surface-history/owner";
+import type {
+  NfmHistoryCommand,
+  NfmHistoryRequest,
+  NfmLibraryHistoryRequest,
+  NfmHistoryReceipt,
+  NfmHistoryPresentation,
+  NfmPageMentionIntent,
+  NfmReceivingPageTransferIntent,
+  NfmStructuralTransferIntent,
+  NfmStructuralPasteIntent,
+  NfmStructuralDocumentTarget,
+  NfmStructuralClipboardPresentation,
+} from "./nfm-history-command";
+export type {
+  NfmStructuralDocumentTarget,
+  NfmStructuralClipboardPresentation,
+} from "./nfm-history-command";
+import { NfmTextHistoryJournal } from "./nfm-text-history-journal";
+import { NfmLocalHistoryRetention } from "./nfm-local-history-retention";
+import {
+  coreHistoryReconciliation,
+  type NfmHistoryReconciliation,
+} from "./nfm-history-reconciliation";
 import { planBackspaceAcrossAtomicBlocks } from "./atomic-block-backspace";
 import { getNfmBlockSelectionIds } from "./nfm-block-selection";
 import { setNfmClipboardPastePending } from "./nfm-clipboard-paste-pending-extension";
@@ -40,20 +87,6 @@ import {
 } from "../../../lib/document-wait";
 
 export const NFM_CLIPBOARD_PASTE_PENDING_DELAY_MS = 150;
-
-export interface NfmStructuralClipboardPresentation {
-  readonly html: string;
-  readonly text: string;
-}
-
-export interface NfmStructuralDocumentTarget {
-  readonly documentId: string;
-  readonly storeEpoch: string;
-  readonly generation: number;
-  readonly headSeq: number;
-  readonly parentBlockId?: string | null;
-  readonly beforeBlockId?: string | null;
-}
 
 export interface NfmStructuralReplacementBlockLike extends TypedOwnerBlockLike {
   readonly id: string;
@@ -86,22 +119,13 @@ type StructuralEditor = BlockNoteEditor & {
   ) => readonly StructuralEditorBlock[];
 };
 
-type NfmStructuralPasteIntent =
-  | {
-      readonly kind: "replace";
-      readonly rootBlockIds: readonly string[];
-    }
-  | {
-      readonly kind: "insert";
-      readonly anchorBlockId: string;
-      readonly parentBlockId: string | null;
-      readonly beforeBlockId: string | null;
-    };
-
 export interface NfmStructuralEditingSessionOptions {
   readonly editor: BlockNoteEditor<any, any, any>;
   readonly historyLane?: NfmHistoryLane | null;
+  readonly historyReconciliation?: NfmHistoryReconciliation;
   readonly apply?: typeof applyLibraryModule;
+  readonly preparePromotion?: typeof prepareNfmBlockPromotion;
+  readonly transfer?: typeof transferBlocks;
   readonly beginClipboard?: typeof beginStructuralClipboard;
   readonly publishClipboard?: typeof publishStructuralClipboard;
   readonly settleClipboard?: typeof settleStructuralClipboard;
@@ -111,7 +135,7 @@ export interface NfmStructuralEditingSessionOptions {
 
 export interface NfmStructuralEditingRuntime {
   readonly accessContext: ContentAccessContext;
-  readonly libraryId?: string;
+  readonly libraryId: string;
   readonly source: {
     readonly documentId: string;
     readonly storeEpoch: string;
@@ -258,9 +282,9 @@ const sanitizePortableFallbackBlock = (block: StructuralEditorBlock): Structural
 };
 
 const withoutPortableBlockIdentity = (
-  block: StructuralEditorBlock,
+  block: LibraryStructuralReplacementBlock,
 ): Readonly<Record<string, unknown>> => ({
-  type: block.type,
+  type: block.blockType,
   props: block.props ?? {},
   content: block.content ?? [],
   children: (block.children ?? []).map(withoutPortableBlockIdentity),
@@ -268,11 +292,16 @@ const withoutPortableBlockIdentity = (
 
 /**
  * One retained editor surface's structural input owner. React provides stable
- * runtime dependencies; this session owns command ordering, history and focus.
+ * runtime dependencies; semantic preparation and presentation use the shared history owner.
  */
 export class NfmStructuralEditingSession {
   private readonly editor: StructuralEditor;
   private readonly apply: typeof applyLibraryModule;
+  private readonly preparePromotion: typeof prepareNfmBlockPromotion;
+  private readonly transfer: typeof transferBlocks;
+  private readonly cleanupTransfer: typeof transferBlocks | undefined;
+  private readonly cleanupApply: typeof applyLibraryModule | undefined;
+  private readonly localRetention: NfmLocalHistoryRetention | undefined;
   private readonly beginClipboard: typeof beginStructuralClipboard;
   private readonly publishClipboard: typeof publishStructuralClipboard;
   private readonly settleClipboard: typeof settleStructuralClipboard;
@@ -280,15 +309,29 @@ export class NfmStructuralEditingSession {
   private readonly history: NfmHistoryLane;
   private readonly ownsHistory: boolean;
   private readonly detachHistory: () => void;
+  private readonly unbindHistory: () => void;
+  private readonly historyReconciliation: NfmHistoryReconciliation;
+  private unsubscribeHistoryChanges: (() => void) | undefined;
+  private reconciliationRequested = false;
+  private reconciliationTask: Promise<void> | undefined;
   private disposed = false;
-  private currentOperation: Promise<void> = Promise.resolve();
+  private readonly admissions = new WeakMap<
+    NfmHistoryCommand,
+    {
+      cancellationVersion: number;
+      deadlineAt: number;
+      focusRevision: number;
+      controller: AbortController;
+      clipboardPublished?: boolean;
+    }
+  >();
+  private focusRevision = 0;
+  private focusDocument: Document | null = null;
   private readonly preparationLifetime = new AbortController();
   private readonly preparationWaits = new Set<AbortController>();
   private cancellationVersion = 0;
   private activeOperationVersion: number | undefined;
   private operationDeadlineAt: number | undefined;
-  private historyReplayFocusChanged = false;
-  private operationFocusChanged = false;
   private backwardMergePending = false;
   private preparedPasteIntent: {
     readonly token: symbol;
@@ -298,40 +341,76 @@ export class NfmStructuralEditingSession {
 
   constructor(options: NfmStructuralEditingSessionOptions) {
     this.editor = options.editor as StructuralEditor;
+    this.preparePromotion = options.preparePromotion ?? prepareNfmBlockPromotion;
+    this.transfer = options.transfer ?? transferBlocks;
+    this.cleanupTransfer = options.transfer;
+    this.historyReconciliation = options.historyReconciliation ?? coreHistoryReconciliation;
     const apply = options.apply ?? applyLibraryModule;
-    this.apply = async (...args) => {
-      assertDocumentWaitActive({
-        signal: this.preparationLifetime.signal,
-        deadlineAt: this.operationDeadlineAt,
-      });
-      if (
-        this.activeOperationVersion !== undefined &&
-        this.activeOperationVersion !== this.cancellationVersion
-      )
-        throw new DocumentWaitError("cancelled");
-      return await apply(...args);
-    };
+    this.cleanupApply = options.apply;
+    this.apply = (...args) =>
+      waitForDocumentOperation(() => apply(...args), { signal: this.preparationLifetime.signal });
     this.beginClipboard = options.beginClipboard ?? beginStructuralClipboard;
     this.publishClipboard = options.publishClipboard ?? publishStructuralClipboard;
     this.settleClipboard = options.settleClipboard ?? settleStructuralClipboard;
     this.awaitClipboard = options.awaitClipboard ?? awaitStructuralClipboard;
     this.runtime = options.runtime ?? null;
-    const undoManager = resolveNfmUndoManager(options.editor);
-    this.history = options.historyLane ?? new NfmHistoryLane({ undoManager });
+    const backend = options.editor.getExtension<typeof YUndoExtension>("yUndo");
+    if (!backend) throw new Error("NFM requires a registered collaborative history backend.");
+    const journal = options.historyLane
+      ? undefined
+      : new NfmTextHistoryJournal(backend.fragment, backend.undoManager);
+    this.localRetention = journal
+      ? new NfmLocalHistoryRetention(backend.undoManager.doc, journal, {
+          scope: () => this.boundRuntime,
+          apply: options.apply,
+          release: options.apply
+            ? async (access, request) => {
+                const result = await options.apply!(access, request);
+                if (!result.ok) throw new Error(result.error.message);
+              }
+            : undefined,
+          onError: (error) =>
+            this.runtime?.onError?.(
+              error instanceof Error ? error.message : "History retention failed.",
+            ),
+        })
+      : undefined;
+    this.history =
+      options.historyLane ??
+      new NfmHistoryLane({
+        undoManager: backend.undoManager,
+        textHistory: journal,
+        textSelection: backend.getSemanticSelection,
+      });
+    this.unbindHistory = backend.bindHistory(this.history);
     this.ownsHistory = this.history !== options.historyLane;
     this.detachHistory = this.history.attach({
-      reverseStructural: async (token) => await this.reverseStructural(token),
-      releaseStructural: async (tokens) => await this.releaseStructuralHistory(tokens),
-      onStructuralReversed: async (result) => {
-        if (this.historyReplayFocusChanged) return;
-        await this.restoreSelection(result);
-        this.restoreFocusIfUnclaimed();
-      },
-      onError: (error) =>
-        this.runtime?.onError?.(
-          error instanceof Error ? error.message : "History replay could not be completed.",
+      prepareCommand: (command) => this.prepareCommand(command),
+      prepareStructuralReverse: (token, selection) =>
+        this.prepareHistory({ kind: "reverse_structural_edit", token }, selection),
+      prepareTextReverse: (patch, selection) =>
+        this.prepareHistory(
+          {
+            kind: "apply_structural_edit",
+            command: {
+              kind: "restore_editor_history",
+              documentId: this.boundRuntime.source.documentId,
+              generation: this.boundRuntime.source.generation,
+              patch,
+            },
+          },
+          selection,
         ),
+      submit: (request) => this.submitCommand(request),
+      releaseStructural: (tokens) => this.releaseStructuralHistory(tokens),
+      abandonCommand: (request) => this.abandonCommand(request),
+      reconcileStructural: (tokens) =>
+        this.historyReconciliation.read(this.reconciliationScope, tokens),
+      onCommitted: (receipt) => this.presentReceipt(receipt),
+      onError: (error) => this.reportError(error),
     });
+    this.bindFocusDocument();
+    this.subscribeHistoryChanges();
   }
 
   /** Rebinds live Document authority without replacing the surface command queue. */
@@ -341,19 +420,55 @@ export class NfmStructuralEditingSession {
       this.runtime &&
       (this.runtime.source.documentId !== runtime.source.documentId ||
         this.runtime.source.storeEpoch !== runtime.source.storeEpoch ||
-        this.runtime.source.generation !== runtime.source.generation)
+        this.runtime.source.generation !== runtime.source.generation ||
+        this.runtime.libraryId !== runtime.libraryId ||
+        contentAccessContextKey(this.runtime.accessContext) !==
+          contentAccessContextKey(runtime.accessContext))
     ) {
       throw new Error("A structural editing session cannot change its Document authority.");
     }
-    if (
-      this.runtime &&
-      (this.runtime.libraryId !== runtime.libraryId ||
-        contentAccessContextKey(this.runtime.accessContext) !==
-          contentAccessContextKey(runtime.accessContext))
-    )
-      this.cancelPreparations();
     this.runtime = runtime;
+    this.bindFocusDocument();
+    this.subscribeHistoryChanges();
   }
+
+  private get reconciliationScope() {
+    const runtime = this.boundRuntime;
+    return {
+      libraryId: runtime.libraryId,
+      accessContext: runtime.accessContext,
+      storeEpoch: runtime.source.storeEpoch,
+    };
+  }
+
+  private subscribeHistoryChanges(): void {
+    if (!this.runtime || this.unsubscribeHistoryChanges) return;
+    this.unsubscribeHistoryChanges = this.historyReconciliation.subscribe(
+      this.reconciliationScope,
+      this.requestReconciliation,
+    );
+  }
+
+  private readonly requestReconciliation = (): void => {
+    if (this.disposed) return;
+    this.reconciliationRequested = true;
+    if (this.reconciliationTask) return;
+    this.reconciliationTask = (async () => {
+      while (this.reconciliationRequested && !this.disposed) {
+        this.reconciliationRequested = false;
+        try {
+          await this.history.reconcile();
+        } catch (error) {
+          this.runtime?.onError?.(
+            error instanceof Error ? error.message : "History reconciliation failed.",
+          );
+        }
+      }
+    })().finally(() => {
+      this.reconciliationTask = undefined;
+      if (this.reconciliationRequested) this.requestReconciliation();
+    });
+  };
 
   private get boundRuntime(): NfmStructuralEditingRuntime {
     if (this.runtime) return this.runtime;
@@ -361,10 +476,13 @@ export class NfmStructuralEditingSession {
   }
 
   handleKeyDown(event: KeyboardEvent): boolean {
-    if (this.disposed) return false;
+    if (this.disposed || event.isComposing || this.editor.prosemirrorView?.composing) return false;
     const mod = event.metaKey || event.ctrlKey;
     if (mod && !event.altKey && event.key.toLowerCase() === "z") {
       return event.shiftKey ? this.history.requestRedo() : this.history.requestUndo();
+    }
+    if (mod && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "y") {
+      return this.history.requestRedo();
     }
     if (
       event.altKey ||
@@ -395,26 +513,9 @@ export class NfmStructuralEditingSession {
   }
 
   duplicateBlocks(rootBlockIds: readonly string[]): boolean {
-    const roots = rootBlockIds
-      .map((blockId) => this.editor.getBlock(blockId) as StructuralEditorBlock | undefined)
-      .filter((block): block is StructuralEditorBlock => Boolean(block));
-    if (!hasTypedOwnerBlock(roots) || this.disposed) return false;
-    this.start(async () => {
-      const { selection, target } = await this.prepareDuplicateCommand(roots);
-      const result = applyResult(
-        await this.apply(this.boundRuntime.accessContext, {
-          operationId: createUuidV7(),
-          storeEpoch: this.boundRuntime.source.storeEpoch,
-          operation: {
-            kind: "apply_structural_edit",
-            command: { kind: "duplicate_selection", selection, target },
-          },
-        }),
-      );
-      this.recordStructuralResult(result);
-      await this.restoreSelection(result, result.resultRootBlockIds.at(-1));
-    });
-    return true;
+    const roots = this.resolveRoots(rootBlockIds);
+    if (!hasTypedOwnerBlock(roots)) return false;
+    return this.start({ kind: "duplicate", roots: [...rootBlockIds] });
   }
 
   turnBlocksInto(
@@ -437,72 +538,43 @@ export class NfmStructuralEditingSession {
     ) {
       return false;
     }
-    this.start(async () => {
-      const selection = await this.prepareSelection(roots);
-      const result = applyResult(
-        await this.apply(this.boundRuntime.accessContext, {
-          operationId: createUuidV7(),
-          storeEpoch: this.boundRuntime.source.storeEpoch,
-          operation: {
-            kind: "apply_structural_edit",
-            command: { kind: "turn_selection_into", selection, target },
-          },
-        }),
-      );
-      this.recordStructuralResult(result);
-      await this.restoreSelection(result, result.resultRootBlockIds.at(-1));
+    return this.start({
+      kind: "turn_into",
+      roots: [...rootBlockIds],
+      target: structuredClone(target),
     });
-    return true;
   }
 
   moveBlocksToDocument(
     rootBlockIds: readonly string[],
-    target: NfmStructuralDocumentTarget,
+    prepareTarget: () => Promise<NfmStructuralDocumentTarget>,
   ): boolean {
-    const roots = rootBlockIds
-      .map((blockId) => this.editor.getBlock(blockId) as StructuralEditorBlock | undefined)
-      .filter((block): block is StructuralEditorBlock => Boolean(block));
-    if (!hasTypedOwnerBlock(roots) || this.disposed) return false;
-    this.start(async () => {
-      if (target.storeEpoch !== this.boundRuntime.source.storeEpoch) {
-        throw new Error("The target belongs to another Store generation.");
-      }
-      const selection = await this.prepareSelection(roots);
-      const result = applyResult(
-        await this.apply(this.boundRuntime.accessContext, {
-          operationId: createUuidV7(),
-          storeEpoch: this.boundRuntime.source.storeEpoch,
-          operation: {
-            kind: "apply_structural_edit",
-            command: {
-              kind: "move_selection",
-              selection,
-              target: {
-                targetDocumentId: target.documentId,
-                parentBlockId: target.parentBlockId ?? null,
-                beforeBlockId: target.beforeBlockId ?? null,
-                targetHead: {
-                  documentId: target.documentId,
-                  generation: target.generation,
-                  expectedHeadSeq: target.headSeq,
-                },
-              },
-            },
-          },
-        }),
-      );
-      this.recordStructuralResult(result);
-      await this.restoreSelection(result);
-    });
-    return true;
+    const roots = this.resolveRoots(rootBlockIds);
+    if (roots.length === 0 || roots.length !== rootBlockIds.length) return false;
+    return this.start({ kind: "move_to_document", roots: [...rootBlockIds], prepareTarget });
   }
 
-  adoptStructuralResult(result: LibraryStructuralEditResult, preferredBlockId?: string): void {
-    if (this.disposed) return;
-    this.recordStructuralResult(result);
-    this.start(async () => {
-      await this.restoreSelection(result, preferredBlockId ?? result.resultRootBlockIds.at(-1));
+  async transferBlocks(transfer: NfmStructuralTransferIntent): Promise<void> {
+    await this.completeCommand({
+      kind: "transfer",
+      transfer: {
+        ...transfer,
+        rootBlockIds: [...transfer.rootBlockIds],
+        target: { ...transfer.target },
+      },
     });
+  }
+
+  async createPageMention(mention: NfmPageMentionIntent): Promise<void> {
+    await this.completeCommand({ kind: "page_mention", mention: structuredClone(mention) });
+  }
+
+  async promoteBlocks(promotion: Omit<NfmBlockMoveRequest, "sourceHead">): Promise<void> {
+    await this.completeCommand({ kind: "promotion", promotion: structuredClone(promotion) });
+  }
+
+  async receivePages(transfer: NfmReceivingPageTransferIntent): Promise<void> {
+    await this.completeCommand({ kind: "receive_pages", transfer: structuredClone(transfer) });
   }
 
   handleClipboard(
@@ -522,7 +594,7 @@ export class NfmStructuralEditingSession {
     if (envelope.storeEpoch !== this.boundRuntime.source.storeEpoch) return false;
     const intent = this.capturePasteIntent();
     if (!intent) return false;
-    return this.start(async () => await this.pasteEnvelope(envelope, intent));
+    return this.start({ kind: "paste", envelope: structuredClone(envelope), target: intent });
   }
 
   handleStructuralClaimPaste(
@@ -532,36 +604,11 @@ export class NfmStructuralEditingSession {
     if (this.disposed) return false;
     const intent = this.consumePreparedPasteIntent() ?? this.capturePasteIntent();
     if (!intent) return false;
-    const frozenPortableBlocks = portableBlocks.map(sanitizePortableFallbackBlock);
-    return this.start(async () => {
-      const releasePending = this.schedulePendingPasteIndicator(intent);
-      try {
-        const resolution: StructuralClipboardResolution = await this.awaitClipboard({
-          writeClaim: descriptor.writeClaim,
-          ...(descriptor.phase === "ready" ? { publishedEnvelope: descriptor.envelope } : {}),
-        });
-        if (resolution.kind === "portable_fallback") {
-          await this.pastePortableBlocks(frozenPortableBlocks, intent);
-          this.boundRuntime.onClipboardFallback?.(
-            descriptor.actionHint === "cut"
-              ? "Pasted a copy because the move could not be completed."
-              : "Pasted portable content because structural clipboard data was unavailable.",
-          );
-          return;
-        }
-        if (!this.envelopeMatchesRuntime(resolution.envelope)) {
-          await this.pastePortableBlocks(frozenPortableBlocks, intent);
-          return;
-        }
-        await this.pasteEnvelope(resolution.envelope, intent);
-        if (resolution.disposition === "copy_fallback") {
-          this.boundRuntime.onClipboardFallback?.(
-            "Pasted a copy because the move could not be completed.",
-          );
-        }
-      } finally {
-        releasePending();
-      }
+    return this.start({
+      kind: "paste_claim",
+      descriptor: structuredClone(descriptor),
+      portableBlocks: portableBlocks.map(sanitizePortableFallbackBlock).map(toReplacementBlock),
+      target: intent,
     });
   }
 
@@ -589,7 +636,9 @@ export class NfmStructuralEditingSession {
   }
 
   handleBeforeInput(event: InputEvent): boolean {
-    if (this.disposed || event.isComposing) return false;
+    if (this.disposed || event.isComposing || this.editor.prosemirrorView?.composing) return false;
+    if (event.inputType === "historyUndo") return this.history.requestUndo();
+    if (event.inputType === "historyRedo") return this.history.requestRedo();
     const roots = selectedStructuralRoots(this.editor);
     if (!hasTypedOwnerBlock(roots)) return false;
     if (event.inputType === "insertParagraph") {
@@ -607,208 +656,93 @@ export class NfmStructuralEditingSession {
   }
 
   whenIdle(): Promise<void> {
-    return this.currentOperation;
+    return this.history.whenIdle();
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.preparationLifetime.abort();
+    this.bindFocusDocument(null);
+    void this.localRetention
+      ?.close()
+      .catch((error: unknown) =>
+        this.runtime?.onError?.(error instanceof Error ? error.message : "History cleanup failed."),
+      );
+    this.unsubscribeHistoryChanges?.();
     this.preparedPasteIntent = null;
     this.detachHistory();
+    this.unbindHistory();
     if (this.ownsHistory) this.history.dispose();
   }
 
+  async close(): Promise<void> {
+    this.dispose();
+    await Promise.all([
+      this.localRetention?.close(),
+      this.ownsHistory ? this.history.close() : undefined,
+    ]);
+  }
+
   private captureClipboard(
-    actionHint: "copy" | "cut",
+    action: "copy" | "cut",
     rootBlockIds: readonly string[],
     presentation: NfmStructuralClipboardPresentation,
     writeClaim: string,
   ): boolean {
-    if (this.disposed) return false;
-    const roots = rootBlockIds
-      .map((blockId) => this.editor.getBlock(blockId) as StructuralEditorBlock | undefined)
-      .filter((block): block is StructuralEditorBlock => Boolean(block));
+    const roots = this.resolveRoots(rootBlockIds);
     if (roots.length === 0 || roots.length !== rootBlockIds.length) return false;
-    const begin = this.beginClipboard({
+    return this.start({
+      kind: "clipboard",
+      action,
+      roots: [...rootBlockIds],
+      presentation: { ...presentation },
       writeClaim,
-      actionHint,
-      libraryId: this.boundRuntime.libraryId,
-      storeEpoch: this.boundRuntime.source.storeEpoch,
     });
-    const started = this.start(async () => {
-      const begun = await begin;
-      if (!begun.ok) {
-        throw new Error("The structural clipboard session could not be started.");
-      }
-
-      let published = false;
-      try {
-        const selection = await this.prepareSelection(roots);
-        const capturedResult = await this.apply(this.boundRuntime.accessContext, {
-          operationId: createUuidV7(),
-          storeEpoch: this.boundRuntime.source.storeEpoch,
-          operation: {
-            kind: "apply_structural_edit",
-            command: { kind: "capture_clipboard", selection },
-          },
-        });
-        const captured = applyResult(capturedResult);
-        const clipboard = captured.clipboard;
-        if (!clipboard || !capturedResult.ok) {
-          throw new Error("Core omitted the structural clipboard capability.");
-        }
-        const envelope: NodexClipboardEnvelopeV1 = {
-          version: 1,
-          profileId: capturedResult.value.profileId,
-          libraryId: capturedResult.value.libraryId,
-          storeEpoch: clipboard.storeEpoch,
-          bundleId: clipboard.bundleId,
-          capability: clipboard.capability,
-          manifestHash: clipboard.manifestHash,
-          actionHint,
-        };
-        const text = this.boundRuntime.resolveClipboardText
-          ? await this.boundRuntime.resolveClipboardText(presentation.text)
-          : presentation.text;
-        const written = await this.publishClipboard({
-          envelope,
-          writeClaim,
-          html: presentation.html,
-          text,
-        });
-        if (!written.ok) {
-          if (written.failure === "superseded") return;
-          throw new Error(
-            written.failure === "readback_mismatch"
-              ? "The system clipboard could not verify the copied structure."
-              : "The system clipboard could not be written.",
-          );
-        }
-        published = true;
-        if (actionHint === "copy") return;
-
-        let deleted: LibraryStructuralEditResult;
-        try {
-          const deleteSelection = await this.prepareSelection(roots);
-          deleted = applyResult(
-            await this.apply(this.boundRuntime.accessContext, {
-              operationId: createUuidV7(),
-              storeEpoch: this.boundRuntime.source.storeEpoch,
-              operation: {
-                kind: "apply_structural_edit",
-                command: {
-                  kind: "delete_selection",
-                  selection: deleteSelection,
-                  reason: { kind: "cut", bundle: clipboard },
-                  direction: "backward",
-                },
-              },
-            }),
-          );
-        } catch (error) {
-          await this.settleClipboard({ writeClaim, outcome: "source_preserved" });
-          throw error;
-        }
-        await this.settleClipboard({ writeClaim, outcome: "cut_committed" });
-        this.recordStructuralResult(deleted);
-        await this.restoreSelection(deleted);
-      } catch (error) {
-        if (!published) {
-          await this.settleClipboard({
-            writeClaim,
-            outcome: "failed",
-            reason: "capture_failed",
-          });
-        }
-        throw error;
-      }
-    });
-    if (!started) {
-      void begin
-        .then((result) => {
-          if (!result.ok) return;
-          return this.settleClipboard({
-            writeClaim,
-            outcome: "failed",
-            reason: "capture_failed",
-          });
-        })
-        .catch(() => undefined);
-    }
-    return started;
   }
 
-  private async reverseStructural(token: LibraryStructuralHistoryToken) {
-    const container = this.boundRuntime.getContainer();
-    const document = container?.ownerDocument;
-    let userMovedFocus = false;
-    this.historyReplayFocusChanged = false;
-    const markInteraction = (): void => {
-      userMovedFocus = true;
-    };
-    document?.addEventListener("pointerdown", markInteraction, true);
-    document?.addEventListener("keydown", markInteraction, true);
-    try {
-      const head = await this.prepareAndFence();
-      this.assertSourceHead(head);
-      return {
-        structuralEdit: applyResult(
-          await this.apply(this.boundRuntime.accessContext, {
-            operationId: createUuidV7(),
-            storeEpoch: this.boundRuntime.source.storeEpoch,
-            operation: { kind: "reverse_structural_edit", token },
-          }),
-        ),
-      };
-    } finally {
-      document?.removeEventListener("pointerdown", markInteraction, true);
-      document?.removeEventListener("keydown", markInteraction, true);
-      this.historyReplayFocusChanged = userMovedFocus;
+  private async abandonCommand(attempt: NfmHistoryRequest): Promise<void> {
+    if (attempt.kind === "block_transfer") {
+      if (!this.cleanupTransfer) return abandonPromotion(attempt.request);
+      // An injected transport stands in for Main's exact-attempt owner.
+      const result = await this.cleanupTransfer(attempt.request.projectId, attempt.request);
+      if (!result.ok) {
+        if (result.error.code === "unknown") throw new Error(result.error.message);
+        return;
+      }
+      await this.releaseStructuralHistory(promotionRetentionResources(result.value));
+      return;
     }
+    if (this.cleanupApply) {
+      // The injected transport owns its outstanding response, just as Main owns production attempts.
+      void this.cleanupApply(attempt.accessContext, attempt.request)
+        .then(async (result) => {
+          if (!result.ok && result.error.code === "unknown") throw new Error(result.error.message);
+          const token = result.ok ? result.value.structuralEdit?.history : undefined;
+          if (token) await this.releaseStructuralHistory([token]);
+        })
+        .catch((error: unknown) => this.reportError(error));
+      return;
+    }
+    await abandonStructuralHistory(attempt.accessContext, attempt.request);
   }
 
   private async releaseStructuralHistory(
     tokens: readonly LibraryStructuralHistoryToken[],
   ): Promise<void> {
-    if (tokens.length === 0) return;
-    const result = await this.apply(this.boundRuntime.accessContext, {
-      operationId: createUuidV7(),
-      storeEpoch: this.boundRuntime.source.storeEpoch,
-      operation: {
-        kind: "apply_structural_edit",
-        command: { kind: "release_history", tokens },
-      },
-    });
-    if (!result.ok) throw new Error(result.error.message);
+    await releaseStructuralHistory(
+      this.boundRuntime.accessContext,
+      this.boundRuntime.source.storeEpoch,
+      tokens,
+      this.cleanupApply,
+    );
   }
 
   private deleteRoots(
     roots: readonly StructuralEditorBlock[],
     direction: "backward" | "forward",
   ): boolean {
-    if (this.disposed) return false;
-    this.start(async () => {
-      const selection = await this.prepareSelection(roots);
-      const result = applyResult(
-        await this.apply(this.boundRuntime.accessContext, {
-          operationId: createUuidV7(),
-          storeEpoch: this.boundRuntime.source.storeEpoch,
-          operation: {
-            kind: "apply_structural_edit",
-            command: {
-              kind: "delete_selection",
-              selection,
-              reason: { kind: "delete" },
-              direction,
-            },
-          },
-        }),
-      );
-      this.recordStructuralResult(result);
-      await this.restoreSelection(result);
-    });
-    return true;
+    return this.start({ kind: "delete", roots: roots.map((block) => block.id), direction });
   }
 
   private mergeBlockBackward(plan: {
@@ -816,35 +750,20 @@ export class NfmStructuralEditingSession {
     readonly targetBlockId: string;
   }): boolean {
     if (this.disposed || this.backwardMergePending) return true;
-    const source = this.editor.getBlock(plan.sourceBlockId) as StructuralEditorBlock | undefined;
+    const source = this.editor.getBlock(plan.sourceBlockId);
     const joinOffset = this.inlineContentSize(plan.targetBlockId);
     if (!source || joinOffset === null) return false;
-
     this.backwardMergePending = true;
-    this.start(async () => {
-      try {
-        const selection = await this.prepareSelection([source]);
-        const result = applyResult(
-          await this.apply(this.boundRuntime.accessContext, {
-            operationId: createUuidV7(),
-            storeEpoch: this.boundRuntime.source.storeEpoch,
-            operation: {
-              kind: "apply_structural_edit",
-              command: {
-                kind: "merge_block_backward",
-                selection,
-                targetBlockId: plan.targetBlockId,
-              },
-            },
-          }),
-        );
-        this.recordStructuralResult(result);
-        await this.restoreBackwardMergeSelection(plan, joinOffset, result);
-      } finally {
-        this.backwardMergePending = false;
-      }
+    const handle = this.executeCommand({
+      kind: "merge_backward",
+      sourceBlockId: plan.sourceBlockId,
+      targetBlockId: plan.targetBlockId,
+      joinOffset,
     });
-    return true;
+    void handle.result.finally(() => {
+      this.backwardMergePending = false;
+    });
+    return handle.accepted;
   }
 
   private inlineContentSize(blockId: string): number | null {
@@ -861,10 +780,11 @@ export class NfmStructuralEditingSession {
     plan: { readonly sourceBlockId: string; readonly targetBlockId: string },
     joinOffset: number,
     result: LibraryStructuralEditResult,
+    focusRevision: number,
   ): Promise<void> {
-    if (this.operationFocusChanged || this.historyReplayFocusChanged) return;
+    if (this.disposed || focusRevision !== this.focusRevision) return;
     for (let attempt = 0; attempt < 120; attempt += 1) {
-      if (this.operationFocusChanged || this.historyReplayFocusChanged) return;
+      if (this.disposed || focusRevision !== this.focusRevision) return;
       const view = this.editor.prosemirrorView;
       if (view && !this.editor.getBlock(plan.sourceBlockId)) {
         const position = getNodeById(plan.targetBlockId, view.state.doc);
@@ -880,11 +800,7 @@ export class NfmStructuralEditingSession {
       }
       await nextAnimationFrame();
     }
-    await this.restoreSelection(result, plan.targetBlockId);
-  }
-
-  private recordStructuralResult(result: LibraryStructuralEditResult): void {
-    this.history.recordStructural(result);
+    await this.restoreSelection(result, plan.targetBlockId, focusRevision);
   }
 
   cancelPreparations = (): void => {
@@ -892,47 +808,672 @@ export class NfmStructuralEditingSession {
     this.preparationWaits.forEach((controller) => controller.abort());
   };
 
-  private start(operation: () => Promise<void>): boolean {
+  private resolveRoots(ids: readonly string[]): readonly StructuralEditorBlock[] {
+    return ids
+      .map((id) => this.editor.getBlock(id) as StructuralEditorBlock | undefined)
+      .filter((block): block is StructuralEditorBlock => Boolean(block));
+  }
+
+  private executeCommand(command: NfmHistoryCommand): HistoryCommandHandle<NfmHistoryReceipt> {
+    this.admissions.set(command, {
+      cancellationVersion: this.cancellationVersion,
+      deadlineAt: Date.now() + DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
+      focusRevision: ++this.focusRevision,
+      controller: new AbortController(),
+    });
+    return this.history.execute(command);
+  }
+
+  private start(command: NfmHistoryCommand): boolean {
     if (this.disposed || !this.runtime) return false;
-    const runtime = this.runtime;
-    const cancellationVersion = this.cancellationVersion;
-    const deadlineAt = Date.now() + DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS;
-    const run = async (): Promise<void> => {
-      if (this.disposed || cancellationVersion !== this.cancellationVersion) return;
-      const container = runtime.getContainer();
-      const document = container?.ownerDocument;
-      let userMovedFocus = false;
-      this.operationFocusChanged = false;
-      this.historyReplayFocusChanged = false;
-      const markInteraction = (event: Event): void => {
-        if (event.type === "keydown" && (event as KeyboardEvent).key === "Escape") {
-          this.cancelPreparations();
-        }
-        userMovedFocus = true;
-        this.operationFocusChanged = true;
-      };
-      document?.addEventListener("pointerdown", markInteraction, true);
-      document?.addEventListener("keydown", markInteraction, true);
-      try {
-        this.operationDeadlineAt = deadlineAt;
-        this.activeOperationVersion = cancellationVersion;
-        assertDocumentWaitActive({ signal: this.preparationLifetime.signal, deadlineAt });
-        await operation();
-      } catch (error: unknown) {
-        runtime.onError?.(
-          error instanceof Error ? error.message : "The structural edit could not be completed.",
-        );
-      } finally {
-        this.operationDeadlineAt = undefined;
-        this.activeOperationVersion = undefined;
-        document?.removeEventListener("pointerdown", markInteraction, true);
-        document?.removeEventListener("keydown", markInteraction, true);
-        if (!userMovedFocus && !this.disposed && this.cancellationVersion === cancellationVersion)
-          this.restoreFocusIfUnclaimed();
-      }
+    return this.executeCommand(command).accepted;
+  }
+
+  private async completeCommand(command: NfmHistoryCommand): Promise<void> {
+    const resolution = await this.executeCommand(command).result;
+    if (resolution.status !== "committed" && resolution.status !== "noop")
+      throw new Error(resolution.reason);
+    await this.whenIdle();
+  }
+
+  recoverHistory(): Promise<void> {
+    this.history.recover();
+    return this.whenIdle();
+  }
+
+  get historyControls(): SurfaceHistoryControls {
+    return this.history;
+  }
+
+  private readonly markFocusInteraction = (event: Event): void => {
+    this.focusRevision++;
+    if (event.type === "keydown" && (event as KeyboardEvent).key === "Escape")
+      this.cancelPreparations();
+  };
+
+  private bindFocusDocument(
+    document: Document | null = this.runtime?.getContainer()?.ownerDocument ?? null,
+  ): void {
+    if (this.focusDocument === document) return;
+    for (const type of ["pointerdown", "keydown", "beforeinput"])
+      this.focusDocument?.removeEventListener(type, this.markFocusInteraction, true);
+    this.focusDocument = document;
+    for (const type of ["pointerdown", "keydown", "beforeinput"])
+      document?.addEventListener(type, this.markFocusInteraction, true);
+  }
+
+  private reportError(error: unknown): void {
+    this.runtime?.onError?.(
+      error instanceof Error ? error.message : "The content command could not be completed.",
+    );
+  }
+
+  private requestFor(
+    operation: LibraryApplyOperation,
+    presentation: NfmHistoryPresentation,
+    replay = false,
+  ): NfmLibraryHistoryRequest {
+    return {
+      kind: "library",
+      accessContext: this.boundRuntime.accessContext,
+      request: {
+        operationId: createUuidV7(),
+        storeEpoch: this.boundRuntime.source.storeEpoch,
+        operation,
+      },
+      presentation,
+      replay,
     };
-    this.currentOperation = this.currentOperation.then(run);
-    return true;
+  }
+
+  private async prepareCommand(
+    command: NfmHistoryCommand,
+  ): Promise<HistoryPreparation<NfmHistoryRequest, NfmHistoryReceipt>> {
+    const admission = this.admissions.get(command);
+    if (this.disposed || !admission || admission.cancellationVersion !== this.cancellationVersion)
+      throw new DocumentWaitError("cancelled");
+    this.activeOperationVersion = admission.cancellationVersion;
+    this.operationDeadlineAt = admission.deadlineAt;
+    const presentation: NfmHistoryPresentation = { focusRevision: admission.focusRevision };
+    const controller = admission.controller;
+    this.preparationWaits.add(controller);
+    try {
+      return await this.waitForGesture(command, () => this.prepareGesture(command, presentation));
+    } catch (error) {
+      if (command.kind === "clipboard")
+        await this.settleClipboardSafely(
+          admission.clipboardPublished
+            ? { writeClaim: command.writeClaim, outcome: "source_preserved" }
+            : { writeClaim: command.writeClaim, outcome: "failed", reason: "capture_failed" },
+        );
+      throw error;
+    } finally {
+      controller.abort();
+      this.preparationWaits.delete(controller);
+      this.activeOperationVersion = undefined;
+      this.operationDeadlineAt = undefined;
+    }
+  }
+
+  private waitForGesture<T>(command: NfmHistoryCommand, operation: () => Promise<T>): Promise<T> {
+    const admission = this.admissions.get(command);
+    if (!admission) return Promise.reject(new DocumentWaitError("cancelled"));
+    return waitForDocumentOperation(operation, {
+      signal: AbortSignal.any([admission.controller.signal, this.preparationLifetime.signal]),
+      deadlineAt: admission.deadlineAt,
+    });
+  }
+
+  private assertGestureActive(command: NfmHistoryCommand): void {
+    const admission = this.admissions.get(command);
+    if (!admission || admission.cancellationVersion !== this.cancellationVersion)
+      throw new DocumentWaitError("cancelled");
+    assertDocumentWaitActive({
+      signal: this.preparationLifetime.signal,
+      deadlineAt: admission.deadlineAt,
+    });
+  }
+
+  private async prepareGesture(
+    command: NfmHistoryCommand,
+    presentation: NfmHistoryPresentation,
+  ): Promise<HistoryPreparation<NfmHistoryRequest, NfmHistoryReceipt>> {
+    switch (command.kind) {
+      case "receive_pages": {
+        const { transfer } = command;
+        const runtime = this.boundRuntime;
+        if (
+          transfer.storeEpoch !== runtime.source.storeEpoch ||
+          (runtime.accessContext.kind === "project" &&
+            transfer.projectId !== runtime.accessContext.projectId) ||
+          (transfer.target.kind === "document" &&
+            transfer.target.documentId !== runtime.source.documentId)
+        )
+          throw new Error("The receiving Page changed; start the drag again.");
+        const head = await this.prepareAndFence();
+        this.assertSourceHead(head);
+        return {
+          kind: "submit",
+          request: {
+            kind: "block_transfer",
+            presentation,
+            request: {
+              operationId: createUuidV7(),
+              projectId: transfer.projectId,
+              storeEpoch: transfer.storeEpoch,
+              mode: transfer.mode,
+              rootBlockIds: transfer.rootBlockIds,
+              source: { kind: "data_source", dataSourceId: transfer.dataSourceId },
+              target: transfer.target,
+              causalDependencies: [
+                {
+                  documentId: head.documentId,
+                  generation: head.generation,
+                  expectedHeadSeq: head.expectedHeadSeq,
+                },
+              ],
+              promotionPolicy: "literal",
+            },
+          },
+        };
+      }
+      case "promotion": {
+        const { promotion } = command;
+        const runtime = this.boundRuntime;
+        if (
+          promotion.sourceDocumentId !== runtime.source.documentId ||
+          promotion.storeEpoch !== runtime.source.storeEpoch ||
+          promotion.sourceDocumentGeneration !== runtime.source.generation ||
+          (runtime.accessContext.kind === "project" &&
+            promotion.projectId !== runtime.accessContext.projectId)
+        )
+          throw new Error("The source Page changed; reopen it before moving Blocks.");
+        const sourceHead = await this.prepareAndFence();
+        this.assertSourceHead(sourceHead);
+        const request = await this.preparePromotion({ ...promotion, sourceHead });
+        return { kind: "submit", request: { kind: "block_transfer", request, presentation } };
+      }
+      case "clipboard":
+        return this.prepareClipboard(command, presentation);
+      case "paste_claim":
+        return this.prepareClaimPaste(command, presentation);
+      case "paste":
+        return {
+          kind: "submit",
+          request: await this.preparePaste(command.envelope, command.target, presentation),
+        };
+      case "page_mention":
+        return {
+          kind: "submit",
+          request: await this.preparePageMention(command.mention, presentation),
+        };
+      case "transfer": {
+        const { transfer } = command;
+        const { sourceHead, targetHead } = await transfer.prepareHeads();
+        this.assertSourceHead(sourceHead);
+        if (targetHead.storeEpoch !== this.boundRuntime.source.storeEpoch)
+          throw new Error("The target belongs to another Store generation.");
+        return {
+          kind: "submit",
+          request: this.requestFor(
+            {
+              kind: "apply_structural_edit",
+              command: {
+                kind: transfer.mode === "move" ? "move_selection" : "duplicate_selection",
+                selection: this.selectionFromHead(transfer.rootBlockIds, sourceHead),
+                target: {
+                  targetDocumentId: targetHead.documentId,
+                  ...transfer.target,
+                  targetHead: {
+                    documentId: targetHead.documentId,
+                    generation: targetHead.generation,
+                    expectedHeadSeq: targetHead.expectedHeadSeq,
+                  },
+                },
+              },
+            },
+            { ...presentation, preferredBlockId: transfer.preferredSelectionBlockId },
+          ),
+        };
+      }
+      case "duplicate": {
+        const { selection, target } = await this.prepareDuplicateCommand(command.roots);
+        return {
+          kind: "submit",
+          request: this.requestFor(
+            {
+              kind: "apply_structural_edit",
+              command: { kind: "duplicate_selection", selection, target },
+            },
+            presentation,
+          ),
+        };
+      }
+      case "move_to_document": {
+        const target = await command.prepareTarget();
+        if (target.storeEpoch !== this.boundRuntime.source.storeEpoch)
+          throw new Error("The target belongs to another Store generation.");
+        const selection = await this.prepareSelection(command.roots);
+        return {
+          kind: "submit",
+          request: this.requestFor(
+            {
+              kind: "apply_structural_edit",
+              command: {
+                kind: "move_selection",
+                selection,
+                target: {
+                  targetDocumentId: target.documentId,
+                  parentBlockId: target.parentBlockId ?? null,
+                  beforeBlockId: target.beforeBlockId ?? null,
+                  targetHead: {
+                    documentId: target.documentId,
+                    generation: target.generation,
+                    expectedHeadSeq: target.headSeq,
+                  },
+                },
+              },
+            },
+            presentation,
+          ),
+        };
+      }
+      case "merge_backward": {
+        const selection = await this.prepareSelection([command.sourceBlockId]);
+        return {
+          kind: "submit",
+          request: this.requestFor(
+            {
+              kind: "apply_structural_edit",
+              command: {
+                kind: "merge_block_backward",
+                selection,
+                targetBlockId: command.targetBlockId,
+              },
+            },
+            { ...presentation, merge: command },
+          ),
+        };
+      }
+      case "delete": {
+        const selection = await this.prepareSelection(command.roots);
+        return {
+          kind: "submit",
+          request: this.requestFor(
+            {
+              kind: "apply_structural_edit",
+              command: {
+                kind: "delete_selection",
+                selection,
+                direction: command.direction,
+                reason: { kind: "delete" },
+              },
+            },
+            presentation,
+          ),
+        };
+      }
+      case "turn_into": {
+        const selection = await this.prepareSelection(command.roots);
+        return {
+          kind: "submit",
+          request: this.requestFor(
+            {
+              kind: "apply_structural_edit",
+              command: { kind: "turn_selection_into", selection, target: command.target },
+            },
+            presentation,
+          ),
+        };
+      }
+      case "replace": {
+        const selection = await this.prepareSelection(command.roots);
+        return {
+          kind: "submit",
+          request: this.requestFor(
+            {
+              kind: "apply_structural_edit",
+              command: {
+                kind: "replace_selection",
+                selection,
+                replacement: { kind: "blocks", blocks: command.blocks },
+              },
+            },
+            presentation,
+          ),
+        };
+      }
+    }
+  }
+
+  private async prepareHistory(
+    operation: LibraryApplyOperation,
+    selection?: SurfaceHistorySelectionPair,
+  ): Promise<NfmHistoryRequest> {
+    const focusRevision = this.focusRevision;
+    const head = await this.prepareAndFence();
+    this.assertSourceHead(head);
+    return this.requestFor(operation, { focusRevision, selection }, true);
+  }
+
+  private async submitCommand(
+    attempt: NfmHistoryRequest,
+  ): Promise<HistoryCommandOutcome<NfmHistoryReceipt>> {
+    if (attempt.kind !== "library") {
+      const outcome = await this.transfer(attempt.request.projectId, attempt.request);
+      if (!outcome.ok) {
+        const { error } = outcome;
+        if (error.code === "unknown") return { kind: "unknown", reason: error.message };
+        if (error.code === "recovery_required")
+          return { kind: "unrecoverable", reason: error.message };
+        return {
+          kind: "rejected",
+          reason: error.message,
+          retryable: error.retryable || error.code === "undo_conflict",
+        };
+      }
+      const result = outcome.value;
+      return {
+        kind: "committed",
+        receipt: { kind: "block_transfer", result },
+      };
+    }
+    const result = await this.apply(attempt.accessContext, attempt.request);
+    if (!result.ok) {
+      const { error } = result;
+      if (error.code === "unknown") return { kind: "unknown", reason: error.message };
+      // Expiry cannot prove whether Cut committed; retain its claim and the barrier.
+      if (error.code === "recovery_required")
+        return { kind: "unrecoverable", reason: error.message };
+      if (attempt.presentation.cutClaim)
+        await this.settleClipboardSafely({
+          writeClaim: attempt.presentation.cutClaim,
+          outcome: "source_preserved",
+        });
+      return { kind: "rejected", reason: error.message, retryable: canRetryNfmHistory(error) };
+    }
+    const structural = result.value.structuralEdit;
+    const operation = attempt.request.operation;
+    const invalidMention =
+      operation.kind === "create_page_mention" &&
+      (result.value.createdTarget?.kind !== "page" ||
+        result.value.createdTarget.pageId !== operation.pageId);
+    if (!structural || invalidMention) {
+      if (structural?.history)
+        void this.releaseStructuralHistory([structural.history]).catch((error: unknown) =>
+          this.reportError(error),
+        );
+      return {
+        kind: "committed",
+        receipt: {
+          kind: "barrier",
+          reason: "The action committed without a complete structural receipt.",
+        },
+      };
+    }
+    return {
+      kind: "committed",
+      receipt: {
+        kind: "structural",
+        result: structural,
+        presentation: attempt.presentation,
+        replay: attempt.replay,
+      },
+    };
+  }
+
+  private async presentReceipt(receipt: NfmHistoryReceipt): Promise<void> {
+    if (receipt.kind !== "structural" || this.disposed) return;
+    const { result, presentation } = receipt;
+    if (presentation?.cutClaim)
+      await this.settleClipboardSafely({
+        writeClaim: presentation.cutClaim,
+        outcome: "cut_committed",
+      });
+    if (presentation?.clipboardFallback)
+      this.runtime?.onClipboardFallback?.(presentation.clipboardFallback);
+    if (!presentation || presentation.focusRevision !== this.focusRevision) return;
+    const backend = this.editor.getExtension<typeof YUndoExtension>("yUndo");
+    const restoredSemanticSelection =
+      presentation.selection?.before &&
+      backend?.restoreSemanticSelection(presentation.selection.before);
+    if (!restoredSemanticSelection) {
+      if (presentation.merge) {
+        await this.restoreBackwardMergeSelection(
+          presentation.merge,
+          presentation.merge.joinOffset,
+          result,
+          presentation.focusRevision,
+        );
+      } else {
+        await this.restoreSelection(
+          result,
+          presentation.preferredBlockId ?? result.resultRootBlockIds.at(-1),
+          presentation.focusRevision,
+        );
+      }
+    }
+    // A restored caret still needs the DOM focus released by the preparation fence.
+    if (!this.disposed && presentation.focusRevision === this.focusRevision)
+      this.restoreFocusIfUnclaimed();
+  }
+
+  private async settleClipboardSafely(
+    input: Parameters<typeof settleStructuralClipboard>[0],
+  ): Promise<void> {
+    try {
+      await this.settleClipboard(input);
+    } catch (error) {
+      this.reportError(error);
+    }
+  }
+
+  private async prepareClipboard(
+    command: Extract<NfmHistoryCommand, { kind: "clipboard" }>,
+    presentation: NfmHistoryPresentation,
+  ): Promise<HistoryPreparation<NfmHistoryRequest, NfmHistoryReceipt>> {
+    const { action, roots, writeClaim } = command;
+    const begun = await this.beginClipboard({
+      writeClaim,
+      actionHint: action,
+      libraryId: this.boundRuntime.libraryId,
+      storeEpoch: this.boundRuntime.source.storeEpoch,
+    });
+    if (!begun.ok) throw new Error("The structural clipboard session could not be started.");
+    const selection = await this.prepareSelection(roots);
+    const capturedResult = await this.apply(this.boundRuntime.accessContext, {
+      operationId: createUuidV7(),
+      storeEpoch: this.boundRuntime.source.storeEpoch,
+      operation: {
+        kind: "apply_structural_edit",
+        command: { kind: "capture_clipboard", selection },
+      },
+    });
+    const captured = applyResult(capturedResult);
+    const clipboard = captured.clipboard;
+    if (!clipboard || !capturedResult.ok)
+      throw new Error("Core omitted the structural clipboard capability.");
+    const envelope: NodexClipboardEnvelopeV1 = {
+      version: 1,
+      profileId: capturedResult.value.profileId,
+      libraryId: capturedResult.value.libraryId,
+      storeEpoch: clipboard.storeEpoch,
+      bundleId: clipboard.bundleId,
+      capability: clipboard.capability,
+      manifestHash: clipboard.manifestHash,
+      actionHint: action,
+    };
+    const text = this.boundRuntime.resolveClipboardText
+      ? await this.boundRuntime.resolveClipboardText(command.presentation.text)
+      : command.presentation.text;
+    this.assertGestureActive(command);
+    const written = await this.publishClipboard({
+      envelope,
+      writeClaim,
+      html: command.presentation.html,
+      text,
+    });
+    if (!written.ok) {
+      if (written.failure === "superseded")
+        return { kind: "complete", receipt: { kind: "no_content_change" } };
+      throw new Error(
+        written.failure === "readback_mismatch"
+          ? "The system clipboard could not verify the copied structure."
+          : "The system clipboard could not be written.",
+      );
+    }
+    this.admissions.get(command)!.clipboardPublished = true;
+    if (action === "copy") return { kind: "complete", receipt: { kind: "no_content_change" } };
+    const deleteSelection = await this.prepareSelection(roots);
+    return {
+      kind: "submit",
+      request: this.requestFor(
+        {
+          kind: "apply_structural_edit",
+          command: {
+            kind: "delete_selection",
+            selection: deleteSelection,
+            reason: { kind: "cut", bundle: clipboard },
+            direction: "backward",
+          },
+        },
+        { ...presentation, cutClaim: writeClaim },
+      ),
+    };
+  }
+
+  private async prepareClaimPaste(
+    command: Extract<NfmHistoryCommand, { kind: "paste_claim" }>,
+    presentation: NfmHistoryPresentation,
+  ): Promise<HistoryPreparation<NfmHistoryRequest, NfmHistoryReceipt>> {
+    const releasePending = this.schedulePendingPasteIndicator(command.target);
+    try {
+      const resolution: StructuralClipboardResolution = await this.waitForGesture(command, () =>
+        this.awaitClipboard({
+          writeClaim: command.descriptor.writeClaim,
+          ...(command.descriptor.phase === "ready"
+            ? { publishedEnvelope: command.descriptor.envelope }
+            : {}),
+        }),
+      );
+      if (
+        resolution.kind === "portable_fallback" ||
+        !this.envelopeMatchesRuntime(resolution.envelope)
+      ) {
+        this.assertGestureActive(command);
+        if (
+          command.target.kind === "replace" &&
+          hasTypedOwnerBlock(this.resolveRoots(command.target.rootBlockIds))
+        ) {
+          const selection = await this.prepareSelection(command.target.rootBlockIds);
+          return {
+            kind: "submit",
+            request: this.requestFor(
+              {
+                kind: "apply_structural_edit",
+                command: {
+                  kind: "replace_selection",
+                  selection,
+                  replacement: { kind: "blocks", blocks: command.portableBlocks },
+                },
+              },
+              presentation,
+            ),
+          };
+        }
+        const receipt = this.history.completeLocalCapture(() =>
+          this.pastePortableBlocks(command.portableBlocks, command.target),
+        );
+        if (resolution.kind === "portable_fallback") {
+          try {
+            this.boundRuntime.onClipboardFallback?.(
+              command.descriptor.actionHint === "cut"
+                ? "Pasted a copy because the move could not be completed."
+                : "Pasted portable content because structural clipboard data was unavailable.",
+            );
+          } catch (error) {
+            this.reportError(error);
+          }
+        }
+        return { kind: "complete", receipt };
+      }
+      const request = await this.preparePaste(resolution.envelope, command.target, {
+        ...presentation,
+        ...(resolution.disposition === "copy_fallback"
+          ? { clipboardFallback: "Pasted a copy because the move could not be completed." }
+          : {}),
+      });
+      return { kind: "submit", request };
+    } finally {
+      releasePending();
+    }
+  }
+
+  private async preparePageMention(
+    mention: NfmPageMentionIntent,
+    presentation: NfmHistoryPresentation,
+  ): Promise<NfmHistoryRequest> {
+    const hostHead = await this.prepareAndFence();
+    this.assertSourceHead(hostHead);
+    const destinationPageId = mention.destinationPageId ?? mention.hostPageId;
+    let destinationHead = hostHead;
+    if (destinationPageId !== mention.hostPageId) {
+      const read = await readLibraryModule(this.boundRuntime.accessContext, {
+        read: { mode: "page_mention_destination", pageId: destinationPageId },
+      });
+      if (!read.ok) throw new Error(read.error.message);
+      if (
+        read.value.storeEpoch !== this.boundRuntime.source.storeEpoch ||
+        read.value.value.kind !== "page_mention_destination" ||
+        read.value.value.value.pageId !== destinationPageId
+      )
+        throw new Error("The destination Page is no longer available.");
+      const destination = read.value.value.value;
+      destinationHead = {
+        documentId: destination.documentId,
+        generation: destination.documentGeneration,
+        expectedHeadSeq: destination.documentHeadSeq,
+        storeEpoch: read.value.storeEpoch,
+      };
+      const mounted = resolveBlockDocumentStructuralMutationParticipantByDocumentId(
+        destinationHead.documentId,
+      );
+      if (mounted) {
+        const head = await mounted.prepareAndFence();
+        if (
+          head.storeEpoch !== destinationHead.storeEpoch ||
+          head.documentId !== destinationHead.documentId ||
+          head.generation !== destinationHead.generation
+        )
+          throw new Error("The destination Page changed; reopen it before creating the Page.");
+        destinationHead = head;
+      }
+    }
+    return this.requestFor(
+      {
+        kind: "create_page_mention",
+        pageId: mention.pageId,
+        documentId: createUuidV7(),
+        title: mention.title.trim() || "Untitled",
+        mentionHost: {
+          pageId: mention.hostPageId,
+          documentId: hostHead.documentId,
+          expectedDocumentGeneration: hostHead.generation,
+          expectedDocumentHeadSeq: hostHead.expectedHeadSeq,
+          blockId: mention.blockId,
+          expectedContent: mention.expectedContent,
+          replacementContent: mention.replacementContent,
+        },
+        destination: {
+          pageId: destinationPageId,
+          documentId: destinationHead.documentId,
+          expectedDocumentGeneration: destinationHead.generation,
+          expectedDocumentHeadSeq: destinationHead.expectedHeadSeq,
+          insertion: { kind: "append" },
+        },
+      },
+      { ...presentation, preferredBlockId: mention.blockId },
+    );
   }
 
   private async prepareAndFence() {
@@ -960,10 +1501,11 @@ export class NfmStructuralEditingSession {
     }
   }
 
-  private async pasteEnvelope(
+  private async preparePaste(
     envelope: NodexClipboardEnvelopeV1,
     intent: NfmStructuralPasteIntent,
-  ): Promise<void> {
+    presentation: NfmHistoryPresentation,
+  ): Promise<NfmHistoryRequest> {
     const head = await this.prepareAndFence();
     this.assertSourceHead(head);
     const command =
@@ -998,18 +1540,7 @@ export class NfmStructuralEditingSession {
               },
             },
           };
-    const result = applyResult(
-      await this.apply(this.boundRuntime.accessContext, {
-        operationId: createUuidV7(),
-        storeEpoch: this.boundRuntime.source.storeEpoch,
-        operation: {
-          kind: "apply_structural_edit",
-          command,
-        },
-      }),
-    );
-    this.recordStructuralResult(result);
-    await this.restoreSelection(result, result.resultRootBlockIds.at(-1));
+    return this.requestFor({ kind: "apply_structural_edit", command }, presentation);
   }
 
   private envelopeMatchesRuntime(envelope: NodexClipboardEnvelopeV1): boolean {
@@ -1019,10 +1550,10 @@ export class NfmStructuralEditingSession {
     );
   }
 
-  private async pastePortableBlocks(
-    blocks: readonly StructuralEditorBlock[],
+  private pastePortableBlocks(
+    blocks: readonly LibraryStructuralReplacementBlock[],
     intent: NfmStructuralPasteIntent,
-  ): Promise<void> {
+  ): void {
     if (blocks.length === 0) {
       throw new Error("The clipboard no longer contains a portable representation.");
     }
@@ -1064,14 +1595,14 @@ export class NfmStructuralEditingSession {
     };
   }
 
-  private async prepareSelection(roots: readonly StructuralEditorBlock[]) {
+  private async prepareSelection(roots: readonly string[]) {
     const head = await this.prepareAndFence();
     this.assertSourceHead(head);
     return this.selectionFromHead(roots, head);
   }
 
   private selectionFromHead(
-    roots: readonly StructuralEditorBlock[],
+    roots: readonly string[],
     head: {
       readonly documentId: string;
       readonly generation: number;
@@ -1080,7 +1611,7 @@ export class NfmStructuralEditingSession {
   ) {
     return {
       sourceDocumentId: this.boundRuntime.source.documentId,
-      rootBlockIds: roots.map((block) => block.id),
+      rootBlockIds: roots,
       sourceHead: {
         documentId: head.documentId,
         generation: head.generation,
@@ -1121,35 +1652,20 @@ export class NfmStructuralEditingSession {
     roots: readonly StructuralEditorBlock[],
     blocks: readonly LibraryStructuralReplacementBlock[],
   ): boolean {
-    if (this.disposed || roots.length === 0 || blocks.length === 0) return false;
-    this.start(async () => {
-      const selection = await this.prepareSelection(roots);
-      const result = applyResult(
-        await this.apply(this.boundRuntime.accessContext, {
-          operationId: createUuidV7(),
-          storeEpoch: this.boundRuntime.source.storeEpoch,
-          operation: {
-            kind: "apply_structural_edit",
-            command: {
-              kind: "replace_selection",
-              selection,
-              replacement: { kind: "blocks", blocks },
-            },
-          },
-        }),
-      );
-      this.recordStructuralResult(result);
-      await this.restoreSelection(result, result.resultRootBlockIds.at(-1));
+    if (roots.length === 0 || blocks.length === 0) return false;
+    return this.start({
+      kind: "replace",
+      roots: roots.map((block) => block.id),
+      blocks: structuredClone(blocks),
     });
-    return true;
   }
 
-  private async prepareDuplicateCommand(roots: readonly StructuralEditorBlock[]) {
+  private async prepareDuplicateCommand(roots: readonly string[]) {
     const lastRoot = roots.at(-1);
     if (!lastRoot) throw new Error("The duplicate target is no longer available.");
-    const parent = this.editor.getParentBlock(lastRoot.id);
+    const parent = this.editor.getParentBlock(lastRoot);
     const siblings = parent?.children ?? this.editor.document;
-    const rootIndex = siblings.findIndex((block) => block.id === lastRoot.id);
+    const rootIndex = siblings.findIndex((block) => block.id === lastRoot);
     if (rootIndex < 0) throw new Error("The duplicate target is no longer available.");
     const head = await this.prepareAndFence();
     this.assertSourceHead(head);
@@ -1186,15 +1702,18 @@ export class NfmStructuralEditingSession {
   private async restoreSelection(
     result: LibraryStructuralEditResult,
     preferredBlockId?: string,
+    focusRevision = this.focusRevision,
   ): Promise<void> {
-    if (this.operationFocusChanged || this.historyReplayFocusChanged) return;
+    if (this.disposed || focusRevision !== this.focusRevision) return;
     const candidates = [
       preferredBlockId,
       result.resume?.blockId,
       result.resume?.fallbackBeforeBlockId,
       result.resume?.fallbackAfterBlockId,
     ].filter((candidate): candidate is string => Boolean(candidate));
+    if (candidates.length === 0) return;
     for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (this.disposed) return;
       for (const blockId of candidates) {
         if (!this.editor.getBlock(blockId)) continue;
         this.editor.setTextCursorPosition(
@@ -1233,6 +1752,11 @@ export class NfmStructuralEditingController {
   private session: NfmStructuralEditingSession | null = null;
   private activeSession: NfmStructuralEditingSession | null = null;
   private disposed = false;
+  private disposePromise: Promise<void> | null = null;
+
+  constructor(
+    private readonly historyReconciliation: NfmHistoryReconciliation = coreHistoryReconciliation,
+  ) {}
 
   get current(): NfmStructuralEditingSession | null {
     return this.activeSession;
@@ -1248,7 +1772,10 @@ export class NfmStructuralEditingController {
     if (this.session) return this.session;
 
     this.editor = editor;
-    this.session = new NfmStructuralEditingSession({ editor });
+    this.session = new NfmStructuralEditingSession({
+      editor,
+      historyReconciliation: this.historyReconciliation,
+    });
     return this.session;
   }
 
@@ -1264,12 +1791,13 @@ export class NfmStructuralEditingController {
     this.activeSession = null;
   }
 
-  dispose(): void {
-    if (this.disposed) return;
+  dispose(): Promise<void> {
+    if (this.disposePromise) return this.disposePromise;
     this.disposed = true;
     this.activeSession = null;
-    this.session?.dispose();
+    this.disposePromise = this.session?.close() ?? Promise.resolve();
     this.session = null;
     this.editor = null;
+    return this.disposePromise;
   }
 }

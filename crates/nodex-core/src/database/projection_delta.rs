@@ -16,6 +16,7 @@ use super::window::{ViewGroupsRead, exact_primary_board_row_by_id, view_groups};
 
 const MAX_ACTIVE_PROJECTION_AUDIENCES: usize = 200;
 const MAX_INLINE_PROJECTION_PATCH_BYTES: usize = 128 * 1024;
+const MAX_INLINE_VIEW_CANDIDATES: i64 = 128;
 
 /// Bounded work counters returned by the audience compiler. They are useful to
 /// performance gates and deliberately describe semantic work rather than wall
@@ -42,21 +43,21 @@ struct ProjectionAudience {
 }
 
 #[derive(Clone, Debug)]
-struct CompiledViewDelta(ViewDeltaTemplate);
-
-#[derive(Clone, Debug)]
-struct ViewDeltaTemplate {
+struct CompiledViewDelta {
     database_id: String,
     data_source_id: String,
     view_id: String,
-    total_rows: i64,
-    entries: Vec<ViewRowDelta>,
+    content: ViewDeltaContent,
 }
 
 #[derive(Clone, Debug)]
-enum ViewRowDelta {
+enum ViewDeltaContent {
+    ReadRequired {
+        budget_exceeded: bool,
+    },
     Upsert {
         row: Box<DatabaseRowSummary>,
+        total_rows: i64,
         group_total: Option<i64>,
     },
 }
@@ -160,9 +161,12 @@ pub(crate) fn record_local_projection_delta(
             if project_views.is_some() {
                 metrics.patch_blobs += compiled_views.len();
             }
-            for page_id in &input.post_visible_page_ids {
-                record_page_delta(connection, commit, &project_id, page_id)?;
-            }
+            record_page_deltas(
+                connection,
+                commit,
+                &project_id,
+                &input.post_visible_page_ids,
+            )?;
             for compiled in compiled_views {
                 record_compiled_view_delta(
                     connection,
@@ -231,11 +235,11 @@ pub(crate) fn record_page_document_projection_delta(
             library_id: library_id.to_owned(),
             project_id: project_id.clone(),
         };
-        for page_id in readable_resource_ids(connection, &context, &scope, &page_ids, |page_id| {
-            ResourceKey::Page { page_id }
-        })? {
-            record_page_delta(connection, commit, &project_id, &page_id)?;
-        }
+        let visible_pages =
+            readable_resource_ids(connection, &context, &scope, &page_ids, |page_id| {
+                ResourceKey::Page { page_id }
+            })?;
+        record_page_deltas(connection, commit, &project_id, &visible_pages)?;
         for view_id in readable_resource_ids(connection, &context, &scope, &view_ids, |view_id| {
             ResourceKey::View { view_id }
         })? {
@@ -503,6 +507,7 @@ fn readable_resource_ids(
 
 fn project_context(library_id: &str, project_id: &str) -> BoundModuleContext {
     BoundModuleContext {
+        editor_history_owner: None,
         profile_id: ProfileId("profile:projection-compiler".to_owned()),
         library_id: LibraryId(library_id.to_owned()),
         project_id: Some(ProjectId(project_id.to_owned())),
@@ -519,6 +524,47 @@ fn compile_view_delta(
     view_id: &str,
     page_ids: &[String],
 ) -> Result<CompiledViewDelta, StoreError> {
+    let mut compiled = connection
+        .query_row(
+            "SELECT view.database_block_id, view.data_source_id FROM database_views view
+         JOIN database_containers container
+           ON container.block_id = view.database_block_id AND container.library_id = ?1
+         JOIN data_sources source
+           ON source.id = view.data_source_id AND source.library_id = container.library_id
+         WHERE view.id = ?2 AND view.lifecycle = 'active'
+           AND container.lifecycle = 'active' AND source.lifecycle = 'active'",
+            rusqlite::params![library_id, view_id],
+            |row| {
+                Ok(CompiledViewDelta {
+                    database_id: row.get(0)?,
+                    data_source_id: row.get(1)?,
+                    view_id: view_id.to_owned(),
+                    content: ViewDeltaContent::ReadRequired {
+                        budget_exceeded: false,
+                    },
+                })
+            },
+        )
+        .optional()?
+        .ok_or_else(|| {
+            StoreError::new(
+                StoreErrorCode::StoreCorrupt,
+                "A post-authorized Database View has no canonical projection",
+                false,
+            )
+        })?;
+    // Only a complete single-row reduction can be delivered inline. Decide
+    // before computing group totals or absolute order: both inspect candidates,
+    // including rows excluded by lifecycle, filters, or projection freshness.
+    let [page_id] = page_ids else {
+        return Ok(compiled);
+    };
+    if !fits_inline_view_work(connection, &compiled)? {
+        compiled.content = ViewDeltaContent::ReadRequired {
+            budget_exceeded: true,
+        };
+        return Ok(compiled);
+    }
     let groups = match view_groups(
         connection,
         library_id,
@@ -539,37 +585,12 @@ fn compile_view_delta(
         }
         Err(error) => return Err(error),
     };
-    if page_ids.is_empty() {
-        return Ok(CompiledViewDelta(ViewDeltaTemplate {
-            database_id: groups.database_id,
-            data_source_id: groups.data_source_id,
-            view_id: view_id.to_owned(),
-            total_rows: groups.total_rows,
-            entries: Vec::new(),
-        }));
-    }
-
     // A packet may carry only a complete reduction of this View scope. The
     // identity read used for relation hydration does not prove filtered or
     // independently sorted View membership, so ambiguous and multi-row
     // transitions deliberately fall back to the canonical read floor.
-    let [page_id] = page_ids else {
-        return Ok(CompiledViewDelta(ViewDeltaTemplate {
-            database_id: groups.database_id,
-            data_source_id: groups.data_source_id,
-            view_id: view_id.to_owned(),
-            total_rows: groups.total_rows,
-            entries: Vec::new(),
-        }));
-    };
     let Some(row) = exact_primary_board_row_by_id(connection, library_id, view_id, page_id)? else {
-        return Ok(CompiledViewDelta(ViewDeltaTemplate {
-            database_id: groups.database_id,
-            data_source_id: groups.data_source_id,
-            view_id: view_id.to_owned(),
-            total_rows: groups.total_rows,
-            entries: Vec::new(),
-        }));
+        return Ok(compiled);
     };
     let mut rows = vec![row];
     super::relation_projection::hydrate_row_previews(
@@ -591,48 +612,73 @@ fn compile_view_delta(
         })
         .map(|group| group.total_rows);
     if groups.grouped && group_total.is_none() {
-        return Ok(CompiledViewDelta(ViewDeltaTemplate {
-            database_id: groups.database_id,
-            data_source_id: groups.data_source_id,
-            view_id: view_id.to_owned(),
-            total_rows: groups.total_rows,
-            entries: Vec::new(),
-        }));
+        return Ok(compiled);
     }
-    let entries = vec![ViewRowDelta::Upsert {
+    compiled.content = ViewDeltaContent::Upsert {
         row: Box::new(row),
         group_total,
-    }];
-    Ok(CompiledViewDelta(ViewDeltaTemplate {
-        database_id: groups.database_id,
-        data_source_id: groups.data_source_id,
-        view_id: view_id.to_owned(),
         total_rows: groups.total_rows,
-        entries,
-    }))
+    };
+    Ok(compiled)
 }
 
-fn record_page_delta(
+/// Bound input work, not output cardinality. Both probes use an owner-key
+/// index prefix and stop before lifecycle/visibility joins can discard rows.
+fn fits_inline_view_work(
+    connection: &Connection,
+    view: &CompiledViewDelta,
+) -> Result<bool, StoreError> {
+    let generation = connection
+        .query_row(
+            "SELECT active_generation FROM database_view_order_state
+             WHERE view_id = ?1 AND phase = 'ready'",
+            [&view.view_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()?;
+    let Some(generation) = generation else {
+        return Ok(false);
+    };
+    let memberships: i64 = connection.query_row(
+        "SELECT count(*) FROM (SELECT 1 FROM data_source_page_memberships
+         WHERE data_source_id = ?1 LIMIT ?2)",
+        rusqlite::params![view.data_source_id, MAX_INLINE_VIEW_CANDIDATES + 1],
+        |row| row.get(0),
+    )?;
+    if memberships > MAX_INLINE_VIEW_CANDIDATES {
+        return Ok(false);
+    }
+    let positions: i64 = connection.query_row(
+        "SELECT count(*) FROM (SELECT 1 FROM database_view_order_rows
+         WHERE view_id = ?1 AND generation = ?2 LIMIT ?3)",
+        rusqlite::params![view.view_id, generation, MAX_INLINE_VIEW_CANDIDATES + 1],
+        |row| row.get(0),
+    )?;
+    Ok(positions <= MAX_INLINE_VIEW_CANDIDATES)
+}
+
+fn record_page_deltas(
     connection: &Connection,
     commit: &CommitContext,
     project_id: &str,
-    page_id: &str,
+    page_ids: &[String],
 ) -> Result<(), StoreError> {
-    local_commit::record_projection_patch(
+    if page_ids.is_empty() {
+        return Ok(());
+    }
+    local_commit::record_projection_batch(
         connection,
         commit,
-        LocalProjectionPatch::PageChanged {
+        page_ids
+            .iter()
+            .map(|page_id| LocalProjectionPatch::PageChanged {
+                project_id: project_id.to_owned(),
+                page_id: page_id.clone(),
+            }),
+        page_ids.iter().map(|page_id| LocalProjectionScope::Page {
             project_id: project_id.to_owned(),
-            page_id: page_id.to_owned(),
-        },
-    )?;
-    local_commit::require_projection_read(
-        connection,
-        commit,
-        LocalProjectionScope::Page {
-            project_id: project_id.to_owned(),
-            page_id: page_id.to_owned(),
-        },
+            page_id: page_id.clone(),
+        }),
     )
 }
 
@@ -643,27 +689,31 @@ fn record_compiled_view_delta(
     compiled: &CompiledViewDelta,
     metrics: &mut ProjectionAudienceCompilation,
 ) -> Result<(), StoreError> {
-    let CompiledViewDelta(template) = compiled;
+    let template = compiled;
     let scope = LocalProjectionScope::DatabaseView {
         project_id: project_id.to_owned(),
         database_id: template.database_id.clone(),
         data_source_id: template.data_source_id.clone(),
         view_id: template.view_id.clone(),
     };
-    let [entry] = template.entries.as_slice() else {
-        if template.entries.len() > 1 {
-            metrics.budget_fallbacks += 1;
+    let (row, group_total, total_rows) = match &template.content {
+        ViewDeltaContent::ReadRequired { budget_exceeded } => {
+            metrics.budget_fallbacks += usize::from(*budget_exceeded);
+            return local_commit::require_projection_read(connection, commit, scope);
         }
-        return local_commit::require_projection_read(connection, commit, scope);
+        ViewDeltaContent::Upsert {
+            row,
+            group_total,
+            total_rows,
+        } => (row, group_total, total_rows),
     };
-    let ViewRowDelta::Upsert { row, group_total } = entry;
     let patch = LocalProjectionPatch::DatabaseRowUpsert {
         project_id: project_id.to_owned(),
         database_id: template.database_id.clone(),
         data_source_id: template.data_source_id.clone(),
         view_id: template.view_id.clone(),
         row: row.clone(),
-        total_rows: template.total_rows,
+        total_rows: *total_rows,
         group_total: *group_total,
     };
     let encoded =
@@ -677,13 +727,12 @@ fn record_compiled_view_delta(
 }
 
 fn compiled_view_contains_relation_preview(compiled: &CompiledViewDelta) -> bool {
-    let CompiledViewDelta(template) = compiled;
-    template.entries.iter().any(|entry| {
-        let ViewRowDelta::Upsert { row, .. } = entry;
-        row.database_values
-            .values()
-            .any(|value| value.get("kind").and_then(serde_json::Value::as_str) == Some("relation"))
-    })
+    let ViewDeltaContent::Upsert { row, .. } = &compiled.content else {
+        return false;
+    };
+    row.database_values
+        .values()
+        .any(|value| value.get("kind").and_then(serde_json::Value::as_str) == Some("relation"))
 }
 
 fn canonical_strings(values: &[String]) -> Vec<String> {
@@ -717,6 +766,58 @@ mod tests {
     use rusqlite::Connection;
 
     use super::*;
+
+    #[test]
+    fn inline_view_budget_counts_complete_published_candidates() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch(
+            "CREATE TABLE database_view_order_state(view_id TEXT PRIMARY KEY, active_generation INTEGER, phase TEXT);
+             CREATE TABLE database_view_order_rows(view_id TEXT, generation INTEGER, page_block_id TEXT,
+               PRIMARY KEY(view_id, generation, page_block_id)) WITHOUT ROWID;
+             CREATE TABLE data_source_page_memberships(data_source_id TEXT, page_block_id TEXT);
+             CREATE INDEX memberships_source ON data_source_page_memberships(data_source_id);
+             INSERT INTO data_source_page_memberships VALUES ('source', 'page');"
+        ).unwrap();
+        let view = CompiledViewDelta {
+            database_id: "database".into(),
+            data_source_id: "source".into(),
+            view_id: "view".into(),
+            content: ViewDeltaContent::ReadRequired {
+                budget_exceeded: false,
+            },
+        };
+        assert!(!fits_inline_view_work(&connection, &view).unwrap());
+        connection
+            .execute(
+                "INSERT INTO database_view_order_state VALUES ('view', 1, 'rebalance')",
+                [],
+            )
+            .unwrap();
+        assert!(!fits_inline_view_work(&connection, &view).unwrap());
+        connection
+            .execute("UPDATE database_view_order_state SET phase = 'ready'", [])
+            .unwrap();
+        connection
+            .execute_batch(
+                "WITH RECURSIVE ids(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM ids WHERE n<129)
+             INSERT INTO database_view_order_rows SELECT 'view', 2, CAST(n AS TEXT) FROM ids;",
+            )
+            .unwrap();
+        assert!(
+            fits_inline_view_work(&connection, &view).unwrap(),
+            "other generations do not enter the candidate budget"
+        );
+        connection
+            .execute(
+                "UPDATE database_view_order_state SET active_generation = 2",
+                [],
+            )
+            .unwrap();
+        assert!(
+            !fits_inline_view_work(&connection, &view).unwrap(),
+            "all physical candidates count, even when nullable projection would omit them"
+        );
+    }
 
     fn audience_fixture(project_count: usize) -> Connection {
         let connection = Connection::open_in_memory().expect("audience fixture");

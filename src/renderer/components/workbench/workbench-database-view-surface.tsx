@@ -34,7 +34,10 @@ import {
 import { DatabaseViewTabSurface } from "./workbench-db-view-panel";
 import type { Project } from "@/lib/types";
 import type { OpenPageInNewChatInput, SendPageToChatInput } from "@/lib/page-chat-actions";
-import { useDatabaseViewMutationHistory } from "./database-view-mutation-history";
+import {
+  databaseViewHistoryScopeKey,
+  useDatabaseViewMutationHistory,
+} from "./database-view-mutation-history";
 import type { DatabaseViewPageActionPort } from "./database-view-page-actions";
 import type { DatabaseViewPageOpenHandler } from "./database-view-page-open";
 
@@ -220,9 +223,6 @@ export function WorkbenchDatabaseViewSurface({
     target.kind === "database-default"
       ? `database:${target.databaseId}`
       : `view:${target.databaseViewId}`;
-  const mutationHistory = useDatabaseViewMutationHistory(
-    `pending:${accessProjectId ?? "library"}:${targetIdentity}`,
-  );
   const queryKey = useMemo(
     () => queryKeys.libraryDatabases.view(accessProjectId, targetIdentity),
     [accessProjectId, targetIdentity],
@@ -287,9 +287,11 @@ export function WorkbenchDatabaseViewSurface({
     () => (mergedWindow ? buildDatabaseViewWindowRenderModel(mergedWindow) : undefined),
     [mergedWindow],
   );
-  if (model) {
-    mutationHistory.setScope(`${model.storeEpoch}:${model.databaseViewId}`);
-  }
+  const mutationHistory = useDatabaseViewMutationHistory(
+    model
+      ? databaseViewHistoryScopeKey(model)
+      : `pending:${accessProjectId ?? "library"}:${targetIdentity}`,
+  );
   useEffect(() => {
     if (!model) return;
     onPresentationChange?.({

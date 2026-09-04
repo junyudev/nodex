@@ -49,6 +49,7 @@ fn profile_home() -> PathBuf {
 
 fn context() -> BoundModuleContext {
     BoundModuleContext {
+        editor_history_owner: None,
         profile_id: ProfileId(PROFILE_ID.to_owned()),
         library_id: LibraryId(LIBRARY_ID.to_owned()),
         project_id: Some(ProjectId(PROJECT_ID.to_owned())),
@@ -389,10 +390,9 @@ fn seed_database_rows(kernel: &SqliteStoreKernel) {
                 }
                 {
                     let mut statement = transaction.prepare(
-                        "INSERT INTO database_view_page_positions(\
-                           view_id, page_block_id, rank_key, revision, created_at, \
-                           updated_at\
-                         ) VALUES (?1, ?2, ?3, 1, ?4, ?4)",
+                        "INSERT INTO database_view_order_rows(\
+                           view_id, generation, page_block_id, rank_key, revision, is_active, is_task_root, created_at, updated_at\
+                         ) VALUES (?1, (SELECT active_generation FROM database_view_order_state WHERE view_id = ?1), ?2, ?3, 1, 1, 1, ?4, ?4)",
                     )?;
                     for index in 0..DATABASE_ROW_COUNT {
                         let rank_key = evenly_spaced_rank(index, DATABASE_ROW_COUNT);
@@ -520,8 +520,8 @@ fn assert_store_health(connection: &Connection) {
     let plan = connection
         .prepare(
             "EXPLAIN QUERY PLAN \
-             SELECT page_block_id FROM database_view_page_positions \
-             WHERE view_id = ?1 \
+             SELECT page_block_id FROM database_view_order_rows \
+             WHERE view_id = ?1 AND generation = (SELECT active_generation FROM database_view_order_state WHERE view_id = ?1) AND is_active = 1 \
              ORDER BY rank_key, page_block_id LIMIT 201",
         )
         .expect("prepare Database View order query plan")
@@ -531,7 +531,7 @@ fn assert_store_health(connection: &Connection) {
         .expect("collect Database View order query plan")
         .join("\n");
     assert!(
-        plan.contains("idx_database_view_page_positions_order"),
+        plan.contains("idx_database_view_order_active"),
         "Database View window order lost its covering index:\n{plan}",
     );
     assert!(

@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import * as Y from "yjs";
+import { registerDocumentHistoryRetention } from "./document-history-retention";
 import type {
   DocumentAwarenessPublishRequest,
   DocumentSyncApplyAck,
@@ -678,6 +679,40 @@ describe("NodexYProvider", () => {
       secondDocument.destroy();
       genesis.document.destroy();
       insertedGenesis.document.destroy();
+      adapter.destroy();
+    }
+  });
+
+  test("pins local history before sending the Document update that may delete its identities", async () => {
+    const adapter = new MemoryDocumentSyncAdapter();
+    const document = new Y.Doc({ guid: "document-1" });
+    const barrier = deferred<void>();
+    let preparing = false;
+    const unregister = registerDocumentHistoryRetention(document, async () => {
+      preparing = true;
+      await barrier.promise;
+    });
+    const provider = new NodexYProvider({
+      documentId: "document-1",
+      document,
+      adapter,
+      autoConnect: false,
+    });
+    try {
+      await provider.connect();
+      document.getText("title").insert(0, "retained edit");
+      const flushed = provider.flush();
+      await waitUntil(() => preparing);
+      expect(adapter.applyCalls).toHaveLength(0);
+      barrier.resolve();
+      await flushed;
+      expect(adapter.applyCalls).toHaveLength(1);
+      expect(adapter.serverDocument.getText("title").toString()).toBe("retained edit");
+    } finally {
+      barrier.resolve();
+      unregister();
+      provider.destroy();
+      document.destroy();
       adapter.destroy();
     }
   });

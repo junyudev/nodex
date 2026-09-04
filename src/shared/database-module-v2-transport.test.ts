@@ -126,6 +126,109 @@ const propertyRecord = () => ({
 });
 
 describe("Database Module v2 transport boundary", () => {
+  test("history codecs preserve content and reject partial or unbounded inverse scopes", () => {
+    const recipe = {
+      propertyStates: [
+        {
+          address: { pageId: "page-1", dataSourceId: "source-1", propertyId: CUSTOM_PROPERTY_ID },
+          propertyType: "text",
+          beforeValue: { kind: "text", value: "" },
+          afterValue: { kind: "text", value: "  一\n二  " },
+        },
+      ],
+      positionStates: [
+        {
+          viewId: "view-1",
+          dataSourceId: "source-1",
+          direction: "desc",
+          beforeRuns: [{ pageIds: ["page-1"], beforePageId: "page-2" }],
+          afterRuns: [{ pageIds: ["page-1"], beforePageId: null }],
+        },
+      ],
+    };
+    const bind = (value: unknown) =>
+      bindDatabaseApplyV2(
+        { ...applyRequest(), operations: [{ kind: "reverse_data_edit", recipe: value }] },
+        "project-1",
+        { actor: { kind: "test" } },
+      );
+    expect(bind(recipe).operations).toEqual([{ kind: "reverse_data_edit", recipe }]);
+    expect(() =>
+      bind({ ...recipe, propertyStates: [...recipe.propertyStates, ...recipe.propertyStates] }),
+    ).toThrow(/repeats/);
+    expect(() =>
+      bind({
+        ...recipe,
+        positionStates: [
+          {
+            ...recipe.positionStates[0],
+            afterRuns: [{ pageIds: ["other-page"], beforePageId: null }],
+          },
+        ],
+      }),
+    ).toThrow(/Page set/);
+    expect(() =>
+      bind({
+        ...recipe,
+        positionStates: [
+          {
+            ...recipe.positionStates[0],
+            beforeRuns: [{ pageIds: ["page-1"], beforePageId: "page-1" }],
+          },
+        ],
+      }),
+    ).toThrow(/internal anchor/);
+    expect(() => bind({ propertyStates: [], positionStates: [] })).toThrow(/identity budget/);
+    expect(() =>
+      bind({
+        ...recipe,
+        propertyStates: [
+          {
+            ...recipe.propertyStates[0],
+            afterValue: { kind: "text", value: "x".repeat(8 * 1024 * 1024) },
+          },
+        ],
+      }),
+    ).toThrow(/history budget/);
+    const receipt = {
+      ok: true,
+      localCommit: noOpLocalCommit("epoch-1", 5),
+      value: {
+        operationId: "operation-1",
+        projectId: "project-1",
+        libraryId: "library-1",
+        storeEpoch: "epoch-1",
+        duplicate: false,
+        operationKinds: ["edit_property_values", "position_pages"],
+        operationOutcomes: [
+          { kind: "data_edit", operationIndex: 0, operationCount: 2, undoRecipe: recipe },
+        ],
+        affectedDatabaseIds: [],
+        affectedDataSourceIds: ["source-1"],
+        affectedPageIds: ["page-1"],
+        affectedViewIds: ["view-1"],
+        committedRevisions: {},
+        commitSeq: 5,
+        committedAt: "2026-09-05T00:00:00.000Z",
+      },
+    };
+    expect(parseDatabaseApplyResultV2(receipt)).toEqual(receipt);
+    expect(() =>
+      parseDatabaseApplyResultV2({
+        ...receipt,
+        value: { ...receipt.value, operationKinds: ["put_option", "edit_property_values"] },
+      }),
+    ).toThrow(/whole-gesture/);
+    expect(() =>
+      parseDatabaseApplyResultV2({
+        ...receipt,
+        value: {
+          ...receipt.value,
+          operationOutcomes: [{ ...receipt.value.operationOutcomes[0], operationCount: 1 }],
+        },
+      }),
+    ).toThrow(/whole-gesture/);
+  });
   test("binds Page-key namespace reads and rename as Database authority", () => {
     expect(
       bindDatabaseModuleReadV2(

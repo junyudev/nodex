@@ -16,6 +16,7 @@ import {
   type DesktopDocumentSessionService,
 } from "../../core-client";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
+import { EditorHistoryRuntime } from "../../host-runtime/EditorHistoryRuntime";
 import { DatabaseModule } from "../../database-application/DatabaseModule";
 import { LibraryModule } from "../../library-application/LibraryModule";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
@@ -77,6 +78,8 @@ it.effect("owns typed Core mutation ingress and binds exact renderer and Project
     });
     const documentMutations: DocumentMutationRequest[] = [];
     const transfers: BlockTransferIntent[] = [];
+    const transferOwners: number[] = [];
+    const abandonedTransfers: BlockTransferIntent[] = [];
     const historyReads: unknown[] = [];
     const documents = {
       applyDocumentMutation: (request: DocumentMutationRequest) => {
@@ -119,6 +122,26 @@ it.effect("owns typed Core mutation ingress and binds exact renderer and Project
             Layer.succeed(DesktopDocumentSessionRuntime, documents),
             Layer.succeed(RendererClientRuntime, rendererClients),
             Layer.succeed(LibraryModule, LibraryModule.of({} as LibraryModule["Service"])),
+            Layer.succeed(
+              EditorHistoryRuntime,
+              EditorHistoryRuntime.of({
+                applyDatabase: () => Effect.die("unexpected Database mutation"),
+                applyLibraryDatabase: () => Effect.die("unexpected Library Database mutation"),
+                transferBlocks: (target, intent) => {
+                  transferOwners.push(target.id);
+                  return documents.transferBlocks(intent);
+                },
+                reverseBlockTransfer: () => Effect.die("unexpected transfer reversal"),
+                apply: () => Effect.die("unexpected history mutation"),
+                handoffRelease: () => Effect.die("unexpected cleanup"),
+                handoffAbandon: () => Effect.die("unexpected abandoned replay"),
+                handoffAbandonTransfer: (target, intent) => {
+                  assert.equal(target.id, 7);
+                  abandonedTransfers.push(intent);
+                  return Effect.succeed({ accepted: true });
+                },
+              }),
+            ),
             mainConfigLayer(),
             Layer.succeed(WindowRuntime, {
               has: (id: number) => id === 7,
@@ -129,7 +152,7 @@ it.effect("owns typed Core mutation ingress and binds exact renderer and Project
       scope,
     );
 
-    assert.strictEqual(handlers.size, 21);
+    assert.strictEqual(handlers.size, 24);
     const trusted = rendererEvent(7);
     const untrusted = rendererEvent(8);
     const mutate = handlers.get("block-documents:mutate")!;
@@ -146,12 +169,21 @@ it.effect("owns typed Core mutation ingress and binds exact renderer and Project
     assert.strictEqual(documentMutations[0]?.clientSessionId, "renderer:7");
 
     yield* handlers.get("blocks:transfer")!(trusted, "project:one", transfer);
+    assert.deepStrictEqual(transferOwners, [7]);
     assert.strictEqual(transfers[0]?.projectId, "project:one");
     assert.strictEqual(transfers[0]?.clientSessionId, "renderer:7");
     assert.deepStrictEqual(transfers[0]?.actor, {
       kind: "electron_renderer",
       clientId: "renderer:7",
     });
+    const abandon = handlers.get("editor-history:abandon-transfer")!;
+    const deniedAbandon = yield* abandon(untrusted, "project:one", transfer);
+    assert.isFalse((deniedAbandon as { accepted: boolean }).accepted);
+    const mismatchAbandon = yield* abandon(trusted, "project:other", transfer);
+    assert.isFalse((mismatchAbandon as { accepted: boolean }).accepted);
+    assert.deepEqual(abandonedTransfers, []);
+    assert.deepEqual(yield* abandon(trusted, "project:one", transfer), { accepted: true });
+    assert.deepEqual(abandonedTransfers, transfers);
 
     const listed = yield* handlers.get("block-documents:history:list")!(trusted, {
       projectId: "project:one",

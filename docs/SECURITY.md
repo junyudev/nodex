@@ -1,5 +1,21 @@
 # Security
 
+## History replay authorization
+
+Database history authorizes the complete replay target set before comparing
+current values, hierarchy or positions with retained evidence. An unauthorized
+target must not disclose whether a guessed post-image matches through a conflict
+result. Scalar capture uses the same current write authority before reading its
+before-image; normal writers still enforce schema, membership and revision
+preconditions within the transaction. See [Database history](product-specs/database-pages-and-views-behavior.md).
+
+Block-promotion history likewise authorizes every promoted Page, the source Page
+for a move, and any restored Data Source schema before normalizing saved bodies
+or comparing Document heads, properties and File state. Copy Undo does not need
+access to its independent source. A restricted Page keeps the ordinary Page
+authorization boundary's non-disclosing not-found response; an earlier root's
+content conflict cannot take precedence over a later root's missing access.
+
 ## Relation references
 
 Relation is non-authorizing. Creating a definition requires source schema authority and readable target Data Source; adding an edge requires source write plus independent target Page read. Core assigns each edge a random 256-bit opaque identity. Incremental removal accepts only that source-owned handle and verifies its source membership/Property scope, so losing target read does not make an owned relation undeletable and a guessed Page ID cannot probe membership. Clear-all uses an explicit value-revision fence. Stale, unknown, wrong-source, and unauthorized edge handles share a non-oracular failure boundary. Project reads authorize every projected target, and saved Relation filter operands are reauthorized on every View descriptor/window/context/group read after grants change. A compact preview exposes only visible targets plus the restricted count. The paged selected-target window may expose a generic `Restricted page` row and its source-owned removal handle, but never the target Page ID, title, Document, parent, Data Source, ownership path, or source metadata. Relation cursors contain only an ordinal plus a constant marker. Library-trusted local reads do not materialize grants.

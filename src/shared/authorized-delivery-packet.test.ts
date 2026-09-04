@@ -43,6 +43,7 @@ const packet = (): AuthorizedDeliveryPacket => ({
         resource_kind: "document_update",
       },
       inline_update: [4, 5],
+      history_fence: { headSeq: 4, blockIds: ["block:moved"], documentWide: false },
     },
   ],
   projection_effects: [],
@@ -57,6 +58,31 @@ const packet = (): AuthorizedDeliveryPacket => ({
 });
 
 describe("authorized delivery packet boundary", () => {
+  test("rejects history evidence outside its exact Document transition", () => {
+    const value = packet();
+    expect(() =>
+      parseAuthorizedDeliveryPacket({
+        ...value,
+        document_effects: [
+          {
+            ...value.document_effects[0],
+            history_fence: { headSeq: 5, blockIds: [], documentWide: true },
+          },
+        ],
+      }),
+    ).toThrow("Authorized delivery packet is invalid");
+    expect(() =>
+      parseAuthorizedDeliveryPacket({
+        ...value,
+        document_effects: [
+          {
+            ...value.document_effects[0],
+            history_fence: { headSeq: 4, blockIds: ["block:a", "block:a"], documentWide: false },
+          },
+        ],
+      }),
+    ).toThrow("Authorized delivery packet is invalid");
+  });
   test("accepts packet v4 with a complete Document effect", () => {
     const value = packet();
     expect(

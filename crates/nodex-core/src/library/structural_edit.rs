@@ -1,6 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::Path;
 
+mod editor_history;
+pub(super) mod history_owner;
+pub(super) mod history_payload;
+mod local_history_retention;
+
 use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::ModuleName;
 use nodex_core_contracts::library::{
@@ -37,15 +42,16 @@ use super::mutation::{
     persist_parent_operations_from_source_with_local_commit,
     persist_parent_relocation_source_with_local_commit,
     persist_parent_relocation_source_with_placeholder, refresh_page_intrinsic_projection,
-    require_project_in_library, seal_mutation_with, sqlite_now,
+    seal_mutation_with, sqlite_now,
 };
 
-const SNAPSHOT_VERSION: u32 = 3;
-const RECIPE_VERSION: u32 = 4;
+const SNAPSHOT_VERSION: u32 = 4;
+const RECIPE_VERSION: u32 = 5;
 const MAX_STRUCTURAL_ROOTS: usize = 10_000;
 const MAX_STRUCTURAL_BLOCKS: usize = 10_000;
 const MAX_STRUCTURAL_DEPTH: usize = 128;
 const MAX_STRUCTURAL_DOCUMENTS: usize = 1_024;
+const MAX_STRUCTURAL_PAYLOAD_BYTES: usize = 64 * 1024 * 1024;
 const TYPED_OWNER_TYPES: &[&str] = &[
     "page",
     "canvas",
@@ -150,6 +156,10 @@ struct DatabaseViewPositionSnapshot {
     view_id: String,
     rank_key: String,
     revision: i64,
+    // Old snapshots remain decodable for retention, but cannot be replayed as
+    // current semantic position evidence.
+    #[serde(default)]
+    semantic_reset_epoch: i64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -171,6 +181,7 @@ struct DatabaseRowSnapshot {
     completed_at: Option<String>,
     projected_view_id: Option<String>,
     view_group_key: Option<String>,
+    #[serde(default, skip_serializing)]
     view_rank_key: Option<String>,
     database_values_json: String,
     property_values: Vec<DatabasePropertyValueSnapshot>,
@@ -280,6 +291,11 @@ struct BackwardMergeState {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum StructuralRecipeAction {
+    RestoreEditorHistory {
+        document_id: String,
+        generation: i64,
+        patch: nodex_core_contracts::document::EditorHistoryPatch,
+    },
     WithInlineContent {
         action: Box<StructuralRecipeAction>,
         host_page_id: String,
@@ -430,6 +446,7 @@ fn normalize_stored_location(
 
 fn normalize_stored_recipe_action(action: &mut StructuralRecipeAction) -> Result<(), StoreError> {
     match action {
+        StructuralRecipeAction::RestoreEditorHistory { .. } => {}
         StructuralRecipeAction::WithInlineContent { action, .. } => {
             normalize_stored_recipe_action(action.as_mut())?;
         }
@@ -574,9 +591,36 @@ pub(super) fn apply(
     command: &LibraryStructuralEditCommand,
     assets_root: &Path,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = bound_project_id(context)?;
-    require_project_in_library(connection, project_id, library_id)?;
+    if let LibraryStructuralEditCommand::SetLocalHistoryRetention { retention } = command {
+        return local_history_retention::apply(
+            connection,
+            context,
+            operation_id,
+            store_epoch,
+            request_hash,
+            retention,
+        );
+    }
+    structural_actor_project_id(connection, context)?;
     match command {
+        LibraryStructuralEditCommand::SetLocalHistoryRetention { .. } => {
+            unreachable!("retention uses its own Library authority")
+        }
+        LibraryStructuralEditCommand::RestoreEditorHistory {
+            document_id,
+            generation,
+            patch,
+        } => editor_history::apply(
+            connection,
+            context,
+            library_id,
+            operation_id,
+            store_epoch,
+            request_hash,
+            document_id,
+            *generation,
+            patch,
+        ),
         LibraryStructuralEditCommand::CaptureClipboard { selection } => capture_clipboard(
             connection,
             context,
@@ -697,9 +741,28 @@ pub(super) fn reverse(
     token: &LibraryStructuralHistoryToken,
     _assets_root: &Path,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = bound_project_id(context)?;
-    require_project_in_library(connection, project_id, library_id)?;
-    let recipe = read_history_recipe(connection, library_id, project_id, store_epoch, token)?;
+    let project_id = &structural_actor_project_id(connection, context)?;
+    let (recipe_json, consumed_project_id) = read_history_payload(
+        connection,
+        library_id,
+        context.project_id.as_ref().map(|id| id.0.as_str()),
+        store_epoch,
+        token,
+    )?;
+    if let Some(outcome) = super::block_transfer::reverse_history_payload(
+        connection,
+        context,
+        library_id,
+        operation_id,
+        store_epoch,
+        request_hash,
+        token,
+        &consumed_project_id,
+        &recipe_json,
+    )? {
+        return Ok(outcome);
+    }
+    let recipe = decode_history_recipe(&recipe_json)?;
     let now = sqlite_now(connection)?;
     let commit_result = durable_mutation::run(
         connection,
@@ -725,7 +788,8 @@ pub(super) fn reverse(
                 version: RECIPE_VERSION,
                 action: applied.inverse.clone(),
             };
-            let (history, recipe_json) = history_token(operation_id, store_epoch, &inverse_recipe)?;
+            let (history, recipe_payload) =
+                history_token(operation_id, store_epoch, &inverse_recipe)?;
             let result = structural_result(
                 "reverse_structural_edit",
                 applied.source_root_ids.clone(),
@@ -758,7 +822,7 @@ pub(super) fn reverse(
                         project_id,
                         store_epoch,
                         request_hash,
-                        &serde_json::json!({ "kind": "reverse_structural_edit", "token": token }),
+                        "reverse_structural_edit",
                         &result,
                         &transition_snapshot_refs(&applied),
                         event_sequence,
@@ -771,7 +835,7 @@ pub(super) fn reverse(
                         project_id,
                         store_epoch,
                         &history.recipe_hash,
-                        &recipe_json,
+                        &recipe_payload,
                         &transition_snapshot_refs(&applied),
                         &now,
                     )?;
@@ -779,22 +843,25 @@ pub(super) fn reverse(
                     "UPDATE structural_history_recipes SET state = 'consumed', consumed_at = ?1 \
                      WHERE recipe_operation_id = ?2 AND library_id = ?3 AND project_id = ?4 \
                        AND state = 'available' AND recipe_hash = ?5",
-                    params![now, token.recipe_operation_id, library_id, project_id, token.recipe_hash],
+                    params![now, token.recipe_operation_id, library_id, consumed_project_id, token.recipe_hash],
                 )?;
                     if changed != 1 {
                         return Err(conflict("Structural history token was already consumed"));
                     }
+                    crate::infrastructure::local_commit::require_projection_read(
+                        connection,
+                        scope.evidence(),
+                        nodex_core_contracts::LocalProjectionScope::StructuralHistory {
+                            project_id: consumed_project_id.clone(),
+                        },
+                    )?;
                     connection.execute(
                         "UPDATE structural_cut_claims SET state = 'revoked', revision = revision + 1, \
                            updated_at = ?1 \
                          WHERE delete_recipe_operation_id = ?2 AND state = 'available'",
                         params![now, token.recipe_operation_id],
                     )?;
-                    connection.execute(
-                        "DELETE FROM structural_retention_members \
-                     WHERE authority_kind = 'history_recipe' AND authority_id = ?1",
-                        [&token.recipe_operation_id],
-                    )?;
+                    history_owner::release_terminal_recipe(connection, &token.recipe_operation_id)?;
                     Ok(())
                 },
             )
@@ -813,7 +880,7 @@ fn capture_clipboard(
     request_hash: &str,
     selection: &LibraryStructuralSelection,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = bound_project_id(context)?;
+    let project_id = &structural_actor_project_id(connection, context)?;
     let parent = load_and_authorize_source(connection, context, library_id, selection, false)?;
     let snapshot = capture_snapshot(connection, library_id, &parent, selection)?;
     let snapshot_json = canonical_json(&snapshot, "Structural clipboard snapshot")?;
@@ -873,10 +940,7 @@ fn capture_clipboard(
                         project_id,
                         store_epoch,
                         request_hash,
-                        &serde_json::json!({
-                            "kind": "capture_clipboard",
-                            "selection": selection,
-                        }),
+                        "capture_clipboard",
                         &result,
                         &[&snapshot],
                         event_sequence,
@@ -933,13 +997,19 @@ fn delete_selection(
     reason: &LibraryStructuralDeleteReason,
     direction: LibraryStructuralDeleteDirection,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = bound_project_id(context)?;
+    let project_id = &structural_actor_project_id(connection, context)?;
     let mut parent = load_and_authorize_source(connection, context, library_id, selection, true)?;
     let snapshot = capture_snapshot(connection, library_id, &parent, selection)?;
     let cut_bundle = match reason {
         LibraryStructuralDeleteReason::Delete => None,
         LibraryStructuralDeleteReason::Cut { bundle } => {
-            let authority = read_bundle(connection, library_id, project_id, store_epoch, bundle)?;
+            let authority = read_bundle(
+                connection,
+                library_id,
+                context.project_id.as_ref().map(|id| id.0.as_str()),
+                store_epoch,
+                bundle,
+            )?;
             if canonical_snapshot_hash(&authority.snapshot)? != canonical_snapshot_hash(&snapshot)?
             {
                 return Err(conflict(
@@ -978,7 +1048,8 @@ fn delete_selection(
                 version: RECIPE_VERSION,
                 action: applied.inverse.clone(),
             };
-            let (history, recipe_json) = history_token(operation_id, store_epoch, &inverse_recipe)?;
+            let (history, recipe_payload) =
+                history_token(operation_id, store_epoch, &inverse_recipe)?;
             let operation_kind = if cut_bundle.is_some() {
                 "cut_structural_selection"
             } else {
@@ -1016,12 +1087,7 @@ fn delete_selection(
                         project_id,
                         store_epoch,
                         request_hash,
-                        &serde_json::json!({
-                            "kind": "delete_selection",
-                            "selection": selection,
-                            "reason": reason,
-                            "direction": direction,
-                        }),
+                        "delete_selection",
                         &result,
                         &transition_snapshot_refs(&applied),
                         event_sequence,
@@ -1034,7 +1100,7 @@ fn delete_selection(
                         project_id,
                         store_epoch,
                         &history.recipe_hash,
-                        &recipe_json,
+                        &recipe_payload,
                         &transition_snapshot_refs(&applied),
                         &now,
                     )?;
@@ -1074,8 +1140,14 @@ fn paste_clipboard(
     target: &LibraryStructuralTarget,
     assets_root: &Path,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = bound_project_id(context)?;
-    let authority = read_bundle(connection, library_id, project_id, store_epoch, bundle)?;
+    let project_id = &structural_actor_project_id(connection, context)?;
+    let authority = read_bundle(
+        connection,
+        library_id,
+        context.project_id.as_ref().map(|id| id.0.as_str()),
+        store_epoch,
+        bundle,
+    )?;
     let mut target_parent = load_and_authorize_target(connection, context, library_id, target)?;
     let target_location = target_location(&target_parent, target, &authority.snapshot)?;
     ensure_destination_outside_closure(&authority.snapshot, &target_location)?;
@@ -1111,7 +1183,8 @@ fn paste_clipboard(
                 version: RECIPE_VERSION,
                 action: applied.inverse.clone(),
             };
-            let (history, recipe_json) = history_token(operation_id, store_epoch, &inverse_recipe)?;
+            let (history, recipe_payload) =
+                history_token(operation_id, store_epoch, &inverse_recipe)?;
             let operation_kind = if authority.cut_claim.is_some() {
                 "move_cut_structural_clipboard"
             } else {
@@ -1149,11 +1222,7 @@ fn paste_clipboard(
                         project_id,
                         store_epoch,
                         request_hash,
-                        &serde_json::json!({
-                            "kind": "paste_clipboard",
-                            "bundle": bundle,
-                            "target": target,
-                        }),
+                        "paste_clipboard",
                         &result,
                         &transition_snapshot_refs(&applied),
                         event_sequence,
@@ -1166,7 +1235,7 @@ fn paste_clipboard(
                         project_id,
                         store_epoch,
                         &history.recipe_hash,
-                        &recipe_json,
+                        &recipe_payload,
                         &transition_snapshot_refs(&applied),
                         &now,
                     )?;
@@ -1243,7 +1312,7 @@ fn duplicate_selection(
     target: &LibraryStructuralTarget,
     assets_root: &Path,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = bound_project_id(context)?;
+    let project_id = &structural_actor_project_id(connection, context)?;
     let source_parent =
         load_and_authorize_source(connection, context, library_id, selection, false)?;
     let snapshot = capture_snapshot(connection, library_id, &source_parent, selection)?;
@@ -1279,7 +1348,8 @@ fn duplicate_selection(
                 version: RECIPE_VERSION,
                 action: applied.inverse.clone(),
             };
-            let (history, recipe_json) = history_token(operation_id, store_epoch, &inverse_recipe)?;
+            let (history, recipe_payload) =
+                history_token(operation_id, store_epoch, &inverse_recipe)?;
             let result = structural_result(
                 "duplicate_structural_selection",
                 root_ids(&snapshot.roots),
@@ -1312,11 +1382,7 @@ fn duplicate_selection(
                         project_id,
                         store_epoch,
                         request_hash,
-                        &serde_json::json!({
-                            "kind": "duplicate_selection",
-                            "selection": selection,
-                            "target": target,
-                        }),
+                        "duplicate_selection",
                         &result,
                         &transition_snapshot_refs(&applied),
                         event_sequence,
@@ -1329,7 +1395,7 @@ fn duplicate_selection(
                         project_id,
                         store_epoch,
                         &history.recipe_hash,
-                        &recipe_json,
+                        &recipe_payload,
                         &transition_snapshot_refs(&applied),
                         &now,
                     )
@@ -1351,7 +1417,7 @@ fn move_selection(
     selection: &LibraryStructuralSelection,
     target: &LibraryStructuralTarget,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = bound_project_id(context)?;
+    let project_id = &structural_actor_project_id(connection, context)?;
     let source_parent =
         load_and_authorize_source(connection, context, library_id, selection, true)?;
     let snapshot = capture_snapshot(connection, library_id, &source_parent, selection)?;
@@ -1410,7 +1476,8 @@ fn move_selection(
                 version: RECIPE_VERSION,
                 action: applied.inverse.clone(),
             };
-            let (history, recipe_json) = history_token(operation_id, store_epoch, &inverse_recipe)?;
+            let (history, recipe_payload) =
+                history_token(operation_id, store_epoch, &inverse_recipe)?;
             let result = structural_result(
                 "move_structural_selection",
                 root_ids(&snapshot.roots),
@@ -1443,11 +1510,7 @@ fn move_selection(
                         project_id,
                         store_epoch,
                         request_hash,
-                        &serde_json::json!({
-                            "kind": "move_selection",
-                            "selection": selection,
-                            "target": target,
-                        }),
+                        "move_selection",
                         &result,
                         &transition_snapshot_refs(&applied),
                         event_sequence,
@@ -1460,7 +1523,7 @@ fn move_selection(
                         project_id,
                         store_epoch,
                         &history.recipe_hash,
-                        &recipe_json,
+                        &recipe_payload,
                         &transition_snapshot_refs(&applied),
                         &now,
                     )
@@ -1483,7 +1546,7 @@ fn replace_selection(
     replacement: &LibraryStructuralReplacement,
     assets_root: &Path,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = bound_project_id(context)?;
+    let project_id = &structural_actor_project_id(connection, context)?;
     let mut parent = load_and_authorize_source(connection, context, library_id, selection, true)?;
     let removed = capture_snapshot(connection, library_id, &parent, selection)?;
     reject_primary_databases(connection, &removed.databases)?;
@@ -1491,7 +1554,7 @@ fn replace_selection(
         LibraryStructuralReplacement::Clipboard { bundle } => Some(read_bundle(
             connection,
             library_id,
-            project_id,
+            context.project_id.as_ref().map(|id| id.0.as_str()),
             store_epoch,
             bundle,
         )?),
@@ -1605,7 +1668,8 @@ fn replace_selection(
                 version: RECIPE_VERSION,
                 action: inserted.inverse.clone(),
             };
-            let (history, recipe_json) = history_token(operation_id, store_epoch, &inverse_recipe)?;
+            let (history, recipe_payload) =
+                history_token(operation_id, store_epoch, &inverse_recipe)?;
             let operation_kind = match replacement {
                 LibraryStructuralReplacement::Clipboard { .. } => {
                     "replace_structural_selection_with_clipboard"
@@ -1641,11 +1705,7 @@ fn replace_selection(
                         project_id,
                         store_epoch,
                         request_hash,
-                        &serde_json::json!({
-                            "kind": "replace_selection",
-                            "selection": selection,
-                            "replacement": replacement,
-                        }),
+                        "replace_selection",
                         &result,
                         &snapshots,
                         event_sequence,
@@ -1658,7 +1718,7 @@ fn replace_selection(
                         project_id,
                         store_epoch,
                         &history.recipe_hash,
-                        &recipe_json,
+                        &recipe_payload,
                         &snapshots,
                         &now,
                     )?;
@@ -1692,7 +1752,7 @@ fn turn_selection_into(
     selection: &LibraryStructuralSelection,
     target: &LibraryStructuralTurnIntoTarget,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = bound_project_id(context)?;
+    let project_id = &structural_actor_project_id(connection, context)?;
     let parent = load_and_authorize_source(connection, context, library_id, selection, true)?;
     let snapshot = capture_snapshot(connection, library_id, &parent, selection)?;
     validate_turn_selection(connection, &snapshot)?;
@@ -1724,7 +1784,8 @@ fn turn_selection_into(
                 version: RECIPE_VERSION,
                 action: applied.inverse.clone(),
             };
-            let (history, recipe_json) = history_token(operation_id, store_epoch, &inverse_recipe)?;
+            let (history, recipe_payload) =
+                history_token(operation_id, store_epoch, &inverse_recipe)?;
             let snapshots = transition_snapshot_refs(&applied);
             let mut result = structural_result(
                 "turn_structural_selection_into",
@@ -1767,11 +1828,7 @@ fn turn_selection_into(
                         project_id,
                         store_epoch,
                         request_hash,
-                        &serde_json::json!({
-                            "kind": "turn_selection_into",
-                            "selection": selection,
-                            "target": target,
-                        }),
+                        "turn_selection_into",
                         &result,
                         &snapshots,
                         event_sequence,
@@ -1784,7 +1841,7 @@ fn turn_selection_into(
                         project_id,
                         store_epoch,
                         &history.recipe_hash,
-                        &recipe_json,
+                        &recipe_payload,
                         &snapshots,
                         &now,
                     )
@@ -1812,7 +1869,7 @@ fn merge_block_backward(
     if source_block_id == target_block_id {
         return Err(invalid("Backward merge source and target must differ"));
     }
-    let project_id = bound_project_id(context)?;
+    let project_id = &structural_actor_project_id(connection, context)?;
     let parent = load_and_authorize_source(connection, context, library_id, selection, true)?;
     plan_backward_merge(
         &parent.base_materialization.block_tree,
@@ -1861,7 +1918,8 @@ fn merge_block_backward(
                 version: RECIPE_VERSION,
                 action: applied.inverse.clone(),
             };
-            let (history, recipe_json) = history_token(operation_id, store_epoch, &inverse_recipe)?;
+            let (history, recipe_payload) =
+                history_token(operation_id, store_epoch, &inverse_recipe)?;
             let snapshots = transition_snapshot_refs(&applied);
             let result = structural_result(
                 "merge_block_backward",
@@ -1895,11 +1953,7 @@ fn merge_block_backward(
                         project_id,
                         store_epoch,
                         request_hash,
-                        &serde_json::json!({
-                            "kind": "merge_block_backward",
-                            "selection": selection,
-                            "targetBlockId": target_block_id,
-                        }),
+                        "merge_block_backward",
                         &result,
                         &snapshots,
                         event_sequence,
@@ -1912,7 +1966,7 @@ fn merge_block_backward(
                         project_id,
                         store_epoch,
                         &history.recipe_hash,
-                        &recipe_json,
+                        &recipe_payload,
                         &snapshots,
                         &now,
                     )
@@ -2113,7 +2167,7 @@ fn turn_active_selection(
             let commit_result = persist_parent_relocation_source_with_placeholder(
                 connection,
                 ParentDocumentWriteContext {
-                    actor_project_id: bound_project_id(context)?,
+                    actor_project_id: &structural_actor_project_id(connection, context)?,
                     store_epoch,
                     operation_id,
                     commit,
@@ -2189,7 +2243,7 @@ fn turn_active_selection(
     let host_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: bound_project_id(context)?,
+            actor_project_id: &structural_actor_project_id(connection, context)?,
             store_epoch,
             operation_id,
             commit,
@@ -2331,6 +2385,10 @@ fn restore_turned_selection(
             params![dormant.page_id, dormant.document_id, library_id, now],
         )?;
         connection.execute(
+            "DELETE FROM structural_dormant_document_sources WHERE library_id = ?1 AND document_id = ?2",
+            params![library_id, dormant.document_id],
+        )?;
+        connection.execute(
             "INSERT INTO pages(block_id, library_id, document_id, parent_kind, parent_id, created_at, updated_at) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
             params![
@@ -2403,7 +2461,7 @@ fn restore_turned_selection(
     let host_commit = persist_parent_relocation_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: bound_project_id(context)?,
+            actor_project_id: &structural_actor_project_id(connection, context)?,
             store_epoch,
             operation_id,
             commit,
@@ -2446,7 +2504,7 @@ fn restore_turned_selection(
         let commit_result = persist_parent_operations_detailed_with_local_commit(
             connection,
             ParentDocumentWriteContext {
-                actor_project_id: bound_project_id(context)?,
+                actor_project_id: &structural_actor_project_id(connection, context)?,
                 store_epoch,
                 operation_id,
                 commit,
@@ -2600,7 +2658,7 @@ fn apply_backward_merge(
     let document_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: bound_project_id(context)?,
+            actor_project_id: &structural_actor_project_id(connection, context)?,
             store_epoch,
             operation_id,
             commit,
@@ -2750,7 +2808,7 @@ fn restore_backward_merge(
     let document_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: bound_project_id(context)?,
+            actor_project_id: &structural_actor_project_id(connection, context)?,
             store_epoch,
             operation_id,
             commit,
@@ -2767,6 +2825,7 @@ fn restore_backward_merge(
         }],
         ParentDocumentPlacement::Restore {
             preapplied: &[],
+            exact_moves: &[],
             tombstone_reactivations: &reactivated,
             source_document_id: &state.snapshot.source.document_id,
             source_document_generation: state.snapshot.source.document_generation,
@@ -2810,7 +2869,10 @@ fn restore_backward_merge(
     })
 }
 
-fn revoke_page_grants(connection: &Connection, page_id: &str) -> Result<Vec<String>, StoreError> {
+pub(super) fn revoke_page_grants(
+    connection: &Connection,
+    page_id: &str,
+) -> Result<Vec<String>, StoreError> {
     let grant_ids = connection
         .prepare(
             "SELECT id FROM project_resource_grants \
@@ -2851,7 +2913,10 @@ fn restore_page_grants(
     Ok(())
 }
 
-fn retire_page_capability(connection: &Connection, page_id: &str) -> Result<(), StoreError> {
+pub(super) fn retire_page_capability(
+    connection: &Connection,
+    page_id: &str,
+) -> Result<(), StoreError> {
     connection.execute(
         "DELETE FROM scheduled_page_index WHERE page_block_id = ?1",
         [page_id],
@@ -2873,7 +2938,7 @@ fn retire_page_capability(connection: &Connection, page_id: &str) -> Result<(), 
     Ok(())
 }
 
-fn clear_dormant_document_projections(
+pub(super) fn clear_dormant_document_projections(
     connection: &Connection,
     document_id: &str,
 ) -> Result<(), StoreError> {
@@ -3012,7 +3077,7 @@ fn release_history(
             "Structural history release exceeds its token bound",
         ));
     }
-    let project_id = bound_project_id(context)?;
+    let project_id = &structural_actor_project_id(connection, context)?;
     let unique_tokens = tokens
         .iter()
         .map(|token| (token.recipe_operation_id.as_str(), token))
@@ -3022,6 +3087,7 @@ fn release_history(
             "Structural history release contains duplicate tokens",
         ));
     }
+    let mut recipe_projects = BTreeMap::new();
     for token in unique_tokens.values() {
         if token.store_epoch != store_epoch {
             return Err(StoreError::new(
@@ -3030,18 +3096,18 @@ fn release_history(
                 false,
             ));
         }
-        let recipe_hash = connection
+        let (recipe_hash, recipe_project) = connection
             .query_row(
-                "SELECT recipe_hash FROM structural_history_recipes \
-                 WHERE recipe_operation_id = ?1 AND library_id = ?2 AND project_id = ?3 \
+                "SELECT recipe_hash, project_id FROM structural_history_recipes \
+                 WHERE recipe_operation_id = ?1 AND library_id = ?2 AND (?3 IS NULL OR project_id = ?3) \
                    AND store_epoch = ?4",
                 params![
                     token.recipe_operation_id,
                     library_id,
-                    project_id,
+                    context.project_id.as_ref().map(|id| id.0.as_str()),
                     store_epoch
                 ],
-                |row| row.get::<_, String>(0),
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
             )
             .optional()?
             .ok_or_else(|| invalid("Structural history token does not exist"))?;
@@ -3050,6 +3116,7 @@ fn release_history(
                 "Structural history token no longer matches its recipe",
             ));
         }
+        recipe_projects.insert(token.recipe_operation_id.as_str(), recipe_project);
     }
 
     let now = sqlite_now(connection)?;
@@ -3065,7 +3132,9 @@ fn release_history(
             context,
         },
         |scope| {
+            let mut released_any = false;
             for token in unique_tokens.values() {
+                let recipe_project = &recipe_projects[token.recipe_operation_id.as_str()];
                 let changed = connection.execute(
                     "UPDATE structural_history_recipes SET state = 'consumed', consumed_at = ?1 \
                      WHERE recipe_operation_id = ?2 AND library_id = ?3 AND project_id = ?4 \
@@ -3074,7 +3143,7 @@ fn release_history(
                         now,
                         token.recipe_operation_id,
                         library_id,
-                        project_id,
+                        recipe_project,
                         store_epoch,
                         token.recipe_hash
                     ],
@@ -3082,20 +3151,25 @@ fn release_history(
                 if changed == 0 {
                     continue;
                 }
+                released_any = true;
+                crate::infrastructure::local_commit::require_projection_read(
+                    connection,
+                    scope.evidence(),
+                    nodex_core_contracts::LocalProjectionScope::StructuralHistory {
+                        project_id: recipe_project.clone(),
+                    },
+                )?;
                 connection.execute(
                     "UPDATE structural_cut_claims SET state = 'revoked', revision = revision + 1, \
                        updated_at = ?1 \
                      WHERE delete_recipe_operation_id = ?2 AND state = 'available'",
                     params![now, token.recipe_operation_id],
                 )?;
-                connection.execute(
-                    "DELETE FROM structural_retention_members \
-                     WHERE authority_kind = 'history_recipe' AND authority_id = ?1",
-                    [&token.recipe_operation_id],
-                )?;
+                history_owner::release_terminal_recipe(connection, &token.recipe_operation_id)?;
             }
             let result = empty_structural_result("release_structural_history");
-            let effects = history_release_effects(project_id, &result, &now);
+            let mut effects = history_release_effects(project_id, &result, &now);
+            effects.did_mutate = released_any;
             seal_mutation_with(scope, context, operation_id, effects, |_, _| Ok(()))
         },
     )?;
@@ -3118,6 +3192,11 @@ fn apply_recipe_action(
         commit,
     };
     match action {
+        StructuralRecipeAction::RestoreEditorHistory {
+            document_id,
+            generation,
+            patch,
+        } => editor_history::transition(write, &document_id, generation, &patch),
         StructuralRecipeAction::WithInlineContent {
             action,
             host_page_id,
@@ -3150,7 +3229,7 @@ fn apply_recipe_action(
             let content_commit = persist_parent_operations_detailed_with_local_commit(
                 connection,
                 ParentDocumentWriteContext {
-                    actor_project_id: bound_project_id(context)?,
+                    actor_project_id: &structural_actor_project_id(connection, context)?,
                     store_epoch,
                     operation_id,
                     commit,
@@ -3260,22 +3339,7 @@ fn load_and_authorize_source(
             "Structural selection belongs to another Library",
         ));
     }
-    let project_id = bound_project_id(context)?;
-    if write {
-        super::history::require_page_write_access(
-            connection,
-            library_id,
-            project_id,
-            &parent.authority.owner_block_id,
-        )?;
-    } else {
-        super::history::require_page_read_access(
-            connection,
-            library_id,
-            project_id,
-            &parent.authority.owner_block_id,
-        )?;
-    }
+    authorize_parent_access(connection, context, &parent, write)?;
     Ok(parent)
 }
 
@@ -3306,10 +3370,39 @@ fn authorize_parent_write(
     context: &BoundModuleContext,
     parent: &ResolvedParentDocument,
 ) -> Result<(), StoreError> {
-    super::history::require_page_write_access(
+    authorize_parent_access(connection, context, parent, true)
+}
+
+fn authorize_parent_access(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    parent: &ResolvedParentDocument,
+    write: bool,
+) -> Result<(), StoreError> {
+    if parent.authority.head.library_id != context.library_id.0 {
+        return Err(unauthorized(
+            "Structural Document belongs to another Library",
+        ));
+    }
+    if parent.authority.owner_lifecycle == "deleted"
+        || (write && parent.authority.owner_lifecycle != "active")
+    {
+        return Err(conflict("Structural Document owner is unavailable"));
+    }
+    // The receipt actor does not grant access to this content. Only a bound
+    // Project narrows authority; trusted Library editors keep Library scope.
+    let Some(project_id) = context.project_id.as_ref().map(|id| id.0.as_str()) else {
+        return super::require_trusted_library_authority(context);
+    };
+    let authorize = if write {
+        super::history::require_page_write_access
+    } else {
+        super::history::require_page_read_access
+    };
+    authorize(
         connection,
         &parent.authority.head.library_id,
-        bound_project_id(context)?,
+        project_id,
         &parent.authority.owner_block_id,
     )
 }
@@ -3774,7 +3867,7 @@ fn capture_database(
         .prepare(
             "SELECT membership.id, membership.data_source_id, membership.page_block_id, \
                     membership.revision, membership.completed_at, model.view_id, \
-                    model.view_group_key, model.view_rank_key, model.database_values_json \
+                    model.view_group_key, NULL, model.database_values_json \
              FROM data_source_page_memberships membership \
              JOIN data_sources source ON source.id = membership.data_source_id \
              JOIN page_read_model model ON model.page_block_id = membership.page_block_id \
@@ -3818,22 +3911,22 @@ fn capture_database(
                     })
                 })?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
-            row.view_positions = connection
-                .prepare(
-                    "SELECT position.view_id, position.rank_key, position.revision \
-                     FROM database_view_page_positions position \
-                     JOIN database_views view ON view.id = position.view_id \
-                     WHERE position.page_block_id = ?1 AND view.database_block_id = ?2 \
-                     ORDER BY position.view_id",
-                )?
-                .query_map(params![row.page_id, database_id], |position| {
-                    Ok(DatabaseViewPositionSnapshot {
-                        view_id: position.get(0)?,
-                        rank_key: position.get(1)?,
-                        revision: position.get(2)?,
+            row.view_positions =
+                crate::database::capture_frozen_positions(connection, &row.page_id)?
+                    .into_iter()
+                    .filter(|position| {
+                        database
+                            .views
+                            .iter()
+                            .any(|view| view.view_id == position.witness.view_id)
                     })
-                })?
-                .collect::<rusqlite::Result<Vec<_>>>()?;
+                    .map(|position| DatabaseViewPositionSnapshot {
+                        view_id: position.witness.view_id,
+                        rank_key: position.rank_key,
+                        revision: position.witness.revision,
+                        semantic_reset_epoch: position.witness.semantic_reset_epoch,
+                    })
+                    .collect();
             row.relation_edges = connection
                 .prepare(
                     "SELECT edge_id, property_id, target_page_block_id, sibling_rank \
@@ -4098,7 +4191,7 @@ fn read_owned_document_authority(
 fn read_bundle(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
+    requesting_project_id: Option<&str>,
     store_epoch: &str,
     token: &LibraryStructuralClipboardToken,
 ) -> Result<BundleAuthority, StoreError> {
@@ -4162,16 +4255,20 @@ fn read_bundle(
         .optional()?
         .map(
             |(source_document_id, roots_json, delete_recipe_operation_id)| {
+                if history_owner::recipe_owner_is_closed(connection, &delete_recipe_operation_id)? {
+                    return Ok(None);
+                }
                 let source_root_ids = serde_json::from_str::<Vec<String>>(&roots_json)
                     .map_err(|_| corrupt("Structural cut claim roots are invalid"))?;
-                Ok::<CutClaim, StoreError>(CutClaim {
+                Ok::<Option<CutClaim>, StoreError>(Some(CutClaim {
                     source_document_id,
                     source_root_ids,
                     delete_recipe_operation_id,
-                })
+                }))
             },
         )
-        .transpose()?;
+        .transpose()?
+        .flatten();
     if let Some(claim) = &cut_claim
         && (claim.source_document_id != clipboard_snapshot.source.document_id
             || claim.source_root_ids != root_ids(&clipboard_snapshot.roots))
@@ -4181,21 +4278,22 @@ fn read_bundle(
         ));
     }
     let snapshot = if let Some(claim) = &cut_claim {
-        let (recipe_hash, recipe_json) = connection
+        let (recipe_hash, recipe_operation_id) = connection
             .query_row(
-                "SELECT recipe_hash, recipe_json FROM structural_history_recipes \
-                 WHERE recipe_operation_id = ?1 AND library_id = ?2 AND project_id = ?3 \
+                "SELECT recipe_hash, recipe_operation_id FROM structural_history_recipes \
+                 WHERE recipe_operation_id = ?1 AND library_id = ?2 AND (?3 IS NULL OR project_id = ?3) \
                    AND store_epoch = ?4 AND state = 'available'",
                 params![
                     claim.delete_recipe_operation_id,
                     library_id,
-                    project_id,
+                    requesting_project_id,
                     store_epoch,
                 ],
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
             )
             .optional()?
             .ok_or_else(|| conflict("Cut history is no longer available"))?;
+        let recipe_json = history_payload::read(connection, &recipe_operation_id)?;
         if !constant_time_equal(
             sha256(recipe_json.as_bytes()).as_bytes(),
             recipe_hash.as_bytes(),
@@ -4250,11 +4348,7 @@ fn consume_cut_claim(
     if changed != 1 {
         return Err(conflict("Cut history changed before paste"));
     }
-    connection.execute(
-        "DELETE FROM structural_retention_members \
-         WHERE authority_kind = 'history_recipe' AND authority_id = ?1",
-        [delete_recipe_operation_id],
-    )?;
+    history_owner::release_terminal_recipe(connection, delete_recipe_operation_id)?;
     Ok(())
 }
 
@@ -4303,13 +4397,25 @@ fn release_previous_clipboards(
     Ok(())
 }
 
-fn read_history_recipe(
+fn decode_history_recipe(recipe_json: &str) -> Result<StructuralHistoryRecipe, StoreError> {
+    let recipe = serde_json::from_str::<StructuralHistoryRecipe>(recipe_json)
+        .map_err(|_| corrupt("Structural history recipe is invalid"))?;
+    if recipe.version != RECIPE_VERSION {
+        return Err(unsupported(
+            "Structural history recipe version is unsupported",
+        ));
+    }
+    normalize_stored_recipe(recipe)
+}
+
+/// Capability validation is independent of the semantic inverse codec.
+pub(super) fn read_history_payload(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
+    requesting_project_id: Option<&str>,
     store_epoch: &str,
     token: &LibraryStructuralHistoryToken,
-) -> Result<StructuralHistoryRecipe, StoreError> {
+) -> Result<(String, String), StoreError> {
     if token.store_epoch != store_epoch {
         return Err(StoreError::new(
             StoreErrorCode::StaleStoreEpoch,
@@ -4319,13 +4425,13 @@ fn read_history_recipe(
     }
     let row = connection
         .query_row(
-            "SELECT recipe_hash, recipe_json, state FROM structural_history_recipes \
-             WHERE recipe_operation_id = ?1 AND library_id = ?2 AND project_id = ?3 \
+            "SELECT recipe_hash, state, project_id FROM structural_history_recipes \
+             WHERE recipe_operation_id = ?1 AND library_id = ?2 AND (?3 IS NULL OR project_id = ?3) \
                AND store_epoch = ?4",
             params![
                 token.recipe_operation_id,
                 library_id,
-                project_id,
+                requesting_project_id,
                 store_epoch
             ],
             |row| {
@@ -4338,28 +4444,36 @@ fn read_history_recipe(
         )
         .optional()?
         .ok_or_else(|| invalid("Structural history token does not exist"))?;
-    if row.2 != "available" || !constant_time_equal(row.0.as_bytes(), token.recipe_hash.as_bytes())
+    if !constant_time_equal(row.0.as_bytes(), token.recipe_hash.as_bytes()) {
+        return Err(StoreError::new(
+            StoreErrorCode::Unauthorized,
+            "Structural history token does not authorize this inverse",
+            false,
+        ));
+    }
+    if row.1 != "available"
+        || history_owner::recipe_owner_is_closed(connection, &token.recipe_operation_id)?
     {
         return Err(conflict("Structural history token is no longer available"));
     }
-    if !constant_time_equal(sha256(row.1.as_bytes()).as_bytes(), row.0.as_bytes()) {
+    let recipe_json = history_payload::read(connection, &token.recipe_operation_id)?;
+    if !constant_time_equal(sha256(recipe_json.as_bytes()).as_bytes(), row.0.as_bytes()) {
         return Err(corrupt("Structural history recipe hash is invalid"));
     }
-    let recipe = serde_json::from_str::<StructuralHistoryRecipe>(&row.1)
-        .map_err(|_| corrupt("Structural history recipe is invalid"))?;
-    if recipe.version != RECIPE_VERSION {
-        return Err(unsupported(
-            "Structural history recipe version is unsupported",
-        ));
-    }
-    normalize_stored_recipe(recipe)
+    Ok((recipe_json, row.2))
 }
 
 fn history_token(
     operation_id: &str,
     store_epoch: &str,
     recipe: &StructuralHistoryRecipe,
-) -> Result<(LibraryStructuralHistoryToken, String), StoreError> {
+) -> Result<
+    (
+        LibraryStructuralHistoryToken,
+        history_payload::EncodedPayload,
+    ),
+    StoreError,
+> {
     let recipe_json = canonical_json(recipe, "Structural history recipe")?;
     ensure_payload_bound(&recipe_json, "Structural history recipe")?;
     let recipe_hash = sha256(recipe_json.as_bytes());
@@ -4369,7 +4483,7 @@ fn history_token(
             recipe_hash,
             store_epoch: store_epoch.to_owned(),
         },
-        recipe_json,
+        history_payload::prepare(recipe, recipe_json),
     ))
 }
 
@@ -4377,7 +4491,7 @@ pub(super) struct PreparedPageMentionHistory {
     snapshot: OwnershipClosureSnapshot,
     result: LibraryStructuralEditResult,
     history: LibraryStructuralHistoryToken,
-    recipe_json: String,
+    recipe_payload: history_payload::EncodedPayload,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4426,7 +4540,7 @@ pub(super) fn prepare_page_mention_history(
             replacement_content: expected_content,
         },
     };
-    let (history, recipe_json) = history_token(operation_id, store_epoch, &inverse_recipe)?;
+    let (history, recipe_payload) = history_token(operation_id, store_epoch, &inverse_recipe)?;
     let result = structural_result(
         "create_page_mention",
         Vec::new(),
@@ -4449,7 +4563,7 @@ pub(super) fn prepare_page_mention_history(
         snapshot,
         result,
         history,
-        recipe_json,
+        recipe_payload,
     })
 }
 
@@ -4482,7 +4596,6 @@ pub(super) fn persist_page_mention_history(
     project_id: &str,
     store_epoch: &str,
     request_hash: &str,
-    request: &serde_json::Value,
     event_sequence: i64,
     now: &str,
 ) -> Result<(), StoreError> {
@@ -4492,7 +4605,7 @@ pub(super) fn persist_page_mention_history(
         project_id,
         store_epoch,
         request_hash,
-        request,
+        "create_page_mention",
         &prepared.result,
         &[&prepared.snapshot],
         event_sequence,
@@ -4505,7 +4618,7 @@ pub(super) fn persist_page_mention_history(
         project_id,
         store_epoch,
         &prepared.history.recipe_hash,
-        &prepared.recipe_json,
+        &prepared.recipe_payload,
         &[&prepared.snapshot],
         now,
     )
@@ -4518,12 +4631,14 @@ fn persist_structural_mutation_ledger(
     project_id: &str,
     store_epoch: &str,
     request_hash: &str,
-    request: &serde_json::Value,
+    action: &str,
     result: &LibraryStructuralEditResult,
     snapshots: &[&OwnershipClosureSnapshot],
     change_log_seq: i64,
     now: &str,
 ) -> Result<(), StoreError> {
+    // The ledger owns event identity, not replay or inverse content. Receipts,
+    // history payloads and Page History checkpoints retain their own full bodies.
     let target_block_ids = result
         .source_root_block_ids
         .iter()
@@ -4564,14 +4679,14 @@ fn persist_structural_mutation_ledger(
             project_id,
             store_epoch,
             request_hash,
-            canonical_json(request, "Structural request")?,
+            canonical_json(&serde_json::json!({ "kind": action }), "Structural action")?,
             canonical_json(&target_block_ids, "Structural target Blocks")?,
             canonical_json(&affected_document_ids, "Structural affected Documents")?,
             canonical_json(
                 &result.affected_database_ids,
                 "Structural affected Databases",
             )?,
-            canonical_json(result, "Structural result")?,
+            "{}",
             canonical_json(&document_heads, "Structural Document heads")?,
             change_log_seq,
             now,
@@ -4588,24 +4703,19 @@ fn insert_history_recipe(
     project_id: &str,
     store_epoch: &str,
     recipe_hash: &str,
-    recipe_json: &str,
+    recipe_payload: &history_payload::EncodedPayload,
     snapshots: &[&OwnershipClosureSnapshot],
     now: &str,
 ) -> Result<(), StoreError> {
-    connection.execute(
-        "INSERT INTO structural_history_recipes( \
-           recipe_operation_id, library_id, project_id, store_epoch, recipe_hash, recipe_json, \
-           state, consumed_at, superseded_by_recipe_operation_id, created_at \
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'available', NULL, NULL, ?7)",
-        params![
-            operation_id,
-            library_id,
-            project_id,
-            store_epoch,
-            recipe_hash,
-            recipe_json,
-            now,
-        ],
+    insert_history_payload(
+        connection,
+        operation_id,
+        library_id,
+        project_id,
+        store_epoch,
+        recipe_hash,
+        recipe_payload,
+        now,
     )?;
     insert_retention_members(
         connection,
@@ -4614,6 +4724,35 @@ fn insert_history_recipe(
         library_id,
         snapshots,
     )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn insert_history_payload(
+    connection: &Connection,
+    operation_id: &str,
+    library_id: &str,
+    project_id: &str,
+    store_epoch: &str,
+    recipe_hash: &str,
+    recipe_payload: &history_payload::EncodedPayload,
+    now: &str,
+) -> Result<(), StoreError> {
+    connection.execute(
+        "INSERT INTO structural_history_recipes( \
+           recipe_operation_id, library_id, project_id, store_epoch, recipe_hash, payload_ref_json, \
+           state, consumed_at, superseded_by_recipe_operation_id, created_at \
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'available', NULL, NULL, ?7)",
+        params![
+            operation_id,
+            library_id,
+            project_id,
+            store_epoch,
+            recipe_hash,
+            history_payload::DETACHED,
+            now,
+        ],
+    )?;
+    history_payload::insert(connection, operation_id, recipe_payload)
 }
 
 /// File placement proof comes from the authenticated body, never a second
@@ -4779,6 +4918,90 @@ fn empty_structural_result(operation_kind: &str) -> LibraryStructuralEditResult 
     }
 }
 
+/// Capability-checked, bounded reconciliation; never exposes recipe contents.
+pub(super) fn read_history_states(
+    connection: &Connection,
+    library_id: &str,
+    store_epoch: &str,
+    context: &BoundModuleContext,
+    tokens: &[LibraryStructuralHistoryToken],
+) -> Result<Vec<nodex_core_contracts::library::LibraryStructuralHistoryState>, StoreError> {
+    use nodex_core_contracts::library::{LibraryStructuralHistoryState, StructuralHistoryState};
+    if tokens.len() > 200 {
+        return Err(invalid(
+            "Structural history reconciliation exceeds its token bound",
+        ));
+    }
+    let authority =
+        super::mutation::resolve_library_mutation_authority(connection, context, library_id)?;
+    let mut seen = HashSet::new();
+    let mut query = connection.prepare(
+        "SELECT recipe_hash, state FROM structural_history_recipes \
+         WHERE recipe_operation_id = ?1 AND library_id = ?2 AND (?3 IS NULL OR project_id = ?3) AND store_epoch = ?4",
+    )?;
+    tokens
+        .iter()
+        .map(|token| {
+            if token.recipe_operation_id.is_empty()
+                || token.recipe_operation_id.len() > 512
+                || token.recipe_hash.len() != 64
+                || !token
+                    .recipe_hash
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit())
+                || !seen.insert(&token.recipe_operation_id)
+            {
+                return Err(invalid(
+                    "Structural history reconciliation tokens are invalid",
+                ));
+            }
+            if token.store_epoch != store_epoch {
+                return Err(StoreError::new(
+                    StoreErrorCode::StaleStoreEpoch,
+                    "Structural history belongs to another Store epoch",
+                    false,
+                ));
+            }
+            let row = query
+                .query_row(
+                    params![
+                        token.recipe_operation_id,
+                        library_id,
+                        authority.requesting_project_id,
+                        store_epoch
+                    ],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                )
+                .optional()?;
+            let state = match row {
+                Some((hash, state))
+                    if constant_time_equal(hash.as_bytes(), token.recipe_hash.as_bytes()) =>
+                {
+                    match state.as_str() {
+                        "available"
+                            if history_owner::recipe_owner_is_closed(
+                                connection,
+                                &token.recipe_operation_id,
+                            )? =>
+                        {
+                            StructuralHistoryState::Consumed
+                        }
+                        "available" => StructuralHistoryState::Available,
+                        "consumed" => StructuralHistoryState::Consumed,
+                        "superseded" => StructuralHistoryState::Superseded,
+                        _ => return Err(internal("Structural history lifecycle is invalid")),
+                    }
+                }
+                _ => StructuralHistoryState::Unavailable,
+            };
+            Ok(LibraryStructuralHistoryState {
+                token: token.clone(),
+                state,
+            })
+        })
+        .collect()
+}
+
 fn history_release_effects(
     project_id: &str,
     result: &LibraryStructuralEditResult,
@@ -4914,7 +5137,7 @@ fn canonical_json<T: Serialize>(value: &T, label: &str) -> Result<String, StoreE
 }
 
 fn ensure_payload_bound(payload: &str, label: &str) -> Result<(), StoreError> {
-    if (2..=64 * 1024 * 1024).contains(&payload.len()) {
+    if (2..=MAX_STRUCTURAL_PAYLOAD_BYTES).contains(&payload.len()) {
         return Ok(());
     }
     Err(resource_exhausted(format!(
@@ -4941,12 +5164,18 @@ fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
         == 0
 }
 
-fn bound_project_id(context: &BoundModuleContext) -> Result<&str, StoreError> {
-    context
-        .project_id
-        .as_ref()
-        .map(|project_id| project_id.0.as_str())
-        .ok_or_else(|| unauthorized("Structural editing requires a bound Project"))
+/// A receipt actor is not content authority. Keep the original context intact
+/// for idempotency, Host retention and Project/Library authorization checks.
+fn structural_actor_project_id(
+    connection: &Connection,
+    context: &BoundModuleContext,
+) -> Result<String, StoreError> {
+    Ok(super::mutation::resolve_library_mutation_authority(
+        connection,
+        context,
+        &context.library_id.0,
+    )?
+    .actor_project_id)
 }
 
 fn invalid(message: impl Into<String>) -> StoreError {
@@ -5125,7 +5354,7 @@ fn insert_ordinary_replacement(
     let document_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: bound_project_id(context)?,
+            actor_project_id: &structural_actor_project_id(connection, context)?,
             store_epoch,
             operation_id,
             commit,
@@ -5226,7 +5455,7 @@ fn delete_snapshot(
     let document_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: bound_project_id(context)?,
+            actor_project_id: &structural_actor_project_id(connection, context)?,
             store_epoch,
             operation_id,
             commit,
@@ -5314,6 +5543,7 @@ fn restore_snapshot(
         .collect::<Vec<_>>();
     let placement = ParentDocumentPlacement::Restore {
         preapplied: &preapplied,
+        exact_moves: &[],
         tombstone_reactivations: &tombstone_reactivations,
         source_document_id: &snapshot.source.document_id,
         source_document_generation: snapshot.source.document_generation,
@@ -5321,7 +5551,7 @@ fn restore_snapshot(
     let document_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: bound_project_id(context)?,
+            actor_project_id: &structural_actor_project_id(connection, context)?,
             store_epoch,
             operation_id,
             commit,
@@ -5749,19 +5979,30 @@ fn validate_snapshot_authorities_with_lifecycle(
                     return Err(conflict("Structural Database row value changed"));
                 }
             }
-            for position in &row.view_positions {
-                let current = connection
-                    .query_row(
-                        "SELECT revision, rank_key FROM database_view_page_positions \
-                         WHERE view_id = ?1 AND page_block_id = ?2",
-                        params![position.view_id, row.page_id],
-                        |stored| Ok((stored.get::<_, i64>(0)?, stored.get::<_, String>(1)?)),
-                    )
-                    .optional()?
-                    .ok_or_else(|| conflict("Structural Database row position changed"))?;
-                if current != (position.revision, position.rank_key.clone()) {
-                    return Err(conflict("Structural Database row position changed"));
-                }
+            let current_positions =
+                crate::database::retained_position_witnesses(connection, &row.page_id)?
+                    .into_iter()
+                    .filter(|position| {
+                        database
+                            .views
+                            .iter()
+                            .any(|view| view.view_id == position.view_id)
+                    })
+                    .collect::<Vec<_>>();
+            let mut expected_positions = row
+                .view_positions
+                .iter()
+                .map(|position| crate::database::RetainedPositionWitness {
+                    view_id: position.view_id.clone(),
+                    semantic_reset_epoch: position.semantic_reset_epoch,
+                    revision: position.revision,
+                })
+                .collect::<Vec<_>>();
+            // Copy remaps View identities; source identity order is not an
+            // ordering constraint on the copied View witnesses.
+            expected_positions.sort_unstable_by(|left, right| left.view_id.cmp(&right.view_id));
+            if current_positions != expected_positions {
+                return Err(conflict("Structural Database row position changed"));
             }
             for edge in &row.relation_edges {
                 let current = connection
@@ -6235,7 +6476,7 @@ fn move_active_snapshot(
         let document_commit = persist_parent_operations_detailed_with_local_commit(
             connection,
             ParentDocumentWriteContext {
-                actor_project_id: bound_project_id(context)?,
+                actor_project_id: &structural_actor_project_id(connection, context)?,
                 store_epoch,
                 operation_id,
                 commit,
@@ -6306,7 +6547,7 @@ fn move_active_snapshot(
     let source_commit = persist_parent_relocation_source_with_placeholder(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: bound_project_id(context)?,
+            actor_project_id: &structural_actor_project_id(connection, context)?,
             store_epoch,
             operation_id,
             commit,
@@ -6340,7 +6581,7 @@ fn move_active_snapshot(
     let target_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: bound_project_id(context)?,
+            actor_project_id: &structural_actor_project_id(connection, context)?,
             store_epoch,
             operation_id,
             commit,
@@ -6507,6 +6748,7 @@ fn clone_snapshot_into_target(
                     .iter()
                     .filter(|block| {
                         block.containing_document_id == document.document_id
+                            && block.block_id != document.owner_block_id
                             && is_typed_owner(&block.block_type)
                     })
                     .map(|block| mapped(&block_ids, &block.block_id, "Block").cloned())
@@ -6521,7 +6763,7 @@ fn clone_snapshot_into_target(
                     connection,
                     PersistYjsGenesis {
                         authority: &target_authority,
-                        actor_project_id: bound_project_id(context)?,
+                        actor_project_id: &structural_actor_project_id(connection, context)?,
                         materialization: &prepared.materialization,
                         update_id: &update_id,
                         client_session_id: "library-structural-edit",
@@ -6604,7 +6846,7 @@ fn clone_snapshot_into_target(
     let host_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: bound_project_id(context)?,
+            actor_project_id: &structural_actor_project_id(connection, context)?,
             store_epoch,
             operation_id,
             commit,
@@ -6723,6 +6965,23 @@ fn stage_clone_authority(
             ],
         )?;
     }
+    // Row Pages require their canonical Data Source parent at insertion time.
+    // Install containers first; memberships and complete View order follow Pages.
+    for database in &snapshot.databases {
+        stage_database_clone(
+            connection,
+            &library_id,
+            database,
+            block_ids,
+            data_source_ids,
+            view_ids,
+            snapshot
+                .roots
+                .iter()
+                .any(|root| root.id == database.block_id),
+            now,
+        )?;
+    }
     for page in &snapshot.pages {
         let source_block = snapshot
             .blocks
@@ -6803,18 +7062,13 @@ fn stage_clone_authority(
         )?;
     }
     for database in &snapshot.databases {
-        stage_database_clone(
+        stage_database_clone_rows(
             connection,
-            &library_id,
             database,
             block_ids,
             data_source_ids,
             view_ids,
             membership_ids,
-            snapshot
-                .roots
-                .iter()
-                .any(|root| root.id == database.block_id),
             now,
         )?;
     }
@@ -6829,7 +7083,6 @@ fn stage_database_clone(
     block_ids: &BTreeMap<String, String>,
     data_source_ids: &BTreeMap<String, String>,
     view_ids: &BTreeMap<String, String>,
-    membership_ids: &BTreeMap<String, String>,
     duplicate_title: bool,
     now: &str,
 ) -> Result<(), StoreError> {
@@ -6931,6 +7184,18 @@ fn stage_database_clone(
             params![default_view_id, database_id],
         )?;
     }
+    Ok(())
+}
+
+fn stage_database_clone_rows(
+    connection: &Connection,
+    database: &DatabaseAuthoritySnapshot,
+    block_ids: &BTreeMap<String, String>,
+    data_source_ids: &BTreeMap<String, String>,
+    view_ids: &BTreeMap<String, String>,
+    membership_ids: &BTreeMap<String, String>,
+    now: &str,
+) -> Result<(), StoreError> {
     for row in &database.rows {
         let source_id = mapped(data_source_ids, &row.source_id, "Data Source")?;
         let membership_id = mapped(membership_ids, &row.membership_id, "Membership")?;
@@ -6957,19 +7222,6 @@ fn stage_database_clone(
                 ],
             )?;
         }
-        for position in &row.view_positions {
-            connection.execute(
-                "INSERT INTO database_view_page_positions( \
-                   view_id, page_block_id, rank_key, revision, created_at, updated_at \
-                 ) VALUES (?1, ?2, ?3, 1, ?4, ?4)",
-                params![
-                    mapped(view_ids, &position.view_id, "View")?,
-                    page_id,
-                    position.rank_key,
-                    now,
-                ],
-            )?;
-        }
         for edge in &row.relation_edges {
             let target_page_id = block_ids
                 .get(&edge.target_page_id)
@@ -6991,6 +7243,45 @@ fn stage_database_clone(
                 ],
             )?;
         }
+    }
+    for view in database
+        .views
+        .iter()
+        .filter(|view| view.lifecycle == "active")
+    {
+        let mut captured = database
+            .rows
+            .iter()
+            .filter_map(|row| {
+                row.view_positions
+                    .iter()
+                    .find(|position| position.view_id == view.view_id)
+                    .map(|position| (position.rank_key.as_str(), row.page_id.as_str()))
+            })
+            .collect::<Vec<_>>();
+        if captured.len()
+            != database
+                .rows
+                .iter()
+                .filter(|row| row.source_id == view.source_id)
+                .count()
+        {
+            return Err(corrupt(
+                "Copied View snapshot does not contain its complete Page order",
+            ));
+        }
+        // Tie-breaking belongs to captured source identity, not newly mapped IDs.
+        captured.sort_unstable();
+        let pages = captured
+            .into_iter()
+            .map(|(_, page_id)| mapped(block_ids, page_id, "Database row Page").map(String::as_str))
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        crate::database::initialize_copied_view_order(
+            connection,
+            mapped(view_ids, &view.view_id, "View")?,
+            &pages,
+            now,
+        )?;
     }
     Ok(())
 }
@@ -7035,6 +7326,10 @@ fn refresh_cloned_database_row_projections(
                 .as_ref()
                 .map(|view_id| mapped(view_ids, view_id, "View").cloned())
                 .transpose()?;
+            let view_rank_key = projected_view_id.as_deref().map(|view_id| {
+                connection.query_row("SELECT rank_key FROM database_view_page_positions WHERE view_id = ?1 AND page_block_id = ?2",
+                    params![view_id, page_id], |row| row.get::<_, String>(0)).optional()
+            }).transpose()?.flatten();
             let changed = connection.execute(
                 "UPDATE page_read_model SET membership_id = ?1, database_block_id = ?2, \
                    view_id = ?3, view_group_key = ?4, view_rank_key = ?5, \
@@ -7045,7 +7340,7 @@ fn refresh_cloned_database_row_projections(
                     mapped(block_ids, &database.block_id, "Database")?,
                     projected_view_id,
                     row.view_group_key,
-                    row.view_rank_key,
+                    view_rank_key,
                     row.database_values_json,
                     revisions_json,
                     now,
@@ -7400,7 +7695,7 @@ fn remap_snapshot(
                                 .map(|view_id| mapped(view_ids, view_id, "View").cloned())
                                 .transpose()?,
                             view_group_key: row.view_group_key.clone(),
-                            view_rank_key: row.view_rank_key.clone(),
+                            view_rank_key: None,
                             database_values_json: row.database_values_json.clone(),
                             property_values: row
                                 .property_values
@@ -7421,6 +7716,7 @@ fn remap_snapshot(
                                             .clone(),
                                         rank_key: position.rank_key.clone(),
                                         revision: 1,
+                                        semantic_reset_epoch: 1,
                                     })
                                 })
                                 .collect::<Result<Vec<_>, StoreError>>()?,
@@ -7835,6 +8131,7 @@ mod tests {
             })
             .expect("seed Library");
         let context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -8253,6 +8550,7 @@ mod tests {
             })
             .expect("seed Library");
         let context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -8740,6 +9038,7 @@ mod tests {
             })
             .expect("seed Library");
         let context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -9250,6 +9549,9 @@ mod tests {
                 },
             )
             .expect("release unreachable history");
+        module
+            .maintain_editor_history_owners(|_| true)
+            .expect("commit deferred unreachable history root release");
         kernel
             .readers()
             .read_default(|connection| {
@@ -9513,6 +9815,7 @@ mod tests {
             })
             .expect("seed Library");
         let context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -9733,6 +10036,9 @@ mod tests {
                 },
             )
             .expect("release turned Page history");
+        module
+            .maintain_editor_history_owners(|_| true)
+            .expect("commit deferred history root release");
         kernel
             .writer()
             .call(|connection| {
@@ -9798,6 +10104,7 @@ mod tests {
             })
             .expect("seed Library");
         let context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -10075,6 +10382,16 @@ mod tests {
         kernel
             .readers()
             .read_default(|connection| {
+                let ledger_body_bytes: i64 = connection.query_row(
+                    "SELECT max(octet_length(request_json) + octet_length(result_json)) \
+                     FROM block_mutations WHERE mutation_kind = 'structural_edit'",
+                    [],
+                    |row| row.get(0),
+                )?;
+                assert!(
+                    ledger_body_bytes <= 128,
+                    "structural ledger duplicates {ledger_body_bytes} bytes"
+                );
                 let restored = connection.query_row(
                     "SELECT page.document_id, block.type FROM pages page \
                      JOIN blocks block ON block.id = page.block_id WHERE page.block_id = ?1",
@@ -10088,3 +10405,5 @@ mod tests {
             .expect("second restore keeps identity");
     }
 }
+#[cfg(test)]
+mod storage_lifetime_tests;

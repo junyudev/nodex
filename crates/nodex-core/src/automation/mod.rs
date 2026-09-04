@@ -255,7 +255,7 @@ fn core_error(error: StoreError) -> CoreError {
         code,
         message: error.message,
         retryable: error.retryable,
-        recovery: CoreErrorRecovery::None,
+        recovery: error.recovery.unwrap_or(CoreErrorRecovery::None),
     }
 }
 

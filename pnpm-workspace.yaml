@@ -5,6 +5,7 @@ packages:
 patchedDependencies:
   "@y/prosemirror@2.0.0-6": patches/@y__prosemirror@2.0.0-6.patch
   y-prosemirror@1.3.7: patches/y-prosemirror@1.3.7.patch
+  yjs@13.6.31: patches/yjs@13.6.31.patch
 
 supportedArchitectures:
   os:

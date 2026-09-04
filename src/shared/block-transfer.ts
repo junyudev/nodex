@@ -7,6 +7,7 @@ import type {
   DocumentCommitRef,
 } from "./block-documents/contracts";
 import type { LocalCommitCommandSuccess } from "./local-commit-delivery";
+import type { LibraryStructuralHistoryToken } from "./library-module";
 import type { BlockTransferUndoToken } from "./block-transfer-undo-token";
 import {
   parseDatabaseViewPreferencesOverride,
@@ -239,6 +240,8 @@ export interface BlockTransferReceipt {
   readonly commitSeq: number;
   readonly committedAt: string;
   readonly undoToken: BlockTransferUndoToken | null;
+  /** Only Core's complete symmetric capability may enter surface history. */
+  readonly history: LibraryStructuralHistoryToken | null;
 }
 
 export interface BlockTransferUndoIntent {
@@ -247,6 +250,24 @@ export interface BlockTransferUndoIntent {
   readonly storeEpoch: string;
   readonly token: BlockTransferUndoToken;
 }
+
+/** Both forms name one registry resource. This conversion is for release,
+ * never evidence that a one-way transfer has a complete surface inverse.
+ */
+export const promotionRetentionResources = (
+  receipt: BlockTransferReceipt,
+): readonly LibraryStructuralHistoryToken[] => {
+  if (receipt.history) return [receipt.history];
+  const token = receipt.undoToken;
+  if (!token) return [];
+  return [
+    {
+      recipeOperationId: token.transferOperationId,
+      recipeHash: token.recipeHash,
+      storeEpoch: token.storeEpoch,
+    },
+  ];
+};
 
 export interface BlockTransferUndoReceipt {
   readonly operationId: string;

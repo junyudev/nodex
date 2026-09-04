@@ -38,6 +38,7 @@ import {
   type CoreLibraryModuleAdapter,
 } from "../core-client/library-module-adapter";
 import type { CoreClientPort, ManagedBlobBytes, PreparedBlobReceipt } from "../core-client/types";
+import { CoreModuleResponseError } from "../core-client/core-client";
 import { CoreAuthority, CoreSessionAccess } from "../core-runtime/CoreAuthority";
 import {
   type CoreMinimumCommitTimeout,
@@ -69,7 +70,12 @@ export class LibraryModule extends Context.Service<
     readonly apply: (
       accessContext: ContentAccessContext,
       request: LibraryModuleApplyRequest,
+      editorHistoryOwnerId?: string,
     ) => LibraryEffect<LibraryModuleApplyResult>;
+    readonly closeEditorHistoryOwner: (
+      ownerId: string,
+      operationId: string,
+    ) => LibraryEffect<void | "identity_expired">;
     readonly prepareFileBlob: (
       accessContext: ContentAccessContext,
       operationId: string,
@@ -138,12 +144,16 @@ export const live: Layer.Layer<LibraryModule, never, CoreAuthority | CoreSession
     Effect.gen(function* () {
       const authority = yield* CoreAuthority;
       const sessions = yield* CoreSessionAccess;
-      const adapter = (client: CoreClientPort): CoreLibraryModuleAdapter =>
+      const adapter = (
+        client: CoreClientPort,
+        editorHistoryOwnerId?: string,
+      ): CoreLibraryModuleAdapter =>
         createCoreLibraryModuleAdapter({
           client,
           libraryId: authority.identity.libraryId,
           profileId: authority.identity.profileId,
           storeEpoch: authority.identity.storeEpoch,
+          ...(editorHistoryOwnerId ? { editorHistoryOwnerId } : {}),
         });
       const useClient = <A>(
         operation: string,
@@ -188,8 +198,26 @@ export const live: Layer.Layer<LibraryModule, never, CoreAuthority | CoreSession
       return LibraryModule.of({
         read: (accessContext, request) =>
           use("library.read", projectIdForAccess(accessContext), (core) => core.read(request)),
-        apply: (accessContext, request) =>
-          use("library.apply", projectIdForAccess(accessContext), (core) => core.apply(request)),
+        apply: (accessContext, request, editorHistoryOwnerId) =>
+          useClient("library.apply", projectIdForAccess(accessContext), (client) =>
+            adapter(client, editorHistoryOwnerId).apply(request),
+          ),
+        closeEditorHistoryOwner: (ownerId, operationId) =>
+          useClient("library.closeEditorHistoryOwner", undefined, async (client, signal) => {
+            try {
+              await client.libraryApply(
+                { operationId, intent: { kind: "close_editor_history_owner" } },
+                { signal, editorHistoryOwnerId: ownerId },
+              );
+            } catch (error) {
+              if (
+                error instanceof CoreModuleResponseError &&
+                error.coreError.code === "idempotency_window_expired"
+              )
+                return "identity_expired" as const;
+              throw error;
+            }
+          }),
         prepareFileBlob: (accessContext, operationId, idempotencySlot, bytes) =>
           useClient(
             "library.prepareFileBlob",

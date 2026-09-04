@@ -23,6 +23,7 @@ export interface CoreBlockTransferAdapterInput {
   readonly libraryId: string;
   readonly projectId: string;
   readonly storeEpoch: string;
+  readonly editorHistoryOwnerId?: string;
 }
 
 export interface CoreBlockTransferAdapter {
@@ -282,6 +283,13 @@ const fromCoreResult = (
           storeEpoch: result.undo_token.store_epoch,
         }
       : null,
+    history: result.history
+      ? {
+          recipeOperationId: result.history.recipe_operation_id,
+          recipeHash: result.history.recipe_hash,
+          storeEpoch: result.history.store_epoch,
+        }
+      : null,
   };
 };
 
@@ -361,6 +369,7 @@ const coreFailure = (
           reloadRequired: intent.token === undefined,
         },
       );
+    case "idempotency_window_expired":
     case "store_corrupt":
       return blockTransferFailure("recovery_required", error.message, {
         ...options,
@@ -386,13 +395,16 @@ export const createCoreBlockTransferAdapter = (
       const scopeError = assertIntentScope(input, intent);
       if (scopeError) return { ok: false, error: scopeError };
       try {
-        const committed = await input.client.libraryApply({
-          operationId: intent.operationId,
-          intent: {
-            kind: "transfer_blocks",
-            intent: toCoreIntent(intent),
+        const committed = await input.client.libraryApply(
+          {
+            operationId: intent.operationId,
+            intent: {
+              kind: "transfer_blocks",
+              intent: toCoreIntent(intent),
+            },
           },
-        });
+          { editorHistoryOwnerId: input.editorHistoryOwnerId },
+        );
         const result = committed.outcome.block_transfer;
         if (!result || committed.receipt.operation_kind !== "transfer_blocks") {
           throw new Error("Core returned the wrong Library commit for Block transfer");
@@ -434,17 +446,20 @@ export const createCoreBlockTransferAdapter = (
         };
       }
       try {
-        const committed = await input.client.libraryApply({
-          operationId: intent.operationId,
-          intent: {
-            kind: "undo_block_transfer",
-            token: {
-              transfer_operation_id: intent.token.transferOperationId,
-              recipe_hash: intent.token.recipeHash,
-              store_epoch: intent.token.storeEpoch,
+        const committed = await input.client.libraryApply(
+          {
+            operationId: intent.operationId,
+            intent: {
+              kind: "undo_block_transfer",
+              token: {
+                transfer_operation_id: intent.token.transferOperationId,
+                recipe_hash: intent.token.recipeHash,
+                store_epoch: intent.token.storeEpoch,
+              },
             },
           },
-        });
+          { editorHistoryOwnerId: input.editorHistoryOwnerId },
+        );
         const result = committed.outcome.block_transfer_undo;
         if (!result || committed.receipt.operation_kind !== "undo_block_transfer") {
           throw new Error("Core returned the wrong Library commit for Block transfer Undo");

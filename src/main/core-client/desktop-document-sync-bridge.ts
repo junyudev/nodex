@@ -221,8 +221,14 @@ export interface DesktopDocumentSessionService {
   applyDocumentMutation(
     request: DocumentMutationRequest,
   ): Effect.Effect<DocumentOperationCommandResult>;
-  transferBlocks(intent: BlockTransferIntent): Effect.Effect<BlockTransferCommandResult>;
-  undoBlockTransfer(intent: BlockTransferUndoIntent): Effect.Effect<BlockTransferUndoCommandResult>;
+  transferBlocks(
+    intent: BlockTransferIntent,
+    editorHistoryOwnerId?: string,
+  ): Effect.Effect<BlockTransferCommandResult>;
+  undoBlockTransfer(
+    intent: BlockTransferUndoIntent,
+    editorHistoryOwnerId?: string,
+  ): Effect.Effect<BlockTransferUndoCommandResult>;
 }
 
 export class DesktopDocumentSessionRuntime extends Context.Service<
@@ -1417,7 +1423,10 @@ const makeDesktopDocumentSessionState = (
       }
     });
 
-  const transferBlocks = (intent: BlockTransferIntent): Effect.Effect<BlockTransferCommandResult> =>
+  const transferBlocks = (
+    intent: BlockTransferIntent,
+    editorHistoryOwnerId?: string,
+  ): Effect.Effect<BlockTransferCommandResult> =>
     input.coreSession
       .use(
         "block-transfer.commit",
@@ -1427,6 +1436,7 @@ const makeDesktopDocumentSessionState = (
             libraryId: input.coreAuthority.identity.libraryId,
             projectId: intent.projectId,
             storeEpoch: input.coreAuthority.identity.storeEpoch,
+            editorHistoryOwnerId,
           }).commit(intent),
         { projectId: intent.projectId },
       )
@@ -1447,6 +1457,7 @@ const makeDesktopDocumentSessionState = (
 
   const undoBlockTransfer = (
     intent: BlockTransferUndoIntent,
+    editorHistoryOwnerId?: string,
   ): Effect.Effect<BlockTransferUndoCommandResult> =>
     input.coreSession
       .use(
@@ -1457,6 +1468,7 @@ const makeDesktopDocumentSessionState = (
             libraryId: input.coreAuthority.identity.libraryId,
             projectId: intent.projectId,
             storeEpoch: input.coreAuthority.identity.storeEpoch,
+            editorHistoryOwnerId,
           }).undo(intent),
         { projectId: intent.projectId },
       )

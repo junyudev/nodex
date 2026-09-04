@@ -6,6 +6,7 @@ import {
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import {
@@ -238,6 +239,7 @@ const EMPTY_PAGE_ACTION_PORT: DatabaseViewPageActionPort = {};
 export function DatabaseViewPageContextMenuOverlay({
   menuOpen,
   onMenuOpenChange,
+  returnFocusRef,
   page,
   canMoveUp,
   canMoveDown,
@@ -249,6 +251,7 @@ export function DatabaseViewPageContextMenuOverlay({
 }: {
   readonly menuOpen: boolean;
   readonly onMenuOpenChange: (open: boolean) => void;
+  readonly returnFocusRef?: RefObject<HTMLElement | null>;
 } & DatabaseViewPageMenuSession) {
   const [query, setQuery] = useState("");
   const [chatPicker, setChatPicker] = useState<ChatPickerState | null>(null);
@@ -423,6 +426,7 @@ export function DatabaseViewPageContextMenuOverlay({
       <NodexContextMenuPortal>
         <NodexContextMenuContent
           ref={contentRef}
+          finalFocus={returnFocusRef}
           onFocusCapture={(event) => {
             if (redirectedInitialFocusRef.current) return;
             redirectedInitialFocusRef.current = true;

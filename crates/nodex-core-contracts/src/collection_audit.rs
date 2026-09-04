@@ -159,7 +159,8 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         LibraryRead::Path { .. } | LibraryRead::PageOwnershipPath { .. } => {
             ReadBudgetPolicy::FixedDomain
         }
-        LibraryRead::ProjectPageSearch { .. }
+        LibraryRead::StructuralHistoryStates { .. }
+        | LibraryRead::ProjectPageSearch { .. }
         | LibraryRead::ProjectPageSearchFacets { .. }
         | LibraryRead::ProjectPageSearchMetadata { .. }
         | LibraryRead::PageReferenceCandidates { .. }
@@ -233,6 +234,7 @@ fn every_read_variant_has_an_explicit_budget_policy() {
         document_policy(&OwnedDocumentRead::SyncYjs {
             document_id: "document:audit".to_owned(),
             state_vector: Vec::new(),
+            history_after_head_seq: None,
         }),
         ReadBudgetPolicy::LargeObject
     );

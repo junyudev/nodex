@@ -1,115 +1,266 @@
 import { describe, expect, test, vi } from "vite-plus/test";
-
-import type { DatabaseListMoveUndoRecipeV2 } from "../../../shared/database-module-v2";
-import type { BlockTransferUndoToken } from "../../../shared/block-transfer";
+import {
+  parseDatabaseViewId,
+  parseDataSourceId,
+  parseDataSourcePropertyId,
+} from "../../../shared/database-identities";
+import type {
+  DatabaseDataEditUndoRecipeV2,
+  DatabaseListMoveUndoRecipeV2,
+} from "../../../shared/database-module-v2";
+import {
+  DatabaseViewMutationError,
+  type commitDatabaseViewOperations,
+  type DatabaseViewMutationReceipt,
+} from "@/lib/database-view-row-mutations";
 import {
   createDatabaseViewMutationHistory,
-  handleDatabaseViewMutationHistoryKeyDown,
+  databaseViewHistoryScopeKey,
 } from "./database-view-mutation-history";
+import {
+  interpretDatabaseViewHistoryReceipt,
+  type DatabaseViewOperationsCommand,
+} from "./database-view-history-adapter";
 
-const recipe = (pageId: string): DatabaseListMoveUndoRecipeV2 => ({
-  viewId: "view-1" as DatabaseListMoveUndoRecipeV2["viewId"],
-  dataSourceId: "source-1" as DatabaseListMoveUndoRecipeV2["dataSourceId"],
-  propertyStates: [],
-  postParentGuards: [{ pageId, parentPageId: null }],
-  postBeforePageId: null,
-  postOrderGuard: true,
-  restoreRuns: [{ pageIds: [pageId], parentPageId: null, beforePageId: null }],
+const model: DatabaseViewOperationsCommand["model"] = {
+  libraryId: "library",
+  accessContext: { kind: "project", projectId: "project" },
+  storeEpoch: "epoch",
+  databaseViewId: parseDatabaseViewId("view"),
+  readOnlyReason: null,
+  viewName: "Tasks",
+};
+const scope = { accessContext: model.accessContext, storeEpoch: model.storeEpoch };
+const address = {
+  pageId: "page",
+  dataSourceId: parseDataSourceId("source"),
+  propertyId: parseDataSourcePropertyId("p_0123abcd"),
+};
+const recipe = (before = "old", after = "new"): DatabaseDataEditUndoRecipeV2 => ({
+  propertyStates: [
+    {
+      address,
+      propertyType: "text",
+      beforeValue: { kind: "text", value: before },
+      afterValue: { kind: "text", value: after },
+    },
+  ],
+  positionStates: [],
 });
-const token = (operationId: string): BlockTransferUndoToken => ({
-  transferOperationId: operationId,
-  recipeHash: "a".repeat(64),
-  storeEpoch: "epoch-1",
+const receipt = (
+  undoRecipe: DatabaseDataEditUndoRecipeV2 | null = recipe(),
+): DatabaseViewMutationReceipt => ({
+  operationId: "operation",
+  projectId: "project",
+  libraryId: "library",
+  storeEpoch: "epoch",
+  duplicate: false,
+  operationKinds: ["edit_property_values"],
+  operationOutcomes: [{ kind: "data_edit", operationIndex: 0, operationCount: 1, undoRecipe }],
+  affectedDatabaseIds: [],
+  affectedDataSourceIds: [address.dataSourceId],
+  affectedPageIds: ["page"],
+  affectedViewIds: [],
+  committedRevisions: {},
+  commitSeq: 1,
+  committedAt: "2026-09-05T00:00:00Z",
 });
-
-describe("Database View mutation history", () => {
-  test("keeps a failed semantic Undo and removes it only after success", async () => {
-    const history = createDatabaseViewMutationHistory("epoch-1:view-1");
-    history.registerListMove(recipe("page-a"));
-
-    await expect(history.undoListMove(async () => false)).resolves.toBe(false);
-    expect(history.size()).toBe(1);
-    await expect(history.undoListMove(async () => true)).resolves.toBe(true);
-    expect(history.size()).toBe(0);
-  });
-
-  test("clears recipes when the store epoch or View scope changes", () => {
-    const history = createDatabaseViewMutationHistory("epoch-1:view-1");
-    history.registerListMove(recipe("page-a"));
-    history.setScope("epoch-2:view-1");
-    expect(history.size()).toBe(0);
-  });
-
-  test("undoes consecutive List moves in reverse gesture order", async () => {
-    const history = createDatabaseViewMutationHistory("epoch-1:view-1");
-    history.registerListMove(recipe("page-a"));
-    history.registerListMove(recipe("page-b"));
-    history.registerListMove(recipe("page-c"));
-    const undonePageIds: string[] = [];
-
-    for (let index = 0; index < 3; index += 1) {
-      await expect(
-        history.undoListMove(async (entry) => {
-          undonePageIds.push(entry.postParentGuards[0]?.pageId ?? "missing");
-          return true;
-        }),
-      ).resolves.toBe(true);
-    }
-
-    expect(undonePageIds).toEqual(["page-c", "page-b", "page-a"]);
-    expect(history.size()).toBe(0);
-  });
-
-  test("undoes List moves and Block promotions in their real gesture order", async () => {
-    const history = createDatabaseViewMutationHistory("epoch-1:view-1");
-    history.registerListMove(recipe("page-a"));
-    history.registerBlockTransfer(token("promotion-a"));
-    history.registerListMove(recipe("page-b"));
-    const order: string[] = [];
-    const handlers = {
-      listMove: async (entry: DatabaseListMoveUndoRecipeV2) => {
-        order.push(entry.postParentGuards[0]?.pageId ?? "missing");
-        return true;
+const operations: DatabaseViewOperationsCommand["operations"] = [
+  {
+    kind: "edit_property_values",
+    edits: [
+      {
+        ...address,
+        edit: { kind: "replace", expectedValueRevision: 0, value: { kind: "text", value: "new" } },
       },
-      blockTransfer: async (entry: BlockTransferUndoToken) => {
-        order.push(entry.transferOperationId);
-        return true;
-      },
+    ],
+  },
+];
+const fixture = () => {
+  const history = createDatabaseViewMutationHistory(databaseViewHistoryScopeKey(model));
+  const commit = vi.fn<typeof commitDatabaseViewOperations>(async () => receipt());
+  const edit = () => history.executeOperations({ model, operations, commitOperations: commit });
+  return { history, commit, edit };
+};
+
+describe("Database View semantic command history", () => {
+  test("List replay installs each authoritative inverse so Undo and Redo remain symmetric", async () => {
+    const { history, commit } = fixture();
+    const listRecipe: DatabaseListMoveUndoRecipeV2 = {
+      viewId: model.databaseViewId,
+      dataSourceId: address.dataSourceId,
+      propertyStates: [],
+      postParentGuards: [{ pageId: "page", parentPageId: null }],
+      postOrderRuns: [{ pageIds: ["page"], parentPageId: null, beforePageId: "after" }],
+      restoreRuns: [{ pageIds: ["page"], parentPageId: null, beforePageId: "before" }],
     };
-
-    await history.undoLast(handlers);
-    await history.undoLast(handlers);
-    await history.undoLast(handlers);
-
-    expect(order).toEqual(["page-b", "promotion-a", "page-a"]);
-    expect(history.size()).toBe(0);
+    const inverse = {
+      ...listRecipe,
+      postOrderRuns: listRecipe.restoreRuns,
+      restoreRuns: listRecipe.postOrderRuns,
+    };
+    commit.mockResolvedValueOnce({
+      ...receipt(),
+      operationKinds: ["undo_list_occurrence_move"],
+      operationOutcomes: [
+        {
+          kind: "list_occurrence_move_undo",
+          operationIndex: 0,
+          restoredPageIds: ["page"],
+          undoRecipe: listRecipe,
+        },
+      ],
+    });
+    await history.executeOperations({
+      model,
+      operations: [{ kind: "undo_list_occurrence_move", recipe: inverse }],
+      commitOperations: commit,
+    });
+    commit.mockResolvedValueOnce({
+      ...receipt(),
+      operationKinds: ["undo_list_occurrence_move"],
+      operationOutcomes: [
+        {
+          kind: "list_occurrence_move_undo",
+          operationIndex: 0,
+          restoredPageIds: ["page"],
+          undoRecipe: inverse,
+        },
+      ],
+    });
+    expect(await history.undoLast()).toBe(true);
+    expect(history.snapshot().redo.status).toBe("ready");
+    commit.mockResolvedValueOnce({
+      ...receipt(),
+      operationKinds: ["undo_list_occurrence_move"],
+      operationOutcomes: [
+        {
+          kind: "list_occurrence_move_undo",
+          operationIndex: 0,
+          restoredPageIds: ["page"],
+          undoRecipe: listRecipe,
+        },
+      ],
+    });
+    expect((await history.request("redo").result).status).toBe("committed");
+    expect(commit.mock.calls.slice(1).map(([request]) => request.operations)).toEqual([
+      [{ kind: "undo_list_occurrence_move", recipe: listRecipe }],
+      [{ kind: "undo_list_occurrence_move", recipe: inverse }],
+    ]);
+    expect(history.snapshot().undo.status).toBe("ready");
   });
 
-  test("consumes scoped command-z without exposing a success UI", async () => {
-    const history = createDatabaseViewMutationHistory("epoch-1:view-1");
-    history.registerListMove(recipe("page-a"));
-    const preventDefault = vi.fn();
-    const stopPropagation = vi.fn();
-    const undo = vi.fn(async () => true);
+  test("uncertain forward and inverse responses retain the exact request without exposing older history", async () => {
+    const { history, commit, edit } = fixture();
+    await edit();
+    commit.mockRejectedValueOnce(new Error("Reply lost"));
+    await expect(edit()).rejects.toMatchObject({ status: "recovering" });
+    expect(await history.undoLast()).toBe(false);
+    expect(commit).toHaveBeenCalledTimes(2);
+    await history.recover().result;
+    expect(commit.mock.calls[2]?.[0]).toEqual(commit.mock.calls[1]?.[0]);
+    commit.mockRejectedValueOnce(new Error("Inverse reply lost"));
+    expect(await history.undoLast()).toBe(false);
+    expect(history.snapshot().undo.status).toBe("waiting");
+    commit.mockResolvedValueOnce({
+      ...receipt(recipe("new", "old")),
+      operationKinds: ["reverse_data_edit"],
+    });
+    await history.recover().result;
+    expect(commit.mock.calls[4]?.[0]).toEqual(commit.mock.calls[3]?.[0]);
+    expect(commit.mock.calls[4]?.[0].operations).toEqual([
+      { kind: "reverse_data_edit", recipe: recipe() },
+    ]);
+    expect(history.snapshot().redo.status).toBe("ready");
+  });
 
-    expect(
-      handleDatabaseViewMutationHistoryKeyDown({
-        event: {
-          key: "z",
-          metaKey: true,
-          ctrlKey: false,
-          shiftKey: false,
-          target: null,
-          preventDefault,
-          stopPropagation,
-        },
-        history,
-        undoListMove: undo,
+  test("a known forward rejection and no-op leave the older entry reachable", async () => {
+    const { history, commit, edit } = fixture();
+    await edit();
+    commit.mockRejectedValueOnce(
+      new DatabaseViewMutationError({
+        code: "revision_conflict",
+        message: "Changed",
+        retryable: true,
       }),
-    ).toBe(true);
-    await vi.waitFor(() => expect(history.size()).toBe(0));
-    expect(preventDefault).toHaveBeenCalledOnce();
-    expect(stopPropagation).toHaveBeenCalledOnce();
-    expect(undo).toHaveBeenCalledOnce();
+    );
+    await expect(edit()).rejects.toMatchObject({ status: "rejected" });
+    commit.mockResolvedValueOnce(receipt(null));
+    expect(await edit()).toBeNull();
+    expect(await history.undoLast()).toBe(true);
+    expect(commit.mock.calls[3]?.[0].operations[0]?.kind).toBe("reverse_data_edit");
+    expect(history.snapshot().undo.status).toBe("empty");
+  });
+
+  test("scope changes reject stale commands and retire previous inverses", async () => {
+    const { history, commit, edit } = fixture();
+    await edit();
+    history.setScope("another-view");
+    await expect(edit()).rejects.toMatchObject({ status: "rejected" });
+    expect(await history.undoLast()).toBe(false);
+    expect(commit).toHaveBeenCalledOnce();
+  });
+
+  test("expired receipt recovery becomes a permanent barrier and cannot retry under a new identity", async () => {
+    const { history, commit, edit } = fixture();
+    await edit();
+    commit.mockRejectedValueOnce(new Error("Reply lost"));
+    await expect(edit()).rejects.toMatchObject({ status: "recovering" });
+    commit.mockRejectedValueOnce(
+      new DatabaseViewMutationError({
+        code: "recovery_required",
+        message: "The receipt window ended",
+        retryable: false,
+      }),
+    );
+    expect((await history.recover().result).status).toBe("blocked");
+    expect(history.snapshot().undo.recoveryActions).toEqual(["reset"]);
+    expect(await history.undoLast()).toBe(false);
+    expect((await history.recover().result).status).toBe("blocked");
+    expect(commit).toHaveBeenCalledTimes(3);
+    history.reset();
+    expect(history.snapshot().undo.status).toBe("empty");
+  });
+
+  test("delegated forward delivery returns its authoritative receipt, while inverse uses the typed commit port", async () => {
+    const { history, commit } = fixture();
+    const forward = vi.fn<typeof commitDatabaseViewOperations>(async () =>
+      receipt(recipe("a", "b")),
+    );
+    await history.executeOperations({
+      model,
+      operations,
+      commitOperations: commit,
+      submitForward: forward,
+    });
+    expect(commit).not.toHaveBeenCalled();
+    expect(await history.undoLast()).toBe(true);
+    expect(commit.mock.calls[0]?.[0].operations).toEqual([
+      { kind: "reverse_data_edit", recipe: recipe("a", "b") },
+    ]);
+    expect(forward).toHaveBeenCalledOnce();
+  });
+
+  test("a recipe covers the entire gesture or establishes a permanent barrier", () => {
+    const full = {
+      ...receipt(),
+      operationKinds: ["edit_property_values", "position_pages"] as const,
+      operationOutcomes: [
+        { kind: "data_edit" as const, operationIndex: 0, operationCount: 2, undoRecipe: recipe() },
+      ],
+    };
+    expect(interpretDatabaseViewHistoryReceipt({ kind: "data", scope, receipt: full }).kind).toBe(
+      "reversible",
+    );
+    expect(
+      interpretDatabaseViewHistoryReceipt({
+        kind: "data",
+        scope,
+        receipt: { ...full, operationOutcomes: receipt().operationOutcomes },
+      }).kind,
+    ).toBe("barrier");
+    expect(
+      interpretDatabaseViewHistoryReceipt({ kind: "data", scope, receipt: receipt(null) }).kind,
+    ).toBe("noop");
   });
 });

@@ -22,6 +22,8 @@ import type { Page } from "./page";
 
 export const MAX_DATABASE_MODULE_V2_OPERATIONS = 64 as const;
 export const MAX_DATABASE_MODULE_V2_BULK_ENTRIES = 100 as const;
+export const MAX_DATABASE_DATA_HISTORY_IDENTITIES = 4096;
+export const MAX_DATABASE_DATA_HISTORY_BYTES = 8 * 1024 * 1024;
 
 export interface DatabaseContainerRecordV2 {
   readonly databaseId: DatabaseId;
@@ -473,6 +475,7 @@ export type DatabaseModuleErrorCodeV2 =
   | "revision_conflict"
   | "operation_id_collision"
   | "resource_exhausted"
+  | "recovery_required"
   | "state_corrupt"
   | "unsupported_operation"
   | "unknown"
@@ -853,8 +856,7 @@ export interface DatabaseListMoveUndoRecipeV2 {
   readonly dataSourceId: DataSourceId;
   readonly propertyStates: readonly DatabaseListMovePropertyStateV2[];
   readonly postParentGuards: readonly DatabaseListMoveParentGuardV2[];
-  readonly postBeforePageId: string | null;
-  readonly postOrderGuard: boolean;
+  readonly postOrderRuns: readonly DatabaseListMoveRestoreRunV2[];
   readonly restoreRuns: readonly DatabaseListMoveRestoreRunV2[];
 }
 
@@ -863,7 +865,44 @@ export interface UndoDatabaseListOccurrenceMoveOperationV2 {
   readonly recipe: DatabaseListMoveUndoRecipeV2;
 }
 
+export interface DatabaseDataEditPropertyStateV2 {
+  readonly address: Pick<DatabasePropertyValueMutationV2, "pageId" | "dataSourceId" | "propertyId">;
+  readonly propertyType: Exclude<DatabasePropertyValueType, "relation">;
+  readonly beforeValue: DatabasePropertyValueInputV2;
+  readonly afterValue: DatabasePropertyValueInputV2;
+}
+
+export interface DatabaseDataEditPositionRunV2 {
+  readonly pageIds: readonly string[];
+  readonly beforePageId: string | null;
+}
+
+export interface DatabaseDataEditPositionStateV2 {
+  readonly viewId: DatabaseViewId;
+  readonly dataSourceId: DataSourceId;
+  readonly direction: "asc" | "desc";
+  readonly beforeRuns: readonly DatabaseDataEditPositionRunV2[];
+  readonly afterRuns: readonly DatabaseDataEditPositionRunV2[];
+}
+
+export interface DatabaseDataEditUndoRecipeV2 {
+  readonly propertyStates: readonly DatabaseDataEditPropertyStateV2[];
+  readonly positionStates: readonly DatabaseDataEditPositionStateV2[];
+}
+
+export interface ReverseDatabaseDataEditOperationV2 {
+  readonly kind: "reverse_data_edit";
+  readonly recipe: DatabaseDataEditUndoRecipeV2;
+}
+
 export type DatabaseOperationOutcomeV2 =
+  | {
+      readonly kind: "data_edit";
+      readonly operationIndex: number;
+      readonly operationCount: number;
+      /** Null is a supported gesture with no logical change, not a barrier. */
+      readonly undoRecipe: DatabaseDataEditUndoRecipeV2 | null;
+    }
   | {
       readonly kind: "list_occurrence_move";
       readonly operationIndex: number;
@@ -885,6 +924,7 @@ export type DatabaseOperationOutcomeV2 =
       readonly kind: "list_occurrence_move_undo";
       readonly operationIndex: number;
       readonly restoredPageIds: readonly string[];
+      readonly undoRecipe: DatabaseListMoveUndoRecipeV2;
     };
 
 export interface PutDatabaseViewPersonalPreferencesOperationV2 {
@@ -928,6 +968,7 @@ export type DatabaseApplyOperationV2 =
   | SetDatabaseTaskParentOperationV2
   | MoveDatabaseListOccurrencesOperationV2
   | UndoDatabaseListOccurrenceMoveOperationV2
+  | ReverseDatabaseDataEditOperationV2
   | PutDatabaseViewPersonalPreferencesOperationV2
   | SetDatabaseViewOccurrenceDisclosureOperationV2;
 

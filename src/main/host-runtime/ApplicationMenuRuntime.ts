@@ -2,13 +2,21 @@ import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import {
   app,
   Menu,
+  webContents,
+  type WebContents,
   type MenuItemConstructorOptions,
   type MessageBoxOptions,
   type MessageBoxReturnValue,
 } from "electron";
+import {
+  EXECUTE_FOCUSED_HISTORY_CHANNEL,
+  type FocusedHistoryPublication,
+  type SurfaceHistorySnapshot,
+} from "../../shared/surface-history";
 import { join } from "node:path";
 import type { CommandKeymapState } from "../../shared/command-keybindings";
 import {
@@ -40,6 +48,7 @@ import {
 import {
   buildNodexSetupMenuItems,
   buildWindowFileMenu,
+  buildWindowEditMenu,
   buildWorkbenchViewMenu,
 } from "../application-menu";
 import { runAgentSkillSetup } from "../agent-skill-setup";
@@ -51,11 +60,16 @@ import type { AppUpdateRuntimeError } from "./AppUpdateRuntime";
 import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
 
 export interface ApplicationMenuNativePort {
+  readonly getFocusedWebContents: () => Pick<
+    WebContents,
+    "id" | "isDestroyed" | "undo" | "redo"
+  > | null;
   readonly buildFromTemplate: (template: MenuItemConstructorOptions[]) => Menu;
   readonly homePath: string;
   readonly isInApplicationsFolder: boolean;
   readonly setApplicationMenu: (menu: Menu | null) => void;
   readonly setDockMenu: (menu: Menu | null) => void;
+  readonly subscribeToFocus: (listener: () => void) => () => void;
 }
 
 export interface ApplicationMenuRuntimeOptions {
@@ -73,16 +87,53 @@ export interface ApplicationMenuRuntimeOptions {
 
 export class ApplicationMenuRuntime extends Context.Service<
   ApplicationMenuRuntime,
-  { readonly refresh: (commandKeymap: CommandKeymapState) => void }
+  {
+    readonly refresh: (commandKeymap: CommandKeymapState) => void;
+    readonly bindHistory: (webContentsId: number) => Effect.Effect<number>;
+    readonly publishHistory: (
+      webContentsId: number,
+      publication: FocusedHistoryPublication,
+    ) => Effect.Effect<void>;
+  }
 >()("nodex/main/host-runtime/ApplicationMenuRuntime") {}
 
 const electronNative = (): ApplicationMenuNativePort => ({
+  getFocusedWebContents: () => webContents.getFocusedWebContents(),
   buildFromTemplate: (template) => Menu.buildFromTemplate(template),
   homePath: app.getPath("home"),
   isInApplicationsFolder:
     typeof app.isInApplicationsFolder !== "function" || app.isInApplicationsFolder(),
   setApplicationMenu: (menu) => Menu.setApplicationMenu(menu),
   setDockMenu: (menu) => app.dock?.setMenu(menu ?? Menu.buildFromTemplate([])),
+  subscribeToFocus: (listener) => {
+    const releases = new Map<WebContents, () => void>();
+    const attach = (contents: WebContents) => {
+      if (contents.isDestroyed() || releases.has(contents)) return;
+      const release = () => {
+        contents.off("focus", listener);
+        contents.off("blur", listener);
+        contents.off("destroyed", destroyed);
+        releases.delete(contents);
+      };
+      const destroyed = () => {
+        release();
+        listener();
+      };
+      contents.on("focus", listener);
+      contents.on("blur", listener);
+      contents.on("destroyed", destroyed);
+      releases.set(contents, release);
+    };
+    const created = (_event: Electron.Event, contents: WebContents) => attach(contents);
+    webContents.getAllWebContents().forEach(attach);
+    app.on("web-contents-created", created);
+    app.on("browser-window-focus", listener);
+    return () => {
+      app.off("web-contents-created", created);
+      app.off("browser-window-focus", listener);
+      for (const release of releases.values()) release();
+    };
+  },
 });
 
 export const live = (
@@ -102,6 +153,58 @@ export const live = (
         callbacks.fork(effect.pipe(reportFailure(operation), Effect.asVoid));
       };
       const targetWindow = () => options.windows.getLastFocused();
+      let applicationMenu: Menu | null = null;
+      let historyGeneration = 0;
+      const historyByWindow = new Map<number, FocusedHistoryPublication>();
+      const updateHistoryItems = () => {
+        const window = targetWindow();
+        const focused = native.getFocusedWebContents();
+        const hostId = window?.webContents.id;
+        const snapshot: SurfaceHistorySnapshot | null =
+          hostId !== undefined && (!focused || focused.id === hostId)
+            ? (historyByWindow.get(hostId)?.snapshot ?? null)
+            : null;
+        for (const direction of ["undo", "redo"] as const) {
+          const item = applicationMenu?.getMenuItemById(`edit.${direction}`);
+          if (!item) continue;
+          const capability = snapshot?.[direction];
+          const action = direction === "undo" ? "Undo" : "Redo";
+          item.label = capability?.label ? `${action} ${capability.label}` : action;
+          item.enabled = capability?.acceptsIntent ?? true;
+        }
+      };
+      const bindHistory = Effect.fn("ApplicationMenuRuntime.bindHistory")((webContentsId: number) =>
+        Effect.sync(() => {
+          const generation = ++historyGeneration;
+          historyByWindow.set(webContentsId, { generation, sequence: -1, snapshot: null });
+          updateHistoryItems();
+          return generation;
+        }),
+      );
+      const publishHistory = Effect.fn("ApplicationMenuRuntime.publishHistory")(
+        (webContentsId: number, publication: FocusedHistoryPublication) =>
+          Effect.sync(() => {
+            const previous = historyByWindow.get(webContentsId);
+            if (
+              !previous ||
+              previous.generation !== publication.generation ||
+              previous.sequence >= publication.sequence
+            )
+              return;
+            const before = previous.snapshot;
+            const next = publication.snapshot;
+            if (
+              before &&
+              next &&
+              before.ownerId === next.ownerId &&
+              (before.generation > next.generation ||
+                (before.generation === next.generation && before.revision > next.revision))
+            )
+              return;
+            historyByWindow.set(webContentsId, publication);
+            updateHistoryItems();
+          }),
+      );
       const installCommandLineTool = Effect.gen(function* () {
         const result = yield* Effect.sync(() =>
           installCliCommand({
@@ -212,7 +315,15 @@ export const live = (
               window.close();
             },
           }),
-          { role: "editMenu" },
+          buildWindowEditMenu(options.platform, (direction) => {
+            const window = targetWindow();
+            const focused = native.getFocusedWebContents();
+            if (focused && focused.id !== window?.webContents.id) {
+              if (!focused.isDestroyed()) focused[direction]();
+              return;
+            }
+            safeSendToWindow(window, EXECUTE_FOCUSED_HISTORY_CHANNEL, [direction]);
+          }),
           {
             label: "Navigate",
             submenu: [
@@ -264,18 +375,36 @@ export const live = (
           buildWorkbenchViewMenu(commandKeymap, sendWorkbenchCommand),
           { role: "windowMenu" },
         ];
-        native.setApplicationMenu(native.buildFromTemplate(appTemplate));
+        applicationMenu = native.buildFromTemplate(appTemplate);
+        native.setApplicationMenu(applicationMenu);
+        updateHistoryItems();
       };
+
+      yield* Effect.acquireRelease(
+        Effect.sync(() => native.subscribeToFocus(updateHistoryItems)),
+        (release) => Effect.sync(release),
+      );
+      yield* options.windows.events.pipe(
+        Stream.runForEach((event) =>
+          Effect.sync(() => {
+            if (event.kind === "released") historyByWindow.delete(event.window.webContentsId);
+            updateHistoryItems();
+          }),
+        ),
+        Effect.forkScoped,
+      );
 
       return yield* Effect.acquireRelease(
         Effect.sync(() => {
           refresh(options.initialCommandKeymap);
-          return ApplicationMenuRuntime.of({ refresh });
+          return ApplicationMenuRuntime.of({ refresh, bindHistory, publishHistory });
         }),
         () =>
           Effect.sync(() => {
             native.setDockMenu(null);
             native.setApplicationMenu(null);
+            applicationMenu = null;
+            historyByWindow.clear();
           }),
       );
     }),

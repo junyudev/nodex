@@ -263,6 +263,7 @@ mod tests {
 
     fn context(project_id: &str) -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId(project_id.to_owned())),

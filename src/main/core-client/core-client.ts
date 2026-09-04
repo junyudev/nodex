@@ -245,7 +245,7 @@ export class CoreClient implements CoreClientPort {
         store_epoch: this.handshake.store_epoch,
         intent: input.intent,
       },
-      this.#moduleHeaders(),
+      { ...this.#moduleHeaders(), ...this.#historyOwnerHeaders(options.editorHistoryOwnerId) },
       options,
     );
     if (response.status === "ok") return response.payload;
@@ -719,6 +719,14 @@ export class CoreClient implements CoreClientPort {
       "x-nodex-client-session-id": clientSessionId,
       ...(documentId ? { "x-nodex-document-id": documentId } : {}),
     };
+  }
+
+  #historyOwnerHeaders(ownerId: string | undefined): Readonly<Record<string, string>> {
+    if (ownerId === undefined) return {};
+    if (!ownerId || ownerId !== ownerId.trim() || ownerId.length > 512) {
+      throw new Error("Editor history lifetime identity is invalid");
+    }
+    return { "x-nodex-editor-history-owner": ownerId };
   }
 
   #databaseHeaders(): Readonly<Record<string, string>> {

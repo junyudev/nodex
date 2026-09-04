@@ -9,6 +9,7 @@ import { useLibraryCanvasTarget } from "@/lib/use-library-navigation";
 import { readCanvasInlineFramePreference } from "@/lib/canvas-presentation-preference";
 import { installMeasuredResizeObserver } from "@/test/browser-globals";
 import { CanvasBlock, CanvasBlockFrame, canvasInlineSurfaceActivationBudget } from "./canvas-block";
+import { ownsNfmEditorEvent } from "./nfm-editor-event-owner";
 
 vi.mock("@/lib/use-element-visibility", () => ({
   useElementVisibility: () => ({
@@ -37,6 +38,56 @@ vi.mock("@/components/canvas/canvas-document-surface", () => ({
 }));
 
 describe("CanvasBlock", () => {
+  test("delivers history input to the embedded Canvas before the parent can claim it", async () => {
+    const view = render(
+      <div className="nfm-editor">
+        <CanvasBlockFrame canvasBlockId="canvas-history" title="Canvas" active>
+          <button aria-label="Canvas scene" />
+        </CanvasBlockFrame>
+      </div>,
+    );
+    const parent = view.container.firstElementChild as HTMLElement;
+    const scene = view.getByRole("button", { name: "Canvas scene" });
+    const parentHistory = vi.fn();
+    const canvasHistory = vi.fn();
+    const capture = (event: Event) => {
+      if (!ownsNfmEditorEvent(parent, event.target)) return;
+      parentHistory();
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    parent.addEventListener("keydown", capture, true);
+    parent.addEventListener("beforeinput", capture, true);
+    scene.addEventListener("keydown", canvasHistory);
+    scene.addEventListener("beforeinput", canvasHistory);
+    try {
+      await act(async () => {
+        scene.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "z",
+            metaKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        scene.dispatchEvent(
+          new InputEvent("beforeinput", {
+            inputType: "historyUndo",
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        await Promise.resolve();
+      });
+      expect(parentHistory).not.toHaveBeenCalled();
+      expect(canvasHistory).toHaveBeenCalledTimes(2);
+    } finally {
+      parent.removeEventListener("keydown", capture, true);
+      parent.removeEventListener("beforeinput", capture, true);
+      view.unmount();
+    }
+  });
+
   beforeEach(() => {
     canvasInlineSurfaceActivationBudget.clear();
     localStorage.clear();

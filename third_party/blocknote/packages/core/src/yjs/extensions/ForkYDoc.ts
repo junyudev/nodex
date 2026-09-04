@@ -107,6 +107,7 @@ export const ForkYDocExtension = createExtension(
             YSyncExtension(newOptions),
             // No need to register the cursor plugin again, it's a local fork
             YUndoExtension({
+              fragment: forkedFragment,
               transactionOrigin: options.transactionOrigin ?? editor,
             }),
           ],
@@ -141,6 +142,7 @@ export const ForkYDocExtension = createExtension(
             YSyncExtension(options),
             YCursorExtension(options),
             YUndoExtension({
+              fragment: originalFragment,
               transactionOrigin: options.transactionOrigin ?? editor,
             }),
           ],

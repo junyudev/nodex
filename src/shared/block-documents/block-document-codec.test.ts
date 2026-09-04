@@ -5,6 +5,7 @@ import {
   createPageDocumentGenesis,
   createDetachedPageDocumentFromBlockTree,
   materializePageDocument,
+  materializeBlockFields,
 } from "./block-document-codec";
 
 const FULL_NFM_FIXTURE = [
@@ -46,6 +47,34 @@ const flattenIds = (
   ]);
 
 describe("PageDocumentCodec", () => {
+  test("incremental history fields agree with full materialization for rich text, custom blocks, and tables", () => {
+    const { document, materialization } = createPageDocumentGenesis({
+      documentId: "history-fields-all-shapes",
+      nfm: FULL_NFM_FIXTURE,
+    });
+    const expected = new Map<string, unknown>();
+    const collect = (blocks: typeof materialization.blockTree): void => {
+      for (const block of blocks) {
+        expected.set(block.id, { ...block, children: [] });
+        collect(block.children);
+      }
+    };
+    collect(materialization.blockTree);
+    try {
+      for (const node of document
+        .getXmlFragment("body")
+        .createTreeWalker((node) => node instanceof Y.XmlElement)) {
+        if (!(node instanceof Y.XmlElement) || node.nodeName !== "blockContainer") continue;
+        const fields = materializeBlockFields(node);
+        expect(fields).toEqual(expected.get(fields.id));
+        expected.delete(fields.id);
+      }
+      expect(expected.size).toBe(0);
+    } finally {
+      document.destroy();
+    }
+  });
+
   test("excludes imported toggle disclosure state from durable content", () => {
     const nfm = [
       "▼ Expanded toggle",

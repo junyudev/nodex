@@ -264,7 +264,7 @@ Database's default View; a Page destination is ownership, while a Project name
 beside a Database is only primary-binding context and never an ownership
 coordinate. Every relocation mints a one-shot Core Undo recipe. It restores a
 Library or Page source through authoritative sibling anchors, or a Data Source
-through its prior membership and exact active View ranks. The recipe is fenced
+through its prior membership and logical View neighbors. The recipe is fenced
 to the Page's post-move parent and location revision, so a later relocation
 invalidates it without blocking unrelated content edits. View `Reorder` changes
 only rank inside the current View and is not a relocation synonym.
@@ -380,8 +380,10 @@ published. View Property display is independent from Data Source Page layout.
 
 ### Manual Order
 
-Manual Order is the shared fractional Page rank inside one Database View. It is
-independent of grouping, which is derived from Source Property values.
+Manual Order is the complete shared Page sequence inside one Database View,
+independent of grouping and filtering. A Page belongs to the sequence before it
+has been explicitly positioned; physical rank changes do not change its semantic
+position.
 
 Page key is an intrinsic Board/List display field. It participates in the same
 durable-default plus sparse Profile-local View Preference flow as other display
@@ -496,9 +498,10 @@ structural targets remain ineligible for consent.
 
 ### Structural edit
 
-A structural edit is one Core-owned mutation over an ordered root forest whose
-ownership closure contains at least one typed owner. It is the authority for
-mixed delete, clipboard capture/paste, duplicate, move, and lossless Page-to-
+A structural edit is one Core-owned mutation over an ordered root forest and
+its ownership closure. A selection containing a typed owner must use this
+boundary; ordinary cross-Document Block moves use it as well. It is the authority
+for mixed delete, clipboard capture/paste, duplicate, move, and lossless Page-to-
 ordinary reclassification. Page reclassification preserves the Block identity,
 makes the rich title its inline content, and moves Page body roots beneath the
 resulting Block while the same Page Document remains dormant for structural
@@ -513,6 +516,17 @@ the captured identities once. A Structural History Recipe is a durable,
 single-use forward inverse; reversing it creates a new recipe rather than
 rewinding storage. Clipboard and history authorities retain their closure only
 while their lease or recipe remains reachable.
+
+### Editor surface history
+
+An editor surface's history orders its local content and structural gestures.
+It belongs to the retained editing surface, not to a mounted view, a whole
+Library, or a priority ordering between mutation engines. A structural restore
+may preserve Block identity while replacing collaborative content addresses.
+The surface retains local semantic inverse evidence for that case; Core guards
+replay against current fields, placement, and generation and returns a new
+inverse. History stays with its original surface when a Block moves elsewhere.
+See [ADR 0058](docs/adr/0058-surface-history-and-semantic-address-recovery.md).
 
 ### Reference Block
 

@@ -14,6 +14,7 @@ use serde_json::Value;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::mutation::PropertyRow;
+use super::mutation::property_value_history::{current_property_state, input_from_value};
 use super::window::{ListProjectionGraph, PresentedListProjection};
 
 const MAX_LIST_MOVE_PAGES: usize = 4_096;
@@ -53,6 +54,7 @@ pub(crate) struct DatabaseListUndoPlan {
     pub(crate) parent_runs: Vec<DatabaseListParentRunPlan>,
     pub(crate) position_runs: Vec<DatabaseListPositionRunPlan>,
     pub(crate) restored_page_ids: Vec<String>,
+    pub(crate) undo_recipe: DatabaseListMoveUndoRecipe,
 }
 
 #[derive(Clone, Debug)]
@@ -451,62 +453,6 @@ pub(crate) fn resolve_list_insertion_target(
     resolve_target(&projection.graph, &HashSet::new(), target)
 }
 
-fn input_from_value(
-    property: &PropertyRow,
-    value: &Value,
-) -> Result<DatabasePropertyValueInput, StoreError> {
-    if value.is_null() {
-        return Ok(DatabasePropertyValueInput::Empty);
-    }
-    match property.value_type.as_str() {
-        "text" => value
-            .as_str()
-            .map(|value| DatabasePropertyValueInput::Text {
-                value: value.to_owned(),
-            })
-            .ok_or_else(|| corrupt("A grouped text Property value is invalid")),
-        "number" => value
-            .as_f64()
-            .map(|value| DatabasePropertyValueInput::Number { value })
-            .ok_or_else(|| corrupt("A grouped number Property value is invalid")),
-        "checkbox" => value
-            .as_bool()
-            .map(|value| DatabasePropertyValueInput::Checkbox { value })
-            .ok_or_else(|| corrupt("A grouped checkbox Property value is invalid")),
-        "select" => value
-            .as_str()
-            .map(|option_id| DatabasePropertyValueInput::Select {
-                option_id: option_id.to_owned(),
-            })
-            .ok_or_else(|| corrupt("A grouped select Property value is invalid")),
-        "multi_select" => value
-            .as_array()
-            .ok_or_else(|| corrupt("A grouped multi-select Property value is invalid"))?
-            .iter()
-            .map(|entry| {
-                entry
-                    .as_str()
-                    .map(str::to_owned)
-                    .ok_or_else(|| corrupt("A grouped multi-select option is invalid"))
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map(|option_ids| DatabasePropertyValueInput::MultiSelect { option_ids }),
-        "date" => value
-            .as_str()
-            .map(|value| DatabasePropertyValueInput::Date {
-                value: value.to_owned(),
-            })
-            .ok_or_else(|| corrupt("A grouped date Property value is invalid")),
-        "datetime" => value
-            .as_str()
-            .map(|value| DatabasePropertyValueInput::Datetime {
-                value: value.to_owned(),
-            })
-            .ok_or_else(|| corrupt("A grouped datetime Property value is invalid")),
-        _ => Err(invalid("This Property type cannot own a List group")),
-    }
-}
-
 fn scalar_target_value(
     property: &PropertyRow,
     target_key: Option<&str>,
@@ -860,38 +806,23 @@ fn ordered_child_pages(
         .map_err(Into::into)
 }
 
-fn ordered_root_pages(
+fn capture_root_runs(
     connection: &Connection,
-    data_source_id: &str,
     view_id: &str,
+    selected: &HashSet<&str>,
     descending: bool,
-) -> Result<Vec<String>, StoreError> {
-    let mut rows = connection
-        .prepare(
-            "SELECT membership.page_block_id \
-             FROM data_source_page_memberships membership \
-             JOIN pages page ON page.block_id = membership.page_block_id \
-               AND page.parent_kind = 'data_source' AND page.parent_id = membership.data_source_id \
-             JOIN blocks block ON block.id = page.block_id AND block.lifecycle = 'active' \
-             LEFT JOIN data_source_relation_edges parent_edge \
-               ON parent_edge.source_data_source_id = membership.data_source_id \
-              AND parent_edge.source_membership_id = membership.id \
-              AND parent_edge.property_id = 'task_parent' \
-             LEFT JOIN database_view_page_positions position \
-               ON position.view_id = ?2 AND position.page_block_id = membership.page_block_id \
-             WHERE membership.data_source_id = ?1 AND membership.removed_at IS NULL \
-               AND parent_edge.edge_id IS NULL \
-             ORDER BY CASE WHEN position.rank_key IS NULL THEN 1 ELSE 0 END, \
-               position.rank_key, membership.page_block_id",
-        )?
-        .query_map(params![data_source_id, view_id], |row| {
-            row.get::<_, String>(0)
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    if descending {
-        rows.reverse();
-    }
-    Ok(rows)
+) -> Result<Vec<DatabaseListMoveRestoreRun>, StoreError> {
+    let order = super::manual_order::require_ready(connection, view_id)?;
+    Ok(
+        super::manual_order::capture_root_runs(connection, &order, selected, descending)?
+            .into_iter()
+            .map(|run| DatabaseListMoveRestoreRun {
+                page_ids: run.page_ids,
+                parent_page_id: None,
+                before_page_id: run.before_page_id,
+            })
+            .collect(),
+    )
 }
 
 fn contiguous_restore_runs(
@@ -899,39 +830,17 @@ fn contiguous_restore_runs(
     selected_page_ids: &HashSet<&str>,
     parent_page_id: Option<String>,
 ) -> Result<Vec<DatabaseListMoveRestoreRun>, StoreError> {
-    let present = ordered_page_ids
-        .iter()
-        .filter(|page_id| selected_page_ids.contains(page_id.as_str()))
-        .count();
-    if present != selected_page_ids.len() {
-        return Err(corrupt(
-            "A List source root is missing from its original sibling run",
-        ));
-    }
-    let mut runs = Vec::new();
-    let mut current = Vec::new();
-    for page_id in ordered_page_ids {
-        if selected_page_ids.contains(page_id.as_str()) {
-            current.push(page_id.clone());
-            continue;
-        }
-        if current.is_empty() {
-            continue;
-        }
-        runs.push(DatabaseListMoveRestoreRun {
-            page_ids: std::mem::take(&mut current),
-            parent_page_id: parent_page_id.clone(),
-            before_page_id: Some(page_id.clone()),
-        });
-    }
-    if !current.is_empty() {
-        runs.push(DatabaseListMoveRestoreRun {
-            page_ids: current,
-            parent_page_id,
-            before_page_id: None,
-        });
-    }
-    Ok(runs)
+    crate::domain::ordered_position::capture_position_runs(ordered_page_ids, selected_page_ids)
+        .map_err(|_| corrupt("A List source root is missing from its original sibling run"))
+        .map(|runs| {
+            runs.into_iter()
+                .map(|run| DatabaseListMoveRestoreRun {
+                    page_ids: run.page_ids,
+                    parent_page_id: parent_page_id.clone(),
+                    before_page_id: run.before_page_id,
+                })
+                .collect()
+        })
 }
 
 fn restore_runs(
@@ -939,36 +848,39 @@ fn restore_runs(
     graph: &ListProjectionGraph,
     sources: &ResolvedSources,
 ) -> Result<Vec<DatabaseListMoveRestoreRun>, StoreError> {
-    let summaries = sources
-        .root_occurrence_indices
-        .iter()
-        .filter_map(|index| page_row(graph, *index).map(|(_, summary, ..)| summary))
-        .map(|summary| (summary.page_id.as_str(), summary))
-        .collect::<BTreeMap<_, _>>();
+    capture_current_runs(
+        connection,
+        &graph.data_source_id,
+        &graph.view_id,
+        &sources.root_page_ids,
+    )
+}
+
+/// Capture logical sibling runs, including discontiguous roots and multiple parents.
+fn capture_current_runs(
+    connection: &Connection,
+    data_source_id: &str,
+    view_id: &str,
+    page_ids: &[String],
+) -> Result<Vec<DatabaseListMoveRestoreRun>, StoreError> {
     let mut by_parent = BTreeMap::<Option<String>, Vec<String>>::new();
-    for page_id in &sources.root_page_ids {
-        let summary = summaries
-            .get(page_id.as_str())
-            .ok_or_else(|| corrupt("A List source root lost its original hierarchy state"))?;
-        by_parent
-            .entry(summary.task_parent_page_id.clone())
-            .or_default()
-            .push(page_id.clone());
+    for page_id in page_ids {
+        let (parent, _) = current_task_parent(connection, data_source_id, page_id)?;
+        by_parent.entry(parent).or_default().push(page_id.clone());
     }
     let mut runs = Vec::new();
     for (parent_page_id, page_ids) in by_parent {
-        let ordered = match parent_page_id.as_deref() {
-            Some(parent_page_id) => {
-                ordered_child_pages(connection, &graph.data_source_id, parent_page_id)?
-            }
-            None => ordered_root_pages(
-                connection,
-                &graph.data_source_id,
-                &graph.view_id,
-                fractional_root_order_descending(graph),
-            )?,
-        };
         let selected = page_ids.iter().map(String::as_str).collect::<HashSet<_>>();
+        let Some(parent) = parent_page_id.as_deref() else {
+            runs.extend(capture_root_runs(
+                connection,
+                view_id,
+                &selected,
+                view_manual_descending(connection, view_id)?.unwrap_or(false),
+            )?);
+            continue;
+        };
+        let ordered = ordered_child_pages(connection, data_source_id, parent)?;
         runs.extend(contiguous_restore_runs(
             &ordered,
             &selected,
@@ -1051,23 +963,27 @@ pub(crate) fn plan_list_occurrence_move(
             .get(page_id.as_str())
             .is_some_and(|summary| summary.task_parent_page_id == normalized_target.parent_page_id)
     });
-    let target_order = match normalized_target.parent_page_id.as_deref() {
-        Some(parent_page_id) => {
-            ordered_child_pages(connection, &graph.data_source_id, parent_page_id)?
-        }
-        None => ordered_root_pages(
-            connection,
-            &graph.data_source_id,
-            &graph.view_id,
-            fractional_root_order_descending(graph),
-        )?,
-    };
-    let order_unchanged = all_parent_unchanged
-        && sequence_matches_slot(
-            &target_order,
+    let order_unchanged = if !all_parent_unchanged {
+        false
+    } else if let Some(parent) = normalized_target.parent_page_id.as_deref() {
+        sequence_matches_slot(
+            &ordered_child_pages(connection, &graph.data_source_id, parent)?,
             &sources.root_page_ids,
             normalized_target.before_page_id.as_deref(),
-        );
+        )
+    } else if fractional_root_order(graph) {
+        let selected = sources.root_page_ids.iter().map(String::as_str).collect();
+        let runs = capture_root_runs(
+            connection,
+            &graph.view_id,
+            &selected,
+            fractional_root_order_descending(graph),
+        )?;
+        matches!(runs.as_slice(), [run] if run.page_ids == sources.root_page_ids
+            && run.before_page_id == normalized_target.before_page_id)
+    } else {
+        true
+    };
     let hierarchy_ordered = normalized_target.parent_page_id.is_some();
     let root_ordered = normalized_target.parent_page_id.is_none() && fractional_root_order(graph);
     let parent_run =
@@ -1113,8 +1029,7 @@ pub(crate) fn plan_list_occurrence_move(
                 parent_page_id: normalized_target.parent_page_id.clone(),
             })
             .collect(),
-        post_before_page_id: normalized_target.before_page_id.clone(),
-        post_order_guard: hierarchy_ordered || root_ordered,
+        post_order_runs: Vec::new(),
         restore_runs,
     };
     Ok(DatabaseListMovePlan {
@@ -1129,42 +1044,6 @@ pub(crate) fn plan_list_occurrence_move(
         normalized_target,
         undo_recipe,
     })
-}
-
-fn current_property_state(
-    connection: &Connection,
-    data_source_id: &str,
-    page_id: &str,
-    property_id: &str,
-) -> Result<(PropertyRow, DatabasePropertyValueInput, i64), StoreError> {
-    let property = super::active_property(connection, data_source_id, property_id)?;
-    let value = connection
-        .query_row(
-            "SELECT value.value_json, value.revision \
-             FROM data_source_page_memberships membership \
-             LEFT JOIN data_source_property_values value \
-               ON value.data_source_id = membership.data_source_id \
-              AND value.membership_id = membership.id AND value.property_id = ?3 \
-             WHERE membership.data_source_id = ?1 AND membership.page_block_id = ?2 \
-               AND membership.removed_at IS NULL",
-            params![data_source_id, page_id, property_id],
-            |row| {
-                Ok((
-                    row.get::<_, Option<String>>(0)?,
-                    row.get::<_, Option<i64>>(1)?,
-                ))
-            },
-        )
-        .optional()?
-        .ok_or_else(|| not_found("An affected List Page is no longer active"))?;
-    let raw = value
-        .0
-        .map(|json| serde_json::from_str::<Value>(&json))
-        .transpose()
-        .map_err(|_| corrupt("A Database Property value is invalid"))?
-        .unwrap_or(Value::Null);
-    let input = input_from_value(&property, &raw)?;
-    Ok((property, input, value.1.unwrap_or(0)))
 }
 
 fn current_task_parent(
@@ -1235,43 +1114,75 @@ fn order_guard_matches(
     connection: &Connection,
     recipe: &DatabaseListMoveUndoRecipe,
 ) -> Result<bool, StoreError> {
-    if !recipe.post_order_guard || recipe.post_parent_guards.is_empty() {
-        return Ok(true);
+    let mut by_parent = BTreeMap::<Option<String>, Vec<DatabaseListMoveRestoreRun>>::new();
+    for run in &recipe.post_order_runs {
+        by_parent
+            .entry(run.parent_page_id.clone())
+            .or_default()
+            .push(run.clone());
     }
-    let parent = recipe.post_parent_guards[0].parent_page_id.as_deref();
-    if recipe
-        .post_parent_guards
-        .iter()
-        .any(|guard| guard.parent_page_id.as_deref() != parent)
-    {
-        return Ok(false);
+    for (parent, mut expected) in by_parent {
+        let selected = expected
+            .iter()
+            .flat_map(|run| run.page_ids.iter().map(String::as_str))
+            .collect::<HashSet<_>>();
+        let mut current = match parent.as_deref() {
+            Some(parent_id) => contiguous_restore_runs(
+                &ordered_child_pages(connection, &recipe.data_source_id, parent_id)?,
+                &selected,
+                parent.clone(),
+            )?,
+            None => {
+                let Some(descending) = view_manual_descending(connection, &recipe.view_id)? else {
+                    return Err(conflict("The List order mode changed after the move"));
+                };
+                capture_root_runs(connection, &recipe.view_id, &selected, descending)?
+            }
+        };
+        // Recipe run order is not authority; compare the complete sibling slots.
+        expected.sort_by(|left, right| left.page_ids.cmp(&right.page_ids));
+        current.sort_by(|left, right| left.page_ids.cmp(&right.page_ids));
+        if current != expected {
+            return Ok(false);
+        }
     }
-    let ordered = match parent {
-        Some(parent_page_id) => {
-            ordered_child_pages(connection, &recipe.data_source_id, parent_page_id)?
-        }
-        None => {
-            let Some(descending) = view_manual_descending(connection, &recipe.view_id)? else {
-                return Ok(true);
-            };
-            ordered_root_pages(
-                connection,
-                &recipe.data_source_id,
-                &recipe.view_id,
-                descending,
-            )?
-        }
-    };
-    let moved = recipe
+    Ok(true)
+}
+
+/// Finish the inverse from the actual committed post-image, inside the same transaction.
+pub(crate) fn finish_list_inverse(
+    connection: &Connection,
+    mut inverse: DatabaseListMoveUndoRecipe,
+) -> Result<DatabaseListMoveUndoRecipe, StoreError> {
+    for state in &mut inverse.property_states {
+        let (_, value, _) = current_property_state(
+            connection,
+            &inverse.data_source_id,
+            &state.page_id,
+            &state.property_id,
+        )?;
+        state.after_value = value;
+    }
+    for guard in &mut inverse.post_parent_guards {
+        guard.parent_page_id =
+            current_task_parent(connection, &inverse.data_source_id, &guard.page_id)?.0;
+    }
+    let roots = inverse
         .post_parent_guards
         .iter()
         .map(|guard| guard.page_id.clone())
         .collect::<Vec<_>>();
-    Ok(sequence_matches_slot(
-        &ordered,
-        &moved,
-        recipe.post_before_page_id.as_deref(),
-    ))
+    let manual = view_manual_descending(connection, &inverse.view_id)?.is_some();
+    inverse.post_order_runs = capture_current_runs(
+        connection,
+        &inverse.data_source_id,
+        &inverse.view_id,
+        &roots,
+    )?
+    .into_iter()
+    .filter(|run| run.parent_page_id.is_some() || manual)
+    .collect();
+    Ok(inverse)
 }
 
 pub(crate) fn plan_list_occurrence_move_undo(
@@ -1323,6 +1234,17 @@ pub(crate) fn plan_list_occurrence_move_undo(
 
     let mut parent_runs = Vec::new();
     let mut position_runs = Vec::new();
+    let roots = recipe
+        .post_parent_guards
+        .iter()
+        .map(|guard| guard.page_id.clone())
+        .collect::<Vec<_>>();
+    let mut undo_recipe = recipe.clone();
+    undo_recipe.restore_runs =
+        capture_current_runs(connection, &recipe.data_source_id, &recipe.view_id, &roots)?;
+    for state in &mut undo_recipe.property_states {
+        std::mem::swap(&mut state.before_value, &mut state.after_value);
+    }
     for run in recipe.restore_runs.iter().rev() {
         let pages = run
             .page_ids
@@ -1381,5 +1303,6 @@ pub(crate) fn plan_list_occurrence_move_undo(
         parent_runs,
         position_runs,
         restored_page_ids,
+        undo_recipe,
     })
 }

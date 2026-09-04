@@ -13,6 +13,8 @@ import type { WindowSessionBootstrap } from "@/lib/types";
 import type { CoreAuthorityStatus } from "../shared/core-authority-status";
 import { useAppUpdateStatus } from "./app-providers";
 import { installAppUpdate } from "./lib/app-update-runtime";
+import { dispatchFocusedHistory } from "./lib/focused-history";
+import { publishFocusedHistory } from "./lib/surface-history/focused-publication";
 
 const READY_CORE_AUTHORITY_STATUS = { kind: "ready" } as const;
 const CORE_RECOVERY_NOTICE_DELAY_MS = 1_500;
@@ -22,6 +24,8 @@ export interface AppProps {
 }
 
 export default function App({ windowSessionBootstrap }: AppProps) {
+  useEffect(() => window.api?.onHistoryCommand?.(dispatchFocusedHistory), []);
+  useEffect(publishFocusedHistory, []);
   const appUpdateStatus = useAppUpdateStatus();
   const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(null);
   const [coreAuthorityStatus, setCoreAuthorityStatus] = useState<CoreAuthorityStatus>(

@@ -473,6 +473,7 @@ mod tests {
             module
                 .apply(
                     &BoundModuleContext {
+                        editor_history_owner: None,
                         profile_id: ProfileId("profile-1".to_owned()),
                         library_id: LibraryId("library-1".to_owned()),
                         project_id: Some(ProjectId("project-1".to_owned())),
@@ -554,6 +555,7 @@ mod tests {
 
     fn bound_context(project_id: Option<&str>) -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: project_id.map(|id| ProjectId(id.to_owned())),
@@ -2963,6 +2965,7 @@ mod tests {
         })
         .unwrap();
         let project = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),

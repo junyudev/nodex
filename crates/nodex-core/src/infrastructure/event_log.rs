@@ -845,6 +845,7 @@ fn resolve_projection_live_packets(
                 library_id,
                 project_id,
             } if library_id == &host_context.library_id.0 => BoundModuleContext {
+                editor_history_owner: None,
                 project_id: Some(ProjectId(project_id.clone())),
                 ..host_context.clone()
             },
@@ -1689,6 +1690,7 @@ mod tests {
 
     fn context(library_id: &str, project_id: &str) -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile:events".to_owned()),
             library_id: LibraryId(library_id.to_owned()),
             project_id: Some(ProjectId(project_id.to_owned())),
@@ -1699,6 +1701,7 @@ mod tests {
 
     fn host_context(library_id: &str) -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile:events".to_owned()),
             library_id: LibraryId(library_id.to_owned()),
             project_id: None,
@@ -1850,6 +1853,7 @@ mod tests {
                 module_name,
                 operation_id: &operation_id,
                 context: &BoundModuleContext {
+                    editor_history_owner: None,
                     profile_id: ProfileId("profile:events".to_owned()),
                     library_id: LibraryId("library:events".to_owned()),
                     project_id: Some(ProjectId(project_id)),
@@ -3130,6 +3134,7 @@ mod tests {
             .authorized_packet(
                 commit_seq,
                 &BoundModuleContext {
+                    editor_history_owner: None,
                     profile_id: ProfileId("profile:events".to_owned()),
                     library_id: LibraryId(library_id.clone()),
                     project_id: None,
@@ -3145,6 +3150,7 @@ mod tests {
             .authorized_packet_for_library_broker(
                 commit_seq,
                 &BoundModuleContext {
+                    editor_history_owner: None,
                     profile_id: ProfileId("profile:events".to_owned()),
                     library_id: LibraryId(library_id.clone()),
                     project_id: Some(ProjectId("project:a".to_owned())),

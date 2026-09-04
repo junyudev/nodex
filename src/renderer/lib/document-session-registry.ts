@@ -103,7 +103,10 @@ export class EditorSurfaceLease {
   private editor: RetainedBlockNoteEditor | null = null;
   private editorKey: string | null = null;
   private selectionBookmark: CollaborativeSelectionBookmark | null = null;
-  private readonly retainedResources = new Map<string, { readonly dispose: () => void }>();
+  private readonly retainedResources = new Map<
+    string,
+    { readonly dispose: () => void | Promise<void> }
+  >();
   private shouldRestoreEditorFocus = false;
   private nextViewGeneration = 0;
   private activeViewGeneration = 0;
@@ -188,7 +191,7 @@ export class EditorSurfaceLease {
   }
 
   /** Retains surface-local controllers across React view remounts. */
-  getOrCreateRetainedResource<Resource extends { dispose(): void }>(
+  getOrCreateRetainedResource<Resource extends { dispose(): void | Promise<void> }>(
     key: string,
     create: () => Resource,
   ): Resource {
@@ -243,12 +246,22 @@ export class EditorSurfaceLease {
     this.shouldRestoreEditorFocus = false;
     const retainedResources = [...this.retainedResources.values()];
     this.retainedResources.clear();
-    for (const resource of retainedResources) resource.dispose();
-    editor?._tiptapEditor.destroy();
+    const cleanup = Promise.allSettled(
+      retainedResources.map(async (resource) => resource.dispose()),
+    );
 
     this.disposePromise = this.connectBarrier
       .catch(() => undefined)
-      .then(() => this.releaseRuntime())
+      .then(async () => {
+        try {
+          const results = await cleanup;
+          const failed = results.find((result) => result.status === "rejected");
+          if (failed?.status === "rejected") throw failed.reason;
+        } finally {
+          editor?._tiptapEditor.destroy();
+          await this.releaseRuntime();
+        }
+      })
       .then(() => undefined);
     return this.disposePromise;
   }

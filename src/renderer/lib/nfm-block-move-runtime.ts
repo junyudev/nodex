@@ -5,17 +5,11 @@ import {
   type DatabaseModuleReadResultV2,
   type DatabaseViewRecordV2,
 } from "../../shared/database-module-v2";
-import type {
-  BlockTransferCommandError,
-  BlockTransferCommandResult,
-  BlockTransferDocumentHead,
-} from "../../shared/block-transfer";
+import type { BlockTransferDocumentHead } from "../../shared/block-transfer";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import type { PublicBlockTransferIntent } from "../../shared/block-transfer-transport";
-import type { DocumentSyncCommandError } from "../../shared/block-documents/document-sync";
-import type { ProjectAccessedDocumentDescriptor } from "../../shared/block-documents/contracts";
 import type { DocumentHeadFence } from "./block-document-surface-runtime";
-import { prepareOwnedBlockDocument, readDatabaseModule, transferBlocks } from "./api";
+import { readDatabaseModule } from "./api";
 
 const STATUS_PROPERTY_ID = "status";
 
@@ -39,25 +33,14 @@ export interface NfmBlockMoveRequest {
   readonly sourceDocumentGeneration: number;
   readonly rootBlockIds: readonly string[];
   readonly sourceHead: DocumentHeadFence;
-  readonly destination: NfmBlockMoveDestination;
+  readonly destination: Extract<NfmBlockMoveDestination, { kind: "db-column" }>;
 }
 
 export interface NfmBlockMoveRuntimeDependencies {
-  readonly preparePage: (
-    projectId: string,
-    pageId: string,
-  ) => Promise<
-    | { readonly ok: true; readonly value: ProjectAccessedDocumentDescriptor }
-    | { readonly ok: false; readonly error: DocumentSyncCommandError }
-  >;
   readonly readDatabase: (
     projectId: string,
     request: DatabaseModuleReadRequestV2,
   ) => Promise<DatabaseModuleReadResultV2>;
-  readonly transfer: (
-    projectId: string,
-    intent: PublicBlockTransferIntent,
-  ) => Promise<BlockTransferCommandResult>;
   readonly createOperationId: () => string;
 }
 
@@ -84,29 +67,9 @@ export class NfmBlockMoveError extends Error {
 }
 
 const defaultDependencies: NfmBlockMoveRuntimeDependencies = {
-  preparePage: prepareOwnedBlockDocument,
   readDatabase: readDatabaseModule,
-  transfer: transferBlocks,
   createOperationId: createUuidV7,
 };
-
-const commandError = (error: BlockTransferCommandError): NfmBlockMoveError =>
-  new NfmBlockMoveError({
-    code: `block_transfer.${error.code}`,
-    message: error.message,
-    retryable: error.retryable,
-    reloadRequired: error.reloadRequired,
-    operationId: error.operationId,
-  });
-
-const documentError = (error: DocumentSyncCommandError, operationId: string): NfmBlockMoveError =>
-  new NfmBlockMoveError({
-    code: `document.${error.code}`,
-    message: error.message,
-    retryable: error.retryable,
-    reloadRequired: error.resetRequired,
-    operationId,
-  });
 
 const databaseError = (error: DatabaseModuleErrorV2, operationId: string): NfmBlockMoveError =>
   new NfmBlockMoveError({
@@ -215,14 +178,15 @@ const readProjectDefaultDatabase = async (
 };
 
 /**
- * Commits one selected-Block move after the editor has flushed its source
- * surface. Target identity, authorization reads, and BlockTransfer compilation
+ * Compiles a Promotion request after the surface owner admits and fences the gesture.
+ * Page-to-Page moves belong to the editor's structural history session.
+ * Target identity, authorization reads, and BlockTransfer compilation
  * stay behind this interface so picker callers cannot assemble partial moves.
  */
-export const moveNfmBlocks = async (
+export const prepareNfmBlockPromotion = async (
   request: NfmBlockMoveRequest,
   dependencies: NfmBlockMoveRuntimeDependencies = defaultDependencies,
-) => {
+): Promise<PublicBlockTransferIntent> => {
   const operationId = dependencies.createOperationId();
   if (request.rootBlockIds.length === 0) {
     fail("selection.empty", "No blocks selected.", operationId);
@@ -232,80 +196,47 @@ export const moveNfmBlocks = async (
   }
   const sourceHead = requireSourceFence(request, operationId);
 
-  let target: PublicBlockTransferIntent["target"];
-  let causalDependencies: readonly BlockTransferDocumentHead[] = [sourceHead];
-
-  if (request.destination.kind === "page") {
-    if (request.destination.pageId === request.sourcePageId) {
-      fail("destination.same_page", "Choose a different destination Page.", operationId);
-    }
-    const prepared = await dependencies.preparePage(request.projectId, request.destination.pageId);
-    if (!prepared.ok) throw documentError(prepared.error, operationId);
-    if (prepared.value.documentId === request.sourceDocumentId) {
-      fail("destination.same_document", "Choose a different destination Page.", operationId);
-    }
-    if (prepared.value.storeEpoch !== request.storeEpoch) {
-      fail(
-        "destination.store_epoch_mismatch",
-        "The source and destination Pages belong to different store epochs.",
-        operationId,
-        { reloadRequired: true },
-      );
-    }
-    target = { kind: "page", pageId: request.destination.pageId };
-    causalDependencies = [
-      sourceHead,
-      {
-        documentId: prepared.value.documentId,
-        generation: prepared.value.generation,
-        expectedHeadSeq: prepared.value.headSeq,
-      },
-    ];
-  } else {
-    const { snapshot, descriptor } = await readProjectDefaultDatabase(
-      request.projectId,
+  const { snapshot, descriptor } = await readProjectDefaultDatabase(
+    request.projectId,
+    operationId,
+    dependencies,
+  );
+  if (snapshot.storeEpoch !== request.storeEpoch) {
+    fail(
+      "destination.store_epoch_mismatch",
+      "The source Page and destination Database belong to different store epochs.",
       operationId,
-      dependencies,
+      { reloadRequired: true },
     );
-    if (snapshot.storeEpoch !== request.storeEpoch) {
-      fail(
-        "destination.store_epoch_mismatch",
-        "The source Page and destination Database belong to different store epochs.",
-        operationId,
-        { reloadRequired: true },
-      );
-    }
-    const view = activeStatusView(descriptor);
-    if (view === null) {
-      return fail(
-        "database.status_view_unavailable",
-        "This Project has no active Database View grouped by Status.",
-        operationId,
-      );
-    }
-    target = {
-      kind: "data_source",
-      dataSourceId: view.dataSourceId,
-      placement: {
-        kind: "direct",
-        viewId: view.viewId,
-        preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
-        groupKey: request.destination.columnId,
-      },
-    };
   }
+  const view = activeStatusView(descriptor);
+  if (view === null) {
+    return fail(
+      "database.status_view_unavailable",
+      "This Project has no active Database View grouped by Status.",
+      operationId,
+    );
+  }
+  const target: PublicBlockTransferIntent["target"] = {
+    kind: "data_source",
+    dataSourceId: view.dataSourceId,
+    placement: {
+      kind: "direct",
+      viewId: view.viewId,
+      preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
+      groupKey: request.destination.columnId,
+    },
+  };
 
-  const result = await dependencies.transfer(request.projectId, {
+  return {
     operationId,
     projectId: request.projectId,
     storeEpoch: request.storeEpoch,
     mode: "move",
     rootBlockIds: request.rootBlockIds,
-    causalDependencies,
+    causalDependencies: [sourceHead],
     source: { kind: "page", pageId: request.sourcePageId },
     target,
     promotionPolicy: "literal",
-  });
-  if (!result.ok) throw commandError(result.error);
-  return result.value;
+  };
 };

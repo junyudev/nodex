@@ -117,6 +117,10 @@ A Database is a Container Block that owns Data Sources and Views. An enabled Dat
 
 The decisions behind this model are recorded in [ADR 0017](docs/adr/0017-library-pages-data-sources-and-project-resource-grants.md), [ADR 0020](docs/adr/0020-database-identity-scopes.md), [ADR 0039](docs/adr/0039-data-source-relation-properties-and-property-semantics.md), and [ADR 0043](docs/adr/0043-database-scoped-page-keys.md).
 
+View manual ordering and semantic position history share one Database authority.
+Physical rank generations and cached position metadata are neither history proof
+nor content-retention roots. See [ADR 0059](adr/0059-complete-view-order-and-semantic-position-history.md).
+
 ### State authority table
 
 | State or capability                                                                           | Authoritative owner                                                          | Adapters and projections                                                                                                                                              |
@@ -574,6 +578,21 @@ The public identity of an authorized Document observation is `(libraryId, access
 
 A mounted surface first resolves an authorized descriptor and completes its canonical synchronization barrier. Multiple surfaces may share the same process-local Document session while retaining independent editor, undo, cursor, camera, and presence state. Surface presentation never becomes durable content authority.
 
+The renderer SurfaceHistory Module owns each editing surface's chronological
+interval, command admission, preparation order and outcome state. NFM and
+Database content Adapters prepare typed requests and interpret authoritative
+inverses; they do not maintain parallel command queues or mutable history lists.
+Native capture identities are Adapter-owned resources, not chronological
+identities. Electron Main retains admitted exact requests across renderer loss;
+late outcomes cannot reopen a retired surface. User-visible replay and retention
+rules belong to [NFM Structural Editing](product-specs/nfm-editor-structural-editing-behavior.md)
+and [Database Pages and Views](product-specs/database-pages-and-views-behavior.md).
+
+The native Edit menu consumes only the focused surface's read-only capability
+projection. Renderer attachment and focus ordering fence those observations;
+execution resolves the current input owner again instead of treating a menu
+snapshot as command authority. Native editing targets retain their own routing.
+
 Canvas presence is an ephemeral Main projection, not durable Core state. The
 Document Session Module borrows one `CanvasPresenceHub` from `CanvasPresenceRuntime`;
 the hub is a synchronous state machine with no timer or process lifetime of its
@@ -584,6 +603,22 @@ autonomous presence scheduler.
 Before a structural command consumes a mounted Document's shape, the surface flushes pending durable updates and supplies an exact head token. Core rechecks the token while planning and applying the mutation. Ownership, membership, host-shell changes, Document updates, projections, and the receipt then commit atomically. Response loss is recovered by exact receipt replay or canonical synchronization, not by reconstructing the transaction in Electron.
 
 Any editor selection containing an owning Page, Canvas, or Database is one Library structural edit; the complete selected forest and ownership closure stay outside generic Document mutation. Core owns delete, clipboard capture/paste, duplicate, move, retention, and forward-inverse recipes. Native clipboard data carries a bounded private routing descriptor plus standard portable presentation, never the ownership closure; only Core's durable capability and cut claim authorize structural materialization or an identity-preserving move. Main coordinates the ephemeral cross-window lifecycle without becoming semantic authority. A destination freezes its stable target intent and sanitized fallback before waiting, then fences the current Document immediately before commit, so selection drift cannot redirect Paste. Each editor surface merges structural tokens with its own local Yjs history in user-action order and releases tokens when they leave reachable history. The user-visible contract is [NFM Editor Structural Editing Behavior](product-specs/nfm-editor-structural-editing-behavior.md), and the ownership decisions are [ADR 0048](adr/0048-typed-owner-structural-editing.md) and [ADR 0053](adr/0053-structural-clipboard-private-protocol-and-host-lifecycle.md).
+
+When a structural commit invalidates collaborative addresses, its durable
+Document write fences travel through authorized delivery and canonical sync.
+The retained surface uses affected-field semantic evidence to request guarded
+Core replay; Library validates stable identities and forest placement and emits
+a new inverse in the same transaction. This preserves Document authority and
+surface-local history without retaining a second durable content log. See
+[ADR 0058](adr/0058-surface-history-and-semantic-address-recovery.md).
+
+Database surfaces submit semantic gestures to a surface-local command owner.
+The owner controls admission, sequencing, exact attempts and the reachable
+history interval; a typed content Adapter prepares requests and interprets
+whole authoritative receipts. Optimistic presentation consumes those results
+without owning a second command lifecycle. Main retains sent attempts across
+renderer loss, while Core remains the sole commit and inverse authority.
+See [Database View behavior](product-specs/database-pages-and-views-behavior.md).
 
 Every current Block type makes one closed-world choice about generic children.
 Renderer commands and local collaborative transactions use that contract for

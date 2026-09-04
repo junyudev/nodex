@@ -384,6 +384,13 @@ export function CollaborativePageTitle({
     }
     const editor = editorRef.current;
     if (!editor) return;
+    if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.inputType === "historyUndo") undoManagerRef.current?.undo();
+      else undoManagerRef.current?.redo();
+      return;
+    }
     const selection = readRichTitleDomSelection(editor);
     if (!selection) return;
     const inputType = event.inputType;
@@ -487,9 +494,10 @@ export function CollaborativePageTitle({
       event.preventDefault();
       return;
     }
-    if (key === "z") {
+    if (!event.altKey && (key === "z" || (key === "y" && !event.shiftKey))) {
       event.preventDefault();
-      if (event.shiftKey) undoManagerRef.current?.redo();
+      event.stopPropagation();
+      if (event.shiftKey || key === "y") undoManagerRef.current?.redo();
       else undoManagerRef.current?.undo();
       return;
     }

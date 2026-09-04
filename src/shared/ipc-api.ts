@@ -815,6 +815,18 @@ export interface IpcApi {
     args: [accessContext: ContentAccessContext, input: PrepareFileBlobInput];
     result: PreparedFileBlob;
   };
+  "editor-history:release": {
+    args: [accessContext: ContentAccessContext, request: LibraryModuleApplyRequest];
+    result: import("./library-module").EditorHistoryReleaseHandoff;
+  };
+  "editor-history:abandon": {
+    args: [ContentAccessContext, LibraryModuleApplyRequest];
+    result: import("./library-module").EditorHistoryReleaseHandoff;
+  };
+  "editor-history:abandon-transfer": {
+    args: [projectId: string, intent: PublicBlockTransferIntent];
+    result: import("./library-module").EditorHistoryReleaseHandoff;
+  };
   "files:pick-and-prepare": {
     args: [accessContext: ContentAccessContext, input: PickFilesInput];
     result: PickFilesResult;
@@ -1298,6 +1310,11 @@ export interface IpcApi {
     result: ThreadNotificationSettings;
   };
   "electron-window:focus:get": { args: []; result: boolean };
+  "surface-history:bind": { args: []; result: number };
+  "surface-history:publish": {
+    args: [publication: import("./surface-history").FocusedHistoryPublication];
+    result: void;
+  };
   "native-context-menu:show": {
     args: [items: NativeContextMenuItem[], options?: NativeContextMenuOptions];
     result: string | null;

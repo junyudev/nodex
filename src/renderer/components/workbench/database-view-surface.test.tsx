@@ -6,13 +6,20 @@ import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
 import {
   commitDatabaseViewOperations,
   DatabaseViewMutationError,
+  type DatabaseViewMutationReceipt,
 } from "@/lib/database-view-row-mutations";
+import type { DatabaseDataEditUndoRecipeV2 } from "../../../shared/database-module-v2";
+import {
+  createDatabaseViewMutationHistory,
+  databaseViewHistoryScopeKey,
+} from "./database-view-mutation-history";
 import { plainTextToPortableRichText } from "../../../shared/block-documents/portable-rich-text";
 import {
   parseDatabaseId,
   parseDatabaseViewId,
   parseDataSourceId,
   parseDataSourcePropertyId,
+  parseDataSourceOptionId,
 } from "../../../shared/database-identities";
 import { testPropertySemantics } from "../../../shared/testing/database-property-record";
 import { upgradeDatabaseViewConfigV2 } from "../../../shared/database-view-presentation";
@@ -20,6 +27,10 @@ import { render as renderDom, settleAsyncRender } from "../../test/dom";
 import { databaseViewMutationErrorMessage, DatabaseViewSurface } from "./database-view-surface";
 import { DatabaseViewTabSurface } from "./workbench-db-view-panel";
 import { handleWorkbenchShortcut } from "@/lib/use-workbench-shortcuts";
+import { readFocusedHistory } from "@/lib/focused-history";
+import { createMaitaiStore } from "@/lib/maitai";
+import { NodexModalHost } from "@/lib/modal-registry";
+import { TestMaitaiRoot } from "@/test/app-maitai";
 import { resetContextualKeyboardActionRegistryForTests } from "@/lib/contextual-keyboard-actions";
 import { PageTitleProjectionProvider } from "@/lib/page-title-projection-context";
 import {
@@ -33,8 +44,11 @@ import {
 
 const render: typeof renderDom = (element, options) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const store = createMaitaiStore({ queryClient });
   const withClient = (children: ReactNode) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <TestMaitaiRoot store={store}>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </TestMaitaiRoot>
   );
   const result = renderDom(withClient(element), options);
   return {
@@ -78,6 +92,25 @@ const viewId = parseDatabaseViewId("view-focused");
 const tagsPropertyId = parseDataSourcePropertyId("tags");
 const statusPropertyId = parseDataSourcePropertyId("status");
 const priorityPropertyId = parseDataSourcePropertyId("priority");
+
+const mutationReceipt = (
+  operationKinds: DatabaseViewMutationReceipt["operationKinds"],
+): DatabaseViewMutationReceipt => ({
+  operationId: "operation-1",
+  projectId: "project-1",
+  libraryId: "library-1",
+  storeEpoch: "epoch-1",
+  duplicate: false,
+  operationKinds,
+  operationOutcomes: [],
+  affectedDatabaseIds: [databaseId],
+  affectedDataSourceIds: [dataSourceId],
+  affectedPageIds: [],
+  affectedViewIds: [viewId],
+  committedRevisions: {},
+  commitSeq: 3,
+  committedAt: timestamp,
+});
 
 const model: DatabaseViewRenderModel = {
   libraryId: "library-1",
@@ -1225,6 +1258,7 @@ describe("DatabaseViewSurface", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(document.activeElement).toBe(second));
+    expect(readFocusedHistory()).not.toBeNull();
     expect(second.tabIndex).toBe(0);
 
     await act(async () => {
@@ -1246,6 +1280,58 @@ describe("DatabaseViewSurface", () => {
       await Promise.resolve();
     });
     expect(onOpenPage).toHaveBeenCalledWith("page-next", "Next Page", "preview");
+  });
+
+  test("exposes List history recovery and confirms reset without changing its Pages", async () => {
+    const model = listModel();
+    const history = createDatabaseViewMutationHistory(databaseViewHistoryScopeKey(model));
+    const commitOperations = vi.fn<typeof commitDatabaseViewOperations>(async () => {
+      throw new Error("Response lost");
+    });
+    await expect(
+      history.executeOperations({
+        model,
+        operations: [
+          {
+            kind: "position_pages",
+            viewId,
+            pages: [{ pageId: "page-focused", expectedPositionRevision: 0 }],
+          },
+        ],
+        commitOperations,
+      }),
+    ).rejects.toThrow();
+    const screen = render(
+      <>
+        <DatabaseViewSurface
+          model={model}
+          presentationLayout="list"
+          searchQuery=""
+          onOpenPage={() => undefined}
+          mutationHistory={history}
+        />
+        <NodexModalHost />
+      </>,
+    );
+    const retry = await screen.findByRole("button", { name: "Check again" });
+    await act(async () => {
+      fireEvent.click(retry);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(commitOperations).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Reset history" }));
+      await Promise.resolve();
+    });
+    const dialog = await screen.findByRole("dialog", { name: "Reset this surface’s history?" });
+    expect(history.snapshot().undo.status).toBe("waiting");
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Reset history" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(history.snapshot().undo.status).toBe("empty"));
+    expect(screen.getAllByRole("row")).toHaveLength(2);
+    expect(commitOperations).toHaveBeenCalledTimes(2);
   });
 
   test("keeps the named List grid valid and cells anchored when Page ID is hidden", () => {
@@ -1572,7 +1658,8 @@ describe("DatabaseViewSurface", () => {
     const commitOperations = vi.fn<typeof commitDatabaseViewOperations>(
       () =>
         new Promise((resolve) => {
-          resolveCommit = (receipt) => resolve(receipt as never);
+          resolveCommit = (receipt) =>
+            resolve({ ...mutationReceipt(["position_pages"]), ...receipt });
         }),
     );
     const current = boardModel();
@@ -1634,8 +1721,122 @@ describe("DatabaseViewSurface", () => {
     expect(source.draggable).toBe(true);
   });
 
+  test.each(["board", "list"] as const)(
+    "%s routes data Undo through its owner and keeps nested input history separate",
+    async (layout) => {
+      const current = layout === "board" ? boardModel() : listModel();
+      const history = createDatabaseViewMutationHistory(databaseViewHistoryScopeKey(current));
+      const recipe: DatabaseDataEditUndoRecipeV2 = {
+        propertyStates: [
+          {
+            address: { pageId: "page-focused", dataSourceId, propertyId: statusPropertyId },
+            propertyType: "select",
+            beforeValue: {
+              kind: "select",
+              optionId: parseDataSourceOptionId({ propertyId: statusPropertyId, value: "build" }),
+            },
+            afterValue: {
+              kind: "select",
+              optionId: parseDataSourceOptionId({ propertyId: statusPropertyId, value: "review" }),
+            },
+          },
+        ],
+        positionStates: [],
+      };
+      let finish = () => {};
+      const commitOperations = vi.fn<typeof commitDatabaseViewOperations>(
+        () =>
+          new Promise((resolve) => {
+            finish = () => resolve(mutationReceipt(["reverse_data_edit"]));
+          }),
+      );
+      commitOperations.mockResolvedValueOnce({
+        ...mutationReceipt(["edit_property_values"]),
+        operationOutcomes: [
+          { kind: "data_edit", operationIndex: 0, operationCount: 1, undoRecipe: recipe },
+        ],
+      });
+      await history.executeOperations({
+        model: current,
+        operations: [
+          {
+            kind: "edit_property_values",
+            edits: [
+              {
+                pageId: "page-focused",
+                dataSourceId,
+                propertyId: statusPropertyId,
+                edit: {
+                  kind: "replace",
+                  expectedValueRevision: 1,
+                  value: {
+                    kind: "select",
+                    optionId: parseDataSourceOptionId({
+                      propertyId: statusPropertyId,
+                      value: "review",
+                    }),
+                  },
+                },
+              },
+            ],
+          },
+        ],
+        commitOperations,
+      });
+      commitOperations.mockClear();
+      const screen = render(
+        <DatabaseViewSurface
+          model={current}
+          presentationLayout={layout}
+          searchQuery=""
+          onOpenPage={() => undefined}
+          mutationHistory={history}
+          commitOperations={commitOperations}
+        />,
+      );
+      const row = screen.container.querySelector<HTMLElement>(
+        layout === "board" ? "[data-board-uuid-v7]" : "[data-database-view-page-id]",
+      );
+      if (!row) throw new Error("Missing View row");
+      const nestedInput = document.createElement("input");
+      try {
+        await act(async () => {
+          row.append(nestedInput);
+          nestedInput.focus();
+          fireEvent.keyDown(nestedInput, { key: "z", metaKey: true });
+          await Promise.resolve();
+        });
+        expect(commitOperations).not.toHaveBeenCalled();
+        await act(async () => {
+          nestedInput.remove();
+          row.focus();
+          fireEvent.keyDown(row, { key: "z", metaKey: true });
+          fireEvent.keyDown(row, { key: "z", metaKey: true });
+          await Promise.resolve();
+        });
+        await waitFor(() => expect(commitOperations).toHaveBeenCalledOnce());
+        expect(commitOperations.mock.calls[0]?.[0]).toMatchObject({
+          operations: [{ kind: "reverse_data_edit", recipe }],
+          operationId: expect.any(String),
+        });
+        await act(async () => {
+          finish();
+          await Promise.resolve();
+        });
+        await waitFor(() => expect(history.snapshot().undo.status).toBe("empty"));
+        expect(commitOperations).toHaveBeenCalledOnce();
+      } finally {
+        nestedInput.remove();
+        await act(async () => {
+          finish();
+          await Promise.resolve();
+        });
+      }
+    },
+  );
+
   test("hands a sorted Board drop its exact Property projection", async () => {
-    const onMoveBoardPages = vi.fn(async () => true);
+    const onMoveBoardPages = vi.fn(async () => mutationReceipt(["position_pages"]));
     const current = prioritySortedBoardModel();
     const screen = render(
       <DatabaseViewSurface
@@ -1668,10 +1869,11 @@ describe("DatabaseViewSurface", () => {
           },
         ],
       }),
+      expect.objectContaining({ operationId: expect.any(String), operations: expect.any(Array) }),
     );
   });
 
-  test("keeps a failed delegated Board drop on the owning card", async () => {
+  test("keeps an uncertain delegated Board drop on the owning card", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const onMoveBoardPages = vi.fn(async () => {
       throw new Error("injected Board failure");
@@ -1697,7 +1899,9 @@ describe("DatabaseViewSurface", () => {
       await Promise.resolve();
     });
 
-    expect(await screen.findByText("Couldn’t move this page. Try again.")).toBeTruthy();
+    expect(
+      await screen.findByText("Confirming your last edit. Earlier history is paused."),
+    ).toBeTruthy();
     expect(consoleError).toHaveBeenCalledOnce();
     consoleError.mockRestore();
   });
@@ -2151,11 +2355,12 @@ describe("DatabaseViewSurface", () => {
       fireEvent.click(flag);
       await Promise.resolve();
     });
-    expect(commitOperations).toHaveBeenCalledTimes(2);
+    expect(commitOperations).toHaveBeenCalledTimes(1);
     await act(async () => {
       resolveFirst?.();
       await Promise.resolve();
     });
+    await waitFor(() => expect(commitOperations).toHaveBeenCalledTimes(2));
   });
 
   test("keeps mutation failures with their Property and hides transport details", async () => {
@@ -2186,6 +2391,84 @@ describe("DatabaseViewSurface", () => {
     } finally {
       consoleError.mockRestore();
     }
+  });
+
+  test("an uncertain Property edit blocks older Undo through repeated lost responses", async () => {
+    const history = createDatabaseViewMutationHistory(databaseViewHistoryScopeKey(model));
+    const recipe: DatabaseDataEditUndoRecipeV2 = {
+      propertyStates: [
+        {
+          address: { pageId: "page-focused", dataSourceId, propertyId: tagsPropertyId },
+          propertyType: "multi_select",
+          beforeValue: { kind: "multi_select", optionIds: [] },
+          afterValue: {
+            kind: "multi_select",
+            optionIds: [
+              parseDataSourceOptionId({ propertyId: tagsPropertyId, value: "o_BBBBBBBB" }),
+            ],
+          },
+        },
+      ],
+      positionStates: [],
+    };
+    const receipt = {
+      ...mutationReceipt(["edit_property_values"]),
+      operationOutcomes: [
+        { kind: "data_edit" as const, operationIndex: 0, operationCount: 1, undoRecipe: recipe },
+      ],
+    };
+    const commit = vi.fn<typeof commitDatabaseViewOperations>(async () => receipt);
+    await history.executeOperations({
+      model,
+      operations: [
+        {
+          kind: "position_pages",
+          viewId,
+          pages: [{ pageId: "page-focused", expectedPositionRevision: 0 }],
+        },
+      ],
+      commitOperations: commit,
+    });
+    commit.mockClear();
+    commit
+      .mockRejectedValueOnce(new Error("Response lost"))
+      .mockRejectedValueOnce(new Error("Response still lost"));
+    const view = render(
+      <DatabaseViewSurface
+        model={model}
+        searchQuery=""
+        onOpenPage={() => undefined}
+        mutationHistory={history}
+        commitOperations={commit}
+      />,
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Edit Tags" }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("option", { name: "Next" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(history.snapshot().undo.status).toBe("waiting"));
+    await act(async () => {
+      expect(await history.undoLast()).toBe(false);
+    });
+    expect(commit).toHaveBeenCalledOnce();
+    await act(async () => {
+      expect((await history.recover().result).status).toBe("recovering");
+    });
+    expect(await history.undoLast()).toBe(false);
+    expect(commit).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await history.recover().result;
+    });
+    expect(commit.mock.calls[1]?.[0]).toEqual(commit.mock.calls[0]?.[0]);
+    expect(commit.mock.calls[2]?.[0]).toEqual(commit.mock.calls[0]?.[0]);
+    await act(async () => {
+      expect(await history.undoLast()).toBe(true);
+    });
+    expect(commit.mock.calls[3]?.[0].operations).toEqual([{ kind: "reverse_data_edit", recipe }]);
   });
 
   test("keeps option creation open and local when the atomic commit fails", async () => {

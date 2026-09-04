@@ -14,12 +14,15 @@ import {
 import { SideMenuController, type LinkToolbarProps, useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteEditor } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/shadcn";
+import { SurfaceHistoryStatus } from "@/components/shared/surface-history-status";
+import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
 import { CornerDownLeft } from "@/components/shared/icons/generic-icons";
 import { ChevronDownIcon, CloseIcon, ReplaceIcon } from "@/components/shared/icons";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/shadcn/style.css";
 
 import { nfmSchema } from "./nfm-schema";
+import { ownsNfmEditorEvent } from "./nfm-editor-event-owner";
 import {
   createNfmEditorExtensions,
   createNfmPasteHandler,
@@ -37,7 +40,7 @@ import { NfmLinkToolbar } from "./nfm-link-toolbar";
 import { NfmLinkToolbarController } from "./nfm-link-toolbar-controller";
 import { toast } from "@/components/ui/toast";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
-import { applyLibraryModule, readLibraryModule } from "@/lib/api";
+import { applyLibraryModule } from "@/lib/api";
 import { resolveNfmLinkAction } from "@/lib/nfm-link-actions";
 import {
   libraryContentAccess,
@@ -152,7 +155,7 @@ import {
 } from "./thread-mention-chip";
 import { AgentConfigRuntimeProvider, type AgentConfigRuntimeValue } from "./agent-config-runtime";
 import { resolveDefaultAgentConfigIntelligence } from "./agent-config-chip";
-import { prepareOwnedBlockDocument, transferBlocks } from "@/lib/api";
+import { prepareOwnedBlockDocument } from "@/lib/api";
 import { readCodexThreadSummary } from "@/lib/codex-thread-summary";
 import { serializeNfm, blockNoteToNfm, applyToggleStatesFromDom } from "@/lib/nfm";
 import type { CodexThreadSummary } from "@/lib/types";
@@ -188,7 +191,6 @@ import type {
 import {
   registerBlockDocumentStructuralMutationParticipant,
   resolveBlockDocumentStructuralMutationParticipant,
-  resolveBlockDocumentStructuralMutationParticipantByDocumentId,
 } from "@/lib/block-document-mutation-registry";
 import {
   createCanvasInHostPage,
@@ -222,13 +224,13 @@ import {
   createRendererFileReadCache,
   FileRuntimeProvider,
 } from "./file-runtime";
-import { moveNfmBlocks } from "@/lib/nfm-block-move-runtime";
 import {
   hasTypedOwnerBlock,
   hasTypedOwnerType,
   resolveTypedOwnerDocumentChanges,
 } from "@/lib/typed-owner-blocks";
 import { NfmStructuralEditingController } from "./nfm-structural-editing-extension";
+import type { NfmReceivingPageTransferIntent } from "./nfm-history-command";
 import { readNodexClipboardFragment } from "../../../../shared/clipboard-paste";
 import { applyLocalNfmTurnInto, type NfmTurnBlocksIntoInput } from "@/lib/nfm-turn-into-targets";
 import {
@@ -1658,12 +1660,20 @@ function NfmEditorInstance({
     () => structuralEditingController.attachEditor(editor),
     [editor, structuralEditingController],
   );
+  const historyEditableRoot = useCallback(() => editor.domElement ?? null, [editor]);
+  useSurfaceHistoryFocus(
+    containerRef,
+    structuralEditingSession.historyControls,
+    historyEditableRoot,
+  );
 
   useLayoutEffect(() => {
-    if (!structuralMutationParticipant) return;
+    if (!structuralMutationParticipant || !surfaceMutationBarrier) return;
+    if (!surfaceMutationBarrier.libraryId)
+      throw new Error("Structural editing requires the Document's Library authority.");
     structuralEditingController.activate(structuralEditingSession, {
       accessContext: contentAccessContext,
-      libraryId: surfaceMutationBarrier?.libraryId,
+      libraryId: surfaceMutationBarrier.libraryId,
       source: {
         documentId: source.documentId,
         storeEpoch: source.storeEpoch,
@@ -1696,7 +1706,7 @@ function NfmEditorInstance({
   useEffect(
     () => () => {
       if (editorSession) return;
-      structuralEditingController.dispose();
+      void structuralEditingController.dispose();
     },
     [editorSession, structuralEditingController],
   );
@@ -1742,24 +1752,16 @@ function NfmEditorInstance({
     if (!el) return;
 
     const handleBeforeInput = (event: InputEvent) => {
-      if (event.target instanceof Element) {
-        if (event.target.closest("[data-embedded-surface-input]")) return;
-        const nearestEditor = event.target.closest(".nfm-editor");
-        if (nearestEditor && nearestEditor !== el) return;
-      }
+      if (!ownsNfmEditorEvent(el, event.target)) return;
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
+        return;
       if (!structuralEditingController.current?.handleBeforeInput(event)) return;
       event.preventDefault();
       event.stopPropagation();
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof Element) {
-        if (event.target.closest("[data-embedded-surface-input]")) return;
-        const nearestEditor = event.target.closest(".nfm-editor");
-        if (nearestEditor && nearestEditor !== el) {
-          return;
-        }
-      }
+      if (!ownsNfmEditorEvent(el, event.target)) return;
 
       const targetIsTextField =
         event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement;
@@ -1987,30 +1989,31 @@ function NfmEditorInstance({
   );
 
   const commitBlockSelectionMove = useCallback(
-    async (selection: SendBlocksSelection, destination: NfmMoveToDestination) => {
+    async (
+      selection: SendBlocksSelection,
+      destination: Extract<NfmMoveToDestination, { kind: "db-column" }>,
+    ) => {
       if (!sourcePageContext) {
         throw new Error("No blocks selected.");
       }
       if (executionProjectId === null) {
         throw new Error("Moving Blocks requires a Project.");
       }
-      if (!structuralMutationParticipant) {
+      const session = structuralEditingController.current;
+      if (!session) {
         throw new Error("The collaborative Page surface changed; reopen it before moving Blocks.");
       }
-      const sourceHead = await structuralMutationParticipant.prepareAndFence();
-
-      await moveNfmBlocks({
+      await session.promoteBlocks({
         projectId: executionProjectId,
         storeEpoch: source.storeEpoch,
         sourcePageId: sourcePageContext.pageId,
         sourceDocumentId: source.documentId,
         sourceDocumentGeneration: source.generation,
         rootBlockIds: selection.blockIds,
-        sourceHead,
         destination,
       });
     },
-    [executionProjectId, source, sourcePageContext, structuralMutationParticipant],
+    [executionProjectId, source, sourcePageContext, structuralEditingController],
   );
 
   const moveBlocksToDestination = useCallback(
@@ -2024,10 +2027,7 @@ function NfmEditorInstance({
         throw new Error("No blocks selected.");
       }
 
-      if (hasTypedOwnerBlock(selection.blocks)) {
-        if (destination.kind !== "page") {
-          throw new Error("Selections that own nested content can move only to another Page.");
-        }
+      if (destination.kind === "page") {
         if (
           !sourcePageContext ||
           destination.projectId !== executionProjectId ||
@@ -2035,15 +2035,20 @@ function NfmEditorInstance({
         ) {
           throw new Error("Choose another Page in this Project.");
         }
-        const target = await prepareOwnedBlockDocument(destination.projectId, destination.pageId);
-        if (!target.ok) throw new Error(target.error.message);
         const session = structuralEditingController.current;
         if (
-          !session?.moveBlocksToDocument(selection.blockIds, {
-            documentId: target.value.documentId,
-            storeEpoch: target.value.storeEpoch,
-            generation: target.value.generation,
-            headSeq: target.value.headSeq,
+          !session?.moveBlocksToDocument(selection.blockIds, async () => {
+            const target = await prepareOwnedBlockDocument(
+              destination.projectId,
+              destination.pageId,
+            );
+            if (!target.ok) throw new Error(target.error.message);
+            return {
+              documentId: target.value.documentId,
+              storeEpoch: target.value.storeEpoch,
+              generation: target.value.generation,
+              headSeq: target.value.headSeq,
+            };
           })
         ) {
           throw new Error("Structural editing is unavailable on this Page.");
@@ -2052,6 +2057,9 @@ function NfmEditorInstance({
         return;
       }
 
+      if (hasTypedOwnerBlock(selection.blocks)) {
+        throw new Error("Selections that own nested content can move only to another Page.");
+      }
       await commitBlockSelectionMove(selection, destination);
 
       restoreEditorFocus();
@@ -2187,70 +2195,45 @@ function NfmEditorInstance({
           }
           return await participant.prepareAndFence(options);
         },
-        createOperationId: createUuidV7,
-        transfer: (intent: Parameters<typeof transferBlocks>[1]) =>
-          transferBlocks(executionProjectId, intent),
+        receivePages: async (intent: NfmReceivingPageTransferIntent) => {
+          const session = structuralEditingController.current;
+          if (!session) throw new Error("The editor is not ready to receive Pages.");
+          await session.receivePages(intent);
+        },
         structuralTransfer: async ({
           mode,
           rootBlockIds,
-          sourceHead,
-          targetHead,
+          prepareHeads,
           target,
           preferredSelectionBlockId,
         }: {
           readonly mode: "move" | "copy";
           readonly rootBlockIds: readonly string[];
-          readonly sourceHead: DocumentHeadFence;
-          readonly targetHead: DocumentHeadFence;
+          readonly prepareHeads: () => Promise<{
+            readonly sourceHead: DocumentHeadFence;
+            readonly targetHead: DocumentHeadFence;
+          }>;
           readonly target: {
             readonly parentBlockId: string | null;
             readonly beforeBlockId: string | null;
           };
           readonly preferredSelectionBlockId?: string;
         }) => {
-          const result = await applyLibraryModule(contentAccessContext, {
-            operationId: createUuidV7(),
-            storeEpoch: source.storeEpoch,
-            operation: {
-              kind: "apply_structural_edit",
-              command: {
-                kind: mode === "move" ? "move_selection" : "duplicate_selection",
-                selection: {
-                  sourceDocumentId: sourceHead.documentId,
-                  rootBlockIds,
-                  sourceHead: {
-                    documentId: sourceHead.documentId,
-                    generation: sourceHead.generation,
-                    expectedHeadSeq: sourceHead.expectedHeadSeq,
-                  },
-                },
-                target: {
-                  targetDocumentId: targetHead.documentId,
-                  parentBlockId: target.parentBlockId,
-                  beforeBlockId: target.beforeBlockId,
-                  targetHead: {
-                    documentId: targetHead.documentId,
-                    generation: targetHead.generation,
-                    expectedHeadSeq: targetHead.expectedHeadSeq,
-                  },
-                },
-              },
-            },
-          });
-          if (!result.ok) throw new Error(result.error.message);
-          const structural = result.value.structuralEdit;
-          if (!structural) throw new Error("Core omitted the structural transfer receipt.");
-          structuralEditingController.current?.adoptStructuralResult(
-            structural,
+          const session = structuralEditingController.current;
+          if (!session) throw new Error("The editor is not ready for a structural transfer.");
+          await session.transferBlocks({
+            mode,
+            rootBlockIds,
+            prepareHeads,
+            target,
             preferredSelectionBlockId,
-          );
+          });
         },
         reportError: (message: string) => toast.danger(message),
       },
     };
   }, [
     parentBlockReferenceRuntime?.ancestorPageIds,
-    contentAccessContext,
     executionProjectId,
     source.documentId,
     source.clientSessionId,
@@ -2531,106 +2514,20 @@ function NfmEditorInstance({
       if (!structuralMutationParticipant) {
         throw new Error("The Page Document is not ready to create a Page mention.");
       }
-      const hostHead = await structuralMutationParticipant.prepareAndFence();
-      if (
-        hostHead.storeEpoch !== source.storeEpoch ||
-        hostHead.documentId !== source.documentId ||
-        hostHead.generation !== source.generation
-      ) {
-        throw new Error("The host Page changed; reopen it before creating the Page mention.");
-      }
-
-      const resolvedDestinationPageId = destinationPageId ?? sourcePageContext.pageId;
-      let destinationHead = hostHead;
-      if (resolvedDestinationPageId !== sourcePageContext.pageId) {
-        const destinationRead = await readLibraryModule(contentAccessContext, {
-          read: {
-            mode: "page_mention_destination",
-            pageId: resolvedDestinationPageId,
-          },
-        });
-        if (!destinationRead.ok) throw new Error(destinationRead.error.message);
-        if (
-          destinationRead.value.storeEpoch !== source.storeEpoch ||
-          destinationRead.value.value.kind !== "page_mention_destination"
-        ) {
-          throw new Error("The destination Page is no longer available.");
-        }
-        const destinationNode = destinationRead.value.value.value;
-        if (destinationNode.pageId !== resolvedDestinationPageId) {
-          throw new Error("The destination Page is no longer available.");
-        }
-        destinationHead = {
-          documentId: destinationNode.documentId,
-          generation: destinationNode.documentGeneration,
-          expectedHeadSeq: destinationNode.documentHeadSeq,
-          storeEpoch: destinationRead.value.storeEpoch,
-        };
-        const mountedDestination = resolveBlockDocumentStructuralMutationParticipantByDocumentId(
-          destinationHead.documentId,
-        );
-        if (mountedDestination) {
-          const mountedHead = await mountedDestination.prepareAndFence();
-          if (
-            mountedHead.storeEpoch !== source.storeEpoch ||
-            mountedHead.documentId !== destinationHead.documentId ||
-            mountedHead.generation !== destinationHead.generation
-          ) {
-            throw new Error("The destination Page changed; reopen it before creating the Page.");
-          }
-          destinationHead = mountedHead;
-        }
-      }
-
-      const result = await applyLibraryModule(contentAccessContext, {
-        operationId: createUuidV7(),
-        storeEpoch: source.storeEpoch,
-        operation: {
-          kind: "create_page_mention",
-          pageId,
-          documentId: createUuidV7(),
-          title: title.trim() || "Untitled",
-          mentionHost: {
-            pageId: sourcePageContext.pageId,
-            documentId: hostHead.documentId,
-            expectedDocumentGeneration: hostHead.generation,
-            expectedDocumentHeadSeq: hostHead.expectedHeadSeq,
-            blockId,
-            expectedContent,
-            replacementContent,
-          },
-          destination: {
-            pageId: resolvedDestinationPageId,
-            documentId: destinationHead.documentId,
-            expectedDocumentGeneration: destinationHead.generation,
-            expectedDocumentHeadSeq: destinationHead.expectedHeadSeq,
-            insertion: { kind: "append" },
-          },
-        },
-      });
-      if (!result.ok) throw new Error(result.error.message);
-      if (
-        result.value.createdTarget?.kind !== "page" ||
-        result.value.createdTarget.pageId !== pageId ||
-        !result.value.structuralEdit?.history
-      ) {
-        throw new Error("Core did not atomically create the Page mention.");
-      }
-      structuralEditingController.current?.adoptStructuralResult(
-        result.value.structuralEdit,
+      const session = structuralEditingController.current;
+      if (!session) throw new Error("The editor is not ready to create a Page mention.");
+      await session.createPageMention({
+        pageId,
+        title,
+        hostPageId: sourcePageContext.pageId,
         blockId,
-      );
+        expectedContent,
+        replacementContent,
+        destinationPageId,
+      });
       return { pageId };
     },
-    [
-      contentAccessContext,
-      source.documentId,
-      source.generation,
-      source.storeEpoch,
-      sourcePageContext,
-      structuralEditingController,
-      structuralMutationParticipant,
-    ],
+    [sourcePageContext, structuralEditingController, structuralMutationParticipant],
   );
 
   const handleEditorClickCapture = useCallback(
@@ -2854,6 +2751,7 @@ function NfmEditorInstance({
           editorSession.setShouldRestoreEditorFocus(false);
         }}
       >
+        <SurfaceHistoryStatus controls={structuralEditingSession.historyControls} />
         {searchOpen && (
           <div className="pointer-events-none sticky top-2 z-90 flex h-0 justify-end">
             <div className="pointer-events-auto mr-2 flex w-fit max-w-[calc(100%-16px)] flex-col self-start overflow-hidden rounded-lg border-[0.5px] border-(--border) bg-(--card) shadow-[0_2px_8px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.32),0_0_0_1px_rgba(255,255,255,0.06)]">

@@ -203,6 +203,9 @@ pub struct DocumentEffectRef {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LocalProjectionScope {
+    StructuralHistory {
+        project_id: String,
+    },
     Library {
         library_id: String,
     },
@@ -395,6 +398,8 @@ pub struct AuthorizedDeliveryAtom {
 pub struct AuthorizedDocumentEffect {
     pub reference: DocumentEffectRef,
     pub inline_update: Option<Vec<u8>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history_fence: Option<crate::document::DocumentHistoryFence>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize, ToSchema)]

@@ -139,7 +139,7 @@ pub(crate) struct OccurrencePageCloneInput<'a> {
     pub(crate) recurrence_json: &'a str,
     pub(crate) reminders_json: &'a str,
     pub(crate) schedule_timezone: Option<&'a str>,
-    pub(crate) primary_rank_key: Option<&'a str>,
+    pub(crate) primary_placement: crate::database::ViewOrderPlacement<'a>,
     pub(crate) now: &'a str,
 }
 
@@ -939,42 +939,29 @@ pub(crate) fn clone_page_for_occurrence(
 
     let positions = connection
         .prepare(
-            "SELECT position.view_id, position.rank_key, \
-               CASE WHEN container.default_view_id = view.id THEN 1 ELSE 0 END \
-             FROM database_view_page_positions position \
-             JOIN database_views view ON view.id = position.view_id AND view.lifecycle = 'active' \
-             JOIN database_containers container ON container.block_id = view.database_block_id \
-             WHERE position.page_block_id = ?1 AND view.database_block_id = ?2 \
-               AND view.data_source_id = ?3 ORDER BY position.view_id",
+            "SELECT view.id, container.default_view_id = view.id
+             FROM database_views view
+             JOIN database_containers container ON container.block_id = view.database_block_id
+             WHERE view.database_block_id = ?1 AND view.data_source_id = ?2
+               AND view.lifecycle = 'active' ORDER BY view.id",
         )?
-        .query_map(
-            params![
-                input.source_page_id,
-                source.database_id,
-                source.data_source_id
-            ],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
-                ))
-            },
-        )?
+        .query_map(params![source.database_id, source.data_source_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?))
+        })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    for (view_id, rank_key, primary) in positions {
-        let rank_key = if primary == 1 {
-            input
-                .primary_rank_key
-                .ok_or_else(|| invalid("Occurrence clone requires a primary View rank"))?
+    for (view_id, primary) in positions {
+        let placement = if primary {
+            input.primary_placement
         } else {
-            rank_key.as_str()
+            crate::database::ViewOrderPlacement::After(input.source_page_id)
         };
-        connection.execute(
-            "INSERT INTO database_view_page_positions( \
-               view_id, page_block_id, rank_key, revision, created_at, updated_at \
-             ) VALUES (?1, ?2, ?3, 1, ?4, ?4)",
-            params![view_id, input.new_page_id, rank_key, input.now],
+        // Archived occurrences still have a retained position for later restore.
+        crate::database::restore_page_view_position(
+            connection,
+            &view_id,
+            input.new_page_id,
+            placement,
+            input.now,
         )?;
     }
     crate::database::refresh_copied_page_projection(
@@ -1719,6 +1706,7 @@ mod tests {
 
     fn context_for(project_id: &str) -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId(project_id.to_owned())),

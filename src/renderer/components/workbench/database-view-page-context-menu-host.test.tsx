@@ -1,4 +1,5 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
+import { createRef } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { dataSourcePagePropertyMenuSourceFromBindings } from "@/components/database/data-source-page-property-menu-source";
@@ -23,6 +24,40 @@ const session = (pageId: string): DatabaseViewPageMenuSession => ({
 });
 
 describe("DatabaseViewPageContextMenuHost", () => {
+  test("returns focus to the surviving View when a menu action removes its Page target", async () => {
+    const returnFocusRef = createRef<HTMLDivElement>();
+    const renderHost = (showPage: boolean) => (
+      <DatabaseViewPageContextMenuHost resolveSession={session} returnFocusRef={returnFocusRef}>
+        <div ref={returnFocusRef} tabIndex={0}>
+          {showPage ? (
+            <button type="button" data-database-view-page-menu-target="page-1">
+              Page
+            </button>
+          ) : null}
+          <button type="button">Another Page</button>
+        </div>
+      </DatabaseViewPageContextMenuHost>
+    );
+    const view = render(renderHost(true));
+    await act(async () => {
+      fireEvent.contextMenu(view.getByRole("button", { name: "Page" }), {
+        clientX: 80,
+        clientY: 60,
+      });
+      await Promise.resolve();
+    });
+    const search = await view.findByRole("textbox", {
+      name: "Search Page actions and properties",
+    });
+    await waitFor(() => expect(search).toBe(document.activeElement));
+    view.rerender(renderHost(false));
+    await act(async () => {
+      fireEvent.keyDown(search, { key: "Escape" });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(document.activeElement).toBe(returnFocusRef.current));
+  });
+
   test("opens one View-owned menu for the Page target without rerendering rows", async () => {
     const resolveSession = vi.fn((targetKey: string) => session(targetKey));
     const renderRows = vi.fn();

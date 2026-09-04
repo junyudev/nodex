@@ -34,6 +34,7 @@ overrides:
 patchedDependencies:
   '@y/prosemirror@2.0.0-6': 0571932eed7c6e4ffb73defa770d0e67e7b37168f173eecaf8ec49378a7f767e
   y-prosemirror@1.3.7: 1455252e42a8d5765c73ee98bfda5934fb8398a5a8f15cc58a44c1d8439ef375
+  yjs@13.6.31: 550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807
 
 importers:
 
@@ -80,10 +81,10 @@ importers:
         version: 14.0.0
       y-protocols:
         specifier: 1.0.7
-        version: 1.0.7(yjs@13.6.31)
+        version: 1.0.7(yjs@13.6.31(patch_hash=550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807))
       yjs:
         specifier: 13.6.31
-        version: 13.6.31
+        version: 13.6.31(patch_hash=550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807)
     devDependencies:
       '@atlaskit/pragmatic-drag-and-drop':
         specifier: 2.0.0
@@ -620,13 +621,13 @@ importers:
         version: 1.42.2
       y-prosemirror:
         specifier: ^1.3.7
-        version: 1.3.7(patch_hash=1455252e42a8d5765c73ee98bfda5934fb8398a5a8f15cc58a44c1d8439ef375)(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.42.2)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
+        version: 1.3.7(patch_hash=1455252e42a8d5765c73ee98bfda5934fb8398a5a8f15cc58a44c1d8439ef375)(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.42.2)(y-protocols@1.0.7(yjs@13.6.31(patch_hash=550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807)))(yjs@13.6.31(patch_hash=550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807))
       y-protocols:
         specifier: ^1.0.6
-        version: 1.0.7(yjs@13.6.31)
+        version: 1.0.7(yjs@13.6.31(patch_hash=550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807))
       yjs:
         specifier: 13.6.31
-        version: 13.6.31
+        version: 13.6.31(patch_hash=550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807)
 
   third_party/blocknote/packages/diagram-block:
     dependencies:
@@ -15845,19 +15846,19 @@ snapshots:
 
   xtend@4.0.2: {}
 
-  y-prosemirror@1.3.7(patch_hash=1455252e42a8d5765c73ee98bfda5934fb8398a5a8f15cc58a44c1d8439ef375)(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.42.2)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31):
+  y-prosemirror@1.3.7(patch_hash=1455252e42a8d5765c73ee98bfda5934fb8398a5a8f15cc58a44c1d8439ef375)(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-view@1.42.2)(y-protocols@1.0.7(yjs@13.6.31(patch_hash=550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807)))(yjs@13.6.31(patch_hash=550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807)):
     dependencies:
       lib0: 0.2.117
       prosemirror-model: 1.25.11
       prosemirror-state: 1.4.4
       prosemirror-view: 1.42.2
-      y-protocols: 1.0.7(yjs@13.6.31)
-      yjs: 13.6.31
+      y-protocols: 1.0.7(yjs@13.6.31(patch_hash=550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807))
+      yjs: 13.6.31(patch_hash=550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807)
 
-  y-protocols@1.0.7(yjs@13.6.31):
+  y-protocols@1.0.7(yjs@13.6.31(patch_hash=550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807)):
     dependencies:
       lib0: 0.2.117
-      yjs: 13.6.31
+      yjs: 13.6.31(patch_hash=550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807)
 
   y18n@5.0.8: {}
 
@@ -15883,7 +15884,7 @@ snapshots:
       y18n: 5.0.8
       yargs-parser: 21.1.1
 
-  yjs@13.6.31:
+  yjs@13.6.31(patch_hash=550542e4306fed9ac18708e188852566c163157de761dd4d5839a3cad5d07807):
     dependencies:
       lib0: 0.2.117
 

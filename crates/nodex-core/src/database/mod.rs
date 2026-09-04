@@ -1,7 +1,9 @@
 pub(crate) mod authorization;
 mod genesis;
 mod list_drag;
+mod manual_order;
 mod mutation;
+mod order_read;
 pub(crate) mod page_key;
 mod projection_delta;
 pub(crate) mod property_semantics;
@@ -15,6 +17,19 @@ mod window;
 pub(crate) const MAX_PROPERTY_OPTIONS: usize = 100;
 pub(crate) const MAX_DATA_SOURCE_PROPERTIES: usize = 200;
 pub(crate) const MAX_DATABASE_VIEWS: usize = 200;
+
+pub(crate) use order_read::{
+    POSITION_RANK, POSITION_REVISION, order_rank as view_order_rank,
+    position_joins as view_position_joins, preceding_positions as view_preceding_positions,
+};
+
+pub(crate) use manual_order::{
+    PageOrderAnchors, RetainedPositionWitness, ViewOrderPlacement, capture_frozen_positions,
+    capture_page_order_anchors, finish_order_attempt, forget_page as forget_page_view_order,
+    initialize_copied_view_order, join_page as join_page_view_orders,
+    position_page as position_page_in_view, restore_page_order_anchors,
+    restore_page_position as restore_page_view_position, retained_position_witnesses,
+};
 
 pub(crate) use genesis::create_database_authority_records;
 pub(crate) use mutation::apply_as_collaborator as apply_intents_as_collaborator;
@@ -100,6 +115,21 @@ pub struct DatabaseModule {
 }
 
 impl DatabaseModule {
+    /// Continue durable View preparation without entering a user mutation.
+    pub fn maintain_view_orders(&self) -> Result<bool, CoreError> {
+        let Some(writer) = &self.writer else {
+            return Ok(false);
+        };
+        writer
+            .call(|connection| {
+                crate::infrastructure::sqlite::with_immediate_transaction(
+                    connection,
+                    |transaction| manual_order::maintain_order_slice(transaction),
+                )
+            })
+            .map_err(core_error)
+    }
+
     pub fn new(
         profile_id: impl Into<String>,
         library_id: impl Into<String>,
@@ -262,7 +292,7 @@ fn core_error(error: StoreError) -> CoreError {
         code,
         message: error.message,
         retryable: error.retryable,
-        recovery: CoreErrorRecovery::None,
+        recovery: error.recovery.unwrap_or(CoreErrorRecovery::None),
     }
 }
 
@@ -290,6 +320,7 @@ fn corrupt(message: &str) -> StoreError {
 
 #[cfg(test)]
 mod tests {
+    mod manual_order;
     use base64::prelude::{BASE64_URL_SAFE_NO_PAD, Engine as _};
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -394,6 +425,7 @@ mod tests {
 
     fn context() -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -404,6 +436,7 @@ mod tests {
 
     fn library_context(adapter: AdapterKind) -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: None,
@@ -930,12 +963,8 @@ mod tests {
                          ) VALUES (?1, 'membership:row', 'task_parent', 'relation', 'null', 1, ?2)",
                         params![SOURCE_ID, NOW],
                     )?;
-                    transaction.execute(
-                        "INSERT INTO database_view_page_positions(\
-                           view_id, page_block_id, rank_key, revision, created_at, updated_at\
-                         ) VALUES (?1, 'page:database-row', 'a', 1, ?2, ?2)",
-                        params![VIEW_ID, NOW],
-                    )?;
+                    super::manual_order::position_page(transaction, VIEW_ID, "page:database-row",
+                        super::manual_order::ViewOrderPlacement::End, NOW)?;
                     transaction.execute(
                         "UPDATE page_read_model SET parent_kind = 'data_source', parent_id = ?1, \
                            library_rank_key = NULL, membership_id = 'membership:row', \
@@ -2302,7 +2331,429 @@ mod tests {
         rank_key: Option<&'static str>,
     }
 
-    fn seed_grouped_fixture(kernel: &SqliteStoreKernel, rows: Vec<GroupRowSpec>) -> DatabaseModule {
+    #[test]
+    fn large_source_commit_projection_has_bounded_writer_work() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        let mut observations = Vec::new();
+        for count in [1_000, 10_000, 100_000] {
+            let directory = tempdir().expect("Profile");
+            let home = directory.path().canonicalize().expect("absolute Profile");
+            let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
+            let _module = seed_grouped_fixture(
+                &kernel,
+                vec![GroupRowSpec {
+                    page_id: "page:changed",
+                    title: "Changed",
+                    value_json: None,
+                    rank_key: Some("a"),
+                }],
+            );
+            let observation = kernel.writer().call_with_budget(std::time::Duration::from_secs(60),
+                crate::infrastructure::sqlite::QueryCancellation::new(), move |connection| {
+                with_immediate_transaction(connection, |transaction| {
+                    // Pressure-only storage fixture: stale/archived candidates must
+                    // count toward writer work even when no row can be displayed.
+                    transaction.execute(
+                        "WITH RECURSIVE ids(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM ids WHERE n<?1)
+                         INSERT INTO blocks(id, library_id, type, lifecycle, created_at, updated_at)
+                         SELECT printf('page:pressure-%06d', n), 'library-1', 'page', 'archived', ?2, ?2 FROM ids",
+                        params![count as i64, NOW],
+                    )?;
+                    transaction.execute(
+                        "INSERT INTO documents(id, library_id, schema_key, schema_version, created_at, updated_at)
+                         SELECT 'document:' || id, library_id, 'nodex.page', 1, ?1, ?1
+                         FROM blocks WHERE lifecycle='archived'",
+                        [NOW],
+                    )?;
+                    transaction.execute(
+                        "INSERT INTO block_documents(block_id, library_id, document_id, created_at)
+                         SELECT id, library_id, 'document:' || id, ?1 FROM blocks WHERE lifecycle='archived'",
+                        [NOW],
+                    )?;
+                    transaction.execute(
+                        "INSERT INTO pages(block_id, library_id, document_id, parent_kind, parent_id, created_at, updated_at)
+                         SELECT id, library_id, 'document:' || id, 'data_source', ?1, ?2, ?2
+                         FROM blocks WHERE lifecycle='archived'",
+                        params![SOURCE_ID, NOW],
+                    )?;
+                    transaction.execute(
+                        "INSERT INTO data_source_page_memberships(id, data_source_id, page_block_id, revision, created_at)
+                         SELECT 'membership:' || id, ?1, id, 1, ?2 FROM blocks WHERE lifecycle='archived'",
+                        params![SOURCE_ID, NOW],
+                    )?;
+                    let commit = crate::infrastructure::local_commit::begin(
+                        transaction, "epoch-1", "operation:projection-pressure", &"a".repeat(64), NOW,
+                    )?;
+                    let ticks = Arc::new(AtomicUsize::new(0));
+                    let observed = Arc::clone(&ticks);
+                    transaction.progress_handler(100, Some(move || {
+                        observed.fetch_add(1, Ordering::Relaxed);
+                        false
+                    }))?;
+                    let compiled = record_local_projection_delta(
+                        transaction, &commit, "library-1",
+                        &ProjectionImpact::Resources {
+                            page_ids: vec!["page:changed".to_owned()],
+                            view_ids: vec![VIEW_ID.to_owned()],
+                            database_ids: vec![], data_source_ids: vec![], document_heads: vec![],
+                        }, &[],
+                    );
+                    transaction.progress_handler(0, None::<fn() -> bool>)?;
+                    Ok((compiled?, ticks.load(Ordering::Relaxed) * 100))
+                })
+            }).expect("compile pressure projection");
+            observations.push(observation);
+        }
+        eprintln!("projection writer observations: {observations:?}");
+        assert!(
+            observations
+                .iter()
+                .all(|(_, steps)| *steps <= observations[0].1 * 4)
+        );
+        assert!(
+            observations
+                .iter()
+                .all(|(metrics, _)| metrics.budget_fallbacks == 1)
+        );
+    }
+
+    #[test]
+    fn manual_position_commands_keep_writer_work_bounded_as_source_grows() {
+        measure_manual_position_commands(
+            &[1_000, 10_000, 100_000],
+            &[(1, false), (64, false), (64, true)],
+        );
+    }
+
+    #[test]
+    #[ignore = "explicit maximum-selection pressure gate; run without competing workloads"]
+    fn maximum_manual_position_commands_keep_writer_work_bounded() {
+        measure_manual_position_commands(&[10_000, 100_000], &[(4_096, false)]);
+    }
+
+    fn measure_manual_position_commands(counts: &[usize], selections: &[(usize, bool)]) {
+        use nodex_core_contracts::database::DatabasePagePosition;
+        use rusqlite::{
+            StatementStatus,
+            trace::{TraceEvent, TraceEventCodes},
+        };
+        use std::cell::RefCell;
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+
+        type StatementWork = (Arc<AtomicUsize>, std::collections::HashMap<String, i32>);
+        thread_local! {
+            static WORK: RefCell<Option<StatementWork>> = const { RefCell::new(None) };
+        }
+        // Trace profiling coexists with the writer's real deadline handler.
+        // Subtract each execution's initial counter: prepared statement reuse
+        // must not charge cumulative work from earlier executions again.
+        fn observe_statement(event: TraceEvent<'_>) {
+            WORK.with(|work| {
+                let mut work = work.borrow_mut();
+                let Some((counter, starts)) = work.as_mut() else {
+                    return;
+                };
+                match event {
+                    TraceEvent::Stmt(statement, sql) if !sql.starts_with("--") => {
+                        starts.insert(
+                            statement.sql().into_owned(),
+                            statement.get_status(StatementStatus::VmStep),
+                        );
+                    }
+                    TraceEvent::Profile(statement, _) => {
+                        let start = starts.remove(statement.sql().as_ref()).unwrap_or(0);
+                        counter.fetch_add(
+                            (statement.get_status(StatementStatus::VmStep) - start).max(0) as usize,
+                            Ordering::Relaxed,
+                        );
+                    }
+                    _ => {}
+                }
+            });
+        }
+
+        fn measure(
+            kernel: &SqliteStoreKernel,
+            module: &DatabaseModule,
+            operation_id: String,
+            intent: DatabaseIntent,
+        ) -> (
+            nodex_core_contracts::database::DatabaseDataEditUndoRecipe,
+            usize,
+            std::time::Duration,
+        ) {
+            let ticks = Arc::new(AtomicUsize::new(0));
+            let observed = Arc::clone(&ticks);
+            kernel
+                .writer()
+                .call(move |connection| {
+                    WORK.with(|work| *work.borrow_mut() = Some((observed, Default::default())));
+                    connection.trace_v2(
+                        TraceEventCodes::SQLITE_TRACE_STMT | TraceEventCodes::SQLITE_TRACE_PROFILE,
+                        Some(observe_statement),
+                    );
+                    Ok(())
+                })
+                .unwrap();
+            let started = std::time::Instant::now();
+            let result = module.apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    operation_id,
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: vec![intent],
+                },
+            );
+            let elapsed = started.elapsed();
+            kernel
+                .writer()
+                .call(|connection| {
+                    connection.trace_v2(TraceEventCodes::empty(), None);
+                    WORK.with(|work| *work.borrow_mut() = None);
+                    Ok(())
+                })
+                .unwrap();
+            let result = result.expect("public position operation commits");
+            let DatabaseOperationOutcome::DataEdit {
+                undo_recipe: Some(recipe),
+                ..
+            } = &result.committed.receipt.operation_outcomes[0]
+            else {
+                panic!("complete position inverse");
+            };
+            (
+                recipe.as_ref().clone(),
+                ticks.load(Ordering::Relaxed),
+                elapsed,
+            )
+        }
+
+        let mut smallest = BTreeMap::new();
+        for &count in counts {
+            let directory = tempdir().unwrap();
+            let kernel =
+                SqliteStoreKernel::open_test(&directory.path().canonicalize().unwrap()).unwrap();
+            let module = seed_grouped_fixture(
+                &kernel,
+                vec![GroupRowSpec {
+                    page_id: "page:changed",
+                    title: "Moved Page",
+                    value_json: None,
+                    rank_key: Some("a"),
+                }],
+            );
+            kernel.writer().call_with_budget(
+                std::time::Duration::from_secs(60), crate::infrastructure::sqlite::QueryCancellation::new(),
+                move |connection| with_immediate_transaction(connection, |transaction| {
+                    // Storage pressure supplements the authoritative moved Page.
+                    // These rows only enlarge its canonical unfiltered order.
+                    transaction.execute(
+                        "WITH RECURSIVE ids(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM ids WHERE n<?1)
+                         INSERT INTO blocks(id, library_id, type, lifecycle, created_at, updated_at)
+                         SELECT printf('page:rank-pressure-%06d', n), 'library-1', 'page', 'active', ?2, ?2 FROM ids",
+                        params![count as i64, NOW],
+                    )?;
+                    transaction.execute("INSERT INTO documents(id, library_id, schema_key, schema_version, created_at, updated_at)
+                         SELECT 'document:' || id, library_id, 'nodex.page', 1, ?1, ?1 FROM blocks WHERE id LIKE 'page:rank-pressure-%'", [NOW])?;
+                    transaction.execute("INSERT INTO block_documents(block_id, library_id, document_id, created_at)
+                         SELECT id, library_id, 'document:' || id, ?1 FROM blocks WHERE id LIKE 'page:rank-pressure-%'", [NOW])?;
+                    transaction.execute("INSERT INTO pages(block_id, library_id, document_id, parent_kind, parent_id, created_at, updated_at)
+                         SELECT id, library_id, 'document:' || id, 'data_source', ?1, ?2, ?2 FROM blocks WHERE id LIKE 'page:rank-pressure-%'", params![SOURCE_ID, NOW])?;
+                    transaction.execute("INSERT INTO data_source_page_memberships(id, data_source_id, page_block_id, revision, created_at)
+                         SELECT 'membership:' || id, ?1, id, 1, ?2 FROM blocks WHERE id LIKE 'page:rank-pressure-%'", params![SOURCE_ID, NOW])?;
+                    transaction.execute("INSERT INTO database_view_order_rows(view_id, generation, page_block_id, rank_key, default_epoch, revision, is_active, is_task_root, created_at, updated_at)
+                         SELECT ?1, state.active_generation, block.id,
+                           printf('%016x0000000000000000', CAST(substr(block.id, -6) AS INTEGER) + 1),
+                           NULL, 1, 1, 1, ?2, ?2
+                         FROM blocks block JOIN database_view_order_state state ON state.view_id = ?1
+                         WHERE block.id LIKE 'page:rank-pressure-%'", params![VIEW_ID, NOW])?;
+                    Ok(())
+                }),
+            ).unwrap();
+
+            let pressure_id = |index| format!("page:rank-pressure-{index:06}");
+            let mut revisions = BTreeMap::<String, i64>::new();
+            let mut latencies = BTreeMap::<usize, Vec<std::time::Duration>>::new();
+            for descending in [false, true] {
+                kernel.writer().call(move |connection| {
+                    // Sort direction is independent of storage-pressure setup.
+                    connection.execute(
+                        "UPDATE database_views SET config_json = json_set(config_json, '$.rules.sorts[0].direction', ?1) WHERE id = ?2",
+                        params![if descending { "desc" } else { "asc" }, VIEW_ID],
+                    )?;
+                    Ok(())
+                }).unwrap();
+                for &(selected_count, discrete) in selections {
+                    if selected_count > count {
+                        continue;
+                    }
+                    let selected = if selected_count == 1 {
+                        vec!["page:changed".to_owned()]
+                    } else {
+                        (0..selected_count)
+                            .map(|index| {
+                                pressure_id(if discrete {
+                                    (index + 1) * 10
+                                } else {
+                                    index + 10
+                                })
+                            })
+                            .collect::<Vec<_>>()
+                    };
+                    let mut original = selected.clone();
+                    if descending {
+                        original.reverse();
+                    }
+                    let before_runs = if selected_count == 1 {
+                        vec![
+                            nodex_core_contracts::database::DatabaseDataEditPositionRun {
+                                page_ids: original,
+                                before_page_id: (!descending).then(|| pressure_id(1)),
+                            },
+                        ]
+                    } else if discrete {
+                        original
+                            .into_iter()
+                            .map(|page_id| {
+                                let index = page_id
+                                    .rsplit('-')
+                                    .next()
+                                    .unwrap()
+                                    .parse::<usize>()
+                                    .unwrap();
+                                nodex_core_contracts::database::DatabaseDataEditPositionRun {
+                                    page_ids: vec![page_id],
+                                    before_page_id: Some(pressure_id(if descending {
+                                        index - 1
+                                    } else {
+                                        index + 1
+                                    })),
+                                }
+                            })
+                            .collect()
+                    } else {
+                        vec![
+                            nodex_core_contracts::database::DatabaseDataEditPositionRun {
+                                page_ids: original,
+                                before_page_id: Some(pressure_id(if descending {
+                                    9
+                                } else {
+                                    selected_count + 10
+                                })),
+                            },
+                        ]
+                    };
+                    let anchor = pressure_id(if descending { 1 } else { count });
+                    let tag = format!("{count}:{descending}:{selected_count}:{discrete}");
+                    let (forward, forward_steps, forward_elapsed) = measure(
+                        &kernel,
+                        &module,
+                        format!("position:forward:{tag}"),
+                        DatabaseIntent::PositionPages {
+                            view_id: VIEW_ID.to_owned(),
+                            pages: selected
+                                .iter()
+                                .map(|page_id| DatabasePagePosition {
+                                    page_id: page_id.clone(),
+                                    expected_position_revision: *revisions
+                                        .get(page_id)
+                                        .unwrap_or(&1),
+                                })
+                                .collect(),
+                            before_page_id: Some(anchor.clone()),
+                        },
+                    );
+                    assert_eq!(forward.position_states[0].before_runs, before_runs);
+                    assert_eq!(
+                        forward.position_states[0].after_runs,
+                        vec![
+                            nodex_core_contracts::database::DatabaseDataEditPositionRun {
+                                page_ids: selected.clone(),
+                                before_page_id: Some(anchor),
+                            }
+                        ]
+                    );
+                    let (undo, undo_steps, undo_elapsed) = measure(
+                        &kernel,
+                        &module,
+                        format!("position:undo:{tag}"),
+                        DatabaseIntent::ReverseDataEdit {
+                            recipe: forward.clone(),
+                        },
+                    );
+                    assert_eq!(undo.position_states[0].after_runs, before_runs);
+                    let (redo, redo_steps, redo_elapsed) = measure(
+                        &kernel,
+                        &module,
+                        format!("position:redo:{tag}"),
+                        DatabaseIntent::ReverseDataEdit { recipe: undo },
+                    );
+                    assert_eq!(
+                        redo.position_states[0].after_runs,
+                        forward.position_states[0].after_runs
+                    );
+                    let observations = [forward_steps, undo_steps, redo_steps];
+                    latencies.entry(selected_count).or_default().extend([
+                        forward_elapsed,
+                        undo_elapsed,
+                        redo_elapsed,
+                    ]);
+                    eprintln!(
+                        "public_position rows={count} selected={selected_count} descending={descending} discrete={discrete} forward_undo_redo_vm_steps={observations:?}"
+                    );
+                    for (phase, steps) in observations.into_iter().enumerate() {
+                        let baseline = *smallest
+                            .entry((descending, selected_count, discrete, phase))
+                            .or_insert(steps);
+                        assert!(
+                            steps > 0 && steps <= baseline * 4,
+                            "ready-order writer work must not grow with its whole Source"
+                        );
+                    }
+                    // Restore the known initial sequence before the next matrix cell.
+                    // Successful replay also validates the actual post-image, not just
+                    // an inverse payload constructed by the forward implementation.
+                    measure(
+                        &kernel,
+                        &module,
+                        format!("position:reset:{tag}"),
+                        DatabaseIntent::ReverseDataEdit { recipe: redo },
+                    );
+                    for page_id in selected {
+                        *revisions.entry(page_id).or_insert(1) += 4;
+                    }
+                }
+            }
+            // Descriptive public-call latency, including queue/receipt work and
+            // trace overhead. This mixed matrix is not a CI timing threshold.
+            for (selected, mut samples) in latencies {
+                samples.sort();
+                let percentile =
+                    |percent: usize| samples[(samples.len() * percent).div_ceil(100) - 1];
+                eprintln!(
+                    "public_position_latency rows={count} selected={selected} samples={} p50={:?} p95={:?} max={:?}",
+                    samples.len(),
+                    percentile(50),
+                    percentile(95),
+                    samples.last().unwrap()
+                );
+            }
+        }
+    }
+
+    fn seed_grouped_fixture(
+        kernel: &SqliteStoreKernel,
+        mut rows: Vec<GroupRowSpec>,
+    ) -> DatabaseModule {
+        rows.sort_by_key(|row| (row.rank_key.is_none(), row.rank_key, row.page_id));
         kernel
             .writer()
             .call(|connection| {
@@ -2407,13 +2858,14 @@ mod tests {
                                 params![SOURCE_ID, membership_id, value_json, NOW],
                             )?;
                         }
-                        if let Some(rank_key) = row.rank_key {
-                            transaction.execute(
-                                "INSERT INTO database_view_page_positions(\
-                                   view_id, page_block_id, rank_key, revision, \
-                                   created_at, updated_at\
-                                 ) VALUES (?1, ?2, ?3, 1, ?4, ?4)",
-                                params![VIEW_ID, row.page_id, rank_key, NOW],
+                        super::manual_order::join_page(transaction, row.page_id, NOW)?;
+                        if row.rank_key.is_some() {
+                            super::manual_order::position_page(
+                                transaction,
+                                VIEW_ID,
+                                row.page_id,
+                                super::manual_order::ViewOrderPlacement::End,
+                                NOW,
                             )?;
                         }
                         let values_json = row
@@ -5143,162 +5595,337 @@ mod tests {
 
     #[test]
     fn semantic_list_move_uses_default_view_positions_when_sort_is_empty() {
-        let directory = tempdir().expect("Profile");
-        let home = directory.path().canonicalize().expect("absolute Profile");
-        let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
-        let module = seed_grouped_fixture(
-            &kernel,
-            vec![
-                GroupRowSpec {
-                    page_id: "page:default-parent",
-                    title: "Default parent",
-                    value_json: Some("\"triage\""),
-                    rank_key: Some("a"),
-                },
-                GroupRowSpec {
-                    page_id: "page:default-child",
-                    title: "Default child",
-                    value_json: Some("\"triage\""),
-                    rank_key: Some("b"),
-                },
-                GroupRowSpec {
-                    page_id: "page:default-target",
-                    title: "Default target",
-                    value_json: Some("\"triage\""),
-                    rank_key: Some("c"),
-                },
-            ],
-        );
-        apply_task_parent(
-            &module,
-            "operation:default-list-child",
-            &[("page:default-child", 1)],
-            Some("page:default-parent"),
-            None,
-        )
-        .expect("nest default List child");
-        let mut config = view_config(
-            json!({ "kind": "group", "operator": "and", "children": [] }),
-            None,
-            &["status", "priority", "estimate", "tags"],
-        );
-        config["rules"]["sorts"] = json!([]);
-        config["presentation"]["hierarchy"] =
-            json!({ "showSubPages": true, "nestedSubPages": true });
-        module
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: DATABASE_CONTRACT_VERSION,
-                    operation_id: "operation:default-list-view".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: vec![DatabaseIntent::PutView {
-                        database_id: DATABASE_ID.to_owned(),
-                        data_source_id: SOURCE_ID.to_owned(),
-                        view_id: VIEW_ID.to_owned(),
-                        expected_revision: 1,
-                        name: "Default position List".to_owned(),
-                        layout: DatabaseViewLayout::List,
-                        definition: view_definition(config),
-                        is_default: true,
-                        before_view_id: None,
-                    }],
-                },
+        for extra_parent in [None, Some("page:default-target")] {
+            let directory = tempdir().expect("Profile");
+            let home = directory.path().canonicalize().expect("absolute Profile");
+            let kernel = SqliteStoreKernel::open_test(&home).expect("fresh store");
+            let module = seed_grouped_fixture(
+                &kernel,
+                vec![
+                    GroupRowSpec {
+                        page_id: "page:default-parent",
+                        title: "Default parent",
+                        value_json: Some("\"triage\""),
+                        rank_key: Some("a"),
+                    },
+                    GroupRowSpec {
+                        page_id: "page:default-child",
+                        title: "Default child",
+                        value_json: Some("\"triage\""),
+                        rank_key: Some("b"),
+                    },
+                    GroupRowSpec {
+                        page_id: "page:default-target",
+                        title: "Default target",
+                        value_json: Some("\"triage\""),
+                        rank_key: Some("c"),
+                    },
+                    GroupRowSpec {
+                        page_id: "page:default-extra",
+                        title: "Another selected root",
+                        value_json: Some("\"triage\""),
+                        rank_key: Some("d"),
+                    },
+                ],
+            );
+            apply_task_parent(
+                &module,
+                "operation:default-list-child",
+                &[("page:default-child", 1)],
+                Some("page:default-parent"),
+                None,
             )
-            .expect("configure default-position List");
+            .expect("nest default List child");
+            if let Some(parent) = extra_parent {
+                apply_task_parent(
+                    &module,
+                    "operation:extra-list-child",
+                    &[("page:default-extra", 1)],
+                    Some(parent),
+                    None,
+                )
+                .expect("nest the second selection under another parent");
+            }
+            let mut config = view_config(
+                json!({ "kind": "group", "operator": "and", "children": [] }),
+                None,
+                &["status", "priority", "estimate", "tags"],
+            );
+            config["rules"]["sorts"] = json!([]);
+            config["presentation"]["hierarchy"] =
+                json!({ "showSubPages": true, "nestedSubPages": true });
+            module
+                .apply(
+                    &context(),
+                    ModuleApplyRequest {
+                        contract_version: DATABASE_CONTRACT_VERSION,
+                        operation_id: "operation:default-list-view".to_owned(),
+                        store_epoch: StoreEpoch("epoch-1".to_owned()),
+                        intent: vec![DatabaseIntent::PutView {
+                            database_id: DATABASE_ID.to_owned(),
+                            data_source_id: SOURCE_ID.to_owned(),
+                            view_id: VIEW_ID.to_owned(),
+                            expected_revision: 1,
+                            name: "Default position List".to_owned(),
+                            layout: DatabaseViewLayout::List,
+                            definition: view_definition(config),
+                            is_default: true,
+                            before_view_id: None,
+                        }],
+                    },
+                )
+                .expect("configure default-position List");
 
-        let before = read_list_window(&module, 50, None).expect("read default List");
-        let occurrence_key = |page_id: &str| {
-            before
-                .rows
-                .items
-                .iter()
-                .find_map(|row| match row {
-                    DatabaseListProjectionRow::Page {
-                        occurrence_key,
-                        summary,
-                        transient_kind: DatabaseListTransientKind::None,
-                        ..
-                    } if summary.page_id == page_id => Some(occurrence_key.clone()),
-                    _ => None,
-                })
-                .expect("concrete default List occurrence")
-        };
-        let source_key = occurrence_key("page:default-parent");
-        let target_key = occurrence_key("page:default-target");
-        let moved = module
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: DATABASE_CONTRACT_VERSION,
-                    operation_id: "operation:default-list-move".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: vec![DatabaseIntent::MoveListOccurrences {
-                        view_id: VIEW_ID.to_owned(),
-                        preferences_override: DatabaseViewPreferencesOverrideInput::default(),
-                        expected_projection: list_projection_expectation(&before),
-                        initiator_occurrence_key: source_key.clone(),
-                        selection: DatabaseListMoveSelection::Explicit {
-                            occurrence_keys: vec![source_key],
-                        },
-                        target: DatabaseListMoveTarget::Page {
-                            occurrence_key: target_key,
-                            edge: DatabaseListMoveEdge::After,
-                        },
-                    }],
-                },
-            )
-            .expect("move a subtree in default position order");
-        let DatabaseOperationOutcome::ListOccurrenceMove { undo_recipe, .. } =
-            moved.committed.receipt.operation_outcomes[0].clone()
-        else {
-            panic!("default List move outcome");
-        };
-        let page_order = |window: &nodex_core_contracts::database::DatabaseListWindow| {
-            window
-                .rows
-                .items
-                .iter()
-                .filter_map(|row| match row {
-                    DatabaseListProjectionRow::Page { summary, .. } => {
-                        Some(summary.page_id.clone())
-                    }
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-        };
-        let after = read_list_window(&module, 50, None).expect("read moved default List");
-        assert_eq!(
-            page_order(&after),
-            [
-                "page:default-target".to_owned(),
-                "page:default-parent".to_owned(),
-                "page:default-child".to_owned(),
+            let initial = read_list_window(&module, 50, None).expect("read initial positions");
+            let pages = [
+                "page:default-parent",
+                "page:default-target",
+                "page:default-extra",
             ]
-        );
+            .into_iter()
+            .map(|page_id| {
+                let revision = initial
+                    .rows
+                    .items
+                    .iter()
+                    .find_map(|row| match row {
+                        DatabaseListProjectionRow::Page { summary, .. }
+                            if summary.page_id == page_id =>
+                        {
+                            Some(summary.position_revision.unwrap_or(0))
+                        }
+                        _ => None,
+                    })
+                    .expect("selected Page position");
+                nodex_core_contracts::database::DatabasePagePosition {
+                    page_id: page_id.to_owned(),
+                    expected_position_revision: revision,
+                }
+            })
+            .collect();
+            module
+                .apply(
+                    &context(),
+                    ModuleApplyRequest {
+                        contract_version: DATABASE_CONTRACT_VERSION,
+                        operation_id: "operation:default-list-initial-order".to_owned(),
+                        store_epoch: StoreEpoch("epoch-1".to_owned()),
+                        intent: vec![DatabaseIntent::PositionPages {
+                            view_id: VIEW_ID.to_owned(),
+                            pages,
+                            before_page_id: None,
+                        }],
+                    },
+                )
+                .expect("establish the selection's discontiguous original order");
+            let before = read_list_window(&module, 50, None).expect("read default List");
+            let occurrence_key = |page_id: &str| {
+                before
+                    .rows
+                    .items
+                    .iter()
+                    .find_map(|row| match row {
+                        DatabaseListProjectionRow::Page {
+                            occurrence_key,
+                            summary,
+                            transient_kind: DatabaseListTransientKind::None,
+                            ..
+                        } if summary.page_id == page_id => Some(occurrence_key.clone()),
+                        _ => None,
+                    })
+                    .expect("concrete default List occurrence")
+            };
+            let source_key = occurrence_key("page:default-parent");
+            let target_key = occurrence_key("page:default-target");
+            let moved = module
+                .apply(
+                    &context(),
+                    ModuleApplyRequest {
+                        contract_version: DATABASE_CONTRACT_VERSION,
+                        operation_id: "operation:default-list-move".to_owned(),
+                        store_epoch: StoreEpoch("epoch-1".to_owned()),
+                        intent: vec![DatabaseIntent::MoveListOccurrences {
+                            view_id: VIEW_ID.to_owned(),
+                            preferences_override: DatabaseViewPreferencesOverrideInput::default(),
+                            expected_projection: list_projection_expectation(&before),
+                            initiator_occurrence_key: source_key.clone(),
+                            selection: DatabaseListMoveSelection::Explicit {
+                                occurrence_keys: vec![
+                                    source_key,
+                                    occurrence_key("page:default-extra"),
+                                ],
+                            },
+                            target: DatabaseListMoveTarget::Page {
+                                occurrence_key: target_key,
+                                edge: DatabaseListMoveEdge::After,
+                            },
+                        }],
+                    },
+                )
+                .expect("move a subtree in default position order");
+            let DatabaseOperationOutcome::ListOccurrenceMove { undo_recipe, .. } =
+                moved.committed.receipt.operation_outcomes[0].clone()
+            else {
+                panic!("default List move outcome");
+            };
+            let page_order = |window: &nodex_core_contracts::database::DatabaseListWindow| {
+                window
+                    .rows
+                    .items
+                    .iter()
+                    .filter_map(|row| match row {
+                        DatabaseListProjectionRow::Page { summary, .. } => {
+                            Some(summary.page_id.clone())
+                        }
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let after = read_list_window(&module, 50, None).expect("read moved default List");
+            assert_eq!(
+                page_order(&after),
+                [
+                    "page:default-target".to_owned(),
+                    "page:default-parent".to_owned(),
+                    "page:default-child".to_owned(),
+                    "page:default-extra".to_owned(),
+                ]
+            );
 
-        module
-            .apply(
-                &context(),
-                ModuleApplyRequest {
-                    contract_version: DATABASE_CONTRACT_VERSION,
-                    operation_id: "operation:default-list-undo".to_owned(),
-                    store_epoch: StoreEpoch("epoch-1".to_owned()),
-                    intent: vec![DatabaseIntent::UndoListOccurrenceMove {
-                        recipe: *undo_recipe,
-                    }],
-                },
+            let undone = module
+                .apply(
+                    &context(),
+                    ModuleApplyRequest {
+                        contract_version: DATABASE_CONTRACT_VERSION,
+                        operation_id: "operation:default-list-undo".to_owned(),
+                        store_epoch: StoreEpoch("epoch-1".to_owned()),
+                        intent: vec![DatabaseIntent::UndoListOccurrenceMove {
+                            recipe: *undo_recipe,
+                        }],
+                    },
+                )
+                .expect("undo the default position move");
+            let restored = read_list_window(&module, 50, None).expect("read restored default List");
+            assert_eq!(
+                page_order(&restored),
+                [
+                    "page:default-parent".to_owned(),
+                    "page:default-child".to_owned(),
+                    "page:default-target".to_owned(),
+                    "page:default-extra".to_owned(),
+                ]
+            );
+            let DatabaseOperationOutcome::ListOccurrenceMoveUndo {
+                undo_recipe: redo_recipe,
+                ..
+            } = undone.committed.receipt.operation_outcomes[0].clone()
+            else {
+                panic!("List Undo returns a complete inverse for Redo");
+            };
+            assert_eq!(redo_recipe.post_order_runs.len(), 2);
+            assert_eq!(
+                redo_recipe
+                    .post_parent_guards
+                    .iter()
+                    .find(|guard| guard.page_id == "page:default-extra")
+                    .expect("second selected root")
+                    .parent_page_id
+                    .as_deref(),
+                extra_parent
+            );
+            let parent_revision = || {
+                read_list_window(&module, 50, None)
+                    .expect("read parent revision")
+                    .rows
+                    .items
+                    .iter()
+                    .find_map(|row| match row {
+                        DatabaseListProjectionRow::Page { summary, .. }
+                            if summary.page_id == "page:default-extra" =>
+                        {
+                            Some(summary.task_parent_value_revision)
+                        }
+                        _ => None,
+                    })
+                    .expect("current parent revision")
+            };
+            apply_task_parent(
+                &module,
+                "operation:external-extra-parent",
+                &[("page:default-extra", parent_revision())],
+                Some("page:default-parent"),
+                None,
             )
-            .expect("undo the default position move");
-        let restored = read_list_window(&module, 50, None).expect("read restored default List");
-        assert_eq!(
-            page_order(&restored),
-            [
-                "page:default-parent".to_owned(),
-                "page:default-child".to_owned(),
-                "page:default-target".to_owned(),
-            ]
-        );
+            .expect("another writer changes a restored parent");
+            let external = read_list_window(&module, 50, None).expect("read external hierarchy");
+            let rejected = module
+                .apply(
+                    &context(),
+                    ModuleApplyRequest {
+                        contract_version: DATABASE_CONTRACT_VERSION,
+                        operation_id: "operation:default-list-conflicting-redo".to_owned(),
+                        store_epoch: StoreEpoch("epoch-1".to_owned()),
+                        intent: vec![DatabaseIntent::UndoListOccurrenceMove {
+                            recipe: *redo_recipe.clone(),
+                        }],
+                    },
+                )
+                .expect_err("Redo cannot overwrite a later parent change");
+            assert_eq!(rejected.code, CoreErrorCode::RevisionConflict);
+            assert_eq!(
+                read_list_window(&module, 50, None)
+                    .expect("read rejected Redo")
+                    .projection,
+                external.projection
+            );
+            apply_task_parent(
+                &module,
+                "operation:restore-extra-parent",
+                &[("page:default-extra", parent_revision())],
+                extra_parent,
+                None,
+            )
+            .expect("return the logical content without returning its old revision");
+            let redone = module
+                .apply(
+                    &context(),
+                    ModuleApplyRequest {
+                        contract_version: DATABASE_CONTRACT_VERSION,
+                        operation_id: "operation:default-list-redo".to_owned(),
+                        store_epoch: StoreEpoch("epoch-1".to_owned()),
+                        intent: vec![DatabaseIntent::UndoListOccurrenceMove {
+                            recipe: *redo_recipe,
+                        }],
+                    },
+                )
+                .expect("redo the default position move");
+            assert_eq!(
+                page_order(&read_list_window(&module, 50, None).expect("read redone List")),
+                page_order(&after),
+            );
+            let DatabaseOperationOutcome::ListOccurrenceMoveUndo { undo_recipe, .. } =
+                redone.committed.receipt.operation_outcomes[0].clone()
+            else {
+                panic!("Redo returns the next Undo");
+            };
+            module
+                .apply(
+                    &context(),
+                    ModuleApplyRequest {
+                        contract_version: DATABASE_CONTRACT_VERSION,
+                        operation_id: "operation:default-list-second-undo".to_owned(),
+                        store_epoch: StoreEpoch("epoch-1".to_owned()),
+                        intent: vec![DatabaseIntent::UndoListOccurrenceMove {
+                            recipe: *undo_recipe,
+                        }],
+                    },
+                )
+                .expect("undo the redone move");
+            assert_eq!(
+                page_order(&read_list_window(&module, 50, None).expect("read second Undo")),
+                page_order(&before)
+            );
+        }
     }
 
     #[test]
@@ -7190,11 +7817,12 @@ mod tests {
         kernel
             .writer()
             .call(|connection| {
-                connection.execute(
-                    "UPDATE database_view_page_positions \
-                     SET rank_key = 'z', revision = revision + 1, updated_at = ?1 \
-                     WHERE view_id = ?2 AND page_block_id = 'page:row-a'",
-                    params![NOW, VIEW_ID],
+                super::manual_order::position_page(
+                    connection,
+                    VIEW_ID,
+                    "page:row-a",
+                    super::manual_order::ViewOrderPlacement::End,
+                    NOW,
                 )?;
                 Ok(())
             })

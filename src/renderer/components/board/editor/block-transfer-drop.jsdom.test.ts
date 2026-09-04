@@ -6,6 +6,7 @@ import {
   resolveBlockTransferDocumentTarget,
   setupBlockTransferDocumentDrop,
   type BlockTransferDropEditor,
+  type BlockTransferDropBoundary,
 } from "./block-transfer-drop";
 import type { PublicBlockTransferIntent } from "../../../../shared/block-transfer-transport";
 import type { BoardCardDragData } from "../pragmatic-drag-data";
@@ -15,6 +16,19 @@ import {
 } from "../../workbench/block-transfer/cross-surface-drag";
 
 type ElementDropTargetArgs = Parameters<typeof dropTargetForElements>[0];
+type DeferredTransfer = Parameters<BlockTransferDropBoundary["structuralTransfer"]>[0];
+const completeStructuralTransfer =
+  (
+    commit: (
+      input: Omit<DeferredTransfer, "prepareHeads"> &
+        Awaited<ReturnType<DeferredTransfer["prepareHeads"]>>,
+    ) => Promise<void>,
+    admit: () => void = () => undefined,
+  ): BlockTransferDropBoundary["structuralTransfer"] =>
+  async ({ prepareHeads, ...input }) => {
+    admit();
+    await commit({ ...input, ...(await prepareHeads()) });
+  };
 
 const dropTargetHarness = vi.hoisted(() => ({
   registration: null as unknown,
@@ -73,6 +87,7 @@ const structuralPreparation = {
     expectedHeadSeq: 0,
   }),
   structuralTransfer: async () => undefined,
+  receivePages: async () => undefined,
 };
 
 describe("Board Card Block transfer drop", () => {
@@ -200,7 +215,7 @@ describe("Board Card Block transfer drop", () => {
           ancestorPageIds: [],
           createOperationId: () => "operation-toggle",
           transfer,
-          structuralTransfer,
+          structuralTransfer: completeStructuralTransfer(structuralTransfer),
           reportError: vi.fn(),
         }),
       );
@@ -316,93 +331,109 @@ describe("Board Card Block transfer drop", () => {
   test.each([
     [false, "move"],
     [true, "copy"],
-  ] as const)("submits one authority intent at drop time (alt=%s)", async (altKey, mode) => {
-    const container = document.createElement("div");
-    const transfer = vi.fn(async (...args: [PublicBlockTransferIntent]) => {
-      void args;
-      return {
-        ok: true as const,
-        localCommit: {
-          status: "no_op" as const,
-          observed: { store_epoch: "epoch-a", commit_head: 1 },
-        },
-        value: {
-          version: 3 as const,
-          operationId: "operation-a",
-          projectId: "project-a",
-          storeEpoch: "epoch-a",
-          mode,
-          duplicate: false,
-          sourceRootBlockIds: ["card-target"],
-          resultRootBlockIds: ["card-target"],
-          copiedBlockIds: {},
-          transformationEvidence: [],
-          finalLocations: {
-            "card-target": {
-              kind: "document" as const,
-              documentId: "document-host",
-            },
+  ] as const)(
+    "admits Page drops before preparing the receiving editor (alt=%s)",
+    async (altKey, mode) => {
+      const container = document.createElement("div");
+      const receivePages = vi.fn(async () => undefined);
+      const prepareAndFence = vi.fn(structuralPreparation.prepareAndFence);
+      const transfer = vi.fn(async (...args: [PublicBlockTransferIntent]) => {
+        void args;
+        return {
+          ok: true as const,
+          localCommit: {
+            status: "no_op" as const,
+            observed: { store_epoch: "epoch-a", commit_head: 1 },
           },
-          finalLocationRevisions: { "card-target": 2 },
-          documentCommits: [],
-          affectedDatabaseBlockIds: ["database-a"],
-          commitSeq: 1,
-          committedAt: "2026-07-13T00:00:00.000Z",
-          undoToken: null,
-        },
-      };
-    });
-    const cleanup = setupBlockTransferDocumentDrop(container, { document: [] }, () => ({
-      ...structuralPreparation,
-      surfaceId: "surface-target",
-      projectId: "project-a",
-      documentId: "document-host",
-      storeEpoch: "epoch-a",
-      hostPageId: "card-host",
-      ancestorPageIds: [],
-      createOperationId: () => "operation-a",
-      transfer,
-      reportError: vi.fn(),
-    }));
-    const registration = dropTargetHarness.registration as ElementDropTargetArgs;
-    const self = { element: container, data: {}, dropEffect: mode };
-    const event = {
-      source: { data: dragData },
-      location: {
-        current: { input: input(altKey), dropTargets: [self] },
-      },
-      self,
-    } as unknown as Parameters<NonNullable<ElementDropTargetArgs["onDrop"]>>[0];
-
-    expect(
-      registration.canDrop?.({
+          value: {
+            version: 3 as const,
+            operationId: "operation-a",
+            projectId: "project-a",
+            storeEpoch: "epoch-a",
+            mode,
+            duplicate: false,
+            sourceRootBlockIds: ["card-target"],
+            resultRootBlockIds: ["card-target"],
+            copiedBlockIds: {},
+            transformationEvidence: [],
+            finalLocations: {
+              "card-target": {
+                kind: "document" as const,
+                documentId: "document-host",
+              },
+            },
+            finalLocationRevisions: { "card-target": 2 },
+            documentCommits: [],
+            affectedDatabaseBlockIds: ["database-a"],
+            commitSeq: 1,
+            committedAt: "2026-07-13T00:00:00.000Z",
+            undoToken: null,
+            history: null,
+          },
+        };
+      });
+      const cleanup = setupBlockTransferDocumentDrop(container, { document: [] }, () => ({
+        ...structuralPreparation,
+        surfaceId: "surface-target",
+        projectId: "project-a",
+        documentId: "document-host",
+        storeEpoch: "epoch-a",
+        hostPageId: "card-host",
+        ancestorPageIds: [],
+        createOperationId: () => "operation-a",
+        transfer,
+        receivePages,
+        prepareAndFence,
+        reportError: vi.fn(),
+      }));
+      const registration = dropTargetHarness.registration as ElementDropTargetArgs;
+      const self = { element: container, data: {}, dropEffect: mode };
+      const event = {
         source: { data: dragData },
-        input: event.location.current.input,
-        element: container,
-      } as never),
-    ).toBe(true);
-    registration.onDrop?.(event);
-    await vi.waitFor(() => expect(transfer).toHaveBeenCalledOnce());
-    expect(transfer.mock.calls[0]?.[0]).toMatchObject({
-      mode,
-      rootBlockIds: ["card-target"],
-      source: { kind: "data_source", dataSourceId: "source-a" },
-      target: { kind: "page", pageId: "card-host" },
-    });
-    cleanup();
-  });
+        location: {
+          current: { input: input(altKey), dropTargets: [self] },
+        },
+        self,
+      } as unknown as Parameters<NonNullable<ElementDropTargetArgs["onDrop"]>>[0];
+
+      expect(
+        registration.canDrop?.({
+          source: { data: dragData },
+          input: event.location.current.input,
+          element: container,
+        } as never),
+      ).toBe(true);
+      registration.onDrop?.(event);
+      expect(receivePages).toHaveBeenCalledOnce();
+      expect(prepareAndFence).not.toHaveBeenCalled();
+      expect(transfer).not.toHaveBeenCalled();
+      expect(receivePages).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode,
+          rootBlockIds: ["card-target"],
+          dataSourceId: "source-a",
+          target: { kind: "page", pageId: "card-host" },
+        }),
+      );
+      cleanup();
+    },
+  );
 
   test("routes every managed editor drag through one structural transfer", async () => {
     const container = document.createElement("div");
     document.body.append(container);
     const transfer = vi.fn();
+    const order: string[] = [];
     const structuralTransfer = vi.fn(async () => undefined);
-    const prepareAndFence = vi.fn(async () => ({
-      documentId: "document-target",
-      storeEpoch: "epoch-a",
-      generation: 1,
-      expectedHeadSeq: 0,
-    }));
+    const prepareAndFence = vi.fn(async () => {
+      order.push("prepare");
+      return {
+        documentId: "document-target",
+        storeEpoch: "epoch-a",
+        generation: 1,
+        expectedHeadSeq: 0,
+      };
+    });
     const prepareSourceAndFence = vi.fn(async () => ({
       documentId: "document-source",
       storeEpoch: "epoch-a",
@@ -419,7 +450,8 @@ describe("Board Card Block transfer drop", () => {
       prepareSourceAndFence,
       createOperationId: () => "operation-editor",
       transfer,
-      structuralTransfer,
+      structuralTransfer: completeStructuralTransfer(structuralTransfer, () => order.push("admit")),
+      receivePages: async () => undefined,
       reportError: vi.fn(),
     }));
     const values = new Map<string, string>();
@@ -466,6 +498,7 @@ describe("Board Card Block transfer drop", () => {
         target: { parentBlockId: null, beforeBlockId: null },
       });
       expect(prepareAndFence).toHaveBeenCalledOnce();
+      expect(order[0]).toBe("admit");
       expect(prepareSourceAndFence).toHaveBeenCalledWith(
         "surface-source",
         expect.objectContaining({
@@ -498,7 +531,7 @@ describe("Board Card Block transfer drop", () => {
         ancestorPageIds: [],
         createOperationId: () => "operation-canvas",
         transfer,
-        structuralTransfer,
+        structuralTransfer: completeStructuralTransfer(structuralTransfer),
         reportError: vi.fn(),
       }),
     );
@@ -576,7 +609,7 @@ describe("Board Card Block transfer drop", () => {
         ancestorPageIds: [],
         createOperationId: () => "operation-subtree",
         transfer,
-        structuralTransfer,
+        structuralTransfer: completeStructuralTransfer(structuralTransfer),
         reportError: vi.fn(),
       }),
     );
@@ -660,7 +693,7 @@ describe("Board Card Block transfer drop", () => {
         ancestorPageIds: [],
         createOperationId: () => "operation-outer",
         transfer: outerTransfer,
-        structuralTransfer: outerStructuralTransfer,
+        structuralTransfer: completeStructuralTransfer(outerStructuralTransfer),
         reportError: vi.fn(),
       }),
     );
@@ -673,7 +706,7 @@ describe("Board Card Block transfer drop", () => {
       ancestorPageIds: [],
       createOperationId: () => "operation-inner",
       transfer: innerTransfer,
-      structuralTransfer: innerStructuralTransfer,
+      structuralTransfer: completeStructuralTransfer(innerStructuralTransfer),
       reportError: vi.fn(),
     }));
     const values = new Map<string, string>();
@@ -748,24 +781,8 @@ describe("Board Card Block transfer drop", () => {
     const inner = document.createElement("div");
     outer.append(inner);
     document.body.append(outer);
-    const outerTransfer = vi.fn(async () => ({
-      ok: false as const,
-      error: {
-        code: "unknown" as const,
-        message: "outer must not commit",
-        retryable: false,
-        reloadRequired: false,
-      },
-    }));
-    const innerTransfer = vi.fn(async () => ({
-      ok: false as const,
-      error: {
-        code: "unknown" as const,
-        message: "expected test terminal result",
-        retryable: false,
-        reloadRequired: false,
-      },
-    }));
+    const outerTransfer = vi.fn(async () => undefined);
+    const innerTransfer = vi.fn(async () => undefined);
     const registrationStart = dropTargetHarness.registrations.length;
     const outerCleanup = setupBlockTransferDocumentDrop(outer, { document: [] }, () => ({
       ...structuralPreparation,
@@ -775,7 +792,7 @@ describe("Board Card Block transfer drop", () => {
       storeEpoch: "epoch-a",
       ancestorPageIds: [],
       createOperationId: () => "operation-outer-pragmatic",
-      transfer: outerTransfer,
+      receivePages: outerTransfer,
       reportError: vi.fn(),
     }));
     const innerCleanup = setupBlockTransferDocumentDrop(inner, { document: [] }, () => ({
@@ -786,7 +803,7 @@ describe("Board Card Block transfer drop", () => {
       storeEpoch: "epoch-a",
       ancestorPageIds: [],
       createOperationId: () => "operation-inner-pragmatic",
-      transfer: innerTransfer,
+      receivePages: innerTransfer,
       reportError: vi.fn(),
     }));
     const [outerRegistration, innerRegistration] = dropTargetHarness.registrations.slice(

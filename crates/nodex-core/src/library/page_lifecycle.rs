@@ -325,10 +325,10 @@ fn read_membership(
     page_id: &str,
 ) -> Result<Option<LibraryPageLifecycleMembership>, StoreError> {
     let rows = connection
-        .prepare(
+        .prepare(&format!(
             "SELECT membership.id, membership.data_source_id, membership.revision, \
                source.home_database_block_id, view.id, view.revision, property.id, \
-               value.revision, value.value_json, position.rank_key, position.revision \
+               value.revision, value.value_json, {rank}, {revision} \
              FROM data_source_page_memberships membership \
              JOIN data_sources source ON source.id = membership.data_source_id \
              JOIN database_containers container \
@@ -340,12 +340,14 @@ fn read_membership(
                AND property.value_type = 'select' \
              JOIN data_source_property_values value ON value.membership_id = membership.id \
                AND value.data_source_id = source.id AND value.property_id = property.id \
-             LEFT JOIN database_view_page_positions position ON position.view_id = view.id \
-               AND position.page_block_id = membership.page_block_id \
+             {joins} \
              WHERE membership.page_block_id = ?1 AND membership.removed_at IS NULL \
              ORDER BY CASE WHEN view.id = container.default_view_id THEN 0 ELSE 1 END, \
                view.rank_key, view.id",
-        )?
+            rank = crate::database::POSITION_RANK,
+            revision = crate::database::POSITION_REVISION,
+            joins = crate::database::view_position_joins("view.id", "membership.page_block_id")
+        ))?
         .query_map([page_id], |row| {
             Ok((
                 row.get::<_, String>(0)?,

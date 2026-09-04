@@ -57,6 +57,11 @@ pub struct DocumentBlockUpdatePatch {
     deny_unknown_fields
 )]
 pub enum DocumentBlockOperation {
+    /// Library-only, after semantic guards and ownership preservation checks.
+    RestoreEditorHistoryForest {
+        root_block_ids: Vec<String>,
+        replacement_roots: Vec<EditorHistoryRootInsertion>,
+    },
     SetTitle {
         title: String,
     },
@@ -109,6 +114,13 @@ pub enum DocumentBlockOperation {
         source_before_block_id: Option<String>,
         promoted_child_ids: Vec<String>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EditorHistoryRootInsertion {
+    pub block: MaterializedBlockNode,
+    pub before_block_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -985,6 +997,68 @@ fn apply_operation(
     title_write_fence_required: &mut bool,
 ) -> Result<(), DocumentOperationError> {
     match operation {
+        DocumentBlockOperation::RestoreEditorHistoryForest {
+            root_block_ids,
+            replacement_roots,
+        } => {
+            let selected = root_block_ids.iter().collect::<BTreeSet<_>>();
+            if selected.len() != root_block_ids.len()
+                || root_block_ids
+                    .iter()
+                    .any(|id| !semantic_blocks.iter().any(|block| &block.id == id))
+            {
+                return Err(operation_error(
+                    DocumentOperationErrorCode::InvalidOperation,
+                    "History roots must be distinct current roots",
+                    Some(operation_index),
+                    None,
+                ));
+            }
+            let mut retained = semantic_blocks
+                .iter()
+                .filter(|block| !selected.contains(&block.id))
+                .flat_map(materialized_ids)
+                .collect::<BTreeSet<_>>();
+            for insertion in replacement_roots {
+                for id in materialized_ids(&insertion.block) {
+                    if !retained.insert(id.clone()) {
+                        return Err(operation_error(
+                            DocumentOperationErrorCode::DuplicateBlockId,
+                            "History restoration duplicates a retained Block",
+                            Some(operation_index),
+                            Some(&id),
+                        ));
+                    }
+                }
+            }
+            let nested = root_block_ids
+                .iter()
+                .map(|id| DocumentBlockOperation::DeleteBlock {
+                    block_id: id.clone(),
+                })
+                .chain(replacement_roots.iter().map(|insertion| {
+                    DocumentBlockOperation::InsertBlock {
+                        block: insertion.block.clone(),
+                        parent_block_id: None,
+                        before_block_id: insertion.before_block_id.clone(),
+                    }
+                }));
+            for operation in nested {
+                apply_operation(
+                    &operation,
+                    operation_index,
+                    schema,
+                    body,
+                    title,
+                    transaction,
+                    semantic_blocks,
+                    canonical_tree,
+                    write_fences,
+                    title_write_fence_required,
+                )?;
+            }
+            Ok(())
+        }
         DocumentBlockOperation::SetTitle { title: desired } => {
             let desired = if desired.is_empty() {
                 Vec::new()

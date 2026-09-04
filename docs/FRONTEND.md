@@ -278,6 +278,15 @@ uses local state and a submit-time guard.
 - Separate content authority from surface-local interaction. Editors that share
   one Document may still own independent selection, undo, caret, camera, tool,
   and presence contributions.
+- Bind collaborative history through the registered typed editor capability,
+  before any view exists. Feature commands use the surface history owner,
+  never a plugin-key scan or a second keyboard-priority stack. Structural
+  gestures enter that owner before asynchronous preparation; retain its
+  cleanup until committed results and their inverse tokens have been handed off.
+- Preserve semantic inverse evidence when Core rebuilds collaborative addresses.
+  Subscribe through the canonical Document fence seam, not DOM inspection, and
+  use guarded Core history replay. Feature code must not mutate Yjs private
+  items/delete sets or clear another surface's retained history.
 - Flush a mounted Document through its typed mutation barrier before a
   structural command consumes collaborative shape. The durability contract is
   defined in [Reliability](RELIABILITY.md), not reconstructed in renderer code.

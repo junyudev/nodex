@@ -8,11 +8,13 @@ pub(crate) use canvas_files::{
     resolve_revision_target as resolve_canvas_revision_file_target,
 };
 mod compaction;
+pub(crate) mod editor_history;
 pub(crate) mod event_log;
 mod file_snapshots;
 mod genesis;
 mod history;
 pub(crate) use history::prepare_file_content_revisions;
+pub(crate) mod history_fence;
 pub(crate) mod integrity;
 mod maintenance;
 mod materialization;
@@ -74,8 +76,8 @@ pub use realtime::{
 #[cfg(test)]
 pub(crate) use retention::run_block_retention_pass;
 pub(crate) use retention::{
-    block_retention_work_revision, plan_block_retention_due_work, plan_block_retention_pass,
-    run_bounded_block_retention_slice,
+    advance_block_retention_work, block_retention_work_revision, is_known_dormant_document,
+    plan_block_retention_due_work, plan_block_retention_pass, run_bounded_block_retention_slice,
 };
 pub(crate) use runtime::DocumentRuntimeCache;
 pub use yrs_engine::{

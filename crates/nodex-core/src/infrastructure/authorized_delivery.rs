@@ -167,6 +167,13 @@ pub(crate) fn resolve_verified(
                 continue;
             }
             document_effects.push(AuthorizedDocumentEffect {
+                history_fence: Some(crate::document::history_fence::read(
+                    connection,
+                    &resource.document_id,
+                    resource.generation,
+                    resource.base_head_seq,
+                    resource.result_head_seq,
+                )?),
                 reference: DocumentEffectRef {
                     effect_order: resource.effect_order,
                     page_id: resource.page_id,
@@ -547,6 +554,7 @@ fn projection_scope_project(scope: &LocalProjectionScope) -> Option<&str> {
     match scope {
         LocalProjectionScope::Library { .. } => None,
         LocalProjectionScope::Project { project_id }
+        | LocalProjectionScope::StructuralHistory { project_id }
         | LocalProjectionScope::Page { project_id, .. }
         | LocalProjectionScope::PageDetailDatabase { project_id, .. }
         | LocalProjectionScope::PageDetailDataSource { project_id, .. }
@@ -640,6 +648,7 @@ mod tests {
                 resource_kind: DocumentEffectResourceKind::DocumentUpdate,
             },
             inline_update,
+            history_fence: None,
         }
     }
 

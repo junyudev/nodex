@@ -122,6 +122,7 @@ const CONNECTION_HEADER: &str = "x-nodex-connection-id";
 const CONNECTION_BINDING_HEADER: &str = "x-nodex-connection-binding";
 const DOCUMENT_HEADER: &str = "x-nodex-document-id";
 const CLIENT_SESSION_HEADER: &str = "x-nodex-client-session-id";
+const EDITOR_HISTORY_OWNER_HEADER: &str = "x-nodex-editor-history-owner";
 const DOCUMENT_SCOPE_HEADER: &str = "x-nodex-document-scope";
 const LIBRARY_DOCUMENT_SCOPE: &str = "library";
 const DATABASE_SCOPE_HEADER: &str = "x-nodex-database-scope";
@@ -1689,11 +1690,13 @@ async fn document_read(State(state): State<Arc<ServerState>>, request: Request) 
                 OwnedDocumentRead::SyncYjs {
                     document_id,
                     state_vector,
+                    history_after_head_seq,
                 } => request_state.document_realtime.sync_yjs(
                     &context,
                     client_session_id.as_deref().expect("validated session"),
                     document_id,
                     state_vector,
+                    history_after_head_seq,
                 ),
                 read => request_state.document.read(
                     &context,
@@ -1825,6 +1828,7 @@ fn binary_document_read(
                     &metadata.client_session_id,
                     document_id,
                     state_vector,
+                    metadata.history_after_head_seq,
                 )?;
                 document_wire::parse_yjs_sync(snapshot)
                     .and_then(|sync| document_wire::encode_sync(&sync))
@@ -1950,6 +1954,7 @@ fn binary_document_apply(
                     &metadata.client_session_id,
                     document_id,
                     Vec::new(),
+                    None,
                 )?;
                 let sync = document_wire::parse_yjs_sync(snapshot)?;
                 document_wire::encode_apply_ack(&response, &update_id, &sync)
@@ -2855,7 +2860,30 @@ fn module_context(
         project_id: optional_header(headers, PROJECT_HEADER, "Project")?.map(ProjectId),
         connection_id: bound.id.clone(),
         adapter: bound.adapter.clone(),
+        editor_history_owner: editor_history_owner(headers, bound)?,
     })
+}
+
+fn editor_history_owner(
+    headers: &HeaderMap,
+    bound: &BoundConnection,
+) -> Result<Option<nodex_core_contracts::BoundEditorHistoryOwner>, CoreError> {
+    let Some(id) = optional_header(headers, EDITOR_HISTORY_OWNER_HEADER, "Editor history owner")?
+    else {
+        return Ok(None);
+    };
+    if bound.adapter != AdapterKind::ElectronHost {
+        return Err(unauthorized(
+            "Editor history lifetimes require the authenticated desktop Host",
+        ));
+    }
+    let peer_pid = bound
+        .peer_pid
+        .ok_or_else(|| unauthorized("Editor history requires authenticated process identity"))?;
+    Ok(Some(nodex_core_contracts::BoundEditorHistoryOwner {
+        id,
+        peer_pid,
+    }))
 }
 
 fn database_context(
@@ -2894,6 +2922,7 @@ fn database_context(
         project_id,
         connection_id: bound.id.clone(),
         adapter: bound.adapter.clone(),
+        editor_history_owner: None,
     })
 }
 
@@ -3119,6 +3148,7 @@ fn document_context(
         project_id,
         connection_id: bound.id.clone(),
         adapter: bound.adapter.clone(),
+        editor_history_owner: editor_history_owner(headers, bound)?,
     })
 }
 
@@ -3729,6 +3759,71 @@ pub async fn run_with_selection(
             server_is_idle(&idle_state)
         }))
     });
+    let history_state = Arc::clone(&state);
+    let history_cleanup = tokio::spawn(async move {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            request_execution::REQUEST_ID_HEADER,
+            "history-cleanup".parse().expect("static request identity"),
+        );
+        loop {
+            let state = Arc::clone(&history_state);
+            let result = history_state
+                .request_executor
+                .execute(
+                    "history-maintenance",
+                    &headers,
+                    RequestClass::Maintenance,
+                    move || {
+                        state.library.maintain_editor_history_owners(|pid| {
+                            connections::peer_process_is_alive(Some(pid))
+                        })
+                    },
+                )
+                .await;
+            if let Err(error) = &result {
+                tracing::warn!(subsystem = "editor_history", error = ?error, "History lifetime cleanup will retry");
+            }
+            // Commit one slice, then yield before asking for writer admission again.
+            let delay = if matches!(result, Ok(true)) {
+                Duration::from_millis(25)
+            } else {
+                Duration::from_secs(30)
+            };
+            tokio::time::sleep(delay).await;
+        }
+    });
+    let order_state = Arc::clone(&state);
+    let order_maintenance = tokio::spawn(async move {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            request_execution::REQUEST_ID_HEADER,
+            "view-order-preparation"
+                .parse()
+                .expect("static request identity"),
+        );
+        loop {
+            let state = Arc::clone(&order_state);
+            let result = order_state
+                .request_executor
+                .execute(
+                    "view-order-maintenance",
+                    &headers,
+                    RequestClass::Maintenance,
+                    move || state.database.maintain_view_orders(),
+                )
+                .await;
+            if let Err(error) = &result {
+                tracing::warn!(subsystem = "database_order", error = ?error, "View order preparation will retry");
+            }
+            let delay = if matches!(result, Ok(true)) {
+                Duration::from_millis(25)
+            } else {
+                Duration::from_secs(30)
+            };
+            tokio::time::sleep(delay).await;
+        }
+    });
     let result = axum::serve(
         listener,
         router(Arc::clone(&state)).into_make_service_with_connect_info::<PeerIdentity>(),
@@ -3739,6 +3834,16 @@ pub async fn run_with_selection(
         idle_task.abort();
         let _ = idle_task.await;
     }
+    state
+        .request_executor
+        .cancel("history-maintenance", "history-cleanup");
+    history_cleanup.abort();
+    let _ = history_cleanup.await;
+    state
+        .request_executor
+        .cancel("view-order-maintenance", "view-order-preparation");
+    order_maintenance.abort();
+    let _ = order_maintenance.await;
     match &result {
         Ok(()) => tracing::info!(subsystem = "lifecycle", "Core server stopped"),
         Err(_) => tracing::error!(subsystem = "lifecycle", "Core server stopped with an error"),

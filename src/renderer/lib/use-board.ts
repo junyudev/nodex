@@ -56,7 +56,6 @@ import type {
 } from "../../shared/database-kernel";
 import {
   applyOptimisticDatabaseViewBoardDrop,
-  buildDatabaseViewBoardDropOperations,
   type DatabaseViewDropPropertyValue,
 } from "./database-view-drag-operations";
 import {
@@ -465,22 +464,18 @@ export function useBoard(options: UseBoardOptions) {
   );
 
   const moveDatabaseViewPages = useCallback(
-    async (input: DatabaseViewBoardPageDropIntent): Promise<boolean> => {
-      if (!requireWritableSelectedView()) return false;
+    async (
+      input: DatabaseViewBoardPageDropIntent,
+      request: Parameters<typeof commitDatabaseViewOperations>[0],
+    ): Promise<DatabaseViewMutationReceipt | null> => {
       const visibleAuthority = store.getSnapshot().databaseView;
-      if (!visibleAuthority) return false;
+      if (!visibleAuthority) return commitDatabaseViewOperations(request);
       const visibleModel = withEffectiveDatabaseView(visibleAuthority, input.presentation);
-      const initialOperations = buildDatabaseViewBoardDropOperations({
-        model: visibleModel,
-        pageIds: input.pageIds,
-        target: input.target,
-        propertyValues: input.propertyValues,
-      });
-      if (initialOperations.length === 0) return false;
       const fallbackRows = visibleModel.query.rows.filter((row) =>
         input.pageIds.includes(row.page.pageId),
       );
-      const operationId = createUuidV7();
+      const operationId = request.operationId;
+      if (!operationId) throw new Error("A Board drop requires an admitted operation identity.");
 
       const outcome = await store.runOptimisticDatabaseViewMutation<DatabaseViewMutationReceipt>({
         kind: "database:position-many",
@@ -500,19 +495,8 @@ export function useBoard(options: UseBoardOptions) {
           // itself has materialized.
           return projected === model ? canonicalModel : projected;
         },
-        runRemote: async (canonicalAuthority) => {
-          const canonicalModel = withEffectiveDatabaseView(canonicalAuthority, input.presentation);
-          const operations = buildDatabaseViewBoardDropOperations({
-            model: canonicalModel,
-            pageIds: input.pageIds,
-            target: input.target,
-            propertyValues: input.propertyValues,
-          });
-          const receipt = await commitDatabaseViewOperations({
-            model: canonicalModel,
-            operations,
-            operationId,
-          });
+        runRemote: async () => {
+          const receipt = await commitDatabaseViewOperations(request);
           if (!receipt) {
             throw new Error("The Board drop no longer changes this View");
           }
@@ -524,11 +508,11 @@ export function useBoard(options: UseBoardOptions) {
         }),
       });
       if (!outcome.ok) throw outcome.error ?? new Error("The Board drop did not commit");
-      if (!outcome.result) return false;
+      if (!outcome.result) throw new Error("The Board drop outcome is not yet confirmed.");
       onMutation?.();
-      return true;
+      return outcome.result;
     },
-    [onMutation, requireWritableSelectedView, store],
+    [onMutation, store],
   );
 
   const listPageOccurrences = useCallback(

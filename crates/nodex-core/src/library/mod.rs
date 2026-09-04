@@ -36,6 +36,7 @@ mod files;
 pub(crate) use file_access::file_grant_authorization_proof;
 pub(crate) use files::capture_snapshot as capture_file_snapshot;
 mod file_blobs;
+mod mutation_ledger;
 mod page_file_entries;
 mod page_file_entry_mutation;
 mod page_file_inventory;
@@ -130,6 +131,7 @@ pub struct LibraryModule {
     page_search: page_search::PageSearchIndexRegistry,
     prepared_agent_operations: PreparedAgentOperationRegistry,
     document_runtime_cache: Option<Arc<Mutex<crate::document::DocumentRuntimeCache>>>,
+    editor_history_reap_cursor: Arc<Mutex<u32>>,
 }
 
 impl LibraryModule {
@@ -146,6 +148,7 @@ impl LibraryModule {
             page_search: page_search::PageSearchIndexRegistry::default(),
             prepared_agent_operations: PreparedAgentOperationRegistry::new(),
             document_runtime_cache: None,
+            editor_history_reap_cursor: Arc::default(),
         }
     }
 
@@ -178,6 +181,7 @@ impl LibraryModule {
             page_search: page_search::PageSearchIndexRegistry::default(),
             prepared_agent_operations: PreparedAgentOperationRegistry::new(),
             document_runtime_cache: Some(kernel.document_runtime_cache()),
+            editor_history_reap_cursor: Arc::default(),
         }
     }
 
@@ -442,6 +446,17 @@ impl LibraryModule {
                             library_id,
                             commit_seq,
                         },
+                        LibraryRead::StructuralHistoryStates { tokens } => {
+                            LibraryReadValue::StructuralHistoryStates {
+                                items: structural_edit::read_history_states(
+                                    &transaction,
+                                    &library_id,
+                                    &store_epoch,
+                                    &context,
+                                    &tokens,
+                                )?,
+                            }
+                        }
                         LibraryRead::ResourceProjectAccess { target } => {
                             LibraryReadValue::ResourceProjectAccess {
                                 value: Box::new(resource_access::read(
@@ -871,6 +886,144 @@ impl LibraryModule {
             .map_err(core_error)
     }
 
+    /// The server supplies OS liveness evidence; inactivity and subscription
+    /// loss are deliberately not evidence that an editor lifetime has ended.
+    pub fn maintain_editor_history_owners(
+        &self,
+        is_process_alive: impl Fn(u32) -> bool + Send + 'static,
+    ) -> Result<bool, CoreError> {
+        let Some(writer) = &self.writer else {
+            return Ok(false);
+        };
+        let profile_id = self.profile_id.clone();
+        let library_id = self.library_id.clone();
+        let reap_cursor = Arc::clone(&self.editor_history_reap_cursor);
+        let discovered = writer
+            .call(move |connection| {
+                let mut cursor = reap_cursor.lock().map_err(|_| {
+                    StoreError::new(
+                        StoreErrorCode::Internal,
+                        "History cleanup cursor is unavailable",
+                        false,
+                    )
+                })?;
+                let (released, next_pid) =
+                    crate::infrastructure::sqlite::with_immediate_transaction(
+                        connection,
+                        |transaction| {
+                            structural_edit::history_owner::reap(
+                                transaction,
+                                &profile_id,
+                                &library_id,
+                                *cursor,
+                                is_process_alive,
+                            )
+                        },
+                    )?;
+                *cursor = next_pid;
+                Ok(released)
+            })
+            .map_err(core_error)?;
+        let backfill_pending = writer
+            .call(move |connection| {
+                crate::infrastructure::sqlite::with_immediate_transaction(
+                    connection,
+                    |transaction| structural_edit::history_payload::backfill_one(transaction),
+                )
+            })
+            .map_err(core_error)?;
+        let transfer_import = writer
+            .call(|connection| {
+                crate::infrastructure::sqlite::with_immediate_transaction(
+                    connection,
+                    |transaction| block_transfer::history::import_one(transaction),
+                )
+            })
+            .map_err(core_error)?;
+        // Discovery, payload backfill, and release have separate writer admissions.
+        // Interactive work can run between them, including during a large close.
+        let profile_id = self.profile_id.clone();
+        let library_id = self.library_id.clone();
+        let slice = writer
+            .call(move |connection| {
+                crate::infrastructure::sqlite::with_immediate_transaction(
+                    connection,
+                    |transaction| {
+                        structural_edit::history_owner::drain_cleanup(
+                            transaction,
+                            &profile_id,
+                            &library_id,
+                        )
+                    },
+                )
+            })
+            .map_err(core_error)?;
+        tracing::debug!(
+            subsystem = "editor_history",
+            recipes = slice.recipes,
+            roots = slice.roots,
+            local_sets = slice.local_sets,
+            bytes = slice.bytes,
+            pending = slice.pending,
+            "History cleanup slice committed"
+        );
+        let payload = writer
+            .call(move |connection| {
+                crate::infrastructure::sqlite::with_immediate_transaction(
+                    connection,
+                    |transaction| {
+                        let now_ms = transaction.query_row(
+                            "SELECT CAST(unixepoch('subsec') * 1000 AS INTEGER)",
+                            [],
+                            |row| row.get(0),
+                        )?;
+                        structural_edit::history_payload::collect_one(transaction, now_ms)
+                    },
+                )
+            })
+            .map_err(core_error)?;
+        tracing::debug!(
+            subsystem = "editor_history",
+            bytes = payload.bytes,
+            "History payload cleanup slice committed"
+        );
+        let ledger_backfill = writer
+            .call(|connection| {
+                crate::infrastructure::sqlite::with_immediate_transaction(
+                    connection,
+                    |transaction| mutation_ledger::backfill_one(transaction),
+                )
+            })
+            .map_err(core_error)?;
+        let ledger = writer
+            .call(|connection| {
+                crate::infrastructure::sqlite::with_immediate_transaction(
+                    connection,
+                    |transaction| {
+                        let now_ms = transaction.query_row(
+                            "SELECT CAST(unixepoch('subsec') * 1000 AS INTEGER)",
+                            [],
+                            |row| row.get(0),
+                        )?;
+                        mutation_ledger::collect_one(transaction, now_ms)
+                    },
+                )
+            })
+            .map_err(core_error)?;
+        tracing::debug!(
+            subsystem = "editor_history",
+            bytes = ledger.bytes,
+            "Legacy ledger body cleanup committed"
+        );
+        Ok(discovered != 0
+            || slice.pending
+            || backfill_pending
+            || transfer_import
+            || payload.pending
+            || ledger_backfill
+            || ledger.pending)
+    }
+
     pub fn prepared_agent_operation_registry(&self) -> PreparedAgentOperationRegistry {
         self.prepared_agent_operations.clone()
     }
@@ -890,6 +1043,23 @@ impl LibraryModule {
             recovery: CoreErrorRecovery::None,
         })
     }
+}
+
+/// An offline replacement must publish every dormant source before ending old
+/// retention. Each legacy artifact remains a separately resumable transaction.
+pub(crate) fn prepare_editor_history_replacement(
+    connection: &mut rusqlite::Connection,
+) -> Result<(), StoreError> {
+    while crate::infrastructure::sqlite::with_immediate_transaction(connection, |transaction| {
+        structural_edit::history_payload::backfill_one(transaction)
+    })? {}
+    Ok(())
+}
+
+pub(crate) fn discard_replaced_editor_history(
+    connection: &rusqlite::Connection,
+) -> Result<(), StoreError> {
+    structural_edit::history_owner::discard_replaced(connection)
 }
 
 impl Default for LibraryModule {
@@ -951,7 +1121,7 @@ fn core_error(error: StoreError) -> CoreError {
         code,
         message: error.message,
         retryable: error.retryable,
-        recovery: CoreErrorRecovery::None,
+        recovery: error.recovery.unwrap_or(CoreErrorRecovery::None),
     }
 }
 
@@ -974,6 +1144,7 @@ fn unix_timestamp_millis() -> String {
 
 #[cfg(test)]
 mod tests {
+    mod manual_order;
     use nodex_core_contracts::agent::{
         AgentAuthorizationTarget, AgentExecutionAuthorization, AgentProjectResourceAccess,
         AgentProjectResourceAction, AgentResourceAccessPlan, AgentResourceGrantRoot,
@@ -1036,6 +1207,7 @@ mod tests {
 
     fn context() -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: None,
@@ -1199,6 +1371,7 @@ mod tests {
             })
             .expect("seed authority identity");
         let context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project:default".to_owned())),
@@ -1668,6 +1841,7 @@ mod tests {
         const PAGE_A: &str = "page:lifecycle-a";
         const PAGE_B: &str = "page:lifecycle-b";
         let persistent_context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -1952,6 +2126,7 @@ mod tests {
         const PAGE: &str = "019b1000-0000-7000-8000-000000000004";
         const REBALANCED_PAGE: &str = "019b1000-0000-7000-8000-000000000005";
         let persistent_context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -2117,13 +2292,9 @@ mod tests {
             .writer()
             .call(|connection| {
                 connection.execute(
-                    "UPDATE database_view_page_positions SET rank_key = 'invalid-rank' \
-                     WHERE view_id = ?1 AND page_block_id = ?2",
-                    params![VIEW, PAGE],
-                )?;
-                connection.execute(
-                    "UPDATE page_read_model SET view_rank_key = 'invalid-rank' \
-                     WHERE view_id = ?1 AND page_block_id = ?2",
+                    "UPDATE database_view_order_rows SET rank_key = 'ffffffffffffffffffffffffffffffff'
+                     WHERE view_id = ?1 AND page_block_id = ?2
+                       AND generation = (SELECT active_generation FROM database_view_order_state WHERE view_id = ?1)",
                     params![VIEW, PAGE],
                 )?;
                 Ok(())
@@ -2168,23 +2339,41 @@ mod tests {
             })
             .expect("rebalanced View projection effect");
         assert!(rebalance_view_effect.requires_read_at_least);
-        assert!(rebalance_view_effect.patch.is_none());
-        let synchronized_rebalanced_siblings = kernel
-            .readers()
-            .read_default(|connection| {
-                connection
-                    .query_row(
-                        "SELECT count(*) FROM database_view_page_positions position \
-                     JOIN page_read_model model ON model.page_block_id = position.page_block_id \
-                     WHERE position.view_id = ?1 AND position.page_block_id = ?2 \
-                       AND position.rank_key = model.view_rank_key",
-                        params![VIEW, PAGE],
-                        |row| row.get::<_, i64>(0),
-                    )
-                    .map_err(StoreError::from)
-            })
-            .expect("rebalanced sibling projection rank");
-        assert_eq!(synchronized_rebalanced_siblings, 1);
+        let Some(LocalProjectionPatch::DatabaseRowUpsert { row, .. }) =
+            &rebalance_view_effect.patch
+        else {
+            panic!("new Page remains eligible for one exact row patch");
+        };
+        assert_eq!(row.page_id, REBALANCED_PAGE);
+        assert_eq!(row.position_order, Some(1));
+        let database = DatabaseModule::new("profile-1", "library-1", &kernel);
+        let snapshot = database
+            .read(
+                &persistent_context,
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::ViewWindow {
+                        target: DatabaseViewReadTarget::View {
+                            view_id: VIEW.to_owned(),
+                        },
+                        window: Default::default(),
+                        group_scope: None,
+                    },
+                },
+            )
+            .expect("read canonical order after bounded rank repair");
+        let DatabaseReadValue::ViewWindow { value: window } = snapshot.value else {
+            panic!("View window");
+        };
+        assert_eq!(
+            window
+                .rows
+                .items
+                .iter()
+                .map(|row| row.page_id.as_str())
+                .collect::<Vec<_>>(),
+            [PAGE, REBALANCED_PAGE]
+        );
         let LibraryReadValue::PageContent { value } = module
             .read(
                 &persistent_context,
@@ -2324,6 +2513,7 @@ mod tests {
         const DELETED_VIEW: &str = "view:deleted";
         const NOW: &str = "2026-07-18T23:59:00.000Z";
         let persistent_context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -3535,6 +3725,7 @@ mod tests {
         assert_eq!(ancestors[0].page_id, ROOT_PAGE);
         assert_eq!(ancestors[1].page_id, INTERMEDIATE_PAGE);
         let project_two_context = BoundModuleContext {
+            editor_history_owner: None,
             project_id: Some(ProjectId("project-2".to_owned())),
             connection_id: "connection:reference-project".to_owned(),
             ..persistent_context.clone()
@@ -4023,6 +4214,7 @@ mod tests {
                 )
         }));
         let missing_project_context = BoundModuleContext {
+            editor_history_owner: None,
             project_id: Some(ProjectId("project:missing".to_owned())),
             connection_id: "connection:missing-project".to_owned(),
             ..persistent_context.clone()
@@ -4811,6 +5003,7 @@ mod tests {
         const SOURCE_DOCUMENT: &str = "document:transfer-source";
         const TARGET_DOCUMENT: &str = "document:transfer-target";
         let persistent_context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -5057,6 +5250,7 @@ mod tests {
         const FOREIGN_SOURCE_DOCUMENT: &str = "document:transfer-foreign-source";
         const FOREIGN_TARGET_DOCUMENT: &str = "document:transfer-foreign-target";
         let context_for = |project_id: &str| BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId(project_id.to_owned())),
@@ -5440,6 +5634,7 @@ mod tests {
         const VIEW: &str = "018f0000-0000-7000-8000-000000000323";
         const LIST_VIEW: &str = "018f0000-0000-7000-8000-000000000324";
         let context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -5854,6 +6049,27 @@ mod tests {
             .expect("replay promotion");
         assert!(replayed.committed.receipt.mutation.duplicate);
         assert_eq!(replayed.committed.commit_seq, promoted.committed.commit_seq);
+        assert_eq!(
+            replayed.committed.value.block_transfer.as_ref(),
+            Some(promoted_result),
+        );
+        let ledger_body_bytes: i64 = kernel
+            .readers()
+            .read_default(|connection| {
+                connection
+                    .query_row(
+                        "SELECT octet_length(request_json) + octet_length(result_json) \
+                     FROM block_mutations WHERE mutation_id = 'promote-root-to-library'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(StoreError::from)
+            })
+            .expect("operation ledger storage budget");
+        assert!(
+            ledger_body_bytes <= 128,
+            "ledger duplicates {ledger_body_bytes} bytes of request/result"
+        );
 
         let moved_wrapper = library
             .apply(
@@ -6654,6 +6870,10 @@ mod tests {
             .block_transfer
             .as_ref()
             .expect("task shorthand result");
+        assert!(
+            shorthand_result.history.is_none(),
+            "Schema-changing Promotion must not advertise symmetric history"
+        );
         let shorthand_page_id = &shorthand_result.result_root_block_ids[0];
         let nodex_core_contracts::library::LibraryBlockTransferPromotionEvidence::Applied {
             priority_option_id,
@@ -6803,7 +7023,11 @@ mod tests {
             .block_transfer
             .as_ref()
             .expect("conflict promotion result");
-        let conflict_page_id = &conflict_result.result_root_block_ids[0];
+        let conflict_document = conflict_result
+            .document_commits
+            .iter()
+            .find(|commit| commit.document_id != PROMOTE_DOCUMENT)
+            .expect("promoted Document receipt");
         let conflict_token = conflict_result
             .undo_token
             .clone()
@@ -6816,9 +7040,9 @@ mod tests {
                     operation_id: "edit-promoted-task-title".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: OwnedDocumentIntent::ApplyOperationBatch {
-                        document_id: format!("document:{conflict_page_id}"),
-                        generation: 1,
-                        expected_head_seq: 1,
+                        document_id: conflict_document.document_id.clone(),
+                        generation: conflict_document.generation,
+                        expected_head_seq: conflict_document.head_seq,
                         operations: vec![ContractDocumentBlockOperation::SetTitle {
                             title: "Edited after promotion".to_owned(),
                         }],
@@ -6846,7 +7070,7 @@ mod tests {
             .read_default(|connection| {
                 let title = connection.query_row(
                     "SELECT title FROM document_materializations WHERE document_id = ?1",
-                    [format!("document:{conflict_page_id}")],
+                    [&conflict_document.document_id],
                     |row| row.get::<_, String>(0),
                 )?;
                 assert_eq!(title, "Edited after promotion");
@@ -6934,18 +7158,18 @@ mod tests {
                     [PROMOTE_CHILD],
                     |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
                 )?;
-                assert_eq!(
-                    promoted_child,
-                    (format!("document:{}", roots.0), 2),
-                );
+                let promoted_document: String = connection.query_row(
+                    "SELECT document_id FROM pages WHERE block_id = ?1", [&roots.0], |row| row.get(0),
+                )?;
+                assert_eq!(promoted_child, (promoted_document, 2));
                 let moved_wrapper_body = connection
                     .prepare(
                         "SELECT entry.block_id, block.placement_revision \
                          FROM document_block_index entry \
                          JOIN blocks block ON block.id = entry.block_id \
-                         WHERE entry.document_id = ?1 ORDER BY entry.ordinal",
+                         WHERE entry.document_id = (SELECT document_id FROM pages WHERE block_id = ?1) ORDER BY entry.ordinal",
                     )?
-                    .query_map([format!("document:{moved_wrapper_page_id}")], |row| {
+                    .query_map([moved_wrapper_page_id], |row| {
                         Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
                     })?
                     .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -7062,11 +7286,11 @@ mod tests {
             .read_default(|connection| {
                 assert_eq!(
                     connection.query_row(
-                        "SELECT count(*) FROM pages WHERE block_id = ?1",
+                        "SELECT block.lifecycle FROM pages page JOIN blocks block ON block.id = page.block_id WHERE page.block_id = ?1",
                         [wrapper_page_id],
-                        |row| row.get::<_, i64>(0),
+                        |row| row.get::<_, String>(0),
                     )?,
-                    0
+                    "deleted"
                 );
                 assert_eq!(
                     connection.query_row(
@@ -7975,6 +8199,7 @@ mod tests {
         const VIEW: &str = "019c1000-0000-7000-8000-000000000003";
         const PAGE: &str = "019c1000-0000-7000-8000-000000000004";
         let persistent_context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -8618,6 +8843,7 @@ mod tests {
             .expect("seed authority");
         let module = LibraryModule::new("profile-1", "library-1", &kernel);
         let local_context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -8625,6 +8851,7 @@ mod tests {
             adapter: AdapterKind::Test,
         };
         let foreign_context = BoundModuleContext {
+            editor_history_owner: None,
             project_id: Some(ProjectId("project-2".to_owned())),
             connection_id: "connection:foreign-references".to_owned(),
             ..local_context.clone()

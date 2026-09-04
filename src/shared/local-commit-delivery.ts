@@ -191,6 +191,9 @@ const projectionImpactOf = (effect: CoreProjectionEffect): ProjectionDelivery["i
   const patch = effect.patch;
   if (!patch) {
     const scope = effect.scope.scope;
+    if (scope.kind === "structural_history") {
+      return { kind: "none" };
+    }
     if (scope.kind === "page") {
       return {
         kind: "resources",

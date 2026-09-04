@@ -1,4 +1,6 @@
 import * as Y from "yjs";
+import { prepareDocumentHistoryRetention } from "./document-history-retention";
+import { publishDocumentHistoryFence } from "./document-history-fence";
 import { createBoundedOperationId } from "../../shared/operation-identity";
 import {
   Awareness,
@@ -773,6 +775,7 @@ export class NodexYProvider {
         documentId: this.documentId,
         clientSessionId: this.clientSessionId,
         stateVector: copyBytes(Y.encodeStateVector(this.document)),
+        historyAfterHeadSeq: this.headSeq,
       });
     } catch (error) {
       this.handleCommandError(thrownTransportError(error), "sync");
@@ -795,6 +798,7 @@ export class NodexYProvider {
     }
 
     try {
+      publishDocumentHistoryFence(this.document, response.historyFence);
       Y.applyUpdate(this.document, copyBytes(response.update), REMOTE_DOCUMENT_ORIGIN);
     } catch (error) {
       // Yjs observers run synchronously during apply and may throw after the
@@ -923,6 +927,7 @@ export class NodexYProvider {
     }
 
     try {
+      publishDocumentHistoryFence(this.document, event.historyFence);
       Y.applyUpdate(this.document, copyBytes(event.update), REMOTE_DOCUMENT_ORIGIN);
     } catch (error) {
       this.enterReset(documentIntegrationError("realtime document", error));
@@ -1059,6 +1064,8 @@ export class NodexYProvider {
           this.recordCheckpointFailure(error);
         }
       }
+      if (this.inFlight !== pending || this.destroyed || this.terminalError) return;
+      await prepareDocumentHistoryRetention(this.document);
       if (this.inFlight !== pending || this.destroyed || this.terminalError) return;
       result = await this.adapter.applyUpdate(pending.request);
     } catch (error) {

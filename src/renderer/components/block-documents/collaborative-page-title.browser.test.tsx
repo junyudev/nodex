@@ -1,5 +1,5 @@
 import { act, fireEvent, render } from "@testing-library/react";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 import * as Y from "yjs";
 import {
@@ -12,6 +12,9 @@ import {
   restoreRichTitleDomSelection,
 } from "@/lib/rich-title-editor-dom";
 import { CollaborativePageTitle } from "./collaborative-page-title";
+import { dispatchFocusedHistory } from "@/lib/focused-history";
+import { ownsNfmEditorEvent } from "../board/editor/nfm-editor-event-owner";
+import { embeddedEditorSelectionContextAttributes } from "@/lib/editor-selection-presentation";
 
 const createTitle = (value: string) => {
   const document = new Y.Doc({ guid: "browser-rich-title" });
@@ -26,6 +29,52 @@ const selectAllShortcut = async (): Promise<void> => {
 };
 
 describe("CollaborativePageTitle in Chromium", () => {
+  test("native history commands belong to the focused title, including redo", async () => {
+    const { document, title } = createTitle("Title");
+    const view = render(
+      <div className="nfm-editor">
+        <div {...embeddedEditorSelectionContextAttributes}>
+          <CollaborativePageTitle title={title} aria-label="History title" />
+        </div>
+      </div>,
+    );
+    const parent = view.container.firstElementChild as HTMLElement;
+    const parentHistory = vi.fn();
+    parent.addEventListener(
+      "beforeinput",
+      (event) => {
+        if (!ownsNfmEditorEvent(parent, event.target)) return;
+        parentHistory();
+        event.preventDefault();
+        event.stopPropagation();
+      },
+      true,
+    );
+    const editor = view.getByRole("textbox", { name: "History title" }) as HTMLDivElement;
+    try {
+      await act(async () => {
+        editor.focus();
+        restoreRichTitleDomSelection(editor, title.length, title.length);
+        await userEvent.keyboard(" B");
+      });
+      expect(title.toString()).toBe("Title B");
+      await act(async () => {
+        dispatchFocusedHistory("undo");
+        await Promise.resolve();
+      });
+      expect(title.toString()).toBe("Title");
+      await act(async () => {
+        dispatchFocusedHistory("redo");
+        await Promise.resolve();
+      });
+      expect(title.toString()).toBe("Title B");
+      expect(parentHistory).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      document.destroy();
+    }
+  });
+
   test("selects the complete title on the first select-all command", async () => {
     const { document, title } = createTitle("Nested Page");
     const view = render(<CollaborativePageTitle title={title} aria-label="Nested title" />);

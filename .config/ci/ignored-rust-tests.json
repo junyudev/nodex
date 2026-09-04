@@ -1,5 +1,9 @@
 {
   "tests": {
+    "maximum_manual_position_commands_keep_writer_work_bounded": {
+      "tier": "scale",
+      "script": "core:test:manual-order-scale"
+    },
     "read_budget_gate_large_fixture": {
       "tier": "reliability",
       "script": "core:test:read-budget"

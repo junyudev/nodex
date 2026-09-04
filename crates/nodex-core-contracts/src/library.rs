@@ -16,7 +16,7 @@ use crate::document::DocumentHeadRevision;
 use crate::workspace::{ProjectAppearance, ProjectLifecycle};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 45;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 51;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -581,6 +581,10 @@ pub struct LibraryBlockTransferResult {
     pub page_view_placements: std::collections::BTreeMap<String, LibraryPageViewPlacementResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub undo_token: Option<LibraryBlockTransferUndoToken>,
+    /// A complete symmetric inverse for a surface timeline. Missing means the
+    /// entire gesture is a barrier, even if an explicit one-way Undo is available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history: Option<LibraryStructuralHistoryToken>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -589,6 +593,8 @@ pub struct LibraryBlockTransferUndoResult {
     pub restored_source_root_ids: Vec<String>,
     pub removed_page_ids: Vec<String>,
     pub document_commits: Vec<LibraryBlockTransferDocumentCommit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub history: Option<LibraryStructuralHistoryToken>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -630,6 +636,21 @@ pub struct LibraryStructuralHistoryToken {
     pub recipe_operation_id: String,
     pub recipe_hash: String,
     pub store_epoch: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StructuralHistoryState {
+    Available,
+    Consumed,
+    Superseded,
+    Unavailable,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryStructuralHistoryState {
+    pub token: LibraryStructuralHistoryToken,
+    pub state: StructuralHistoryState,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -698,8 +719,28 @@ pub enum LibraryStructuralReplacement {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LibraryLocalHistoryRetention {
+    pub surface_id: String,
+    pub document_id: String,
+    pub generation: i64,
+    pub revision: i64,
+    pub block_ids: Vec<String>,
+    pub retain_document: bool,
+    pub closed: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LibraryStructuralEditCommand {
+    SetLocalHistoryRetention {
+        retention: LibraryLocalHistoryRetention,
+    },
+    RestoreEditorHistory {
+        document_id: String,
+        generation: i64,
+        patch: crate::document::EditorHistoryPatch,
+    },
     CaptureClipboard {
         selection: LibraryStructuralSelection,
     },
@@ -806,6 +847,9 @@ pub enum LibraryRead {
     ResolvePageFile {
         page_id: String,
         selector: LibraryPageFileSelector,
+    },
+    StructuralHistoryStates {
+        tokens: Vec<LibraryStructuralHistoryToken>,
     },
     ResourceProjectAccess {
         target: LibraryResourceTarget,
@@ -2608,6 +2652,9 @@ pub enum LibraryReadValue {
     FileVersions {
         value: LibraryFileVersionPage,
     },
+    StructuralHistoryStates {
+        items: Vec<LibraryStructuralHistoryState>,
+    },
     Metadata {
         profile_id: String,
         library_id: String,
@@ -2785,6 +2832,8 @@ pub enum LibraryIntent {
         change: LibraryFileChange,
         turn_id: Option<String>,
     },
+    /// Ends an ephemeral editor lifetime authenticated by the desktop Host.
+    CloseEditorHistoryOwner,
     CreatePage {
         page_id: String,
         document_id: String,

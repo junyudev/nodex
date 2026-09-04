@@ -201,6 +201,74 @@ describe("DocumentSessionRegistry", () => {
     expect(retainedController.dispose).toHaveBeenCalledOnce();
   });
 
+  test("retains the editor and document runtime until asynchronous history cleanup completes", async () => {
+    const registry = new DocumentSessionRegistry();
+    const events: string[] = [];
+    const runtime = createRuntime({
+      close: async () => {
+        events.push("runtime closed");
+      },
+    });
+    const surface = registry.acquire({
+      key: makeEditorSurfaceKey("session-cleanup", "tab-page"),
+      descriptor: descriptor(),
+      createRuntime: () => runtime.runtime,
+    });
+    let finishCleanup = () => {};
+    const cleanup = new Promise<void>((resolve) => {
+      finishCleanup = resolve;
+    });
+    surface.getOrCreateEditor("page-editor", () => ({
+      _tiptapEditor: {
+        destroy: () => {
+          events.push("editor destroyed");
+        },
+      },
+    }));
+    surface.getOrCreateRetainedResource("history", () => ({ dispose: () => cleanup }));
+    const closing = surface.dispose();
+    try {
+      await Promise.resolve();
+      expect(events).toEqual([]);
+    } finally {
+      finishCleanup();
+      await closing;
+    }
+    expect(events).toEqual(["editor destroyed", "runtime closed"]);
+  });
+
+  test("waits for every retained cleanup even when another cleanup fails", async () => {
+    const registry = new DocumentSessionRegistry();
+    const runtime = createRuntime({});
+    const surface = registry.acquire({
+      key: makeEditorSurfaceKey("session-cleanup-failure", "tab-page"),
+      descriptor: descriptor(),
+      createRuntime: () => runtime.runtime,
+    });
+    let finishCleanup = () => {};
+    const pending = new Promise<void>((resolve) => {
+      finishCleanup = resolve;
+    });
+    const destroyed = vi.fn();
+    surface.getOrCreateEditor("page-editor", () => ({ _tiptapEditor: { destroy: destroyed } }));
+    surface.getOrCreateRetainedResource("failed", () => ({
+      dispose: () => {
+        throw new Error("cleanup failed");
+      },
+    }));
+    surface.getOrCreateRetainedResource("pending", () => ({ dispose: () => pending }));
+    const closing = Promise.resolve().then(() => surface.dispose());
+    const failed = expect(closing).rejects.toThrow("cleanup failed");
+    try {
+      for (let index = 0; index < 10; index++) await Promise.resolve();
+      expect(destroyed).not.toHaveBeenCalled();
+    } finally {
+      finishCleanup();
+      await failed;
+    }
+    expect(destroyed).toHaveBeenCalledOnce();
+  });
+
   test("does not share a DocumentSession across access scopes", async () => {
     const registry = new DocumentSessionRegistry();
     const firstRuntime = createRuntime({});

@@ -4,6 +4,7 @@ import {
   isAuthorityResource,
   type AuthorityResource,
 } from "./authorized-read-stamp";
+import { isDocumentHistoryFence } from "./block-documents/document-history-fence";
 
 export type AuthorizedDeliveryPacket = components["schemas"]["AuthorizedDeliveryPacket"];
 
@@ -167,7 +168,11 @@ const isByteArray = (value: unknown): value is readonly number[] =>
 const isDocumentEffect = (value: unknown): boolean => {
   if (
     !isRecord(value) ||
-    !hasExactKeys(value, ["inline_update", "reference"]) ||
+    !hasExactKeys(value, [
+      "inline_update",
+      "reference",
+      ...(value.history_fence === undefined ? [] : ["history_fence"]),
+    ]) ||
     (value.inline_update !== null && !isByteArray(value.inline_update)) ||
     !isRecord(value.reference)
   ) {
@@ -197,7 +202,9 @@ const isDocumentEffect = (value: unknown): boolean => {
     reference.resource_kind !== "document_update" ||
     !isIdentity(reference.update_id) ||
     !isHash(reference.update_hash) ||
-    !isNonNegativeInteger(reference.update_byte_length)
+    !isNonNegativeInteger(reference.update_byte_length) ||
+    (value.history_fence !== undefined &&
+      !isDocumentHistoryFence(value.history_fence, reference.result_head_seq))
   ) {
     return false;
   }

@@ -753,6 +753,7 @@ export interface components {
             readonly visibility_deltas: readonly components["schemas"]["VisibilityDelta"][];
         };
         readonly AuthorizedDocumentEffect: {
+            readonly history_fence?: null | components["schemas"]["DocumentHistoryFence"];
             readonly inline_update?: readonly number[] | null;
             readonly reference: components["schemas"]["DocumentEffectRef"];
         };
@@ -1765,6 +1766,10 @@ export interface components {
             /** @enum {string} */
             readonly kind: "reconnect_document_subscription";
         } | {
+            /** @enum {string} */
+            readonly kind: "database_view_order_preparation";
+            readonly view_id: string;
+        } | {
             readonly artifact_id: string;
             readonly document_id: string;
             /** Format: int64 */
@@ -1980,6 +1985,32 @@ export interface components {
         };
         /** @enum {string} */
         readonly DatabaseCurrencyCode: "usd" | "eur" | "gbp" | "jpy" | "cny";
+        /** @description Logical slots survive fractional-rank materialization and rebalance. */
+        readonly DatabaseDataEditPositionRun: {
+            readonly before_page_id?: string | null;
+            readonly page_ids: readonly string[];
+        };
+        readonly DatabaseDataEditPositionState: {
+            readonly after_runs: readonly components["schemas"]["DatabaseDataEditPositionRun"][];
+            readonly before_runs: readonly components["schemas"]["DatabaseDataEditPositionRun"][];
+            readonly data_source_id: string;
+            readonly direction: components["schemas"]["DatabaseViewSortDirection"];
+            readonly view_id: string;
+        };
+        readonly DatabaseDataEditPropertyState: {
+            readonly address: components["schemas"]["DatabasePagePropertyAddress"];
+            readonly after_value: components["schemas"]["DatabasePropertyValueInput"];
+            readonly before_value: components["schemas"]["DatabasePropertyValueInput"];
+            readonly property_type: components["schemas"]["DatabasePropertyType"];
+        };
+        /**
+         * @description One atomic gesture, not a sequence of independently replayable operations.
+         *     Core revalidates authority and every logical post-image before writing.
+         */
+        readonly DatabaseDataEditUndoRecipe: {
+            readonly position_states: readonly components["schemas"]["DatabaseDataEditPositionState"][];
+            readonly property_states: readonly components["schemas"]["DatabaseDataEditPropertyState"][];
+        };
         readonly DatabaseDataSourceDescriptor: {
             readonly data_source: components["schemas"]["DatabaseDataSourceRecord"];
         };
@@ -2258,6 +2289,10 @@ export interface components {
             readonly kind: "undo_list_occurrence_move";
             readonly recipe: components["schemas"]["DatabaseListMoveUndoRecipe"];
         } | {
+            /** @enum {string} */
+            readonly kind: "reverse_data_edit";
+            readonly recipe: components["schemas"]["DatabaseDataEditUndoRecipe"];
+        } | {
             /** Format: int64 */
             readonly expected_revision: number;
             /** @enum {string} */
@@ -2348,8 +2383,7 @@ export interface components {
          */
         readonly DatabaseListMoveUndoRecipe: {
             readonly data_source_id: string;
-            readonly post_before_page_id?: string | null;
-            readonly post_order_guard: boolean;
+            readonly post_order_runs: readonly components["schemas"]["DatabaseListMoveRestoreRun"][];
             readonly post_parent_guards: readonly components["schemas"]["DatabaseListMoveParentGuard"][];
             readonly property_states: readonly components["schemas"]["DatabaseListMovePropertyState"][];
             readonly restore_runs: readonly components["schemas"]["DatabaseListMoveRestoreRun"][];
@@ -2409,6 +2443,14 @@ export interface components {
         };
         readonly DatabaseOperationOutcome: {
             /** @enum {string} */
+            readonly kind: "data_edit";
+            /** Format: int32 */
+            readonly operation_count: number;
+            /** Format: int32 */
+            readonly operation_index: number;
+            readonly undo_recipe?: null | components["schemas"]["DatabaseDataEditUndoRecipe"];
+        } | {
+            /** @enum {string} */
             readonly kind: "list_occurrence_move";
             readonly move_root_page_ids: readonly string[];
             readonly moved_page_ids: readonly string[];
@@ -2422,6 +2464,7 @@ export interface components {
             /** Format: int32 */
             readonly operation_index: number;
             readonly restored_page_ids: readonly string[];
+            readonly undo_recipe: components["schemas"]["DatabaseListMoveUndoRecipe"];
         };
         readonly DatabaseOptionPlacement: {
             /** @enum {string} */
@@ -3223,6 +3266,13 @@ export interface components {
             /** Format: int64 */
             readonly head_seq: number;
         };
+        /** @description Core-authored address invalidation over a bounded interval of Document heads. */
+        readonly DocumentHistoryFence: {
+            readonly blockIds: readonly string[];
+            readonly documentWide: boolean;
+            /** Format: int64 */
+            readonly headSeq: number;
+        };
         /** @enum {string} */
         readonly DocumentInvalidationReason: "access_changed" | "generation_changed" | "restored";
         /** @enum {string} */
@@ -3443,6 +3493,28 @@ export interface components {
             readonly base_head_seq: number;
             readonly created_at: string;
             readonly version_id: string;
+        };
+        readonly EditorHistoryBlockChange: {
+            readonly after?: null | components["schemas"]["EditorHistoryBlockState"];
+            readonly before?: null | components["schemas"]["EditorHistoryBlockState"];
+            readonly blockId: string;
+        };
+        /**
+         * @description A bounded local edit group addressed by stable Block identity. Unchanged
+         *     fields are observations, not overwrite authority; the compiler guards and
+         *     replaces only the difference between the two states.
+         */
+        readonly EditorHistoryBlockState: {
+            readonly beforeBlockId?: string | null;
+            readonly content?: unknown;
+            readonly parentBlockId?: string | null;
+            readonly props: {
+                readonly [key: string]: unknown;
+            };
+            readonly type: string;
+        };
+        readonly EditorHistoryPatch: {
+            readonly changes: readonly components["schemas"]["EditorHistoryBlockChange"][];
         };
         readonly EventEnvelope: {
             readonly packet: components["schemas"]["AuthorizedDeliveryPacket"];
@@ -3897,6 +3969,7 @@ export interface components {
             readonly final_locations: {
                 readonly [key: string]: components["schemas"]["LibraryBlockLocation"];
             };
+            readonly history?: null | components["schemas"]["LibraryStructuralHistoryToken"];
             readonly mode: components["schemas"]["LibraryBlockTransferMode"];
             readonly move_etags: {
                 readonly [key: string]: string;
@@ -3976,6 +4049,7 @@ export interface components {
         };
         readonly LibraryBlockTransferUndoResult: {
             readonly document_commits: readonly components["schemas"]["LibraryBlockTransferDocumentCommit"][];
+            readonly history?: null | components["schemas"]["LibraryStructuralHistoryToken"];
             readonly removed_page_ids: readonly string[];
             readonly restored_source_root_ids: readonly string[];
             readonly transfer_operation_id: string;
@@ -4342,6 +4416,17 @@ export interface components {
         };
         /** @enum {string} */
         readonly LibraryLifecycle: "active" | "archived";
+        readonly LibraryLocalHistoryRetention: {
+            readonly blockIds: readonly string[];
+            readonly closed: boolean;
+            readonly documentId: string;
+            /** Format: int64 */
+            readonly generation: number;
+            readonly retainDocument: boolean;
+            /** Format: int64 */
+            readonly revision: number;
+            readonly surfaceId: string;
+        };
         readonly LibraryMoveDestinationEntry: {
             /** Format: int64 */
             readonly document_generation: number;
@@ -5533,6 +5618,17 @@ export interface components {
         };
         readonly LibraryStructuralEditCommand: {
             /** @enum {string} */
+            readonly kind: "set_local_history_retention";
+            readonly retention: components["schemas"]["LibraryLocalHistoryRetention"];
+        } | {
+            readonly document_id: string;
+            /** Format: int64 */
+            readonly generation: number;
+            /** @enum {string} */
+            readonly kind: "restore_editor_history";
+            readonly patch: components["schemas"]["EditorHistoryPatch"];
+        } | {
+            /** @enum {string} */
             readonly kind: "capture_clipboard";
             readonly selection: components["schemas"]["LibraryStructuralSelection"];
         } | {
@@ -5593,6 +5689,10 @@ export interface components {
             readonly resume?: null | components["schemas"]["LibraryEditorResumeTarget"];
             readonly source_root_block_ids: readonly string[];
             readonly superseded_history_recipe_operation_ids: readonly string[];
+        };
+        readonly LibraryStructuralHistoryState: {
+            readonly state: components["schemas"]["StructuralHistoryState"];
+            readonly token: components["schemas"]["LibraryStructuralHistoryToken"];
         };
         readonly LibraryStructuralHistoryToken: {
             readonly recipe_hash: string;
@@ -5757,6 +5857,10 @@ export interface components {
             readonly project_id: string;
         };
         readonly LocalProjectionScope: {
+            /** @enum {string} */
+            readonly kind: "structural_history";
+            readonly project_id: string;
+        } | {
             /** @enum {string} */
             readonly kind: "library";
             readonly library_id: string;
@@ -6021,6 +6125,9 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "apply_file_change";
                 readonly turn_id?: string | null;
+            } | {
+                /** @enum {string} */
+                readonly kind: "close_editor_history_owner";
             } | {
                 readonly document_id: string;
                 /** @enum {string} */
@@ -6905,6 +7012,10 @@ export interface components {
                 readonly kind: "undo_list_occurrence_move";
                 readonly recipe: components["schemas"]["DatabaseListMoveUndoRecipe"];
             } | {
+                /** @enum {string} */
+                readonly kind: "reverse_data_edit";
+                readonly recipe: components["schemas"]["DatabaseDataEditUndoRecipe"];
+            } | {
                 /** Format: int64 */
                 readonly expected_revision: number;
                 /** @enum {string} */
@@ -7169,6 +7280,10 @@ export interface components {
                 readonly selector: components["schemas"]["LibraryPageFileSelector"];
             } | {
                 /** @enum {string} */
+                readonly kind: "structural_history_states";
+                readonly tokens: readonly components["schemas"]["LibraryStructuralHistoryToken"][];
+            } | {
+                /** @enum {string} */
                 readonly kind: "resource_project_access";
                 readonly target: components["schemas"]["LibraryResourceTarget"];
             } | {
@@ -7397,6 +7512,8 @@ export interface components {
                 readonly owner_block_id: string;
             } | {
                 readonly document_id: string;
+                /** Format: int64 */
+                readonly history_after_head_seq?: number | null;
                 /** @enum {string} */
                 readonly kind: "sync_yjs";
                 readonly state_vector: readonly number[];
@@ -9387,6 +9504,10 @@ export interface components {
                     readonly kind: "file_versions";
                     readonly value: components["schemas"]["LibraryFileVersionPage"];
                 } | {
+                    readonly items: readonly components["schemas"]["LibraryStructuralHistoryState"][];
+                    /** @enum {string} */
+                    readonly kind: "structural_history_states";
+                } | {
                     /** Format: int64 */
                     readonly commit_seq: number;
                     /** @enum {string} */
@@ -9603,6 +9724,7 @@ export interface components {
                     readonly kind: "descriptor";
                 } | {
                     readonly descriptor: components["schemas"]["OwnedDocumentDescriptor"];
+                    readonly history_fence: components["schemas"]["DocumentHistoryFence"];
                     /** @enum {string} */
                     readonly kind: "yjs_sync";
                     readonly update: readonly number[];
@@ -9914,6 +10036,8 @@ export interface components {
             readonly scanned_through_seq: number;
             readonly store_epoch: components["schemas"]["StoreEpoch"];
         };
+        /** @enum {string} */
+        readonly StructuralHistoryState: "available" | "consumed" | "superseded" | "unavailable";
         readonly VersionRange: {
             /** Format: int32 */
             readonly max: number;

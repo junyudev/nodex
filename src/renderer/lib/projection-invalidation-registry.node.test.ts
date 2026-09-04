@@ -75,6 +75,25 @@ const effectMessage = (commitSeq: number): ProjectionStreamMessage => ({
   delivery: delivery(commitSeq),
 });
 
+test("history lifecycle signals do not invalidate unrelated aggregate content projections", () => {
+  const base = delivery(1);
+  const history: ProjectionDelivery = {
+    ...base,
+    impact: { kind: "none" },
+    effect: {
+      ...base.effect,
+      scope: {
+        ...base.effect.scope,
+        scope: { kind: "structural_history", project_id: "project-1" },
+      },
+      patch: null,
+    },
+  };
+  expect(projectionEffectMatches({ aggregate: true }, history)).toBe(false);
+  expect(projectionEffectMatches({ pageIds: ["page-1"] }, history)).toBe(false);
+  expect(projectionEffectMatches({ aggregate: true }, base)).toBe(true);
+});
+
 const revocationMessage = (
   commitSeq: number,
   resourceId = "page-1",

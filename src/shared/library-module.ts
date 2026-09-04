@@ -5,6 +5,7 @@ import type {
   LibraryFileMutationResult,
   LibraryPageFileEntryReceipt,
 } from "./library-files";
+import type { components } from "@nodex/core-protocol";
 import type { DatabaseId, DatabaseViewId, DataSourceId } from "./database-identities";
 import type { DatabaseViewLayout } from "./database-kernel";
 import type { DocumentCommitRef } from "./block-documents/contracts";
@@ -23,6 +24,7 @@ export const MAX_LIBRARY_READ_LIMIT = 100 as const;
 export const MAX_LIBRARY_CURSOR_LENGTH = 2_048 as const;
 export const MAX_LIBRARY_QUERY_LENGTH = 256 as const;
 export const MAX_LIBRARY_PROJECT_ACCESS_CHANGES = 100_000 as const;
+export const MAX_STRUCTURAL_HISTORY_RECONCILIATION_TOKENS = 200 as const;
 
 export type LibraryRouteTarget =
   | { readonly kind: "page"; readonly pageId: string }
@@ -203,6 +205,10 @@ export type LibraryRead =
   | LibraryFileRead
   | { readonly mode: "metadata" }
   | {
+      readonly mode: "structural_history_states";
+      readonly tokens: readonly LibraryStructuralHistoryToken[];
+    }
+  | {
       readonly mode: "resource_project_access";
       readonly target: LibraryResourceTarget;
     }
@@ -301,6 +307,10 @@ export type LibraryCanvasTarget =
 export type LibraryReadValue =
   | LibraryFileReadValue
   | { readonly kind: "metadata" }
+  | {
+      readonly kind: "structural_history_states";
+      readonly items: readonly LibraryStructuralHistoryState[];
+    }
   | {
       readonly kind: "resource_project_access";
       readonly value: LibraryResourceProjectAccess;
@@ -642,10 +652,20 @@ export interface LibraryStructuralClipboardToken {
   readonly storeEpoch: string;
 }
 
+/** Acceptance transfers cleanup responsibility; it is not a mutation receipt. */
+export type EditorHistoryReleaseHandoff =
+  | { readonly accepted: true }
+  | { readonly accepted: false; readonly message: string };
+
 export interface LibraryStructuralHistoryToken {
   readonly recipeOperationId: string;
   readonly recipeHash: string;
   readonly storeEpoch: string;
+}
+
+export interface LibraryStructuralHistoryState {
+  readonly token: LibraryStructuralHistoryToken;
+  readonly state: components["schemas"]["StructuralHistoryState"];
 }
 
 export interface LibraryStructuralSelection {
@@ -694,7 +714,27 @@ export type LibraryStructuralTurnIntoTarget =
   | { readonly kind: "code" }
   | { readonly kind: "equation" };
 
+export interface LibraryLocalHistoryRetention {
+  readonly surfaceId: string;
+  readonly documentId: string;
+  readonly generation: number;
+  readonly revision: number;
+  readonly blockIds: readonly string[];
+  readonly retainDocument: boolean;
+  readonly closed: boolean;
+}
+
 export type LibraryStructuralEditCommand =
+  | {
+      readonly kind: "set_local_history_retention";
+      readonly retention: LibraryLocalHistoryRetention;
+    }
+  | {
+      readonly kind: "restore_editor_history";
+      readonly documentId: string;
+      readonly generation: number;
+      readonly patch: import("./block-documents/block-history-patch").BlockHistoryPatch;
+    }
   | {
       readonly kind: "capture_clipboard";
       readonly selection: LibraryStructuralSelection;
@@ -858,6 +898,7 @@ export type LibraryModuleErrorCode =
   | "resource_exhausted"
   | "file_in_use"
   | "state_corrupt"
+  | "recovery_required"
   | "unknown";
 
 export interface LibraryModuleError {

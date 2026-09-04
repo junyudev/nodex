@@ -1069,6 +1069,7 @@ pub(crate) fn insert_migrated_file_baselines(
             &authority.head.library_id,
         )?;
         let context = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId(profile_id),
             library_id: LibraryId(authority.head.library_id.clone()),
             project_id: Some(ProjectId(project_id)),

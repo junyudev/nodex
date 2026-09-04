@@ -1,21 +1,13 @@
 import { toast } from "@/components/ui/toast";
-import { transferBlocks } from "@/lib/api";
-import { resolveBlockDocumentStructuralMutationParticipant } from "@/lib/block-document-mutation-registry";
-import type { DocumentHeadFence } from "@/lib/block-document-surface-runtime";
-import { readTaskShorthandPagePromotionEnabled } from "@/lib/page-promotion-preference";
 import type { BlockTransferDataSourcePlacement } from "../../../shared/block-transfer";
-import { createUuidV7 } from "../../../shared/uuid-v7";
 import {
-  buildBlockToDataSourceTransferIntent,
   containsCanvasBlockDrag,
   containsDatabaseBlockDrag,
   endLocalBlockDragSession,
-  resolvePagePromotionPolicy,
   summarizeBlockPagePromotionReceipt,
   summarizeBlockPageTransferSuccess,
   type LocalBlockDragSession,
 } from "./block-transfer/cross-surface-drag";
-import { undoDatabaseViewBlockTransfer } from "./database-view-block-transfer-undo";
 import type { DatabaseViewMutationHistory } from "./database-view-mutation-history";
 
 export interface DatabaseViewBlockDropCommitCursor {
@@ -24,6 +16,7 @@ export interface DatabaseViewBlockDropCommitCursor {
 }
 
 export interface CommitDatabaseViewBlockDropInput {
+  readonly historyScopeKey: string;
   readonly session: LocalBlockDragSession;
   readonly projectId: string | null;
   readonly storeEpoch: string;
@@ -58,78 +51,41 @@ export const commitDatabaseViewBlockDrop = async (
     toast.info("Database blocks can only move through a typed Database action.");
     return false;
   }
-  const sourceParticipant = resolveBlockDocumentStructuralMutationParticipant(
-    payload.sourceSurfaceId,
-  );
-  if (!sourceParticipant) {
-    toast.danger("The dragged Page editor changed; start the drag again.");
-    return false;
-  }
-  let sourceHead: DocumentHeadFence;
+  let committed;
   try {
-    sourceHead = await sourceParticipant.prepareAndFence();
-  } catch (error) {
-    toast.danger(
-      error instanceof Error ? error.message : "The dragged Page could not prepare for transfer.",
-    );
-    return false;
-  }
-  if (sourceHead.storeEpoch !== input.storeEpoch) {
-    toast.danger("The dragged Document belongs to another store generation.");
-    return false;
-  }
-  const result = await transferBlocks(
-    projectId,
-    buildBlockToDataSourceTransferIntent({
-      operationId: createUuidV7(),
+    committed = await input.mutationHistory.executeBlockDrop({
+      historyScopeKey: input.historyScopeKey,
+      session: input.session,
       projectId,
       storeEpoch: input.storeEpoch,
-      payload,
       dataSourceId: input.dataSourceId,
       placement: input.placement,
       altKey: input.altKey,
-      promotionPolicy: resolvePagePromotionPolicy({
-        preferenceEnabled: readTaskShorthandPagePromotionEnabled(),
-        shiftKey: input.shiftKey,
-      }),
-      causalDependencies: [
-        {
-          documentId: sourceHead.documentId,
-          generation: sourceHead.generation,
-          expectedHeadSeq: sourceHead.expectedHeadSeq,
-        },
-      ],
-    }),
-  );
-  if (!result.ok) {
-    toast.danger(result.error.message);
+      shiftKey: input.shiftKey,
+    });
+  } catch (error) {
+    toast.danger(error instanceof Error ? error.message : "The transfer could not be confirmed.");
     return false;
   }
-  if (result.value.undoToken) {
-    input.mutationHistory.registerBlockTransfer(result.value.undoToken);
-  }
+  if (!committed) return false;
+  const { result, target: historyTarget } = committed;
   const shorthandFeedback = summarizeBlockPagePromotionReceipt(result.value);
   toast.success(
     summarizeBlockPageTransferSuccess(input.altKey ? "copy" : "move", payload.rootBlockIds.length),
     {
       id: `block-transfer:${result.value.operationId}`,
       ...(shorthandFeedback ? { description: shorthandFeedback.message } : {}),
-      ...(result.value.undoToken
+      ...(result.value.history
         ? {
             action: {
               label: "Undo",
               onClick: () => {
-                void input.mutationHistory.undoLast({
-                  listMove: async () => false,
-                  blockTransfer: async (token) =>
-                    await undoDatabaseViewBlockTransfer({
-                      projectId,
-                      storeEpoch: input.storeEpoch,
-                      token,
-                      onCommitted: input.onCommitted
-                        ? async () => await input.onCommitted?.()
-                        : undefined,
-                    }),
+                void input.mutationHistory.undoTarget(historyTarget).then(async (undone) => {
+                  if (undone) await input.onCommitted?.();
+                  else
+                    toast.info(
+                      "This transfer is no longer the latest undoable action in this View.",
+                    );
                 });
                 return false;
               },

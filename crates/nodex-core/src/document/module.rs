@@ -415,6 +415,7 @@ impl OwnedDocumentModule {
             OwnedDocumentRead::SyncYjs {
                 document_id,
                 state_vector,
+                history_after_head_seq,
             } => {
                 let context = context.clone();
                 let cache = Arc::clone(&self.cache);
@@ -440,6 +441,13 @@ impl OwnedDocumentModule {
                                     &store_epoch,
                                 )?,
                                 update,
+                                history_fence: super::history_fence::read(
+                                    connection,
+                                    &document_id,
+                                    authority.head.generation,
+                                    history_after_head_seq.unwrap_or(0),
+                                    authority.head.head_seq,
+                                )?,
                             },
                         })
                     })
@@ -2003,6 +2011,7 @@ impl OwnedDocumentModule {
                     context.clone()
                 } else {
                     BoundModuleContext {
+                        editor_history_owner: None,
                         project_id: Some(ProjectId(actor_project_id.clone())),
                         ..context.clone()
                     }
@@ -2243,6 +2252,7 @@ impl OwnedDocumentModule {
                     context.clone()
                 } else {
                     BoundModuleContext {
+                        editor_history_owner: None,
                         project_id: Some(ProjectId(actor_project_id.clone())),
                         ..context.clone()
                     }
@@ -2720,6 +2730,7 @@ impl OwnedDocumentModule {
             .ok_or_else(|| unauthorized_core("Semantic mutation requires a bound Project"))?;
         let mutation_context = if prepared_agent.is_some() {
             BoundModuleContext {
+                editor_history_owner: None,
                 adapter: AdapterKind::Agent,
                 ..context.clone()
             }
@@ -3669,6 +3680,7 @@ impl OwnedDocumentModule {
                     job.context.clone()
                 } else {
                     BoundModuleContext {
+                        editor_history_owner: None,
                         project_id: Some(ProjectId(actor_project_id.clone())),
                         ..job.context.clone()
                     }
@@ -4903,9 +4915,10 @@ fn assert_generic_document_operations_preserve_typed_owners(
                 }
             }
             EngineDocumentBlockOperation::MergeBlockBackward { .. }
-            | EngineDocumentBlockOperation::RestoreBackwardMerge { .. } => {
+            | EngineDocumentBlockOperation::RestoreBackwardMerge { .. }
+            | EngineDocumentBlockOperation::RestoreEditorHistoryForest { .. } => {
                 return Err(invalid_store(
-                    "Backward merge operations require the Library structural authority".to_owned(),
+                    "Editor history and backward merge operations require the Library structural authority".to_owned(),
                 ));
             }
         }
@@ -6126,6 +6139,7 @@ mod tests {
 
     fn context_for_project(connection_id: &str, project_id: &str) -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId(PROFILE_ID.to_owned()),
             library_id: LibraryId(LIBRARY_ID.to_owned()),
             project_id: Some(ProjectId(project_id.to_owned())),
@@ -6136,6 +6150,7 @@ mod tests {
 
     fn native_cli_context_for(connection_id: &str, project_id: &str) -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             adapter: AdapterKind::NativeCli,
             ..context_for_project(connection_id, project_id)
         }
@@ -6143,6 +6158,7 @@ mod tests {
 
     fn electron_context_for(connection_id: &str, project_id: &str) -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             adapter: AdapterKind::ElectronHost,
             ..context_for_project(connection_id, project_id)
         }
@@ -6150,6 +6166,7 @@ mod tests {
 
     fn library_context_for(connection_id: &str, adapter: AdapterKind) -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId(PROFILE_ID.to_owned()),
             library_id: LibraryId(LIBRARY_ID.to_owned()),
             project_id: None,
@@ -6372,11 +6389,15 @@ mod tests {
                     read: OwnedDocumentRead::SyncYjs {
                         document_id: DOCUMENT_ID.to_owned(),
                         state_vector: Vec::new(),
+                        history_after_head_seq: None,
                     },
                 },
             )
             .expect("Yjs sync");
-        let OwnedDocumentReadValue::YjsSync { descriptor, update } = sync.value else {
+        let OwnedDocumentReadValue::YjsSync {
+            descriptor, update, ..
+        } = sync.value
+        else {
             panic!("expected Yjs sync")
         };
         let engine = YrsDocumentEngine::from_full_state_v1(DOCUMENT_ID, &update)
@@ -6528,12 +6549,8 @@ mod tests {
                          ) VALUES (?1, ?2, ?3, 1, ?4, NULL)",
                         params![MEMBERSHIP_ID, DATA_SOURCE_ID, OWNER_BLOCK_ID, NOW],
                     )?;
-                    transaction.execute(
-                        "INSERT INTO database_view_page_positions(\
-                           view_id, page_block_id, rank_key, revision, created_at, updated_at\
-                         ) VALUES (?1, ?2, 'a', 1, ?3, ?3)",
-                        params![VIEW_ID_A, OWNER_BLOCK_ID, NOW],
-                    )?;
+                    crate::database::position_page_in_view(transaction, VIEW_ID_A, OWNER_BLOCK_ID,
+                        crate::database::ViewOrderPlacement::End, NOW)?;
                     transaction.execute(
                         "UPDATE page_read_model SET parent_kind = 'data_source', parent_id = ?1, \
                            library_rank_key = NULL, placement_revision = 2, membership_id = ?2, \
@@ -8898,6 +8915,7 @@ mod tests {
                     read: OwnedDocumentRead::SyncYjs {
                         document_id: DOCUMENT_ID.to_owned(),
                         state_vector: Vec::new(),
+                        history_after_head_seq: None,
                     },
                 },
             )
@@ -9717,6 +9735,7 @@ mod tests {
                 "client:first",
                 DOCUMENT_ID.to_owned(),
                 Vec::new(),
+                None,
             )
             .expect_err("sync also requires a subscription");
         assert_eq!(unauthorized_sync.code, CoreErrorCode::Unauthorized);
@@ -9748,6 +9767,7 @@ mod tests {
                 "client:first",
                 DOCUMENT_ID.to_owned(),
                 Vec::new(),
+                None,
             )
             .expect("subscribed sync");
         assert!(matches!(
@@ -9802,6 +9822,7 @@ mod tests {
                 "client:first-sibling",
                 DOCUMENT_ID.to_owned(),
                 Vec::new(),
+                None,
             )
             .expect("exact unsubscribe preserves its connection sibling");
         let removed = adapter
@@ -9814,6 +9835,7 @@ mod tests {
                 "client:first-sibling",
                 DOCUMENT_ID.to_owned(),
                 Vec::new(),
+                None,
             )
             .expect_err("connection disconnect removes its remaining sibling");
         assert_eq!(disconnected_sibling.code, CoreErrorCode::Unauthorized);
@@ -9876,6 +9898,7 @@ mod tests {
                 "client:grantee",
                 DOCUMENT_ID.to_owned(),
                 Vec::new(),
+                None,
             )
             .expect("read grant syncs the foreign Page");
 
@@ -9992,6 +10015,7 @@ mod tests {
                 "client:library",
                 DOCUMENT_ID.to_owned(),
                 Vec::new(),
+                None,
             )
             .expect("Library-scoped sync");
         assert!(matches!(
@@ -10035,6 +10059,7 @@ mod tests {
                 "client:library",
                 DOCUMENT_ID.to_owned(),
                 Vec::new(),
+                None,
             )
             .expect("archived Library Page remains readable");
         let archived_write = adapter
@@ -10808,6 +10833,7 @@ mod tests {
                     read: OwnedDocumentRead::SyncYjs {
                         document_id: DOCUMENT_ID.to_owned(),
                         state_vector: Vec::new(),
+                        history_after_head_seq: None,
                     },
                 },
             )
@@ -12816,6 +12842,7 @@ mod tests {
         foreign_library
             .apply(
                 &BoundModuleContext {
+                    editor_history_owner: None,
                     profile_id: ProfileId(FOREIGN_PROFILE_ID.to_owned()),
                     library_id: LibraryId(FOREIGN_LIBRARY_ID.to_owned()),
                     project_id: None,
@@ -13106,6 +13133,7 @@ mod tests {
                     read: OwnedDocumentRead::SyncYjs {
                         document_id: DOCUMENT_ID.to_owned(),
                         state_vector: Vec::new(),
+                        history_after_head_seq: None,
                     },
                 },
             )

@@ -11,6 +11,7 @@ import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { ApplicationWindowRuntime } from "../../window-runtime/ApplicationWindowRuntime";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { ApplicationWindowIpcError, live } from "./ApplicationWindowIpc";
+import { ApplicationMenuRuntime } from "../../host-runtime/ApplicationMenuRuntime";
 
 type Handler = (
   event: IpcMainInvokeEvent,
@@ -29,6 +30,7 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
       on: () => Effect.void,
     });
     const openForRequest = vi.fn();
+    const publishHistory = vi.fn(() => Effect.void);
     const applicationWindows = ApplicationWindowRuntime.of({
       openForRequest,
     } as unknown as ApplicationWindowRuntime["Service"]);
@@ -51,6 +53,14 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
             Layer.succeed(ElectronIpc, ipc),
             mainConfigLayer({ rendererUrl: "http://localhost:5173" }),
             Layer.succeed(WindowRuntime, windows),
+            Layer.succeed(
+              ApplicationMenuRuntime,
+              ApplicationMenuRuntime.of({
+                refresh: () => undefined,
+                bindHistory: () => Effect.succeed(1),
+                publishHistory,
+              }),
+            ),
           ),
         ),
       ),
@@ -59,6 +69,8 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
     assert.deepEqual([...handlers.keys()].sort(), [
       "app:runtime-capabilities:get",
       "electron-window:focus:get",
+      "surface-history:bind",
+      "surface-history:publish",
       "window:new",
       "window:show-emoji-panel",
     ]);
@@ -76,6 +88,24 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
     yield* handlers.get("window:new")!(event, { activeProjectSessionId: "session-1" });
     assert.strictEqual(openForRequest.mock.calls.length, 1);
     assert.deepEqual(openForRequest.mock.calls[0], [17, { activeProjectSessionId: "session-1" }]);
+    assert.strictEqual(yield* handlers.get("surface-history:bind")!(event), 1);
+    const publication = { generation: 1, sequence: 1, snapshot: null };
+    yield* handlers.get("surface-history:publish")!(event, publication);
+    assert.deepEqual(publishHistory.mock.calls, [[17, publication]]);
+    const invalid = yield* handlers.get("surface-history:publish")!(event, {
+      ...publication,
+      generation: -1,
+    }).pipe(Effect.exit);
+    assert.isTrue(Exit.isFailure(invalid));
+    const foreign = {
+      ...event,
+      senderFrame: { url: "https://untrusted.example" },
+    } as unknown as IpcMainInvokeEvent;
+    const rejected = yield* handlers.get("surface-history:publish")!(foreign, publication).pipe(
+      Effect.exit,
+    );
+    assert.isTrue(Exit.isFailure(rejected));
+    assert.strictEqual(publishHistory.mock.calls.length, 1);
 
     yield* Scope.close(scope, Exit.void);
     assert.strictEqual(handlers.size, 0);

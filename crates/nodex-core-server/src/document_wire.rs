@@ -40,6 +40,7 @@ pub(crate) struct YjsSyncRequestMetadata {
     pub(crate) version: u32,
     engine: WireEngine,
     pub(crate) client_session_id: String,
+    pub(crate) history_after_head_seq: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -99,6 +100,7 @@ struct SyncResponseMetadata<'a> {
     generation: i64,
     head_seq: i64,
     state_vector: String,
+    history_fence: &'a nodex_core_contracts::document::DocumentHistoryFence,
 }
 
 #[derive(Serialize)]
@@ -161,6 +163,7 @@ pub(crate) struct YjsSyncValue {
     pub(crate) head_seq: i64,
     pub(crate) state_vector: Vec<u8>,
     pub(crate) update: Vec<u8>,
+    pub(crate) history_fence: nodex_core_contracts::document::DocumentHistoryFence,
 }
 
 #[derive(Debug)]
@@ -233,7 +236,12 @@ pub(crate) fn decode_apply(bytes: &[u8]) -> Result<ApplyFrame, CoreError> {
 pub(crate) fn parse_yjs_sync(
     snapshot: ModuleReadSnapshot<OwnedDocumentReadValue>,
 ) -> Result<YjsSyncValue, CoreError> {
-    let OwnedDocumentReadValue::YjsSync { descriptor, update } = snapshot.value else {
+    let OwnedDocumentReadValue::YjsSync {
+        descriptor,
+        update,
+        history_fence,
+    } = snapshot.value
+    else {
         return Err(invalid("Core returned a non-Yjs Document sync value"));
     };
     let OwnedDocumentDescriptor {
@@ -254,6 +262,7 @@ pub(crate) fn parse_yjs_sync(
         head_seq,
         state_vector,
         update,
+        history_fence,
     })
 }
 
@@ -270,6 +279,7 @@ pub(crate) fn encode_sync(value: &YjsSyncValue) -> Result<Vec<u8>, CoreError> {
             generation: value.generation,
             head_seq: value.head_seq,
             state_vector,
+            history_fence: &value.history_fence,
         },
         &value.update,
     )

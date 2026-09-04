@@ -63,6 +63,7 @@ import {
 import { MainConfig } from "../../app/MainConfig";
 import { DesktopDocumentSessionRuntime } from "../../core-client";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
+import { EditorHistoryRuntime } from "../../host-runtime/EditorHistoryRuntime";
 import { DatabaseModule } from "../../database-application/DatabaseModule";
 import { LibraryModule } from "../../library-application/LibraryModule";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -97,6 +98,7 @@ export const live: Layer.Layer<
   | DatabaseModule
   | DesktopDocumentSessionRuntime
   | ElectronIpc
+  | EditorHistoryRuntime
   | LibraryModule
   | MainConfig
   | RendererClientRuntime
@@ -108,6 +110,7 @@ export const live: Layer.Layer<
     const documents = yield* DesktopDocumentSessionRuntime;
     const ipc = yield* ElectronIpc;
     const library = yield* LibraryModule;
+    const editorHistory = yield* EditorHistoryRuntime;
     const rendererClients = yield* RendererClientRuntime;
     const windows = yield* WindowRuntime;
 
@@ -250,18 +253,7 @@ export const live: Layer.Layer<
             ),
           });
         }
-        return database.apply(request).pipe(
-          Effect.catch((error) =>
-            Effect.succeed({
-              ok: false as const,
-              error: databaseModuleFailureV2(
-                "unknown",
-                messageOf(error, "The durable Database Module writer is unavailable"),
-                request.operationId,
-              ),
-            }),
-          ),
-        );
+        return editorHistory.applyDatabase(event.sender, request);
       },
     );
 
@@ -309,7 +301,8 @@ export const live: Layer.Layer<
     yield* ipc.handleLocalCommitCommand(
       "library-module:apply",
       (event, rawAccess: unknown, rawRequest: IpcApi["library-module:apply"]["args"][1]) => {
-        if (!trustedTarget(event)) {
+        const target = trustedTarget(event);
+        if (!target) {
           return Effect.succeed({
             ok: false as const,
             error: libraryModuleFailure(
@@ -332,7 +325,14 @@ export const live: Layer.Layer<
             ),
           });
         }
-        return library.apply(access, request).pipe(
+        const operation = request.operation.kind;
+        const apply =
+          operation === "apply_structural_edit" ||
+          operation === "reverse_structural_edit" ||
+          operation === "create_page_mention"
+            ? editorHistory.apply(target, access, request)
+            : library.apply(access, request);
+        return apply.pipe(
           Effect.catch((error) =>
             Effect.succeed({
               ok: false as const,
@@ -346,6 +346,33 @@ export const live: Layer.Layer<
         );
       },
     );
+
+    for (const channel of ["editor-history:release", "editor-history:abandon"] as const) {
+      yield* ipc.handleControl(channel, (event, rawAccess, rawRequest) => {
+        const target = trustedTarget(event);
+        if (!target)
+          return Effect.succeed({
+            accepted: false as const,
+            message: "History cleanup requires an owned application window.",
+          });
+        try {
+          const handoff =
+            channel === "editor-history:release"
+              ? editorHistory.handoffRelease
+              : editorHistory.handoffAbandon;
+          return handoff(
+            target,
+            parseContentAccessContext(rawAccess),
+            bindLibraryModuleApply(rawRequest),
+          );
+        } catch {
+          return Effect.succeed({
+            accepted: false as const,
+            message: "History cleanup request is invalid.",
+          });
+        }
+      });
+    }
 
     yield* ipc.handleQuery(
       "library-database-module:read",
@@ -409,18 +436,7 @@ export const live: Layer.Layer<
             ),
           });
         }
-        return database.applyLibrary(request).pipe(
-          Effect.catch((error) =>
-            Effect.succeed({
-              ok: false as const,
-              error: databaseModuleFailureV2(
-                "unknown",
-                messageOf(error, "The durable Library Database writer is unavailable"),
-                request.operationId,
-              ),
-            }),
-          ),
-        );
+        return editorHistory.applyLibraryDatabase(event.sender, request);
       },
     );
 
@@ -598,9 +614,21 @@ export const live: Layer.Layer<
         }
         const bound = bindBlockTransferIntent(rawIntent, projectId, identity);
         if (!bound.ok) return Effect.succeed(bound);
-        return documents.transferBlocks(bound.value);
+        return editorHistory.transferBlocks(event.sender, bound.value);
       },
     );
+
+    yield* ipc.handleControl("editor-history:abandon-transfer", (event, projectId, rawIntent) => {
+      const identity = trustedIdentity(event);
+      if (!identity)
+        return Effect.succeed({
+          accepted: false,
+          message: "History cleanup requires an owned application window.",
+        });
+      const bound = bindBlockTransferIntent(rawIntent, projectId, identity);
+      if (!bound.ok) return Effect.succeed({ accepted: false, message: bound.error.message });
+      return editorHistory.handoffAbandonTransfer(event.sender, bound.value);
+    });
 
     yield* ipc.handleLocalCommitCommand(
       "blocks:transfer:undo",
@@ -616,7 +644,7 @@ export const live: Layer.Layer<
         }
         const bound = bindBlockTransferUndoIntent(rawIntent, projectId);
         if (!bound.ok) return Effect.succeed(bound);
-        return documents.undoBlockTransfer(bound.value);
+        return editorHistory.reverseBlockTransfer(event.sender, bound.value);
       },
     );
 

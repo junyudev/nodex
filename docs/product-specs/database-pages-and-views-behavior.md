@@ -507,12 +507,86 @@ Page count; rows do not live-shift during pointer movement. Returning the source
 to its unchanged structural slot is a silent no-op: it creates no mutation,
 error, toast, or Undo entry. After drop,
 a conservative optimistic projection remains until a receipt-fenced canonical
-window confirms the same parent, group, and order semantics. One typed revision
-conflict may rebase against fresh occurrence authority; exhausted conflicts
-roll back without clearing the readable List. Successful moves are silent.
+window confirms the same parent, group, and order semantics. A typed revision
+conflict rolls back without clearing the readable List; a new gesture uses fresh
+occurrence authority. Successful moves are silent.
 Their opaque Core recipe enters a bounded, Store-epoch-and-View-scoped session
 history, and List-scoped Command/Ctrl+Z restores it only while editor, input,
 combobox, and menu Undo owners are inactive.
+
+View history reserves each data gesture before asynchronous preparation and
+serializes its forward commands and inverses. Later replies fill their original
+slots; a queued Undo cannot wait for a gesture admitted behind it. Scope changes
+retire the old queue, and its late completion cannot change the new View history.
+The scope binds Library, access context, Store epoch, and View identity once per
+render; a ready View never detours through a temporary loading identity during
+ordinary projection refresh or presentation rerender.
+Transfer-toast Undo addresses the exact transfer and only runs while that entry
+is the latest eligible action in the same View. It never undoes a newer action.
+Board's optimistic delivery returns the complete authoritative receipt to this
+same owner. It neither rebuilds the admitted request nor maintains a separate
+history. An uncertain response keeps its place and blocks dependent commands
+and older Undo. Recovery resends the frozen request and operation identity.
+Only a known non-commit or supported no-op removes a pending action. If its
+receipt can no longer be recovered, a permanent barrier remains; expiry does
+not authorize executing the action with a new identity.
+Closing or resetting a View hands uncertain Promotion and structural replay
+attempts to Main for exact confirmation and subsequent capability release,
+without revoking the input while the writer might still consume it.
+
+Scalar Property values (including Status), multi-select patches and manual View
+positions produce one Core inverse for the entire data gesture. A mixed batch of
+these operations is atomic during both execution and Undo. Core records canonical
+before/after values and logical position runs, not physical rank keys. It validates
+the complete target set's current write authority before reading or comparing
+Property or position post-images. This also applies to List inverses and mixed
+inverse batches: an unauthorized target cannot expose its values through a
+different conflict result, and no permitted part is written first. Changed Property
+types, deleted options, changed View direction or ambiguous positions block the
+whole inverse. Unrelated values remain untouched. Successful inverse replies are
+idempotent under their original operation ID, including after a lost reply.
+Position commands always use visual order; Core alone converts descending order
+to physical ranks. An unchanged supported gesture creates no history barrier.
+History captures complete selected runs and canonical root neighbors, not hidden
+child ranks or a loaded window. Forward, Undo and Redo share bounded positioning.
+Large initial orders or exhausted local rank space return explicit preparation
+without committing the gesture; resumable maintenance prepares that View without
+blocking unrelated Property edits. Physical rank maintenance preserves semantic
+history; a View reset or changed logical anchors may block it. Page relocation
+restores logical neighbors; Database copies get fresh ranks for captured order.
+
+Relation, hierarchy, schema and other edits without a whole-gesture Core inverse
+form an explicit history barrier. Undo explains that the latest edit cannot be
+reversed and leaves earlier moves intact; it must not skip the edit and undo an
+older Move. A batch can only enter history when its inverse covers the whole
+gesture; a List-move suboperation receipt cannot make a mixed batch undoable.
+Each data inverse is bounded to 4,096 affected identities and 8 MiB. The View
+retains at most 50 completed entries and 16 MiB of encoded evidence, evicting a
+contiguous oldest prefix; an oversized gesture never uncovers an older action.
+Controls remain interactive while another command is pending;
+accepted commands wait in gesture order. Scalar, multi-select, manual-order and
+whole List-move inverses return the evidence for Redo. List replay restores
+discontiguous selections across their original parents and validates every
+affected logical value, parent and ordered run before writing. Each successful
+replay captures its next inverse from the committed content, so subsequent
+Undo/Redo never reconstructs placement in the renderer. A new effective edit
+retires Redo; a known rejection or no-op preserves it. Ordinary Block promotions
+with a complete Core capability enter this same Undo/Redo timeline. Schema-changing
+or Relation-carrying promotions without that capability form a whole-action barrier,
+not a partial Undo followed by a Redo barrier. Their unused one-way token is
+released; the success notification offers Undo only for a complete inverse.
+Consumed inverses are not released twice. Retiring the surface or a Redo branch
+releases the remaining reachable capabilities through Main's cleanup owner.
+Waiting or blocked history appears in a
+compact surface notice with an explicit recovery action when safe. Reset history
+requires confirmation and clears the complete local timeline without changing
+content or abandoning submitted requests. Native menu labels and availability
+follow the focused surface; native inputs retain their own history. Keyboard and native-menu history requests share the same focused owner,
+including when empty, pending, or blocked. A nested Property input keeps its own
+text history, and an embedded View never delegates its history to a parent Page.
+Closing a Board or List Page menu returns focus to the surviving View when the
+menu item’s Page has regrouped or disappeared from the current result, unless
+the user has moved focus elsewhere. The next Undo/Redo still belongs to that View.
 
 List also accepts native NFM Block drags from another mounted editor in the
 same renderer window. Under manual order or an inferable writable Property
@@ -561,6 +635,13 @@ remounting the Database surface. A projection checkpoint may fence stale
 authority and repair the loaded span, but it cannot detach later effects from a
 consumer that remains mounted.
 
+Inline View row patches are optional and have a fixed writer-work budget. Core
+checks candidate counts before computing group totals or an absolute row
+position; archived, removed, and projection-stale candidates still consume that
+budget. Large or multi-row changes publish the same exact View read requirement
+without a partial row patch. Mounted consumers then repair their loaded span
+from the canonical, commit-fenced read.
+
 Workflow-status List groups use the canonical `Triage`, `Plan`, `Build`,
 `Review`, and `Ship` labels. Each writable status group ends with a compact
 create action that opens the standard Page composer already seeded to that
@@ -573,8 +654,12 @@ focus, and selection backgrounds, so status itself never adds a nested pill.
 Set-like Tags and Labels remain compact chips. Custom non-status option labels
 remain data-defined.
 
-A manual position is optional; an unpositioned Page remains visible according
-to the View's null policy. Board drag, Board keyboard movement, and manual List
+Every Page participates in its View's complete manual order, including Pages not
+yet explicitly positioned. Manual direction applies to the complete sequence;
+null policy applies to nullable Property values, not manual order. Optional
+position metadata still distinguishes an unpositioned Page. Making it explicit
+or maintaining physical ranks does not reorder untouched Pages.
+Board drag, Board keyboard movement, and manual List
 movement write one View-global rank. Cross-group Board movement commits the
 target grouping Property values and rank in one atomic Database mutation from
 stable Page and View identities. Under a writable Property sort, Board and List
@@ -582,6 +667,10 @@ infer the Property prefix needed for the selected visible gap and commit it with
 the move; View-global fractional rank remains the final stable tie-break among
 Pages with equal sorted values. Detailed behavior is specified in
 [Board Drag and Drop Behavior](board-drag-and-drop-behavior.md).
+
+A moved Page run reserves rank space as one batch. When its two neighboring
+ranks have enough space, positioning preserves every untouched sibling rank;
+batch size alone must not force a rebalance through repeated gap subdivision.
 
 ## Page creation
 

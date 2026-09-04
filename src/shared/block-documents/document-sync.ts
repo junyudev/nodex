@@ -1,6 +1,7 @@
 import type { ApplyDocumentUpdate, DocumentId } from "./contracts";
 import type { LocalCommitApply, LocalCommitCommandSuccess } from "../local-commit-delivery";
 import type { CoreFailureEvidence } from "../core-failure-evidence";
+import type { DocumentHistoryFence } from "./document-history-fence";
 
 export const MAX_DOCUMENT_AWARENESS_UPDATE_BYTES = 64 * 1024;
 
@@ -58,6 +59,7 @@ export interface DocumentSyncRequest {
   readonly documentId: DocumentId;
   readonly clientSessionId: string;
   readonly stateVector: Uint8Array;
+  readonly historyAfterHeadSeq?: number;
 }
 
 export interface DocumentSyncResponse {
@@ -68,6 +70,7 @@ export interface DocumentSyncResponse {
   readonly stateVector: Uint8Array;
   /** The server state missing from the supplied state vector. */
   readonly update: Uint8Array;
+  readonly historyFence?: DocumentHistoryFence;
 }
 
 export interface DocumentUpdateResourceRef {
@@ -274,6 +277,7 @@ export type DocumentSyncRealtimeEvent =
       readonly updateId: string;
       readonly clientSessionId: string;
       readonly update: Uint8Array;
+      readonly historyFence?: DocumentHistoryFence;
     }
   | {
       readonly kind: "awareness";

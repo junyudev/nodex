@@ -60,7 +60,7 @@ export const CollaborationExtension = createExtension(
           transactionOrigin,
         }),
         YSyncExtension(surfaceOptions),
-        YUndoExtension({ transactionOrigin }),
+        YUndoExtension({ fragment: options.fragment, transactionOrigin }),
       ],
     } as const;
   },

@@ -3,6 +3,9 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+pub(super) mod history;
+mod promotion_history;
+
 use nodex_core_contracts::database::DatabaseViewPreferencesOverrideInput;
 use nodex_core_contracts::library::{
     LibraryBlockLocation, LibraryBlockTransferDataSourcePlacement,
@@ -146,7 +149,7 @@ enum PageOwnershipHistory {
     None,
     RecordRelocation,
     UndoRelocation {
-        recipe: PageRelocationUndoRecipeV2,
+        recipe: PageRelocationUndoRecipeV3,
         token: LibraryBlockTransferUndoToken,
     },
 }
@@ -212,12 +215,12 @@ pub(super) struct PreparedPageParentTransfer {
     task_shorthand_plan: Option<PageTaskShorthandBatchPlan>,
 }
 
-const BLOCK_TRANSFER_UNDO_RECIPE_VERSION: u32 = 3;
-const PAGE_RELOCATION_UNDO_RECIPE_VERSION: u32 = 2;
+const BLOCK_TRANSFER_UNDO_RECIPE_VERSION: u32 = 4;
+const PAGE_RELOCATION_UNDO_RECIPE_VERSION: u32 = 3;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct BlockTransferUndoRecipeV3 {
+struct BlockTransferUndoRecipeV4 {
     version: u32,
     mode: LibraryBlockTransferMode,
     project_id: String,
@@ -232,6 +235,8 @@ struct BlockTransferUndoRecipeV3 {
     roots: Vec<BlockTransferUndoRootV1>,
     target_guard_hash: String,
     schema_restore: Option<BlockTransferUndoSchemaRestoreV1>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    footprint: Option<promotion_history::PromotionFootprint>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -263,14 +268,9 @@ struct BlockTransferUndoSchemaRestoreV1 {
     created_option_ids: Vec<String>,
 }
 
-struct PendingBlockTransferUndoRecipe {
-    recipe: BlockTransferUndoRecipeV3,
-    token: LibraryBlockTransferUndoToken,
-}
-
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct PageRelocationUndoRecipeV2 {
+struct PageRelocationUndoRecipeV3 {
     version: u32,
     project_id: String,
     library_id: String,
@@ -278,15 +278,14 @@ struct PageRelocationUndoRecipeV2 {
     page_id: String,
     result_parent: PageRelocationUndoParentV2,
     result_location_revision: i64,
-    source: PageRelocationUndoSourceV2,
+    source: PageRelocationUndoSourceV3,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct PageRelocationUndoPositionV2 {
+struct PageRelocationUndoPositionV3 {
     view_id: String,
-    rank_key: String,
-    revision: i64,
+    anchors: crate::database::PageOrderAnchors,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -299,7 +298,7 @@ enum PageRelocationUndoParentV2 {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-enum PageRelocationUndoSourceV2 {
+enum PageRelocationUndoSourceV3 {
     Library {
         previous_sibling_id: Option<String>,
         next_sibling_id: Option<String>,
@@ -314,18 +313,13 @@ enum PageRelocationUndoSourceV2 {
     DataSource {
         data_source_id: String,
         default_view_id: String,
-        positions: Vec<PageRelocationUndoPositionV2>,
+        positions: Vec<PageRelocationUndoPositionV3>,
     },
 }
 
-struct PreparedPageRelocationUndoV2 {
+struct PreparedPageRelocationUndoV3 {
     page_id: String,
-    source: PageRelocationUndoSourceV2,
-}
-
-struct PendingPageRelocationUndoRecipe {
-    recipe: PageRelocationUndoRecipeV2,
-    token: LibraryBlockTransferUndoToken,
+    source: PageRelocationUndoSourceV3,
 }
 
 struct PageParentApplyCommand<'a> {
@@ -1313,6 +1307,7 @@ fn apply_with_authority(
                 move_etags: BTreeMap::new(),
                 page_view_placements: BTreeMap::new(),
                 undo_token: None,
+                history: None,
             };
             let mut affected_page_ids = affected_page_ids(&prepared);
             affected_page_ids.sort();
@@ -2672,14 +2667,13 @@ fn apply_page_ownership_transfer(
                 restore_page_relocation_positions(connection, recipe, &now)?;
             affected_view_ids.extend(restored_view_ids);
             committed_revisions.extend(restored_revisions);
-            let consumed = connection.execute(
-                "UPDATE block_transfer_undo_recipes SET consumed_at = ?1 \
-                 WHERE transfer_operation_id = ?2 AND consumed_at IS NULL",
-                params![now, token.transfer_operation_id],
+            history::consume(
+                connection,
+                token,
+                &recipe.project_id,
+                &now,
+                scope.evidence(),
             )?;
-            if consumed != 1 {
-                return Err(conflict("Page relocation was already undone"));
-            }
         }
         let result_block_ids = root_page_ids;
         // Agent Page moves merge every touched Document into one deterministic
@@ -2835,6 +2829,7 @@ fn apply_page_ownership_transfer(
             undo_token: pending_relocation_undo
                 .as_ref()
                 .map(|pending| pending.token.clone()),
+            history: None,
         };
         committed_revisions.extend(
             final_location_revisions
@@ -2934,7 +2929,7 @@ fn apply_page_ownership_transfer(
                     &now,
                 )?;
                 if let Some(pending) = &pending_relocation_undo {
-                    persist_page_relocation_undo_recipe(connection, pending, &now)?;
+                    history::persist(connection, pending, &now)?;
                 }
                 persist_operation_checkpoints(
                     connection,
@@ -3099,6 +3094,7 @@ fn apply_page_ownership_copy(
         move_etags: BTreeMap::new(),
         page_view_placements: BTreeMap::new(),
         undo_token: None,
+        history: None,
     };
     let actor_project_id =
         actor_project_id.ok_or_else(|| corrupt("Page copy produced no actor Project"))?;
@@ -3324,7 +3320,9 @@ fn prepare_page_parent_transfer(
             matches!(target, PreparedPageParentTarget::DataSource { .. }),
             &transformation,
         );
-        let document_id = format!("document:{page_id}");
+        // A new promotion is a new Document lifetime, even when an earlier Undo
+        // left this Block's previous Page Document dormant for Redo.
+        let document_id = stable_uuid_v7(operation_id, "block_transfer_document", &page_id);
         require_fresh_page_authority(
             connection,
             &page_id,
@@ -3654,19 +3652,19 @@ fn block_transfer_target_guard_hash(
                 "SELECT block.type, block.lifecycle, block.placement_revision, \
                    block.metadata_revision, page.parent_kind, page.parent_id, \
                    page.document_id, document.generation, document.head_seq, document.state_hash \
-                 FROM blocks block JOIN pages page ON page.block_id = block.id \
-                 JOIN documents document ON document.id = page.document_id \
+                 FROM blocks block LEFT JOIN pages page ON page.block_id = block.id \
+                 JOIN documents document ON document.id = ?2 \
                  WHERE block.id = ?1",
-                [&root.result_page_id],
+                params![root.result_page_id, root.result_document_id],
                 |row| {
                     Ok(serde_json::json!({
                         "type": row.get::<_, String>(0)?,
                         "lifecycle": row.get::<_, String>(1)?,
                         "placementRevision": row.get::<_, i64>(2)?,
                         "metadataRevision": row.get::<_, i64>(3)?,
-                        "parentKind": row.get::<_, String>(4)?,
-                        "parentId": row.get::<_, String>(5)?,
-                        "documentId": row.get::<_, String>(6)?,
+                        "parentKind": row.get::<_, Option<String>>(4)?,
+                        "parentId": row.get::<_, Option<String>>(5)?,
+                        "documentId": row.get::<_, Option<String>>(6)?,
                         "documentGeneration": row.get::<_, i64>(7)?,
                         "documentHeadSeq": row.get::<_, i64>(8)?,
                         "documentStateHash": row.get::<_, String>(9)?,
@@ -3712,19 +3710,8 @@ fn block_transfer_target_guard_hash(
                 ]))
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        let positions = connection
-            .prepare(
-                "SELECT view_id, rank_key, revision \
-                 FROM database_view_page_positions WHERE page_block_id = ?1 ORDER BY view_id",
-            )?
-            .query_map([&root.result_page_id], |row| {
-                Ok(serde_json::json!([
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
-                ]))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+        let positions =
+            crate::database::retained_position_witnesses(connection, &root.result_page_id)?;
         let properties = connection
             .prepare(
                 "SELECT property_key, value_type, value_json, revision \
@@ -3810,7 +3797,7 @@ struct PageParentUndoRecipeInput<'a> {
 fn build_page_parent_undo_recipe(
     connection: &Connection,
     input: PageParentUndoRecipeInput<'_>,
-) -> Result<PendingBlockTransferUndoRecipe, StoreError> {
+) -> Result<history::Prepared, StoreError> {
     let PageParentUndoRecipeInput {
         operation_id,
         store_epoch,
@@ -3848,7 +3835,8 @@ fn build_page_parent_undo_recipe(
         .collect::<Vec<_>>();
     let target_guard_hash =
         block_transfer_target_guard_hash(connection, &roots, schema_restore.as_ref())?;
-    let recipe = BlockTransferUndoRecipeV3 {
+    let footprint = promotion_history::capture_footprint(connection, &roots)?;
+    let recipe = BlockTransferUndoRecipeV4 {
         version: BLOCK_TRANSFER_UNDO_RECIPE_VERSION,
         mode: intent.mode,
         project_id: prepared.actor_project_id.clone(),
@@ -3863,46 +3851,16 @@ fn build_page_parent_undo_recipe(
         roots,
         target_guard_hash,
         schema_restore,
+        footprint: Some(footprint),
     };
-    let recipe_json = serde_json::to_vec(&recipe)
-        .map_err(|_| internal("Block transfer Undo recipe cannot be encoded"))?;
-    let token = LibraryBlockTransferUndoToken {
-        transfer_operation_id: operation_id.to_owned(),
-        recipe_hash: sha256(&recipe_json),
-        store_epoch: store_epoch.to_owned(),
-    };
-    Ok(PendingBlockTransferUndoRecipe { recipe, token })
-}
-
-fn persist_page_parent_undo_recipe(
-    connection: &Connection,
-    pending: &PendingBlockTransferUndoRecipe,
-    now: &str,
-) -> Result<(), StoreError> {
-    connection.execute(
-        "INSERT INTO block_transfer_undo_recipes(\
-           transfer_operation_id, project_id, library_id, store_epoch, recipe_hash, \
-           recipe_json, consumed_at, created_at\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7)",
-        params![
-            pending.token.transfer_operation_id,
-            pending.recipe.project_id,
-            pending.recipe.library_id,
-            pending.recipe.store_epoch,
-            pending.token.recipe_hash,
-            serde_json::to_string(&pending.recipe)
-                .map_err(|_| internal("Block transfer Undo recipe cannot be encoded"))?,
-            now,
-        ],
-    )?;
-    Ok(())
+    history::prepare_promotion(operation_id, &recipe)
 }
 
 fn capture_page_relocation_undo_source(
     connection: &Connection,
     library_id: &str,
     prepared: &PreparedPageOwnershipTransfer,
-) -> Result<PreparedPageRelocationUndoV2, StoreError> {
+) -> Result<PreparedPageRelocationUndoV3, StoreError> {
     let [root] = prepared.roots.as_slice() else {
         return Err(invalid(
             "Reversible Page relocation requires exactly one Page root",
@@ -3913,7 +3871,7 @@ fn capture_page_relocation_undo_source(
         PreparedPageOwnershipSource::Library => {
             let (previous_sibling_id, next_sibling_id) =
                 library_sibling_anchors(connection, library_id, &root.page_id)?;
-            PageRelocationUndoSourceV2::Library {
+            PageRelocationUndoSourceV3::Library {
                 previous_sibling_id,
                 next_sibling_id,
             }
@@ -3932,7 +3890,7 @@ fn capture_page_relocation_undo_source(
                 None,
             )
             .ok_or_else(|| corrupt("Page relocation source shell has no Document placement"))?;
-            PageRelocationUndoSourceV2::Page {
+            PageRelocationUndoSourceV3::Page {
                 page_id: page_id.clone(),
                 document_id: document_id.clone(),
                 parent_block_id: placement.parent_block_id,
@@ -3955,30 +3913,32 @@ fn capture_page_relocation_undo_source(
                 )
                 .optional()?
                 .ok_or_else(|| conflict("Source Database no longer has an active default View"))?;
-            let positions = connection
+            let view_ids = connection
                 .prepare(
-                    "SELECT position.view_id, position.rank_key, position.revision \
-                     FROM database_view_page_positions position \
-                     JOIN database_views view ON view.id = position.view_id \
-                     WHERE position.page_block_id = ?1 AND view.data_source_id = ?2 \
-                       AND view.lifecycle = 'active' ORDER BY position.view_id",
+                    "SELECT id FROM database_views WHERE data_source_id = ?1 \
+                       AND lifecycle = 'active' ORDER BY id",
                 )?
-                .query_map(params![root.page_id, data_source_id], |row| {
-                    Ok(PageRelocationUndoPositionV2 {
-                        view_id: row.get(0)?,
-                        rank_key: row.get(1)?,
-                        revision: row.get(2)?,
-                    })
-                })?
+                .query_map([data_source_id], |row| row.get::<_, String>(0))?
                 .collect::<rusqlite::Result<Vec<_>>>()?;
-            PageRelocationUndoSourceV2::DataSource {
+            let positions = view_ids
+                .into_iter()
+                .map(|view_id| {
+                    let anchors = crate::database::capture_page_order_anchors(
+                        connection,
+                        &view_id,
+                        &root.page_id,
+                    )?;
+                    Ok(PageRelocationUndoPositionV3 { view_id, anchors })
+                })
+                .collect::<Result<Vec<_>, StoreError>>()?;
+            PageRelocationUndoSourceV3::DataSource {
                 data_source_id: data_source_id.clone(),
                 default_view_id,
                 positions,
             }
         }
     };
-    Ok(PreparedPageRelocationUndoV2 {
+    Ok(PreparedPageRelocationUndoV3 {
         page_id: root.page_id.clone(),
         source,
     })
@@ -3991,8 +3951,8 @@ fn seal_page_relocation_undo_recipe(
     project_id: &str,
     target: &PreparedPageOwnershipTarget,
     result_location_revision: i64,
-    prepared: PreparedPageRelocationUndoV2,
-) -> Result<PendingPageRelocationUndoRecipe, StoreError> {
+    prepared: PreparedPageRelocationUndoV3,
+) -> Result<history::Prepared, StoreError> {
     let result_parent = match target {
         PreparedPageOwnershipTarget::Library { .. } => PageRelocationUndoParentV2::Library {
             library_id: library_id.to_owned(),
@@ -4006,7 +3966,7 @@ fn seal_page_relocation_undo_recipe(
             }
         }
     };
-    let recipe = PageRelocationUndoRecipeV2 {
+    let recipe = PageRelocationUndoRecipeV3 {
         version: PAGE_RELOCATION_UNDO_RECIPE_VERSION,
         project_id: project_id.to_owned(),
         library_id: library_id.to_owned(),
@@ -4016,14 +3976,7 @@ fn seal_page_relocation_undo_recipe(
         result_location_revision,
         source: prepared.source,
     };
-    let recipe_json = serde_json::to_vec(&recipe)
-        .map_err(|_| internal("Page relocation Undo recipe cannot be encoded"))?;
-    let token = LibraryBlockTransferUndoToken {
-        transfer_operation_id: operation_id.to_owned(),
-        recipe_hash: sha256(&recipe_json),
-        store_epoch: store_epoch.to_owned(),
-    };
-    Ok(PendingPageRelocationUndoRecipe { recipe, token })
+    history::prepare_relocation(operation_id, &recipe)
 }
 
 struct PageRelocationSiblingPlacement {
@@ -4092,36 +4045,12 @@ fn library_sibling_anchors(
     Ok((previous, next))
 }
 
-fn persist_page_relocation_undo_recipe(
-    connection: &Connection,
-    pending: &PendingPageRelocationUndoRecipe,
-    now: &str,
-) -> Result<(), StoreError> {
-    connection.execute(
-        "INSERT INTO block_transfer_undo_recipes(\
-           transfer_operation_id, project_id, library_id, store_epoch, recipe_hash, \
-           recipe_json, consumed_at, created_at\
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7)",
-        params![
-            pending.token.transfer_operation_id,
-            pending.recipe.project_id,
-            pending.recipe.library_id,
-            pending.recipe.store_epoch,
-            pending.token.recipe_hash,
-            serde_json::to_string(&pending.recipe)
-                .map_err(|_| internal("Page relocation Undo recipe cannot be encoded"))?,
-            now,
-        ],
-    )?;
-    Ok(())
-}
-
 fn restore_page_relocation_positions(
     connection: &Connection,
-    recipe: &PageRelocationUndoRecipeV2,
+    recipe: &PageRelocationUndoRecipeV3,
     now: &str,
 ) -> Result<(Vec<String>, BTreeMap<String, i64>), StoreError> {
-    let PageRelocationUndoSourceV2::DataSource {
+    let PageRelocationUndoSourceV3::DataSource {
         data_source_id,
         positions,
         ..
@@ -4153,29 +4082,19 @@ fn restore_page_relocation_positions(
             ));
         }
     }
-    connection.execute(
-        "DELETE FROM database_view_page_positions WHERE page_block_id = ?1",
-        [&recipe.page_id],
-    )?;
     let mut revisions = BTreeMap::new();
     let mut view_ids = Vec::with_capacity(positions.len());
     for position in positions {
-        let revision = position.revision + 2;
-        connection.execute(
-            "INSERT INTO database_view_page_positions(\
-               view_id, page_block_id, rank_key, revision, created_at, updated_at\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-            params![
-                position.view_id,
-                recipe.page_id,
-                position.rank_key,
-                revision,
-                now
-            ],
+        let committed = crate::database::restore_page_order_anchors(
+            connection,
+            &position.view_id,
+            &recipe.page_id,
+            &position.anchors,
+            now,
         )?;
         revisions.insert(
             format!("viewPosition:{}:{}", position.view_id, recipe.page_id),
-            revision,
+            committed.revision,
         );
         view_ids.push(position.view_id.clone());
     }
@@ -4386,6 +4305,9 @@ fn apply_page_parent_transfer(
                 move_etags: BTreeMap::new(),
                 page_view_placements: BTreeMap::new(),
                 undo_token: Some(pending_undo.token.clone()),
+                history: pending_undo
+                    .symmetric
+                    .then(|| history::token(&pending_undo.token)),
             };
             let mut committed_revisions = final_location_revisions
                 .iter()
@@ -4410,7 +4332,7 @@ fn apply_page_parent_transfer(
                         "membership:{}:{}",
                         placement.data_source_id, placement.membership_id
                     ),
-                    1,
+                    placement.membership_revision,
                 );
                 for (property_id, revision) in &placement.value_revisions {
                     committed_revisions.insert(
@@ -4495,7 +4417,7 @@ fn apply_page_parent_transfer(
                         event_sequence,
                         &now,
                     )?;
-                    persist_page_parent_undo_recipe(connection, &pending_undo, &now)?;
+                    history::persist(connection, &pending_undo, &now)?;
                     persist_operation_checkpoints(
                         connection,
                         context,
@@ -5095,6 +5017,10 @@ enum TransferDocumentPlacement<'a> {
     },
     Preapplied(&'a [String]),
     Genesis(&'a [String]),
+    Restore {
+        advances: &'a [String],
+        reactivations: &'a [String],
+    },
 }
 
 fn aggregate_owned_placement_block_ids(operations: &[DocumentBlockOperation]) -> Vec<String> {
@@ -5108,7 +5034,8 @@ fn aggregate_owned_placement_block_ids(operations: &[DocumentBlockOperation]) ->
             | DocumentBlockOperation::SetRichTitle { .. }
             | DocumentBlockOperation::UpdateBlock { .. }
             | DocumentBlockOperation::MergeBlockBackward { .. }
-            | DocumentBlockOperation::RestoreBackwardMerge { .. } => None,
+            | DocumentBlockOperation::RestoreBackwardMerge { .. }
+            | DocumentBlockOperation::RestoreEditorHistoryForest { .. } => None,
         })
         .collect::<Vec<_>>();
     block_ids.sort();
@@ -5178,13 +5105,22 @@ fn persist_prepared_update(
         placement_preapplied_block_ids,
         placement_advance_block_ids,
         exact_moved_block_ids,
+        tombstone_reactivations,
     ) = match placement {
         TransferDocumentPlacement::Derived {
             advances,
             exact_moves,
-        } => (&[][..], &[][..], advances, exact_moves),
-        TransferDocumentPlacement::Preapplied(block_ids) => (&[][..], block_ids, &[][..], &[][..]),
-        TransferDocumentPlacement::Genesis(block_ids) => (block_ids, &[][..], &[][..], &[][..]),
+        } => (&[][..], &[][..], advances, exact_moves, &[][..]),
+        TransferDocumentPlacement::Preapplied(block_ids) => {
+            (&[][..], block_ids, &[][..], &[][..], &[][..])
+        }
+        TransferDocumentPlacement::Genesis(block_ids) => {
+            (block_ids, &[][..], &[][..], &[][..], &[][..])
+        }
+        TransferDocumentPlacement::Restore {
+            advances,
+            reactivations,
+        } => (&[][..], &[][..], advances, &[][..], reactivations),
     };
     let authorized_file_ids = update.materialization.file_ids();
     let input = PersistYjsCommit {
@@ -5211,6 +5147,11 @@ fn persist_prepared_update(
             .with_preapplied(placement_preapplied_block_ids)
             .with_advances(placement_advance_block_ids)
             .with_exact_moves(exact_moved_block_ids)
+            .with_tombstone_reactivation(
+                tombstone_reactivations,
+                &authority.head.id,
+                authority.head.generation,
+            )
             .with_authorized_file_ids(&authorized_file_ids),
     };
     let persisted = persist_yjs_commit_with_local_commit(connection, input, attached_commit)?;
@@ -6054,6 +5995,8 @@ fn persist_mutation_ledger(
     change_log_seq: i64,
     now: &str,
 ) -> Result<(), StoreError> {
+    // Keep the operation description here; exact replay and Page History have
+    // independent receipt/checkpoint owners and must not depend on ledger bodies.
     let document_heads = result
         .document_commits
         .iter()
@@ -6073,7 +6016,7 @@ fn persist_mutation_ledger(
             store_epoch,
             serde_json::to_string(&intent.actor).map_err(|_| internal("Transfer actor JSON"))?,
             request_hash,
-            serde_json::to_string(intent).map_err(|_| internal("Transfer request JSON"))?,
+            serde_json::json!({ "kind": "transfer_blocks", "mode": intent.mode }).to_string(),
             serde_json::to_string(&result.result_root_block_ids)
                 .map_err(|_| internal("Transfer target IDs JSON"))?,
             serde_json::to_string(
@@ -6084,7 +6027,7 @@ fn persist_mutation_ledger(
                     .collect::<Vec<_>>(),
             )
             .map_err(|_| internal("Transfer Document IDs JSON"))?,
-            serde_json::to_string(result).map_err(|_| internal("Transfer result JSON"))?,
+            "{}",
             serde_json::to_string(&document_heads)
                 .map_err(|_| internal("Transfer Document heads JSON"))?,
             change_log_seq,
@@ -6137,63 +6080,87 @@ fn read_block_transfer_undo_recipe(
     context: &BoundModuleContext,
     library_id: &str,
     token: &LibraryBlockTransferUndoToken,
-) -> Result<BlockTransferUndoRecipeV3, StoreError> {
-    let row = connection
-        .query_row(
-            "SELECT project_id, library_id, store_epoch, recipe_hash, recipe_json, consumed_at \
-             FROM block_transfer_undo_recipes WHERE transfer_operation_id = ?1",
-            [&token.transfer_operation_id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, Option<String>>(5)?,
-                ))
-            },
-        )
-        .optional()?
-        .ok_or_else(|| not_found("Block transfer Undo is no longer available"))?;
-    if row.1 != library_id
-        || row.2 != token.store_epoch
-        || row.3 != token.recipe_hash
-        || context.project_id.as_ref().map(|id| id.0.as_str()) != Some(row.0.as_str())
-    {
+) -> Result<BlockTransferUndoRecipeV4, StoreError> {
+    let (json, project_id) = history::read(connection, context, library_id, token)?;
+    if context.project_id.as_ref().map(|id| id.0.as_str()) != Some(project_id.as_str()) {
         return Err(unauthorized(
             "Block transfer Undo token is outside this scope",
         ));
     }
-    if row.5.is_some() {
-        return Err(conflict("Block transfer was already undone"));
-    }
-    if sha256(row.4.as_bytes()) != token.recipe_hash {
-        return Err(corrupt("Stored Block transfer Undo recipe hash changed"));
-    }
-    let mut recipe = serde_json::from_str::<BlockTransferUndoRecipeV3>(&row.4)
+    let recipe = serde_json::from_str::<BlockTransferUndoRecipeV4>(&json)
         .map_err(|_| corrupt("Stored Block transfer Undo recipe is invalid"))?;
-    if recipe.version != BLOCK_TRANSFER_UNDO_RECIPE_VERSION
-        || recipe.project_id != row.0
-        || recipe.library_id != row.1
-        || recipe.store_epoch != row.2
+    if recipe.version != BLOCK_TRANSFER_UNDO_RECIPE_VERSION {
+        return Err(conflict(
+            "Promotion history uses an unavailable View position format",
+        ));
+    }
+    if recipe.project_id != project_id
+        || recipe.library_id != library_id
+        || recipe.store_epoch != token.store_epoch
     {
         return Err(corrupt(
             "Stored Block transfer Undo recipe identity changed",
         ));
     }
-    if let Some(stored) = &recipe.source_pre_materialization {
-        let authority = read_document_authority(connection, &recipe.source_document_id)?
-            .ok_or_else(|| conflict("Source Document is no longer available for Undo"))?;
-        let schema = require_schema(&authority)?;
-        recipe.source_pre_materialization =
-            Some(crate::document::normalize_stored_document_materialization(
-                &recipe.source_document_id,
-                schema,
-                stored,
-            )?);
-    }
     Ok(recipe)
+}
+
+/// Authorize the complete write set before normalizing stored bodies or
+/// comparing any current head, property, schema, or File state. A conflict in
+/// an earlier root must not reveal content after a later root loses access.
+fn authorize_promotion_inverse(
+    connection: &Connection,
+    recipe: &BlockTransferUndoRecipeV4,
+) -> Result<(), StoreError> {
+    require_project_in_library(connection, &recipe.project_id, &recipe.library_id)?;
+    for root in &recipe.roots {
+        super::require_page_write_access(
+            connection,
+            &recipe.library_id,
+            &recipe.project_id,
+            &root.result_page_id,
+        )?;
+        let data_source = connection
+            .query_row(
+                "SELECT parent_id FROM pages WHERE block_id = ?1 AND parent_kind = 'data_source'",
+                [&root.result_page_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        if let Some(data_source) = data_source {
+            validate_page_transfer_data_source_source(
+                connection,
+                &recipe.library_id,
+                &recipe.project_id,
+                &data_source,
+            )?;
+        }
+    }
+    if recipe.mode == LibraryBlockTransferMode::Move {
+        let source_page_id = connection
+            .query_row(
+                "SELECT block_id FROM block_documents WHERE document_id = ?1 AND library_id = ?2",
+                params![recipe.source_document_id, recipe.library_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?
+            .ok_or_else(|| conflict("Source Page is no longer available for Undo"))?;
+        super::require_page_write_access(
+            connection,
+            &recipe.library_id,
+            &recipe.project_id,
+            &source_page_id,
+        )?;
+    }
+    if let Some(schema) = &recipe.schema_restore {
+        validate_page_transfer_data_source_source(
+            connection,
+            &recipe.library_id,
+            &recipe.project_id,
+            &schema.data_source_id,
+        )?;
+    }
+    Ok(())
 }
 
 fn read_page_relocation_undo_recipe(
@@ -6202,54 +6169,29 @@ fn read_page_relocation_undo_recipe(
     library_id: &str,
     token: &LibraryBlockTransferUndoToken,
     authority: &super::mutation::LibraryMutationAuthority,
-) -> Result<PageRelocationUndoRecipeV2, StoreError> {
-    let row = connection
-        .query_row(
-            "SELECT project_id, library_id, store_epoch, recipe_hash, recipe_json, consumed_at \
-             FROM block_transfer_undo_recipes WHERE transfer_operation_id = ?1",
-            [&token.transfer_operation_id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, Option<String>>(5)?,
-                ))
-            },
-        )
-        .optional()?
-        .ok_or_else(|| not_found("Page relocation Undo is no longer available"))?;
+) -> Result<PageRelocationUndoRecipeV3, StoreError> {
+    let (json, project_id) = history::read(connection, context, library_id, token)?;
     let project_scope_matches = authority
         .requesting_project_id
         .as_deref()
-        .is_none_or(|project_id| project_id == row.0);
-    if row.1 != library_id
-        || row.2 != token.store_epoch
-        || row.3 != token.recipe_hash
-        || !project_scope_matches
-        || context.library_id.0 != library_id
-    {
+        .is_none_or(|requesting| requesting == project_id);
+    if !project_scope_matches || context.library_id.0 != library_id {
         return Err(unauthorized(
             "Page relocation Undo token is outside this scope",
         ));
     }
-    if row.5.is_some() {
-        return Err(conflict("Page relocation was already undone"));
-    }
-    if sha256(row.4.as_bytes()) != token.recipe_hash {
-        return Err(corrupt("Stored Page relocation Undo recipe hash changed"));
-    }
-    let version = serde_json::from_str::<serde_json::Value>(&row.4)
+    let version = serde_json::from_str::<serde_json::Value>(&json)
         .ok()
         .and_then(|value| value.get("version").and_then(serde_json::Value::as_u64));
     if version != Some(u64::from(PAGE_RELOCATION_UNDO_RECIPE_VERSION)) {
         return Err(conflict("Page relocation Undo is no longer available"));
     }
-    let recipe = serde_json::from_str::<PageRelocationUndoRecipeV2>(&row.4)
+    let recipe = serde_json::from_str::<PageRelocationUndoRecipeV3>(&json)
         .map_err(|_| corrupt("Stored Page relocation Undo recipe is invalid"))?;
-    if recipe.project_id != row.0 || recipe.library_id != row.1 || recipe.store_epoch != row.2 {
+    if recipe.project_id != project_id
+        || recipe.library_id != library_id
+        || recipe.store_epoch != token.store_epoch
+    {
         return Err(corrupt(
             "Stored Page relocation Undo recipe identity changed",
         ));
@@ -6260,7 +6202,7 @@ fn read_page_relocation_undo_recipe(
 
 fn validate_undo_created_tags_are_private(
     connection: &Connection,
-    recipe: &BlockTransferUndoRecipeV3,
+    recipe: &BlockTransferUndoRecipeV4,
 ) -> Result<(), StoreError> {
     let Some(schema) = &recipe.schema_restore else {
         return Ok(());
@@ -6302,7 +6244,7 @@ fn validate_undo_created_tags_are_private(
 
 fn purge_promoted_page(
     connection: &Connection,
-    recipe: &BlockTransferUndoRecipeV3,
+    recipe: &BlockTransferUndoRecipeV4,
     root: &BlockTransferUndoRootV1,
 ) -> Result<(), StoreError> {
     let indexed_block_ids = connection
@@ -6312,10 +6254,7 @@ fn purge_promoted_page(
         )?
         .query_map([&root.result_document_id], |row| row.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
-    connection.execute(
-        "DELETE FROM database_view_page_positions WHERE page_block_id = ?1",
-        [&root.result_page_id],
-    )?;
+    crate::database::forget_page_view_order(connection, &root.result_page_id)?;
     connection.execute(
         "DELETE FROM data_source_page_memberships WHERE page_block_id = ?1",
         [&root.result_page_id],
@@ -6418,7 +6357,7 @@ fn purge_promoted_page(
 
 fn restore_undo_schema(
     connection: &Connection,
-    recipe: &BlockTransferUndoRecipeV3,
+    recipe: &BlockTransferUndoRecipeV4,
     now: &str,
 ) -> Result<BTreeMap<String, i64>, StoreError> {
     let Some(schema) = &recipe.schema_restore else {
@@ -6640,7 +6579,7 @@ pub(super) fn undo_page_relocation(
         _ => return Err(corrupt("Moved Page has inconsistent parent authority")),
     };
     let target = match &recipe.source {
-        PageRelocationUndoSourceV2::Library {
+        PageRelocationUndoSourceV3::Library {
             previous_sibling_id,
             next_sibling_id,
         } => LibraryBlockTransferTarget::Library {
@@ -6652,7 +6591,7 @@ pub(super) fn undo_page_relocation(
                 next_sibling_id.as_deref(),
             )?,
         },
-        PageRelocationUndoSourceV2::Page {
+        PageRelocationUndoSourceV3::Page {
             page_id,
             document_id,
             parent_block_id,
@@ -6671,7 +6610,7 @@ pub(super) fn undo_page_relocation(
                 next_sibling_id.as_deref(),
             )?,
         },
-        PageRelocationUndoSourceV2::DataSource {
+        PageRelocationUndoSourceV3::DataSource {
             data_source_id,
             default_view_id,
             ..
@@ -6707,7 +6646,7 @@ pub(super) fn undo_page_relocation(
     )?;
     if matches!(
         &recipe.source,
-        PageRelocationUndoSourceV2::DataSource { .. }
+        PageRelocationUndoSourceV3::DataSource { .. }
     ) {
         preserve_page_relocation_source_values(&mut prepared)?;
     }
@@ -6734,6 +6673,71 @@ pub(super) fn undo_page_relocation(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) fn reverse_history_payload(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    operation_id: &str,
+    store_epoch: &str,
+    request_hash: &str,
+    token: &nodex_core_contracts::library::LibraryStructuralHistoryToken,
+    project_id: &str,
+    json: &str,
+) -> Result<Option<LibraryApplyOutcome>, StoreError> {
+    if let Ok(state) = serde_json::from_str::<promotion_history::PromotionRestore>(json) {
+        if state.undo.project_id != project_id {
+            return Err(corrupt("Promotion history Project changed"));
+        }
+        if state.undo.version != BLOCK_TRANSFER_UNDO_RECIPE_VERSION {
+            return Err(conflict(
+                "Promotion history uses an unavailable View position format",
+            ));
+        }
+        return promotion_history::restore(
+            connection,
+            context,
+            library_id,
+            operation_id,
+            store_epoch,
+            request_hash,
+            token,
+            state,
+        )
+        .map(Some);
+    }
+    let Ok(recipe) = serde_json::from_str::<BlockTransferUndoRecipeV4>(json) else {
+        return Ok(None);
+    };
+    if recipe.version != BLOCK_TRANSFER_UNDO_RECIPE_VERSION {
+        return Err(conflict(
+            "Promotion history uses an unavailable View position format",
+        ));
+    }
+    if recipe.project_id != project_id
+        || recipe.library_id != library_id
+        || recipe.store_epoch != store_epoch
+    {
+        return Err(corrupt("Promotion history identity changed"));
+    }
+    undo_promotion(
+        connection,
+        context,
+        library_id,
+        operation_id,
+        store_epoch,
+        request_hash,
+        &LibraryBlockTransferUndoToken {
+            transfer_operation_id: token.recipe_operation_id.clone(),
+            recipe_hash: token.recipe_hash.clone(),
+            store_epoch: token.store_epoch.clone(),
+        },
+        recipe,
+        true,
+    )
+    .map(Some)
+}
+
 pub(super) fn undo(
     connection: &Connection,
     context: &BoundModuleContext,
@@ -6751,7 +6755,53 @@ pub(super) fn undo(
         ));
     }
     let recipe = read_block_transfer_undo_recipe(connection, context, library_id, token)?;
-    require_project_in_library(connection, &recipe.project_id, library_id)?;
+    undo_promotion(
+        connection,
+        context,
+        library_id,
+        operation_id,
+        store_epoch,
+        request_hash,
+        token,
+        recipe,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn undo_promotion(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    operation_id: &str,
+    store_epoch: &str,
+    request_hash: &str,
+    token: &LibraryBlockTransferUndoToken,
+    mut recipe: BlockTransferUndoRecipeV4,
+    structural_delivery: bool,
+) -> Result<LibraryApplyOutcome, StoreError> {
+    authorize_promotion_inverse(connection, &recipe)?;
+    let footprint = promotion_history::capture_footprint(connection, &recipe.roots)?;
+    if recipe
+        .footprint
+        .as_ref()
+        .is_some_and(|expected| expected != &footprint)
+    {
+        return Err(conflict(
+            "Promotion schema or Relations changed after commit",
+        ));
+    }
+    recipe.footprint = Some(footprint);
+    if let Some(stored) = &recipe.source_pre_materialization {
+        let authority = read_document_authority(connection, &recipe.source_document_id)?
+            .ok_or_else(|| conflict("Source Document is no longer available for Undo"))?;
+        recipe.source_pre_materialization =
+            Some(crate::document::normalize_stored_document_materialization(
+                &recipe.source_document_id,
+                require_schema(&authority)?,
+                stored,
+            )?);
+    }
     if let Some(expected_head_seq) = recipe.source_post_head_seq {
         let current = read_document_authority(connection, &recipe.source_document_id)?
             .ok_or_else(|| conflict("Source Document is no longer available for Undo"))?;
@@ -6772,6 +6822,7 @@ pub(super) fn undo(
         ));
     }
     validate_undo_created_tags_are_private(connection, &recipe)?;
+    let mut promotion_restore = promotion_history::capture(connection, &recipe, operation_id)?;
 
     let mut source_restore = if recipe.mode == LibraryBlockTransferMode::Move {
         let authority = read_document_authority(connection, &recipe.source_document_id)?
@@ -6823,10 +6874,14 @@ pub(super) fn undo(
             context,
         },
         |scope| {
-            for root in &recipe.roots {
-                purge_promoted_page(connection, &recipe, root)?;
-            }
-            let mut document_commits = Vec::new();
+            let mut document_commits = if let Some(state) = promotion_restore.as_mut() {
+                promotion_history::retire(connection, state, operation_id, scope.evidence(), &now)?
+            } else {
+                for root in &recipe.roots {
+                    purge_promoted_page(connection, &recipe, root)?;
+                }
+                Vec::new()
+            };
             if let Some((authority, engine, base, update)) = source_restore.as_mut() {
                 let advances = recipe
                     .roots
@@ -6852,20 +6907,26 @@ pub(super) fn undo(
                 )?);
             }
             let mut committed_revisions = restore_undo_schema(connection, &recipe, &now)?;
+            if let Some(state) = &promotion_restore {
+                committed_revisions.extend(promotion_history::block_revisions(connection, state)?);
+            }
+            let pending_history = promotion_restore
+                .clone()
+                .map(|state| promotion_history::seal_restore(connection, operation_id, state))
+                .transpose()?;
             for commit in &document_commits {
                 committed_revisions.insert(
                     format!("documentHead:{}", commit.public.document_id),
                     commit.public.head_seq,
                 );
             }
-            let consumed = connection.execute(
-                "UPDATE block_transfer_undo_recipes SET consumed_at = ?1 \
-                 WHERE transfer_operation_id = ?2 AND consumed_at IS NULL",
-                params![now, token.transfer_operation_id],
+            history::consume(
+                connection,
+                token,
+                &recipe.project_id,
+                &now,
+                scope.evidence(),
             )?;
-            if consumed != 1 {
-                return Err(conflict("Block transfer was already undone"));
-            }
             let result = LibraryBlockTransferUndoResult {
                 transfer_operation_id: token.transfer_operation_id.clone(),
                 restored_source_root_ids: if recipe.mode == LibraryBlockTransferMode::Move {
@@ -6886,17 +6947,34 @@ pub(super) fn undo(
                     .iter()
                     .map(|commit| commit.public.clone())
                     .collect(),
+                history: pending_history
+                    .as_ref()
+                    .map(|prepared| history::token(&prepared.token)),
             };
-            let affected_database_ids = recipe
-                .schema_restore
+            let affected_database_ids = promotion_restore
                 .as_ref()
-                .map(|schema| vec![schema.data_source_id.clone()])
+                .map(|state| state.database_ids())
+                .unwrap_or_else(|| {
+                    recipe
+                        .schema_restore
+                        .as_ref()
+                        .map(|schema| vec![schema.data_source_id.clone()])
+                        .unwrap_or_default()
+                });
+            let affected_view_ids = promotion_restore
+                .as_ref()
+                .map(|state| state.view_ids())
                 .unwrap_or_default();
-            let mut affected_parent_keys = recipe
-                .schema_restore
+            let mut affected_parent_keys = promotion_restore
                 .as_ref()
-                .map(|schema| vec![format!("data_source:{}", schema.data_source_id)])
-                .unwrap_or_else(|| vec![format!("library:{library_id}")]);
+                .map(|state| state.parent_keys())
+                .unwrap_or_else(|| {
+                    recipe
+                        .schema_restore
+                        .as_ref()
+                        .map(|schema| vec![format!("data_source:{}", schema.data_source_id)])
+                        .unwrap_or_else(|| vec![format!("library:{library_id}")])
+                });
             affected_parent_keys.sort();
             affected_parent_keys.dedup();
             let mut affected_page_ids = result.removed_page_ids.clone();
@@ -6911,28 +6989,54 @@ pub(super) fn undo(
                     file_revisions: BTreeMap::new(),
                     file_mutation: Default::default(),
                     project_id: recipe.project_id.clone(),
-                    operation_kind: "undo_block_transfer",
+                    operation_kind: if structural_delivery {
+                        "reverse_structural_edit"
+                    } else {
+                        "undo_block_transfer"
+                    },
                     change_kind: "block_mutation",
                     did_mutate: true,
                     created_target: None,
                     affected_parent_keys,
-                    affected_block_ids: result.restored_source_root_ids.clone(),
+                    affected_block_ids: promotion_restore.as_ref().map_or_else(
+                        || result.restored_source_root_ids.clone(),
+                        |state| state.affected_block_ids(),
+                    ),
                     affected_page_ids,
-                    affected_database_ids,
-                    affected_view_ids: Vec::new(),
+                    affected_database_ids: affected_database_ids.clone(),
+                    affected_view_ids,
                     affected_document_ids: result
                         .document_commits
                         .iter()
                         .map(|commit| commit.document_id.clone())
+                        .chain(
+                            recipe
+                                .roots
+                                .iter()
+                                .map(|root| root.result_document_id.clone()),
+                        )
                         .collect(),
                     committed_revisions,
                     page_create: None,
                     page_copy: None,
                     canvas_mutation: None,
                     block_transfer: None,
-                    block_transfer_undo: Some(result),
+                    block_transfer_undo: (!structural_delivery).then(|| result.clone()),
                     page_relocation_undo: None,
-                    structural_edit: None,
+                    structural_edit: structural_delivery.then(|| {
+                        promotion_history::structural_result(
+                            &recipe,
+                            recipe
+                                .roots
+                                .iter()
+                                .map(|root| root.result_page_id.clone())
+                                .collect(),
+                            result.restored_source_root_ids.clone(),
+                            result.document_commits.clone(),
+                            result.history.clone(),
+                            affected_database_ids.clone(),
+                        )
+                    }),
                     page_lifecycle: None,
                     block_property_mutation: None,
                     agent_page_copy: None,
@@ -6941,7 +7045,24 @@ pub(super) fn undo(
                     change_payload: None,
                     committed_at: now.clone(),
                 },
-                |_, _| Ok(()),
+                |_, event_sequence| {
+                    if let Some(prepared) = &pending_history {
+                        promotion_history::persist_ledger(
+                            connection,
+                            operation_id,
+                            store_epoch,
+                            request_hash,
+                            &recipe,
+                            "undo_block_promotion",
+                            &result.removed_page_ids,
+                            &result.document_commits,
+                            event_sequence,
+                            &now,
+                        )?;
+                        history::persist(connection, prepared, &now)?;
+                    }
+                    Ok(())
+                },
             )
         },
     )?;
@@ -7253,6 +7374,7 @@ mod tests {
             promotion_policy: nodex_core_contracts::library::LibraryPagePromotionPolicy::Literal,
         };
         let mut first = BoundModuleContext {
+            editor_history_owner: None,
             profile_id: nodex_core_contracts::ProfileId("profile-1".to_owned()),
             library_id: nodex_core_contracts::LibraryId("library-1".to_owned()),
             project_id: Some(nodex_core_contracts::ProjectId("project-1".to_owned())),

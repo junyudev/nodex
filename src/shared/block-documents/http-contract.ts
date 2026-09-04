@@ -1,4 +1,5 @@
 import { parseCoreFailureEvidence } from "../core-failure-evidence";
+import { isDocumentHistoryFence } from "./document-history-fence";
 import {
   MAX_BLOCK_ID_LENGTH,
   MAX_PAGE_DOCUMENT_STATE_BYTES,
@@ -69,6 +70,7 @@ interface VersionedMetadata {
 
 interface SyncRequestMetadata extends VersionedMetadata {
   readonly clientSessionId: string;
+  readonly historyAfterHeadSeq?: number;
 }
 
 interface SyncResponseMetadata extends VersionedMetadata {
@@ -77,6 +79,7 @@ interface SyncResponseMetadata extends VersionedMetadata {
   readonly generation: number;
   readonly headSeq: number;
   readonly stateVector: string;
+  readonly historyFence?: DocumentSyncResponse["historyFence"];
 }
 
 interface ApplyRequestMetadata extends VersionedMetadata {
@@ -320,7 +323,16 @@ const assertRouteDocument = (routeDocumentId: string): string => {
 
 const parseSyncRequestMetadata = (value: unknown): SyncRequestMetadata => {
   const record = readRecord(value);
-  assertExactKeys(record, ["version", "engine", "clientSessionId"], "Yjs sync request");
+  assertExactKeys(
+    record,
+    [
+      "version",
+      "engine",
+      "clientSessionId",
+      ...(record.historyAfterHeadSeq === undefined ? [] : ["historyAfterHeadSeq"]),
+    ],
+    "Yjs sync request",
+  );
   if (record.engine !== "yjs") {
     throw new DocumentHttpWireError("Yjs sync request has the wrong engine");
   }
@@ -328,6 +340,11 @@ const parseSyncRequestMetadata = (value: unknown): SyncRequestMetadata => {
     version: readWireVersion(record),
     engine: "yjs",
     clientSessionId: readString(record, "clientSessionId"),
+    ...(record.historyAfterHeadSeq === undefined
+      ? {}
+      : {
+          historyAfterHeadSeq: readInteger(record, "historyAfterHeadSeq", 0),
+        }),
   };
 };
 
@@ -335,7 +352,16 @@ const parseSyncResponseMetadata = (value: unknown): SyncResponseMetadata => {
   const record = readRecord(value);
   assertExactKeys(
     record,
-    ["version", "engine", "documentId", "storeEpoch", "generation", "headSeq", "stateVector"],
+    [
+      "version",
+      "engine",
+      "documentId",
+      "storeEpoch",
+      "generation",
+      "headSeq",
+      "stateVector",
+      ...(record.historyFence === undefined ? [] : ["historyFence"]),
+    ],
     "Yjs sync response",
   );
   if (record.engine !== "yjs") {
@@ -349,7 +375,22 @@ const parseSyncResponseMetadata = (value: unknown): SyncResponseMetadata => {
     generation: readInteger(record, "generation", 1),
     headSeq: readInteger(record, "headSeq", 0),
     stateVector: readString(record, "stateVector"),
+    ...(record.historyFence === undefined
+      ? {}
+      : {
+          historyFence: parseHistoryFence(record.historyFence, readInteger(record, "headSeq", 0)),
+        }),
   };
+};
+
+const parseHistoryFence = (
+  value: unknown,
+  headSeq: number,
+): NonNullable<DocumentSyncResponse["historyFence"]> => {
+  if (!isDocumentHistoryFence(value, headSeq)) {
+    throw new DocumentHttpWireError("History fence is invalid or exceeds its bound");
+  }
+  return value;
 };
 
 const parseApplyRequestMetadata = (value: unknown): ApplyRequestMetadata => {
@@ -675,7 +716,14 @@ export const decodeLibraryAccessedDocumentDescriptorHttp = (
 
 export const encodeDocumentSyncHttpRequest = (request: DocumentSyncRequest): Uint8Array =>
   encodeDocumentHttpEnvelope<SyncRequestMetadata>(
-    { version: 3, engine: "yjs", clientSessionId: request.clientSessionId },
+    {
+      version: 3,
+      engine: "yjs",
+      clientSessionId: request.clientSessionId,
+      ...(request.historyAfterHeadSeq === undefined
+        ? {}
+        : { historyAfterHeadSeq: request.historyAfterHeadSeq }),
+    },
     request.stateVector,
   );
 
@@ -692,6 +740,9 @@ export const decodeDocumentSyncHttpRequest = (
     documentId: assertRouteDocument(routeDocumentId),
     clientSessionId: envelope.metadata.clientSessionId,
     stateVector: envelope.payload,
+    ...(envelope.metadata.historyAfterHeadSeq === undefined
+      ? {}
+      : { historyAfterHeadSeq: envelope.metadata.historyAfterHeadSeq }),
   };
 };
 
@@ -705,6 +756,7 @@ export const encodeDocumentSyncHttpResponse = (response: DocumentSyncResponse): 
       generation: response.generation,
       headSeq: response.headSeq,
       stateVector: documentBytesToBase64(response.stateVector),
+      ...(response.historyFence ? { historyFence: response.historyFence } : {}),
     },
     response.update,
   );
@@ -725,6 +777,7 @@ export const decodeDocumentSyncHttpResponse = (bytes: Uint8Array): DocumentSyncR
       MAX_PAGE_DOCUMENT_STATE_BYTES,
     ),
     update: envelope.payload,
+    ...(envelope.metadata.historyFence ? { historyFence: envelope.metadata.historyFence } : {}),
   };
 };
 

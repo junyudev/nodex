@@ -59,6 +59,7 @@ export const resolveInlineAuthorizedDocumentEffect = (
     effectSequence: reference.effect_order,
     updateId: reference.update_id,
     clientSessionId: "core:authorized-delivery",
+    ...(effect.history_fence ? { historyFence: effect.history_fence } : {}),
     update,
   };
 };
@@ -135,6 +136,7 @@ export const resolveAuthorizedDocumentEffect = async (
     effectSequence: reference.effect_order,
     updateId: reference.update_id,
     clientSessionId: "core:authorized-delivery",
+    ...(effect.history_fence ? { historyFence: effect.history_fence } : {}),
     update,
   };
 };

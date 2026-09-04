@@ -695,6 +695,21 @@ pub(crate) fn record_projection_patch(
     write_projection(connection, context, &projection)
 }
 
+/// Record one semantic batch without decoding and rewriting its growing draft
+/// once per affected resource. Finalization canonicalizes shared scope entries.
+pub(crate) fn record_projection_batch(
+    connection: &Connection,
+    context: &CommitContext,
+    patches: impl IntoIterator<Item = LocalProjectionPatch>,
+    scopes: impl IntoIterator<Item = LocalProjectionScope>,
+) -> Result<(), StoreError> {
+    super::request_execution::check_request_interruption()?;
+    let mut projection = draft_projection(connection, context)?;
+    projection.patches.extend(patches);
+    projection.requires_read_at_least.extend(scopes);
+    write_projection(connection, context, &projection)
+}
+
 pub(crate) fn require_projection_read(
     connection: &Connection,
     context: &CommitContext,
@@ -2552,7 +2567,8 @@ fn requirements_for_scope(scope: &LocalProjectionScope) -> (ResourceKey, Vec<Res
             };
             (subject.clone(), BTreeSet::from([subject]))
         }
-        LocalProjectionScope::Project { project_id } => {
+        LocalProjectionScope::Project { project_id }
+        | LocalProjectionScope::StructuralHistory { project_id } => {
             let subject = ResourceKey::Project {
                 project_id: project_id.clone(),
             };

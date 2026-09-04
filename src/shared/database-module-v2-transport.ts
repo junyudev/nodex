@@ -24,9 +24,13 @@ import {
 import {
   MAX_DATABASE_MODULE_V2_BULK_ENTRIES,
   MAX_DATABASE_MODULE_V2_OPERATIONS,
+  MAX_DATABASE_DATA_HISTORY_IDENTITIES,
+  MAX_DATABASE_DATA_HISTORY_BYTES,
   type DatabaseApplyOperationV2,
   type DatabaseApplyReceiptV2,
   type DatabaseListMoveUndoRecipeV2,
+  type DatabaseDataEditUndoRecipeV2,
+  type DatabaseDataEditPositionRunV2,
   type DatabaseListMoveTargetV2,
   type DatabaseListProjectionExpectationV2,
   type DatabaseOperationOutcomeV2,
@@ -476,6 +480,7 @@ const parsePropertyValueInput = (
   value: unknown,
   propertyId: DataSourcePropertyId,
   label: string,
+  maximumTextBytes = 64 * 1024,
 ): DatabasePropertyValueInputV2 => {
   const input = readRecord(value, label);
   const kind = input.kind;
@@ -483,7 +488,17 @@ const parsePropertyValueInput = (
     assertExactKeys(input, label, ["kind"]);
     return { kind };
   }
-  if (kind === "text" || kind === "date" || kind === "datetime") {
+  if (kind === "text") {
+    assertExactKeys(input, label, ["kind", "value"]);
+    if (
+      typeof input.value !== "string" ||
+      new TextEncoder().encode(input.value).byteLength > maximumTextBytes
+    )
+      throw new TypeError(`${label}.value must be bounded text`);
+    // Text is content, not an identity: preserve empty values and whitespace exactly.
+    return { kind, value: input.value };
+  }
+  if (kind === "date" || kind === "datetime") {
     assertExactKeys(input, label, ["kind", "value"]);
     return { kind, value: readString(input.value, `${label}.value`, 64 * 1024) };
   }
@@ -532,6 +547,124 @@ const readBoundedUniqueStrings = (
   return entries;
 };
 
+const parseDatabaseDataEditUndoRecipe = (
+  value: unknown,
+  label: string,
+): DatabaseDataEditUndoRecipeV2 => {
+  const recipe = readRecord(value, label);
+  assertExactKeys(recipe, label, ["propertyStates", "positionStates"]);
+  if (
+    !Array.isArray(recipe.propertyStates) ||
+    recipe.propertyStates.length > MAX_DATABASE_DATA_HISTORY_IDENTITIES ||
+    !Array.isArray(recipe.positionStates) ||
+    recipe.positionStates.length > MAX_DATABASE_MODULE_V2_OPERATIONS ||
+    new TextEncoder().encode(JSON.stringify(recipe)).byteLength > MAX_DATABASE_DATA_HISTORY_BYTES
+  ) {
+    throw new TypeError(`${label} exceeds its history budget`);
+  }
+  const propertyStates = recipe.propertyStates.map((value, index) => {
+    const stateLabel = `${label}.propertyStates[${index}]`;
+    const state = readRecord(value, stateLabel);
+    assertExactKeys(state, stateLabel, ["address", "propertyType", "beforeValue", "afterValue"]);
+    const address = readRecord(state.address, `${stateLabel}.address`);
+    assertExactKeys(address, `${stateLabel}.address`, ["pageId", "dataSourceId", "propertyId"]);
+    const propertyId = readPropertyId(address.propertyId, `${stateLabel}.address.propertyId`);
+    const propertyType = readPropertyValueType(state.propertyType, `${stateLabel}.propertyType`);
+    if (propertyType === "relation")
+      throw new TypeError(`${stateLabel} requires a scalar Property`);
+    return {
+      address: {
+        pageId: readString(address.pageId, `${stateLabel}.address.pageId`),
+        dataSourceId: readDataSourceId(address.dataSourceId, `${stateLabel}.address.dataSourceId`),
+        propertyId,
+      },
+      propertyType,
+      beforeValue: parsePropertyValueInput(
+        state.beforeValue,
+        propertyId,
+        `${stateLabel}.beforeValue`,
+        MAX_DATABASE_DATA_HISTORY_BYTES,
+      ),
+      afterValue: parsePropertyValueInput(
+        state.afterValue,
+        propertyId,
+        `${stateLabel}.afterValue`,
+        MAX_DATABASE_DATA_HISTORY_BYTES,
+      ),
+    };
+  });
+  if (
+    new Set(propertyStates.map((state) => JSON.stringify(state.address))).size !==
+    propertyStates.length
+  )
+    throw new TypeError(`${label} repeats a Property address`);
+  const parseRuns = (value: unknown, label: string): readonly DatabaseDataEditPositionRunV2[] => {
+    if (
+      !Array.isArray(value) ||
+      value.length < 1 ||
+      value.length > MAX_DATABASE_DATA_HISTORY_IDENTITIES
+    )
+      throw new TypeError(`${label} has invalid runs`);
+    const runs = value.map((value, index) => {
+      const runLabel = `${label}[${index}]`;
+      const run = readRecord(value, runLabel);
+      assertExactKeys(run, runLabel, ["pageIds", "beforePageId"]);
+      return {
+        pageIds: readBoundedUniqueStrings(run.pageIds, `${runLabel}.pageIds`, {
+          allowEmpty: false,
+        }),
+        beforePageId: readNullableString(run.beforePageId, `${runLabel}.beforePageId`),
+      };
+    });
+    const pages = runs.flatMap((run) => run.pageIds);
+    const selected = new Set(pages);
+    if (
+      pages.length > MAX_DATABASE_DATA_HISTORY_IDENTITIES ||
+      selected.size !== pages.length ||
+      runs.some((run) => run.beforePageId !== null && selected.has(run.beforePageId))
+    )
+      throw new TypeError(`${label} has duplicate Pages or an internal anchor`);
+    return runs;
+  };
+  const positionStates = recipe.positionStates.map((value, index) => {
+    const stateLabel = `${label}.positionStates[${index}]`;
+    const state = readRecord(value, stateLabel);
+    assertExactKeys(state, stateLabel, [
+      "viewId",
+      "dataSourceId",
+      "direction",
+      "beforeRuns",
+      "afterRuns",
+    ]);
+    if (state.direction !== "asc" && state.direction !== "desc")
+      throw new TypeError(`${stateLabel}.direction is invalid`);
+    const beforeRuns = parseRuns(state.beforeRuns, `${stateLabel}.beforeRuns`);
+    const afterRuns = parseRuns(state.afterRuns, `${stateLabel}.afterRuns`);
+    const beforeIds = beforeRuns.flatMap((run) => run.pageIds).sort();
+    const afterIds = afterRuns.flatMap((run) => run.pageIds).sort();
+    if (JSON.stringify(beforeIds) !== JSON.stringify(afterIds))
+      throw new TypeError(`${stateLabel} changes its Page set`);
+    return {
+      viewId: readViewId(state.viewId, `${stateLabel}.viewId`),
+      dataSourceId: readDataSourceId(state.dataSourceId, `${stateLabel}.dataSourceId`),
+      direction: state.direction as "asc" | "desc",
+      beforeRuns,
+      afterRuns,
+    };
+  });
+  if (new Set(positionStates.map((state) => state.viewId)).size !== positionStates.length)
+    throw new TypeError(`${label} repeats a View`);
+  const count =
+    propertyStates.length +
+    positionStates.reduce(
+      (sum, state) => sum + state.beforeRuns.reduce((sum, run) => sum + run.pageIds.length, 0),
+      0,
+    );
+  if (count < 1 || count > MAX_DATABASE_DATA_HISTORY_IDENTITIES)
+    throw new TypeError(`${label} has an invalid identity budget`);
+  return { propertyStates, positionStates };
+};
+
 const parseDatabaseListMoveUndoRecipe = (
   value: unknown,
   label: string,
@@ -542,8 +675,7 @@ const parseDatabaseListMoveUndoRecipe = (
     "dataSourceId",
     "propertyStates",
     "postParentGuards",
-    "postBeforePageId",
-    "postOrderGuard",
+    "postOrderRuns",
     "restoreRuns",
   ]);
   if (
@@ -552,6 +684,8 @@ const parseDatabaseListMoveUndoRecipe = (
     !Array.isArray(recipe.postParentGuards) ||
     recipe.postParentGuards.length < 1 ||
     recipe.postParentGuards.length > MAX_DATABASE_LIST_MOVE_PAGES ||
+    !Array.isArray(recipe.postOrderRuns) ||
+    recipe.postOrderRuns.length > MAX_DATABASE_LIST_MOVE_PAGES ||
     !Array.isArray(recipe.restoreRuns) ||
     recipe.restoreRuns.length < 1 ||
     recipe.restoreRuns.length > MAX_DATABASE_LIST_MOVE_PAGES
@@ -586,8 +720,7 @@ const parseDatabaseListMoveUndoRecipe = (
   if (new Set(postParentGuards.map((guard) => guard.pageId)).size !== postParentGuards.length) {
     throw new TypeError(`${label}.postParentGuards repeats a Page identity`);
   }
-  const restoreRuns = recipe.restoreRuns.map((entry, index) => {
-    const entryLabel = `${label}.restoreRuns[${index}]`;
+  const parseRun = (entry: unknown, entryLabel: string) => {
     const run = readRecord(entry, entryLabel);
     assertExactKeys(run, entryLabel, ["pageIds", "parentPageId", "beforePageId"]);
     return {
@@ -597,7 +730,24 @@ const parseDatabaseListMoveUndoRecipe = (
       parentPageId: readNullableString(run.parentPageId, `${entryLabel}.parentPageId`),
       beforePageId: readNullableString(run.beforePageId, `${entryLabel}.beforePageId`),
     };
-  });
+  };
+  const restoreRuns = recipe.restoreRuns.map((entry, index) =>
+    parseRun(entry, `${label}.restoreRuns[${index}]`),
+  );
+  const postOrderRuns = recipe.postOrderRuns.map((entry, index) =>
+    parseRun(entry, `${label}.postOrderRuns[${index}]`),
+  );
+  const guards = new Map(postParentGuards.map((guard) => [guard.pageId, guard.parentPageId]));
+  const ordered = new Set<string>();
+  for (const run of postOrderRuns) {
+    if (run.beforePageId !== null && guards.has(run.beforePageId))
+      throw new TypeError(`${label}.postOrderRuns uses a moved root as an anchor`);
+    for (const pageId of run.pageIds) {
+      if (ordered.has(pageId) || !guards.has(pageId) || guards.get(pageId) !== run.parentPageId)
+        throw new TypeError(`${label}.postOrderRuns does not match its guarded roots`);
+      ordered.add(pageId);
+    }
+  }
   const restored = restoreRuns.flatMap((run) => run.pageIds);
   if (
     new Set(restored).size !== restored.length ||
@@ -611,8 +761,7 @@ const parseDatabaseListMoveUndoRecipe = (
     dataSourceId: readDataSourceId(recipe.dataSourceId, `${label}.dataSourceId`),
     propertyStates,
     postParentGuards,
-    postBeforePageId: readNullableString(recipe.postBeforePageId, `${label}.postBeforePageId`),
-    postOrderGuard: readBoolean(recipe.postOrderGuard, `${label}.postOrderGuard`),
+    postOrderRuns,
     restoreRuns,
   };
 };
@@ -1465,6 +1614,13 @@ const parseApplyOperation = (value: unknown, index: number): DatabaseApplyOperat
     return {
       kind: operation.kind,
       recipe: parseDatabaseListMoveUndoRecipe(operation.recipe, `${label}.recipe`),
+    };
+  }
+  if (operation.kind === "reverse_data_edit") {
+    assertExactKeys(operation, label, ["kind", "recipe"]);
+    return {
+      kind: operation.kind,
+      recipe: parseDatabaseDataEditUndoRecipe(operation.recipe, `${label}.recipe`),
     };
   }
 
@@ -2883,6 +3039,7 @@ const OPERATION_KINDS = new Set<DatabaseApplyOperationV2["kind"]>([
   "set_task_parent",
   "move_list_occurrences",
   "undo_list_occurrence_move",
+  "reverse_data_edit",
   "put_view_personal_preferences",
   "set_view_occurrence_disclosure",
 ]);
@@ -2893,6 +3050,21 @@ const parseDatabaseOperationOutcome = (
 ): DatabaseOperationOutcomeV2 => {
   const label = `databaseApplyV2.receipt.operationOutcomes[${index}]`;
   const outcome = readRecord(value, label);
+  if (outcome.kind === "data_edit") {
+    assertExactKeys(outcome, label, ["kind", "operationIndex", "operationCount", "undoRecipe"]);
+    const operationCount = readRevision(outcome.operationCount, `${label}.operationCount`);
+    if (operationCount < 1 || operationCount > 64)
+      throw new TypeError(`${label}.operationCount is invalid`);
+    return {
+      kind: outcome.kind,
+      operationIndex: readRevision(outcome.operationIndex, `${label}.operationIndex`),
+      operationCount,
+      undoRecipe:
+        outcome.undoRecipe === null
+          ? null
+          : parseDatabaseDataEditUndoRecipe(outcome.undoRecipe, `${label}.undoRecipe`),
+    };
+  }
   if (outcome.kind === "list_occurrence_move") {
     assertExactKeys(outcome, label, [
       "kind",
@@ -2946,7 +3118,7 @@ const parseDatabaseOperationOutcome = (
     };
   }
   if (outcome.kind === "list_occurrence_move_undo") {
-    assertExactKeys(outcome, label, ["kind", "operationIndex", "restoredPageIds"]);
+    assertExactKeys(outcome, label, ["kind", "operationIndex", "restoredPageIds", "undoRecipe"]);
     return {
       kind: outcome.kind,
       operationIndex: readRevision(outcome.operationIndex, `${label}.operationIndex`),
@@ -2955,6 +3127,7 @@ const parseDatabaseOperationOutcome = (
         `${label}.restoredPageIds`,
         { allowEmpty: false },
       ),
+      undoRecipe: parseDatabaseListMoveUndoRecipe(outcome.undoRecipe, `${label}.undoRecipe`),
     };
   }
   throw new TypeError(`${label}.kind is unsupported`);
@@ -2980,6 +3153,20 @@ const parseDatabaseApplyReceiptBody = (
     throw new TypeError(`${label}.operationOutcomes must be an array`);
   }
   const operationOutcomes = receipt.operationOutcomes.map(parseDatabaseOperationOutcome);
+  for (const outcome of operationOutcomes) {
+    if (outcome.kind !== "data_edit") continue;
+    if (
+      operationOutcomes.length !== 1 ||
+      outcome.operationIndex !== 0 ||
+      outcome.operationCount !== operationKinds.length ||
+      !operationKinds.every((kind) =>
+        ["edit_property_values", "position_page", "position_pages", "reverse_data_edit"].includes(
+          kind,
+        ),
+      )
+    )
+      throw new TypeError(`${label} must contain a whole-gesture data edit inverse`);
+  }
   const committedRevisionRecord = readRecord(
     receipt.committedRevisions,
     `${label}.committedRevisions`,

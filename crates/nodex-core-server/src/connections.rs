@@ -58,6 +58,7 @@ impl Connected<IncomingStream<'_, UnixListener>> for PeerIdentity {
 pub(crate) struct BoundConnection {
     pub(crate) id: String,
     pub(crate) adapter: AdapterKind,
+    pub(crate) peer_pid: Option<u32>,
 }
 
 struct ConnectionRecord {
@@ -223,6 +224,7 @@ impl ConnectionRegistry {
         let bound = BoundConnection {
             id: connection_id.to_owned(),
             adapter: record.adapter.clone(),
+            peer_pid: record.peer.pid,
         };
         Ok(bound)
     }
@@ -290,7 +292,7 @@ impl ConnectionRegistry {
     }
 }
 
-fn peer_process_is_alive(raw_pid: Option<u32>) -> bool {
+pub(crate) fn peer_process_is_alive(raw_pid: Option<u32>) -> bool {
     let Some(raw_pid) = raw_pid.and_then(|pid| i32::try_from(pid).ok()) else {
         return false;
     };
@@ -299,7 +301,8 @@ fn peer_process_is_alive(raw_pid: Option<u32>) -> bool {
     };
     match rustix::process::test_kill_process(pid) {
         Ok(()) | Err(rustix::io::Errno::PERM) => true,
-        Err(_) => false,
+        Err(rustix::io::Errno::SRCH) => false,
+        Err(_) => true,
     }
 }
 

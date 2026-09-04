@@ -44,6 +44,186 @@ and Awareness contribution. Another surface's or remote transactions converge
 visibly without entering local undo. Deactivation clears ephemeral presence and
 keeps durable work behind a bounded flush/checkpoint boundary.
 
+Interactive structural history preserves the complete inverse request through
+transport or LocalCommit-admission failure, including its operation identity
+and original access scope. Retrying an unknown result resubmits that request;
+it never creates a new request for an already consumed token or requires a new
+Document head fence to retrieve a committed receipt. Transport failures returned
+as error values have the same uncertain semantics as rejected requests. The
+attempt retains its original branch through retries, so later input cannot make
+its obsolete inverse reachable again. An authoritative non-commit rejection
+ends that attempt; another gesture may prepare a fresh request. Surface shutdown
+cancels preparation separately from history cleanup: release commands cannot
+use the aborted preparation lifetime. Main acknowledges cleanup handoff, not a
+Core mutation receipt, and owns exact pending requests beyond renderer waiters.
+Local disposal can finish without awaiting an unavailable Core; late inverse
+tokens are released instead of re-entering a closed history.
+
+Main stamps structural writes with the application WebContents generation's
+opaque retention owner. Core binds it to the authenticated desktop peer PID and
+registers every returned recipe in the same transaction. Closing an owner
+rejects late new writes but still permits exact committed receipt replay; it
+releases only that owner's available recipes and Cut claims. Main retries this
+cleanup independently of renderer cancellation. An authoritatively expired
+cleanup identity may be renewed because closing the same owner is monotonic;
+this exception never applies to uncertain content mutations or inverses.
+Core's bounded maintenance proves Host process death before collecting abandoned
+owners. It scans up to 1,024 PIDs in key order with a wrapping cursor and releases
+at most 100 owners per pass; live Hosts cannot permanently hide later dead Hosts,
+and one accumulated lifetime cannot monopolize a maintenance transaction.
+A sleeping process, connection loss or access-check uncertainty cannot
+release live history. Reload, main-document navigation and renderer loss end the
+old window generation; retained editor remount, same-document navigation and
+subframe navigation do not. Store replacement ends all old-epoch structural,
+transfer and clipboard capabilities, including those without a Host owner, and
+drops ephemeral roots in the epoch transition. Before that offline transition,
+it completes dormant-source publication through individually committed legacy
+artifact conversions. Interrupted preparation resumes without exposing a new
+epoch or losing unowned content provenance. Interactive Undo is not restored
+across Host restart.
+
+Closed owner and surface markers are late-write fences, not content-retention
+roots. They remain until proven Host death or Store replacement; deleting them
+on an inactivity timer would allow a delayed request to register the same
+lifetime again. Closing immediately fences recipe execution and Cut move claims,
+then schedules physical release through durable, bounded cleanup slices. Unvisited
+roots may conservatively retain content until their slice commits. The reaper's
+indexed cursor discovers dead Hosts independently of pending cleanup, and each
+maintenance writer admission releases only a bounded recipe/member/surface batch.
+Cancellation or restart repeats only the uncommitted slice. Interactive work can
+run between slices. Consumed and superseded recipes leave the live owner index in
+their transition transaction and enqueue physical root cleanup, including ordinary
+Undo and eviction. No single recipe can hide an unbounded member cascade. Terminal recipe
+evidence is distinct from active retention and must not be discarded while a
+reachable capability may still need to distinguish supersession from conflict.
+
+Structural edits, Block promotions and Page relocations share one capability
+registry, window-lifetime fence and retention lifecycle. Their semantic owners
+decode their own inverse contents; a receipt's token never supplies authorization
+or bypasses a closed owner. Promotion and relocation import preserves original
+payload bytes, hash, scope and terminal state; one artifact is published into
+chunk storage and removed from import input in the same transaction. Import does
+not invent a desktop owner for older capabilities.
+
+Structural inverse contents are stored separately from capability scope, hash,
+and lifecycle evidence. Immutable UTF-8 chunks are at most 256 KiB; payload
+collection removes at most four chunks per writer admission, with interruption
+and elapsed-time checks between chunks. A payload becomes collectible only after
+its recipe is terminal, one complete operation-receipt window has elapsed since
+that transition, its producer receipt has been retired, and no owner, structural
+root or active Cut claim still depends on it. Active inverses do not expire from
+inactivity. Collection preserves the small consumed/superseded capability marker;
+it never makes an old operation or token executable again.
+
+New structural-edit and Block-transfer operation ledger entries retain a small
+action description, request hash, actor, affected identities and committed
+coordinates, without duplicating full requests or results. Exact replay belongs
+to operation receipts; inverse contents belong to their capability; Page History
+owns its checkpoints and relocation evidence. Property mutation requests and
+field intents remain durable because exact conflict comparison and Page History
+use them. Reducing ledger duplication does not shorten any of those owners'
+retention contracts or imply that their body bytes have been reclaimed.
+
+Redundant historical ledger request/result bodies are discovered once through a
+durable identity cursor. Discovery only enqueues work; each collection admission
+rewrites at most one old inline entry, after its receipt window and only without
+a live receipt, inverse, owner/root or clipboard dependency. Retained candidates
+are rescheduled through a due index, never repeatedly scanned as a growing prefix.
+Body clearing and queue removal commit together. It preserves every ledger
+identity, actor, field intent, hash and commit coordinate; SQLite rejects any
+other evidence update, including a nullable-field change disguised as cleanup.
+As with old inline inverses, this is a cold conversion cost, not a bounded-chunk
+latency guarantee. New entries do not enter this collection queue. Reclaimed
+SQLite pages become reusable without requiring a shrinking file or VACUUM.
+
+Dormant Document provenance has its own minimal identity index, not a second
+retention root or access grant. Structural writes publish it atomically with the
+inverse. Collection checks current Document ownership, the exact placeholder and
+all retention evidence; it does not recover provenance by scanning history JSON.
+The due index selects a bounded candidate page before eligibility checks. Each
+processed source is either removed or rescheduled, so retained candidates cannot
+force an unbounded prefix scan. Restoring ownership removes its dormant source;
+collection and obsolete-placeholder cleanup remove stale sources as well.
+Backup and restore accept an unowned Document waiting for collection only when
+its exact dormant provenance and current canonical placeholder shape agree;
+ending its last retention root does not make valid pending collection corrupt.
+
+Existing inline inverses are converted by resumable maintenance, one artifact
+per separately committed writer call. Payload and provenance publication, inline
+replacement and the backfill cursor commit together; an interruption repeats
+only the uncommitted artifact. Payload collection and physical terminal-root
+release remain disabled until the provenance backfill completes, so an interim
+backup retains a complete explanation for every unowned Document. Moving an existing maximum-size inline row is a
+cold conversion cost, not part of the short-transaction cleanup guarantee. New
+inverses are chunked immediately and never enter the inline representation.
+
+Local text history also retains its reachable Block identities and source
+Document before a bridge has produced a recipe. The Provider waits for durable
+retention admission before sending a local update that can create tombstones.
+The journal maintains first/last references to changed Blocks, old and new
+ancestors and sibling anchors; repeated typing on the same retained set does
+not generate another retention request. Adding roots advances LocalCommit,
+invalidating older GC plans without changing Document heads or content history.
+Pure root release is durable monotonic maintenance with a no-op semantic receipt;
+an older plan can only retain too much. It needs no Project event and remains
+possible after the Library's last Project has gone. Recipe state transitions
+still publish their separate lifecycle notifications.
+Each set has an immutable source authority and monotonically increasing
+revision. Closing it is terminal: late older membership cannot reopen it.
+Main owns unknown attempts and terminal release handoff beyond renderer waiters.
+Window owner cleanup removes both local roots and available recipes.
+
+Database edits and Block transfers also hand their exact typed requests to Main
+before the first send. Unknown outcomes retain the original identity, payload,
+and access scope across connection recovery; concurrent waiters share the same
+attempt. Losing or closing a renderer does not establish non-commit: Main
+continues confirmation within its Profile lifetime. Block transfers carry the
+same trusted editor owner on every attempt, so Core can return a prior receipt
+but rejects a first write after closure. Database writes remain process-owned
+until a definite outcome. Pending count and request-byte admission share the history
+runtime's bounds. Main does not compute their inverses or persist a second outbox.
+
+A surface retains at most 10,000 identity references. A Host history lifetime
+admits at most 128 active local sets and 100,000 references across them; exceeding
+Core admission bounds cannot allow the dependent Document update to overtake
+the missing pin. The renderer's contiguous-history eviction enforces the
+per-surface limit. A never-registered local ID may be referenced but is not
+created or reserved by retention, and existing foreign or retired identities
+cannot be newly claimed.
+
+Eviction or surface closure can hand an exact forward structural edit, Promotion
+or replay request to Main even while its window stays active. Main joins the
+existing attempt, waits for a committed outcome or authoritative non-commit,
+then releases the input and any returned inverse. Promotion cleanup releases
+its registry resource even when the returned capability is only single-direction.
+Transfer cleanup uses the same trusted renderer/Project binding and shared
+request-count/byte admission as the original command.
+Cleanup cannot race a still-uncertain inverse by revoking its input first.
+Abandoned attempts, admitted request bytes and waiting commands are independently
+bounded. A late result never recreates an evicted entry or takes focus back.
+Once an entry is unreachable, its renderer request copy is dropped even if Main
+cannot accept the extra early-release handoff. The original admitted attempt and
+its durable window owner remain responsible for outcome recovery and retention;
+the renderer does not build an unbounded second cleanup queue.
+
+Recipe lifecycle has its own authorized Project projection. Notifications carry
+no inverse contents; each surface reconciles only the capabilities it already
+holds, in batches of at most 200. The read verifies Library, Project actor, Store
+epoch, recipe identity and hash. Stale snapshots cannot regress a newer observed
+state, and a snapshot must cover the exact requested capabilities. Only known
+supersession removes a reachable action automatically. A real release is a
+durable lifecycle transition with notification; an already released token does
+not manufacture another transition.
+
+Core also delivers address invalidation from its durable structural write
+fences. Exact authorized Document effects carry the affected identities;
+canonical sync reads the interval after the replica's known head. Repeated
+delivery cannot invalidate newer local captures. Evidence is bounded to 512
+barriers, 512 identities, and 16 KiB of encoded identities; overflow marks the
+body for guarded semantic replay rather than dropping entries or resetting the
+Document. These fences do not grant write authority: the semantic inverse still
+checks current generation, placement, changed fields, and retained Block state.
+
 One visible editing burst may produce many Yjs transactions. The provider merges
 those commutative incremental updates before IPC, admits only one Core apply at
 a time, and lets explicit lifecycle or structural flushes bypass the burst

@@ -33,7 +33,7 @@ const DOCUMENT_BEARING_BLOCK_TYPES: [&str; 4] = [
     CANVAS_OWNER_TYPE,
 ];
 
-const KNOWN_INBOUND_AUTHORITY_TABLES: [&str; 35] = [
+const KNOWN_INBOUND_AUTHORITY_TABLES: [&str; 37] = [
     "block_asset_refs",
     "block_documents",
     "block_properties",
@@ -51,11 +51,15 @@ const KNOWN_INBOUND_AUTHORITY_TABLES: [&str; 35] = [
     "data_source_page_memberships",
     "data_source_relation_edges",
     "data_source_relation_properties",
-    "database_view_page_positions",
+    // View order is non-owning presentation evidence, including inactive rows.
+    "database_view_order_import_positions",
+    "database_view_order_rows",
     "document_block_index",
     "document_materializations",
     "document_recovery_artifacts",
     "document_snapshots",
+    // A barrier fences stale updates to its Document; it does not own it.
+    "document_structural_barriers",
     "document_update_receipts",
     "document_updates",
     "document_versions",
@@ -747,9 +751,17 @@ fn load_structural_retention_evidence(
                       WHERE lease.bundle_id = member.authority_id AND lease.state = 'active')) \
                 OR (member.authority_kind = 'history_recipe' AND EXISTS ( \
                       SELECT 1 FROM structural_history_recipes recipe \
-                      WHERE recipe.recipe_operation_id = member.authority_id \
-                        AND recipe.state = 'available')) \
-             ORDER BY member.library_id, member.member_kind, member.member_id",
+                      WHERE recipe.recipe_operation_id = member.authority_id)) \
+             UNION SELECT owner.library_id, 'block', roots.block_id \
+             FROM editor_history_local_roots roots \
+             JOIN editor_history_local_sets history USING(owner_id, surface_id) \
+             JOIN editor_history_owners owner USING(owner_id) \
+             WHERE history.closed = 0 \
+             UNION SELECT owner.library_id, 'document', history.document_id \
+             FROM editor_history_local_sets history \
+             JOIN editor_history_owners owner USING(owner_id) \
+             WHERE history.closed = 0 AND history.retain_document = 1 \
+             ORDER BY 1, 2, 3",
         )?
         .query_map([], |row| {
             Ok(StructuralRetentionEvidence {
@@ -883,8 +895,9 @@ pub(crate) fn plan_block_retention_due_work(
     }
     let now_ms = sqlite_now_ms(connection)?;
     let next_wake_at_ms = connection.query_row(
-        "SELECT min(retry_after_ms) FROM block_retention_deferrals \
-         WHERE retry_after_ms > ?1",
+        "SELECT min(wake_at) FROM ( \
+           SELECT min(retry_after_ms) AS wake_at FROM block_retention_deferrals WHERE retry_after_ms > ?1 \
+           UNION ALL SELECT min(check_after_ms) FROM structural_dormant_document_sources WHERE check_after_ms > ?1)",
         [now_ms],
         |row| row.get::<_, Option<i64>>(0),
     )?;
@@ -961,7 +974,6 @@ fn run_block_retention_slice_with_target(
                 &candidate.library_id,
                 &candidate.root_block_id,
                 document_id,
-                slice.commit_head,
             )
         } else {
             maintain_candidate(
@@ -1065,58 +1077,19 @@ fn read_candidate_roots(
     Ok(candidates)
 }
 
-/// A consumed Page-to-ordinary inverse recipe is the durable provenance for
-/// an intentionally unowned Page Document. Once no active retention authority
-/// names that Document, maintenance may collect its sole placeholder without
-/// touching the still-active ordinary Block that inherited the Page identity.
-/// Structural recipe actions are compositional, so discovery follows wrapper
-/// actions instead of assuming the Page transition is the recipe root.
+/// Select a bounded page of indexed provenance, including retained or stale
+/// candidates. Each processed row is removed or rescheduled atomically, so a
+/// large retained prefix cannot hide later candidates behind an anti-join scan.
 fn read_dormant_document_candidates(
     connection: &Connection,
     candidate_count: i64,
 ) -> Result<Vec<BlockRetentionCandidate>, StoreError> {
     connection
         .prepare(
-            "WITH RECURSIVE recipe_actions(library_id, action_json) AS ( \
-               SELECT library_id, json_extract(recipe_json, '$.action') \
-               FROM structural_history_recipes WHERE state <> 'available' \
-               UNION ALL \
-               SELECT action.library_id, json_extract(action.action_json, '$.action') \
-               FROM recipe_actions action \
-               WHERE json_extract(action.action_json, '$.kind') = 'with_inline_content' \
-             ) \
-             SELECT DISTINCT action.library_id, \
-                    json_extract(dormant.value, '$.placeholderBlockId'), \
-                    json_extract(dormant.value, '$.documentId') \
-             FROM recipe_actions action \
-             JOIN json_each(action.action_json, '$.state.dormantPages') dormant \
-             JOIN documents document \
-               ON document.id = json_extract(dormant.value, '$.documentId') \
-              AND document.library_id = action.library_id \
-             JOIN blocks inherited \
-               ON inherited.id = json_extract(dormant.value, '$.pageId') \
-              AND inherited.library_id = action.library_id \
-              AND inherited.lifecycle = 'active' AND inherited.type <> 'page' \
-             JOIN blocks placeholder \
-               ON placeholder.id = json_extract(dormant.value, '$.placeholderBlockId') \
-              AND placeholder.library_id = action.library_id \
-             WHERE json_extract(action.action_json, '$.kind') = 'restore_turned_selection' \
-               AND NOT EXISTS ( \
-                 SELECT 1 FROM block_retention_deferrals deferral \
-                 WHERE deferral.root_block_id = placeholder.id \
-                   AND deferral.retry_after_ms > \
-                     CAST(unixepoch('subsec') * 1000 AS INTEGER) \
-               ) \
-               AND NOT EXISTS ( \
-                 SELECT 1 FROM block_documents ownership \
-                 WHERE ownership.document_id = document.id \
-               ) \
-               AND NOT EXISTS ( \
-                 SELECT 1 FROM structural_retention_members member \
-                 WHERE member.library_id = action.library_id \
-                   AND member.member_kind = 'document' AND member.member_id = document.id \
-               ) \
-             ORDER BY action.library_id, document.id LIMIT ?1",
+            "SELECT library_id, placeholder_block_id, document_id \
+             FROM structural_dormant_document_sources \
+             WHERE check_after_ms <= CAST(unixepoch('subsec') * 1000 AS INTEGER) \
+             ORDER BY check_after_ms, library_id, document_id, page_id, placeholder_block_id LIMIT ?1",
         )?
         .query_map([candidate_count], |row| {
             Ok(BlockRetentionCandidate {
@@ -1135,7 +1108,6 @@ fn maintain_dormant_document_candidate(
     library_id: &str,
     placeholder_block_id: &str,
     document_id: &str,
-    commit_head: i64,
 ) -> Result<CandidateOutcome, StoreError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let outcome = (|| -> Result<CandidateOutcome, StoreError> {
@@ -1181,14 +1153,65 @@ fn maintain_dormant_document_candidate(
         collect_dormant_document_closure(&transaction, &replanned, &now)?;
         Ok(CandidateOutcome::Collected(replanned.block_ids))
     })()?;
-    if matches!(outcome, CandidateOutcome::Covered) {
-        return Ok(outcome);
-    }
-    if matches!(outcome, CandidateOutcome::Retained) {
-        record_retained_candidate_deferral(&transaction, placeholder_block_id, commit_head)?;
-    }
+    settle_dormant_source(&transaction, library_id, document_id, placeholder_block_id)?;
     transaction.commit()?;
     Ok(outcome)
+}
+
+fn settle_dormant_source(
+    connection: &Connection,
+    library_id: &str,
+    document_id: &str,
+    placeholder_block_id: &str,
+) -> Result<(), StoreError> {
+    // Restored ownership and collected identities invalidate provenance. Other
+    // blockers are retried through the due index without scanning retained rows.
+    connection.execute(
+        "DELETE FROM structural_dormant_document_sources \
+         WHERE library_id = ?1 AND document_id = ?2 AND placeholder_block_id = ?3 AND ( \
+           NOT EXISTS(SELECT 1 FROM documents WHERE id = ?2 AND library_id = ?1) \
+           OR NOT EXISTS(SELECT 1 FROM blocks WHERE id = ?3 AND library_id = ?1) \
+           OR EXISTS(SELECT 1 FROM block_documents WHERE document_id = ?2) \
+           OR NOT EXISTS(SELECT 1 FROM document_block_index WHERE document_id = ?2 AND block_id = ?3))",
+        params![library_id, document_id, placeholder_block_id],
+    )?;
+    let retry_after_ms = sqlite_now_ms(connection)?
+        .checked_add(RETAINED_CANDIDATE_RETRY_MS)
+        .ok_or_else(|| corrupt("Dormant Document retry time overflowed"))?;
+    connection.execute(
+        "UPDATE structural_dormant_document_sources SET check_after_ms = ?1 \
+         WHERE library_id = ?2 AND document_id = ?3 AND placeholder_block_id = ?4",
+        params![
+            retry_after_ms,
+            library_id,
+            document_id,
+            placeholder_block_id
+        ],
+    )?;
+    advance_block_retention_work(connection)?;
+    Ok(())
+}
+
+/// Recognizes collection provenance without granting editing or retention authority.
+pub(crate) fn is_known_dormant_document(
+    connection: &Connection,
+    library_id: &str,
+    document_id: &str,
+) -> Result<bool, StoreError> {
+    let placeholder: Option<String> = connection
+        .query_row(
+            "SELECT block_id FROM document_block_index WHERE document_id = ?1 ORDER BY block_id LIMIT 1",
+            [document_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(placeholder) = placeholder else {
+        return Ok(false);
+    };
+    Ok(
+        build_dormant_document_closure(connection, library_id, &placeholder, document_id)?
+            .is_some(),
+    )
 }
 
 fn build_dormant_document_closure(
@@ -1197,6 +1220,15 @@ fn build_dormant_document_closure(
     placeholder_block_id: &str,
     document_id: &str,
 ) -> Result<Option<CandidateClosure>, StoreError> {
+    let provenance: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM structural_dormant_document_sources \
+         WHERE library_id = ?1 AND document_id = ?2 AND placeholder_block_id = ?3)",
+        params![library_id, document_id, placeholder_block_id],
+        |row| row.get(0),
+    )?;
+    if !provenance {
+        return Ok(None);
+    }
     let document = connection
         .query_row(
             "SELECT schema_key, schema_version, readiness, authority, sync_engine \
@@ -1229,7 +1261,7 @@ fn build_dormant_document_closure(
         .prepare(
             "SELECT entry.block_id, entry.parent_block_id, block.type, block.lifecycle \
              FROM document_block_index entry JOIN blocks block ON block.id = entry.block_id \
-             WHERE entry.document_id = ?1 AND block.library_id = ?2 ORDER BY entry.block_id",
+             WHERE entry.document_id = ?1 AND block.library_id = ?2 ORDER BY entry.block_id LIMIT 2",
         )?
         .query_map(params![document_id, library_id], |row| {
             Ok((
@@ -1395,6 +1427,13 @@ fn record_retained_candidate_deferral(
            retry_after_ms = excluded.retry_after_ms",
         params![root_block_id, commit_head, retry_after_ms],
     )?;
+    advance_block_retention_work(connection)
+}
+
+/// Index backfills can publish new collection candidates without a content
+/// commit; advance the maintenance revision so the scheduler observes them.
+pub(crate) fn advance_block_retention_work(connection: &Connection) -> Result<(), StoreError> {
+    let now_ms = sqlite_now_ms(connection)?;
     let changed = connection.execute(
         "UPDATE block_retention_state SET \
            maintenance_revision = maintenance_revision + 1, updated_at_ms = ?1 \
@@ -1543,7 +1582,6 @@ fn analyze_candidate(
     let block_ids_json = identities_json(&closure.block_ids)?;
     let document_ids_json = identities_json(&closure.document_ids)?;
     let database_view_ids = read_database_view_ids(connection, &block_ids_json)?;
-    let database_view_ids_json = identities_json(&database_view_ids)?;
     if evidence
         .recovery_block_roots
         .get(&closure.library_id)
@@ -1555,13 +1593,7 @@ fn analyze_candidate(
         || evidence.has_cross_library_immutable_reference(closure)
         || evidence.has_relocation_reference(closure)
         || evidence.has_structural_reference(closure)
-        || has_relational_reference(
-            connection,
-            closure,
-            &block_ids_json,
-            &document_ids_json,
-            &database_view_ids_json,
-        )?
+        || has_relational_reference(connection, closure, &block_ids_json, &document_ids_json)?
         || has_page_behavior_reference(connection, closure, &block_ids_json)?
     {
         return Ok(CandidateAnalysis {
@@ -1650,7 +1682,6 @@ fn has_relational_reference(
     closure: &CandidateClosure,
     block_ids_json: &str,
     document_ids_json: &str,
-    database_view_ids_json: &str,
 ) -> Result<bool, StoreError> {
     let library_roots = connection.query_row(
         "SELECT count(*) FROM library_block_placements \
@@ -1663,13 +1694,6 @@ fn has_relational_reference(
          JOIN blocks page ON page.id = membership.page_block_id AND page.library_id = ?1 \
          WHERE membership.removed_at IS NULL \
            AND membership.page_block_id IN (SELECT value FROM json_each(?2))",
-        params![closure.library_id, block_ids_json],
-        |row| row.get::<_, i64>(0),
-    )?;
-    let positions = connection.query_row(
-        "SELECT count(*) FROM database_view_page_positions position \
-         JOIN blocks page ON page.id = position.page_block_id AND page.library_id = ?1 \
-         WHERE position.page_block_id IN (SELECT value FROM json_each(?2))",
         params![closure.library_id, block_ids_json],
         |row| row.get::<_, i64>(0),
     )?;
@@ -1700,12 +1724,6 @@ fn has_relational_reference(
         [block_ids_json],
         |row| row.get::<_, i64>(0),
     )?;
-    let dangling_view_positions = connection.query_row(
-        "SELECT count(*) FROM database_view_page_positions \
-         WHERE view_id IN (SELECT value FROM json_each(?1))",
-        [database_view_ids_json],
-        |row| row.get::<_, i64>(0),
-    )?;
     let external_relation_edges = connection.query_row(
         "SELECT count(*) FROM data_source_relation_edges edge \
          JOIN data_source_page_memberships source_membership \
@@ -1727,10 +1745,8 @@ fn has_relational_reference(
     )?;
     Ok(library_roots != 0
         || active_memberships != 0
-        || positions != 0
         || external_index != 0
         || active_database_dependents != 0
-        || dangling_view_positions != 0
         || external_relation_edges != 0
         || external_relation_definitions != 0)
 }
@@ -1799,11 +1815,9 @@ fn collect_candidate_closure(
     }
     let block_ids_json = identities_json(&closure.block_ids)?;
     let document_ids_json = identities_json(&closure.document_ids)?;
-    connection.execute(
-        "DELETE FROM database_view_page_positions \
-         WHERE page_block_id IN (SELECT value FROM json_each(?1))",
-        [&block_ids_json],
-    )?;
+    for page_id in &closure.block_ids {
+        crate::database::forget_page_view_order(connection, page_id)?;
+    }
     connection.execute(
         "DELETE FROM data_source_page_memberships \
          WHERE page_block_id IN (SELECT value FROM json_each(?1))",
@@ -2257,65 +2271,45 @@ mod tests {
     }
 
     #[test]
-    fn dormant_document_discovery_traverses_composed_history_actions() {
+    fn dormant_discovery_seeks_past_large_deferred_prefixes() {
         let connection = rusqlite::Connection::open_in_memory().expect("retention fixture");
+        connection.execute_batch(
+            "CREATE TABLE structural_dormant_document_sources (
+               library_id TEXT NOT NULL, document_id TEXT NOT NULL, page_id TEXT NOT NULL,
+               placeholder_block_id TEXT NOT NULL, check_after_ms INTEGER NOT NULL,
+               PRIMARY KEY(library_id, document_id, page_id, placeholder_block_id)
+             ) WITHOUT ROWID;
+             CREATE INDEX due ON structural_dormant_document_sources(check_after_ms, library_id, document_id, page_id, placeholder_block_id);
+             WITH RECURSIVE items(n) AS (VALUES(0) UNION ALL SELECT n + 1 FROM items WHERE n < 99999)
+             INSERT INTO structural_dormant_document_sources
+               SELECT 'library', printf('document-%06d', n), printf('page-%06d', n),
+                 printf('placeholder-%06d', n), 9223372036854775807 FROM items;
+             INSERT INTO structural_dormant_document_sources
+               VALUES ('library', 'due-document', 'due-page', 'due-placeholder', 0);"
+        ).expect("storage pressure only");
+        let steps = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let measured = Arc::clone(&steps);
         connection
-            .execute_batch(
-                "CREATE TABLE structural_history_recipes( \
-                   library_id TEXT NOT NULL, recipe_json TEXT NOT NULL, state TEXT NOT NULL \
-                 ); \
-                 CREATE TABLE documents(id TEXT PRIMARY KEY, library_id TEXT NOT NULL); \
-                 CREATE TABLE blocks( \
-                   id TEXT PRIMARY KEY, library_id TEXT NOT NULL, lifecycle TEXT NOT NULL, \
-                   type TEXT NOT NULL \
-                 ); \
-                 CREATE TABLE block_documents(document_id TEXT NOT NULL); \
-                 CREATE TABLE block_retention_deferrals( \
-                   root_block_id TEXT NOT NULL, retry_after_ms INTEGER NOT NULL \
-                 ); \
-                 CREATE TABLE structural_retention_members( \
-                   library_id TEXT NOT NULL, member_kind TEXT NOT NULL, member_id TEXT NOT NULL \
-                 ); \
-                 INSERT INTO documents(id, library_id) \
-                 VALUES ('document:dormant', 'library:dormant'); \
-                 INSERT INTO blocks(id, library_id, lifecycle, type) VALUES \
-                   ('page:inherited', 'library:dormant', 'active', 'paragraph'), \
-                   ('block:placeholder', 'library:dormant', 'deleted', 'paragraph');",
+            .progress_handler(
+                1,
+                Some(move || {
+                    measured.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    false
+                }),
             )
-            .expect("dormant document authorities");
-        let recipe = serde_json::json!({
-            "action": {
-                "kind": "with_inline_content",
-                "action": {
-                    "kind": "restore_turned_selection",
-                    "state": {
-                        "dormantPages": [{
-                            "pageId": "page:inherited",
-                            "documentId": "document:dormant",
-                            "placeholderBlockId": "block:placeholder",
-                        }],
-                    },
-                },
-            },
-        });
+            .expect("measure query");
+        let candidates = read_dormant_document_candidates(&connection, 10).expect("due candidate");
         connection
-            .execute(
-                "INSERT INTO structural_history_recipes(library_id, recipe_json, state) \
-                 VALUES ('library:dormant', ?1, 'consumed')",
-                [recipe.to_string()],
-            )
-            .expect("composed structural recipe");
-
-        let candidates =
-            read_dormant_document_candidates(&connection, 10).expect("dormant candidates");
-
+            .progress_handler(0, None::<fn() -> bool>)
+            .expect("stop measurement");
         assert_eq!(candidates.len(), 1);
-        let candidate = &candidates[0];
-        assert_eq!(candidate.library_id, "library:dormant");
-        assert_eq!(candidate.root_block_id, "block:placeholder");
         assert_eq!(
-            candidate.dormant_document_id.as_deref(),
-            Some("document:dormant")
+            candidates[0].dormant_document_id.as_deref(),
+            Some("due-document")
+        );
+        assert!(
+            steps.load(std::sync::atomic::Ordering::Relaxed) < 500,
+            "must seek instead of visiting deferred provenance"
         );
     }
 
@@ -3167,6 +3161,86 @@ mod tests {
                 Ok(())
             })
             .expect("retain Relation target");
+    }
+
+    #[test]
+    fn inactive_view_order_evidence_does_not_retain_pages_after_history_release() {
+        let fixture = Fixture::new();
+        fixture.insert_owned_page_closure("deleted");
+        fixture.kernel.writer().call(|connection| {
+            // Physical retention fixture: preserve both imported and published
+            // positions after Source detachment, as a retained undo witness does.
+            let old = "2026-01-01T00:00:00.000Z";
+            connection.execute("INSERT INTO blocks(id, library_id, type, lifecycle, created_at, updated_at) VALUES ('database:order-retention', ?1, 'database', 'active', ?2, ?2)", params![LIBRARY_ID, old])?;
+            connection.execute("INSERT INTO database_containers(block_id, library_id, name, lifecycle, created_at, updated_at) VALUES ('database:order-retention', ?1, 'Order retention', 'active', ?2, ?2)", params![LIBRARY_ID, old])?;
+            connection.execute("INSERT INTO data_sources(id, library_id, home_database_block_id, name, schema_key, lifecycle, rank_key, created_at, updated_at) VALUES ('source:order-retention', ?1, 'database:order-retention', 'Order retention', 'nodex.database', 'active', 'a', ?2, ?2)", params![LIBRARY_ID, old])?;
+            connection.execute("INSERT INTO database_views(id, database_block_id, data_source_id, name, layout, rank_key, created_at, updated_at) VALUES ('view:order-retention', 'database:order-retention', 'source:order-retention', 'Order retention', 'list', 'a', ?1, ?1)", [old])?;
+            connection.execute("UPDATE pages SET parent_kind = 'data_source', parent_id = 'source:order-retention' WHERE block_id = 'block:owned-page'", [])?;
+            connection.execute("INSERT INTO data_source_page_memberships(id, data_source_id, page_block_id, revision, created_at) VALUES ('membership:order-retention', 'source:order-retention', 'block:owned-page', 1, ?1)", [old])?;
+            connection.execute("INSERT INTO database_view_order_import_positions(view_id, page_block_id, rank_key, created_at, updated_at) VALUES ('view:order-retention', 'block:owned-page', 'a', ?1, ?1)", [old])?;
+            connection.execute("INSERT INTO database_view_order_rows(view_id, generation, page_block_id, rank_key, revision, is_active, is_task_root, created_at, updated_at) VALUES ('view:order-retention', 1, 'block:owned-page', '80000000000000000000000000000000', 1, 0, 1, ?1, ?1)", [old])?;
+
+            // An active canonical membership remains a content root, even if
+            // presentation evidence is inactive and no history owns the Page.
+            assert_eq!(run_block_retention_pass(connection, 0)?.collected_candidates, 0);
+            connection.execute("INSERT INTO editor_history_owners VALUES ('order-owner', ?1, 'epoch', 42, 'active')", [LIBRARY_ID])?;
+            connection.execute("INSERT INTO editor_history_local_sets VALUES ('order-owner', 'surface', ?1, 'document:owned-page', 1, 1, 'hash', 0, 1)", [PROJECT_ID])?;
+            connection.execute("UPDATE data_source_page_memberships SET removed_at = ?1 WHERE id = 'membership:order-retention'", [old])?;
+            connection.execute("UPDATE pages SET parent_kind = 'library', parent_id = ?1 WHERE block_id = 'block:owned-page'", [LIBRARY_ID])?;
+            connection.execute("UPDATE block_retention_deferrals SET retry_after_ms = 0", [])?;
+            assert_eq!(run_block_retention_pass(connection, 0)?.collected_candidates, 0);
+            for sql in [
+                "SELECT count(*) FROM database_view_order_rows WHERE page_block_id = 'block:owned-page' AND is_active = 0",
+                "SELECT count(*) FROM database_view_order_import_positions WHERE page_block_id = 'block:owned-page'",
+            ] {
+                assert_eq!(connection.query_row(sql, [], |row| row.get::<_, i64>(0))?, 1);
+            }
+            connection.execute("UPDATE editor_history_owners SET state = 'closed' WHERE owner_id = 'order-owner'", [])?;
+            connection.execute("DELETE FROM editor_history_local_sets WHERE owner_id = 'order-owner'", [])?;
+            connection.execute("UPDATE block_retention_deferrals SET retry_after_ms = 0", [])?;
+            let collected = run_block_retention_pass(connection, 0)?;
+            assert_eq!(collected.collected_candidates, 1, "{collected:?}");
+            assert_eq!(collected.collected_blocks, 2);
+            assert_eq!(collected.failed_candidates, 0);
+            for sql in [
+                "SELECT count(*) FROM blocks WHERE id = 'block:owned-page'",
+                "SELECT count(*) FROM database_view_order_rows WHERE page_block_id = 'block:owned-page'",
+                "SELECT count(*) FROM database_view_order_import_positions WHERE page_block_id = 'block:owned-page'",
+            ] {
+                assert_eq!(connection.query_row(sql, [], |row| row.get::<_, i64>(0))?, 0);
+            }
+            Ok(())
+        }).expect("only canonical ownership and retained history protect Page content");
+    }
+
+    #[test]
+    fn local_history_roots_protect_deleted_blocks_and_document_ownership_closures() {
+        for retain_document in [false, true] {
+            let fixture = Fixture::new();
+            fixture.insert_owned_page_closure("deleted");
+            fixture.insert_deleted_block("block:ordinary-history");
+            fixture.kernel.writer().call(move |connection| {
+                // This is deliberately a storage/collector fixture. Public command
+                // admission and ordering are covered at the Core/Provider seams.
+                connection.execute("INSERT INTO editor_history_owners VALUES ('owner', ?1, 'epoch', 42, 'active')", [LIBRARY_ID])?;
+                connection.execute("INSERT INTO editor_history_local_sets VALUES ('owner', 'surface', ?1, 'document:owned-page', 1, 1, 'hash', 0, ?2)", params![PROJECT_ID, retain_document])?;
+                for id in ["block:ordinary-history", OWNED_CHILD_ID] {
+                    if id == OWNED_CHILD_ID && retain_document { continue; }
+                    connection.execute("INSERT INTO editor_history_local_roots VALUES ('owner', 'surface', ?1)", [id])?;
+                }
+                assert_eq!(run_block_retention_pass(connection, 0)?.collected_blocks, 0);
+                connection.execute("UPDATE editor_history_owners SET state = 'closed' WHERE owner_id = 'owner'", [])?;
+                connection.execute("UPDATE block_retention_deferrals SET retry_after_ms = 0", [])?;
+                assert_eq!(run_block_retention_pass(connection, 0)?.collected_blocks, 0);
+                connection.execute("DELETE FROM editor_history_local_roots WHERE owner_id = 'owner'", [])?;
+                connection.execute("DELETE FROM editor_history_local_sets WHERE owner_id = 'owner'", [])?;
+                connection.execute("UPDATE block_retention_deferrals SET retry_after_ms = 0", [])?;
+                let collected = run_block_retention_pass(connection, 0)?;
+                assert_eq!(collected.collected_candidates, 2);
+                assert_eq!(collected.failed_candidates, 0);
+                Ok(())
+            }).expect("local history protects identity until closed-owner roots are physically released");
+        }
     }
 
     #[test]

@@ -296,6 +296,7 @@ pub(super) fn rotate_installed_store_epoch(
                 "Installed restore candidate epoch changed before rotation",
             ));
         }
+        crate::library::prepare_editor_history_replacement(&mut connection)?;
         with_immediate_transaction(&mut connection, |transaction| {
             let now = transaction.query_row(
                 "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
@@ -312,6 +313,7 @@ pub(super) fn rotate_installed_store_epoch(
                     "Installed restore candidate epoch changed during rotation",
                 ));
             }
+            crate::library::discard_replaced_editor_history(transaction)?;
             transaction.execute_batch("PRAGMA defer_foreign_keys = ON;")?;
             transaction.execute_batch("DROP TRIGGER change_log_is_immutable")?;
             transaction.execute(
@@ -480,7 +482,7 @@ fn validate_document_authorities(connection: &Connection) -> Result<(), StoreErr
                     "Restore candidate Document has no durable authority",
                 ));
             }
-            Err(_) if is_retained_unowned_document(connection, &head)? => continue,
+            Err(_) if is_known_unowned_document(connection, &head)? => continue,
             Err(error) => return Err(error),
         };
         match head.sync_engine {
@@ -491,14 +493,23 @@ fn validate_document_authorities(connection: &Connection) -> Result<(), StoreErr
     Ok(())
 }
 
-/// An unowned Document is valid only while an exact durable retention authority
-/// keeps its closure alive: either a deleted Block tombstone, or an active
-/// structural clipboard/Undo lease. These Documents must survive backup and
-/// restore even though ordinary editing authority has intentionally ended.
-fn is_retained_unowned_document(
+/// Unowned content may be retained by a durable authority or waiting for bounded
+/// collection with exact dormant provenance. Neither permits ordinary editing.
+fn is_known_unowned_document(
     connection: &Connection,
     head: &crate::infrastructure::document_repository::DocumentHeadRow,
 ) -> Result<bool, StoreError> {
+    // Candidate validation also runs before older snapshots are migrated.
+    let has_dormant_sources: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = 'structural_dormant_document_sources')",
+        [],
+        |row| row.get(0),
+    )?;
+    if has_dormant_sources
+        && crate::document::is_known_dormant_document(connection, &head.library_id, &head.id)?
+    {
+        return Ok(true);
+    }
     connection
         .query_row(
             "SELECT \
@@ -535,8 +546,7 @@ fn is_retained_unowned_document(
                      OR (member.authority_kind = 'history_recipe' AND EXISTS (\
                        SELECT 1 FROM structural_history_recipes recipe \
                        WHERE recipe.recipe_operation_id = member.authority_id \
-                         AND recipe.library_id = member.library_id \
-                         AND recipe.state = 'available'\
+                         AND recipe.library_id = member.library_id\
                      ))\
                    )\
                )",
@@ -898,6 +908,40 @@ mod tests {
     use crate::infrastructure::store::SqliteStoreKernel;
 
     use super::*;
+
+    #[test]
+    fn dormant_documents_waiting_for_collection_remain_valid_restore_content() {
+        let home = tempdir().expect("Profile");
+        let kernel = SqliteStoreKernel::open_test(home.path()).expect("current Store");
+        kernel.writer().call(|connection| {
+            connection.execute_batch(
+                "INSERT INTO profiles(id, created_at, updated_at) VALUES ('profile:restore', '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z');
+                 INSERT INTO libraries(id, profile_id, created_at, updated_at)
+                   VALUES ('library:restore', 'profile:restore', '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z');
+                 INSERT INTO blocks(id, library_id, type, lifecycle, placement_revision,
+                   metadata_revision, created_at, updated_at)
+                   VALUES ('placeholder', 'library:restore', 'paragraph', 'active', 1, 1, '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z');
+                 INSERT INTO documents(id, library_id, generation, head_seq, schema_key, schema_version,
+                   state_vector, state_hash, readiness, authority, created_at, updated_at, sync_engine)
+                   VALUES ('document:dormant', 'library:restore', 1, 1, 'nodex.page', 3,
+                     X'', '', 'ready', 'ydoc_primary', '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z', 'yjs');
+                 INSERT INTO document_block_index(document_id, block_id, ordinal, block_type, text, projected_seq)
+                   VALUES ('document:dormant', 'placeholder', 0, 'paragraph', '', 1);",
+            )?;
+            assert!(validate_document_authorities(connection).is_err(), "unexplained orphan");
+            connection.execute_batch(
+                "INSERT INTO structural_dormant_document_sources(library_id, document_id, page_id, placeholder_block_id)
+                   VALUES ('library:restore', 'document:dormant', 'former-page', 'placeholder');",
+            )?;
+            validate_document_authorities(connection)?;
+            connection.execute("UPDATE structural_dormant_document_sources SET placeholder_block_id = 'wrong'", [])?;
+            assert!(validate_document_authorities(connection).is_err(), "wrong placeholder provenance");
+            connection.execute("UPDATE structural_dormant_document_sources SET placeholder_block_id = 'placeholder'", [])?;
+            connection.execute("UPDATE blocks SET type = 'heading' WHERE id = 'placeholder'", [])?;
+            assert!(validate_document_authorities(connection).is_err(), "non-placeholder content");
+            Ok(())
+        }).expect("dormant restore closure");
+    }
 
     #[test]
     fn retained_tombstoned_documents_are_part_of_the_restore_closure() {

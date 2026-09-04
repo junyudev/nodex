@@ -164,7 +164,7 @@ pub(super) fn apply(
     let context = context.clone();
     let assets_root = assets_root.to_path_buf();
     writer.call(move |connection| {
-        with_immediate_transaction(connection, |transaction| {
+        let result = with_immediate_transaction(connection, |transaction| {
             assert_identity(transaction, &profile_id, &library_id)?;
             let store_epoch = read_store_epoch(transaction)?;
             if request.store_epoch.0 != store_epoch {
@@ -211,6 +211,7 @@ pub(super) fn apply(
                         &context.library_id,
                         &context.project_id,
                         &context.adapter,
+                        &context.editor_history_owner,
                         request.contract_version,
                         &request.store_epoch,
                         &request.intent,
@@ -231,6 +232,9 @@ pub(super) fn apply(
             )? {
                 return library_commit_result(transaction, replayed);
             }
+            if !matches!(request.intent, LibraryIntent::CloseEditorHistoryOwner) {
+                super::structural_edit::history_owner::require_active(transaction, &context, &store_epoch)?;
+            }
             match &request.intent {
                 LibraryIntent::PutPageFileEntry { page_id, expected_manifest_revision, file_id, logical_path, mime_type, prepared_blob_receipt_id, replace_entry, turn_id } => super::page_file_entry_mutation::put(
                     transaction, &context, &store_epoch, &request.operation_id, &request_hash,
@@ -247,6 +251,9 @@ pub(super) fn apply(
                 ),
                 LibraryIntent::ApplyFileChange { change, turn_id } => super::file_mutation::apply(
                     transaction, &context, &store_epoch, &request.operation_id, &request_hash, change, turn_id.as_deref(),
+                ),
+                LibraryIntent::CloseEditorHistoryOwner => super::structural_edit::history_owner::close(
+                    transaction, &context, &request.operation_id, &store_epoch, &request_hash,
                 ),
                 LibraryIntent::CreatePage {
                     page_id,
@@ -705,7 +712,8 @@ pub(super) fn apply(
                     "Prepared Agent Page movement is assembled by the Library Module",
                 )),
             }
-        })
+        });
+        crate::database::finish_order_attempt(connection, result)
     })
 }
 
@@ -2232,6 +2240,7 @@ pub(super) enum ParentDocumentPlacement<'a> {
         tombstone_reactivations: &'a [String],
         source_document_id: &'a str,
         source_document_generation: i64,
+        exact_moves: &'a [String],
     },
 }
 
@@ -2331,6 +2340,7 @@ fn persist_parent_operations_detailed(
             tombstone_reactivations,
             source_document_id,
             source_document_generation,
+            ..
         } => (
             &[][..],
             preapplied,
@@ -2341,6 +2351,10 @@ fn persist_parent_operations_detailed(
                 source_document_generation,
             )),
         ),
+    };
+    let explicit_history_moves = match policy.placement {
+        ParentDocumentPlacement::Restore { exact_moves, .. } => exact_moves,
+        _ => &[],
     };
     let exact_moved_block_ids = operations
         .iter()
@@ -2359,6 +2373,7 @@ fn persist_parent_operations_detailed(
             };
             block_ids.iter().cloned()
         })
+        .chain(explicit_history_moves.iter().cloned())
         .collect::<Vec<_>>();
     let persisted = persist_yjs_commit_with_local_commit(
         connection,
@@ -3271,14 +3286,6 @@ fn create_page_mention(
             let history_result =
                 super::structural_edit::page_mention_history_result(&prepared_history).clone();
             effects.structural_edit = Some(history_result);
-            let request = json!({
-                "kind": "create_page_mention",
-                "page_id": page_id,
-                "document_id": document_id,
-                "title": title,
-                "mention_host": mention_host,
-                "destination": destination,
-            });
             seal_mutation_with(
                 scope,
                 context,
@@ -3293,7 +3300,6 @@ fn create_page_mention(
                         &project_id,
                         store_epoch,
                         request_hash,
-                        &request,
                         event_sequence,
                         &now,
                     )
@@ -3492,6 +3498,39 @@ pub(super) fn seal_mutation_with(
         &authorization_before,
     )?;
     before_seal(&committed, event_sequence)?;
+    if let Some(history) = committed
+        .value
+        .structural_edit
+        .as_ref()
+        .and_then(|edit| edit.history.as_ref())
+        .or_else(|| {
+            committed
+                .value
+                .block_transfer_undo
+                .as_ref()
+                .and_then(|edit| edit.history.as_ref())
+        })
+    {
+        super::structural_edit::history_owner::retain_recipe(
+            scope.connection(),
+            context,
+            scope.store_epoch(),
+            history,
+        )?;
+    }
+    if let Some(token) = committed
+        .value
+        .block_transfer
+        .as_ref()
+        .and_then(|transfer| transfer.undo_token.as_ref())
+    {
+        super::structural_edit::history_owner::retain_recipe(
+            scope.connection(),
+            context,
+            scope.store_epoch(),
+            &super::block_transfer::history::token(token),
+        )?;
+    }
     Ok(scope.seal(
         committed,
         ReceiptMetadata {
@@ -3680,6 +3719,26 @@ pub(super) fn build_mutation_result(
         &page_data_source_ids,
         &page_database_ids,
     )?;
+    if let Some(history) = effects.structural_edit.as_ref() {
+        let mut history_projects = BTreeSet::new();
+        if history.history.is_some() || history.operation_kind == "release_structural_history" {
+            history_projects.insert(effects.project_id.clone());
+        }
+        for recipe_id in &history.superseded_history_recipe_operation_ids {
+            let project_id: String = connection.query_row(
+                "SELECT project_id FROM structural_history_recipes WHERE recipe_operation_id = ?1 AND library_id = ?2",
+                params![recipe_id, context.library_id.0], |row| row.get(0),
+            )?;
+            history_projects.insert(project_id);
+        }
+        for project_id in history_projects {
+            local_commit::require_projection_read(
+                connection,
+                commit,
+                nodex_core_contracts::LocalProjectionScope::StructuralHistory { project_id },
+            )?;
+        }
+    }
     if matches!(projection_impact, ProjectionImpact::All) {
         local_commit::require_projection_read(
             connection,
@@ -4662,6 +4721,7 @@ mod tests {
 
     fn context() -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: Some(ProjectId("project-1".to_owned())),
@@ -4672,6 +4732,7 @@ mod tests {
 
     fn library_context() -> BoundModuleContext {
         BoundModuleContext {
+            editor_history_owner: None,
             profile_id: ProfileId("profile-1".to_owned()),
             library_id: LibraryId("library-1".to_owned()),
             project_id: None,
@@ -8749,9 +8810,10 @@ mod tests {
             .writer()
             .call(move |connection| {
                 connection.execute(
-                    "UPDATE database_view_page_positions \
+                    "UPDATE database_view_order_rows \
                      SET revision = revision + 1, updated_at = ?1 \
-                     WHERE view_id = ?2 AND page_block_id = ?3",
+                     WHERE view_id = ?2 AND page_block_id = ?3
+                       AND generation = (SELECT active_generation FROM database_view_order_state WHERE view_id = ?2)",
                     params![
                         NOW,
                         "018f0000-0000-7000-8000-000000000003",

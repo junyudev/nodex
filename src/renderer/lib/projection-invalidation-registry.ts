@@ -320,9 +320,12 @@ export const projectionEffectMatches = (
   dependencies: ProjectionDependencies,
   delivery: ProjectionDelivery,
 ): boolean => {
+  if (delivery.impact.kind === "none") return false;
   if (dependencies.aggregate === true) return true;
   const scope = delivery.effect.scope.scope;
   switch (scope.kind) {
+    case "structural_history":
+      return false;
     case "library":
     case "project":
       return true;

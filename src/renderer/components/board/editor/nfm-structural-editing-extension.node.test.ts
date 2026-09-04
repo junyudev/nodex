@@ -3,6 +3,10 @@ import { Schema } from "@tiptap/pm/model";
 import { NodeSelection, type Selection } from "@tiptap/pm/state";
 import { describe, expect, test } from "vite-plus/test";
 import * as Y from "yjs";
+import { availableHistoryReconciliation } from "./testing/nfm-history-reconciliation";
+import { NfmHistoryLane } from "./nfm-editor-history";
+import type { PublicBlockTransferIntent } from "../../../../shared/block-transfer-transport";
+import { noOpLocalCommit } from "../../../../shared/testing/local-commit";
 
 import type {
   LibraryModuleApplyResult,
@@ -118,7 +122,645 @@ const structuralEdit = (input: {
     : null,
 });
 
+const transfer = (
+  session: NfmStructuralEditingSession,
+  documentId = "document:test",
+  preferredSelectionBlockId?: string,
+) => {
+  const head = { documentId, storeEpoch: "epoch:test", generation: 1, expectedHeadSeq: 1 };
+  return session.transferBlocks({
+    mode: "move",
+    rootBlockIds: ["text", "page"],
+    target: { parentBlockId: null, beforeBlockId: null },
+    prepareHeads: async () => ({ sourceHead: head, targetHead: head }),
+    preferredSelectionBlockId,
+  });
+};
+
 describe("NFM structural editing session", () => {
+  test("a ready Cut envelope awaits source settlement and keeps its original paste selection", async () => {
+    const document = new Y.Doc();
+    const undoManager = new Y.UndoManager(document.getArray("history"));
+    const original = { id: "original-target", type: "page" };
+    const later = { id: "later-target", type: "page" };
+    let selected = original;
+    let notifyWaiting!: () => void;
+    let settle!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      notifyWaiting = resolve;
+    });
+    const settled = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    const awaited: Array<Parameters<typeof awaitStructuralClipboard>[0]> = [];
+    const requests: Array<Parameters<typeof applyLibraryModule>[1]> = [];
+    const envelope = {
+      version: 1 as const,
+      profileId: "profile:test",
+      libraryId: "library:test",
+      ...clipboard,
+      actionHint: "cut" as const,
+    };
+    const editor = {
+      getBlock: (id: string) => [original, later].find((block) => block.id === id),
+      getParentBlock: () => undefined,
+      getSelection: () => ({ blocks: [selected] }),
+      prosemirrorView: { state: { selection: { nodes: [] } } },
+      getExtension: () => ({
+        undoManager,
+        fragment: document.getXmlFragment("body"),
+        bindHistory: () => () => undefined,
+      }),
+    } as unknown as BlockNoteEditor<any, any, any>;
+    const session = new NfmStructuralEditingSession({
+      editor,
+      historyReconciliation: availableHistoryReconciliation,
+      runtime: {
+        accessContext: { kind: "library" },
+        libraryId: "library:test",
+        source: { documentId: "document:target", storeEpoch: "epoch:test", generation: 1 },
+        participant: {
+          prepareAndFence: async () => ({
+            documentId: "document:target",
+            storeEpoch: "epoch:test",
+            generation: 1,
+            expectedHeadSeq: 1,
+          }),
+        },
+        getContainer: () => null,
+      },
+      awaitClipboard: async (input) => {
+        awaited.push(input);
+        notifyWaiting();
+        await settled;
+        return { kind: "ready", disposition: "structural", envelope };
+      },
+      apply: async (_access, request) => {
+        requests.push(request);
+        return receipt(structuralEdit({ operationKind: "replace_selection" }));
+      },
+    });
+    try {
+      expect(
+        session.handleStructuralClaimPaste(
+          {
+            version: 1,
+            phase: "ready",
+            writeClaim: writeClaim(101),
+            actionHint: "cut",
+            envelope,
+          },
+          [],
+        ),
+      ).toBe(true);
+      await Promise.race([waiting, session.whenIdle()]);
+      expect(awaited).toEqual([{ writeClaim: writeClaim(101), publishedEnvelope: envelope }]);
+      expect(requests).toEqual([]);
+      selected = later;
+      settle();
+      await session.whenIdle();
+      expect(requests).toHaveLength(1);
+      expect(requests[0].operation).toMatchObject({
+        kind: "apply_structural_edit",
+        command: {
+          kind: "replace_selection",
+          selection: { rootBlockIds: [original.id] },
+          replacement: { kind: "clipboard", bundle: clipboard },
+        },
+      });
+    } finally {
+      settle();
+      await session.close();
+      undoManager.destroy();
+      document.destroy();
+    }
+  });
+
+  test.each([
+    { symmetric: true, close: false, receiving: false, mode: "move" as const },
+    { symmetric: false, close: false, receiving: false, mode: "move" as const },
+    { symmetric: true, close: true, receiving: false, mode: "move" as const },
+    { symmetric: false, close: false, receiving: true, mode: "move" as const },
+    { symmetric: false, close: true, receiving: true, mode: "move" as const },
+    { symmetric: false, close: false, receiving: true, mode: "copy" as const },
+  ])(
+    "Page transfer retains its timeline through a lost response, receiving: $receiving, mode: $mode, symmetric: $symmetric, close: $close",
+    async ({ symmetric, close, receiving, mode }) => {
+      const document = new Y.Doc();
+      const manager = new Y.UndoManager(document.getXmlFragment("body"));
+      const history = new NfmHistoryLane({ undoManager: manager });
+      const sent: PublicBlockTransferIntent[] = [];
+      const reversed: string[] = [];
+      const released: string[] = [];
+      let preparations = 0;
+      let fence: (() => void) | undefined;
+      const pendingFence = new Promise<void>((resolve) => {
+        fence = resolve;
+      });
+      const token = {
+        transferOperationId: "promotion:one",
+        recipeHash: digest,
+        storeEpoch: "epoch:test",
+      };
+      const session = new NfmStructuralEditingSession({
+        editor: {
+          getBlock: () => ({ id: "page", type: "page" }),
+          getExtension: () => ({
+            undoManager: manager,
+            fragment: document.getXmlFragment("body"),
+            bindHistory: () => () => undefined,
+          }),
+        } as unknown as BlockNoteEditor<any, any, any>,
+        historyLane: history,
+        historyReconciliation: availableHistoryReconciliation,
+        runtime: {
+          accessContext: { kind: "project", projectId: "project:test" },
+          libraryId: "library:test",
+          source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
+          getContainer: () => null,
+          participant: {
+            prepareAndFence: async () => {
+              if (preparations++ === 1) await pendingFence;
+              return {
+                documentId: "document:test",
+                storeEpoch: "epoch:test",
+                generation: 1,
+                expectedHeadSeq: 1,
+              };
+            },
+          },
+        },
+        apply: async (_access, request) => {
+          if (
+            request.operation.kind === "apply_structural_edit" &&
+            request.operation.command.kind === "release_history"
+          )
+            released.push(
+              ...request.operation.command.tokens.map((token) => token.recipeOperationId),
+            );
+          if (request.operation.kind === "reverse_structural_edit") {
+            const operationId = request.operation.token.recipeOperationId;
+            reversed.push(operationId);
+            return receipt({
+              ...structuralEdit({ operationKind: "reverse_structural_edit" }),
+              history: {
+                recipeOperationId: `inverse:${operationId}`,
+                recipeHash: digest,
+                storeEpoch: "epoch:test",
+              },
+            });
+          }
+          return receipt(structuralEdit({ operationKind: "delete" }));
+        },
+        preparePromotion: async (input) => ({
+          operationId: "promotion:one",
+          projectId: input.projectId,
+          storeEpoch: input.storeEpoch,
+          mode,
+          rootBlockIds: input.rootBlockIds,
+          source: { kind: "page", pageId: input.sourcePageId },
+          causalDependencies: [
+            {
+              documentId: input.sourceHead.documentId,
+              generation: input.sourceHead.generation,
+              expectedHeadSeq: input.sourceHead.expectedHeadSeq,
+            },
+          ],
+          target: {
+            kind: "data_source",
+            dataSourceId: "source:test",
+            placement: {
+              kind: "direct",
+              viewId: "view:test",
+              groupKey: "ship",
+              preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
+            },
+          },
+          promotionPolicy: "literal",
+        }),
+        transfer: async (_projectId, request) => {
+          sent.push(request);
+          if (sent.length === 1)
+            return {
+              ok: false,
+              error: {
+                code: "unknown",
+                message: "Lost Promotion response",
+                retryable: true,
+                reloadRequired: false,
+              },
+            };
+          return {
+            ok: true,
+            localCommit: noOpLocalCommit(request.storeEpoch),
+            value: {
+              operationId: request.operationId,
+              projectId: request.projectId,
+              storeEpoch: request.storeEpoch,
+              mode: request.mode,
+              duplicate: true,
+              sourceRootBlockIds: request.rootBlockIds,
+              resultRootBlockIds: request.rootBlockIds,
+              copiedBlockIds: {},
+              transformationEvidence: [],
+              finalLocations: {},
+              finalLocationRevisions: {},
+              documentCommits: [],
+              affectedDatabaseBlockIds: [],
+              commitSeq: 2,
+              committedAt: "2026-09-05T00:00:00Z",
+              undoToken: token,
+              history: symmetric
+                ? {
+                    recipeOperationId: token.transferOperationId,
+                    recipeHash: token.recipeHash,
+                    storeEpoch: token.storeEpoch,
+                  }
+                : null,
+            },
+          };
+        },
+      });
+      try {
+        session.deleteBlocks(["page"], "forward");
+        await session.whenIdle();
+        const pending = receiving
+          ? session.receivePages({
+              projectId: "project:test",
+              storeEpoch: "epoch:test",
+              mode,
+              rootBlockIds: ["page"],
+              dataSourceId: "source:test",
+              target: { kind: "page", pageId: "page:host" },
+            })
+          : session.promoteBlocks({
+              projectId: "project:test",
+              storeEpoch: "epoch:test",
+              sourcePageId: "page:host",
+              sourceDocumentId: "document:test",
+              sourceDocumentGeneration: 1,
+              rootBlockIds: ["page"],
+              destination: { kind: "db-column", projectId: "project:test", columnId: "ship" },
+            });
+        const rejected = expect(pending).rejects.toThrow("Lost Promotion response");
+        expect(history.snapshot().undo).toMatchObject({
+          status: "waiting",
+          label: receiving
+            ? mode === "move"
+              ? "Move Pages here"
+              : "Copy Pages here"
+            : "Move to Database",
+        });
+        expect(sent).toEqual([]);
+        history.requestUndo();
+        fence!();
+        await rejected;
+        await session.whenIdle();
+        expect(reversed).toEqual([]);
+        if (receiving)
+          expect(sent[0]).toMatchObject({
+            mode,
+            rootBlockIds: ["page"],
+            source: { kind: "data_source", dataSourceId: "source:test" },
+            target: { kind: "page", pageId: "page:host" },
+            causalDependencies: [
+              { documentId: "document:test", generation: 1, expectedHeadSeq: 1 },
+            ],
+          });
+        if (close) {
+          await history.close();
+          expect(sent).toHaveLength(2);
+          expect(sent[1]).toEqual(sent[0]);
+          expect(released).toContain("promotion:one");
+          expect(reversed).toEqual([]);
+          return;
+        }
+        await session.recoverHistory();
+        expect(sent).toHaveLength(2);
+        expect(sent[1]).toEqual(sent[0]);
+        if (!symmetric) {
+          await session.whenIdle();
+          expect(reversed).toEqual([]);
+          expect(history.snapshot().undo.status).toBe("blocked");
+          expect(released).toContain("promotion:one");
+          return;
+        }
+        // The queued Undo resumes only after confirmation, then fences its own inverse.
+        expect(preparations).toBe(3);
+        expect(reversed).toEqual(["promotion:one"]);
+        expect(history.snapshot().redo.status).toBe("ready");
+        history.requestRedo();
+        await session.whenIdle();
+        expect(reversed).toEqual(["promotion:one", "inverse:promotion:one"]);
+      } finally {
+        fence?.();
+        await session.close();
+        await history.close();
+        manager.destroy();
+        document.destroy();
+      }
+    },
+  );
+
+  test.each(["confirmed", "expired"] as const)(
+    "an unconfirmed Cut preserves its claim through %s recovery",
+    async (recovery) => {
+      const document = new Y.Doc();
+      const manager = new Y.UndoManager(document.getArray("history"));
+      const block = { id: "page", type: "page" };
+      const requests: Array<Parameters<typeof applyLibraryModule>[1]> = [];
+      const settled: string[] = [];
+      const reversed: string[] = [];
+      const editor = {
+        getBlock: () => block,
+        getExtension: () => ({
+          undoManager: manager,
+          fragment: document.getXmlFragment("body"),
+          bindHistory: () => () => undefined,
+        }),
+      } as unknown as BlockNoteEditor<any, any, any>;
+      const session = new NfmStructuralEditingSession({
+        editor,
+        historyReconciliation: availableHistoryReconciliation,
+        runtime: {
+          accessContext: { kind: "library" },
+          libraryId: "library:test",
+          source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
+          participant: {
+            prepareAndFence: async () => ({
+              documentId: "document:test",
+              storeEpoch: "epoch:test",
+              generation: 1,
+              expectedHeadSeq: 1,
+            }),
+          },
+          getContainer: () => null,
+        },
+        beginClipboard: async () => ({ ok: true }),
+        publishClipboard: async () => ({ ok: true }),
+        settleClipboard: async (input) => {
+          settled.push(input.outcome);
+          return { ok: true };
+        },
+        apply: async (_access, request) => {
+          const operation = request.operation;
+          if (operation.kind === "reverse_structural_edit") {
+            reversed.push(operation.token.recipeOperationId);
+            return receipt(structuralEdit({ operationKind: "inverse" }));
+          }
+          if (operation.kind !== "apply_structural_edit") throw new Error("Unexpected command");
+          if (operation.command.kind === "capture_clipboard")
+            return receipt(structuralEdit({ operationKind: "capture_clipboard", clipboard }));
+          if (
+            operation.command.kind === "delete_selection" &&
+            operation.command.reason.kind === "cut"
+          ) {
+            requests.push(request);
+            if (requests.length === 1)
+              return {
+                ok: false,
+                error: { code: "unknown", message: "Cut response lost", retryable: true },
+              };
+            if (recovery === "expired")
+              return {
+                ok: false,
+                error: { code: "recovery_required", message: "Receipt expired", retryable: false },
+              };
+            return receipt(structuralEdit({ operationKind: "cut" }));
+          }
+          return receipt(structuralEdit({ operationKind: operation.command.kind }));
+        },
+      });
+      try {
+        expect(session.deleteBlocks(["page"], "backward")).toBe(true);
+        await session.whenIdle();
+        expect(
+          session.handleClipboard(
+            "cut",
+            ["page"],
+            { html: "<p>Page</p>", text: "Page" },
+            writeClaim(100),
+          ),
+        ).toBe(true);
+        await session.whenIdle();
+        expect(settled).toEqual([]);
+        session.handleKeyDown({ key: "z", metaKey: true } as KeyboardEvent);
+        await session.whenIdle();
+        expect(reversed).toEqual([]);
+        await session.recoverHistory();
+        expect(requests).toHaveLength(2);
+        expect(requests[1]).toEqual(requests[0]);
+        if (recovery === "expired") {
+          expect(settled).toEqual([]);
+          expect(session.historyControls.snapshot().undo).toMatchObject({
+            status: "blocked",
+            recoveryActions: ["reset"],
+          });
+          await session.recoverHistory();
+          session.handleKeyDown({ key: "z", metaKey: true } as KeyboardEvent);
+          await session.whenIdle();
+          expect(requests).toHaveLength(2);
+          expect(reversed).toEqual([]);
+          return;
+        }
+        expect(settled).toEqual(["cut_committed"]);
+        session.handleKeyDown({ key: "z", metaKey: true } as KeyboardEvent);
+        await session.whenIdle();
+        expect(reversed).toEqual(["recipe:cut"]);
+      } finally {
+        await session.close();
+        manager.destroy();
+        document.destroy();
+      }
+    },
+  );
+
+  test.each(["forward", "inverse"] as const)(
+    "closing hands off a pending %s without waiting for Core or losing its late token",
+    async (direction) => {
+      const document = new Y.Doc();
+      const manager = new Y.UndoManager(document.getArray("history"));
+      let complete!: (result: LibraryStructuralEditResult) => void;
+      const response = new Promise<LibraryStructuralEditResult>((resolve) => {
+        complete = resolve;
+      });
+      let started!: () => void;
+      const submitted = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      let acknowledged!: () => void;
+      const cleaned = new Promise<void>((resolve) => {
+        acknowledged = resolve;
+      });
+      const releases: string[] = [];
+      const editor = {
+        getExtension: () => ({
+          undoManager: manager,
+          fragment: document.getXmlFragment("body"),
+          bindHistory: () => () => undefined,
+        }),
+      } as unknown as BlockNoteEditor<any, any, any>;
+      const session = new NfmStructuralEditingSession({
+        editor,
+        historyReconciliation: availableHistoryReconciliation,
+        runtime: {
+          accessContext: { kind: "library" },
+          libraryId: "library:test",
+          source: { documentId: document.guid, storeEpoch: "epoch:test", generation: 1 },
+          participant: {
+            prepareAndFence: async () => ({
+              documentId: document.guid,
+              storeEpoch: "epoch:test",
+              generation: 1,
+              expectedHeadSeq: 1,
+            }),
+          },
+          getContainer: () => null,
+        },
+        apply: async (_access, request) => {
+          if (
+            request.operation.kind === "apply_structural_edit" &&
+            request.operation.command.kind === "move_selection"
+          ) {
+            if (direction === "inverse") return receipt(structuralEdit({ operationKind: "cut" }));
+            started();
+            return receipt(await response);
+          }
+          if (request.operation.kind === "reverse_structural_edit") {
+            started();
+            return receipt(await response);
+          }
+          if (
+            request.operation.kind !== "apply_structural_edit" ||
+            request.operation.command.kind !== "release_history"
+          )
+            throw new Error("Unexpected operation");
+          const tokens = request.operation.command.tokens.map((token) => token.recipeOperationId);
+          releases.push(...tokens);
+          if (tokens.includes("recipe:late")) acknowledged();
+          return receipt({ ...structuralEdit({ operationKind: "release" }), history: null });
+        },
+      });
+      let forward: Promise<void> | undefined;
+      try {
+        if (direction === "inverse") {
+          await transfer(session, document.guid);
+          session.handleKeyDown({ key: "z", metaKey: true } as KeyboardEvent);
+        } else {
+          forward = transfer(session, document.guid).catch(() => undefined);
+        }
+        await submitted;
+        await session.close();
+        await forward;
+        manager.destroy();
+        document.destroy();
+        expect(releases).toEqual([]);
+        complete(structuralEdit({ operationKind: "late" }));
+        await cleaned;
+        expect(releases.at(-1)).toBe("recipe:late");
+        expect(session.handleKeyDown({ key: "z", metaKey: true } as KeyboardEvent)).toBe(false);
+      } finally {
+        complete(structuralEdit({ operationKind: "late" }));
+        await session.close();
+        manager.destroy();
+        document.destroy();
+      }
+    },
+  );
+
+  test.each(["thrown", "error_value", "rejected"] as const)(
+    "recovers a %s inverse outcome with the correct request identity and head fence",
+    async (failureMode) => {
+      const document = new Y.Doc();
+      const undoManager = new Y.UndoManager(document.getArray("history"));
+      const requests: Array<Parameters<typeof applyLibraryModule>[1]> = [];
+      const released: string[] = [];
+      const errors: string[] = [];
+      const editor = {
+        getExtension: () => ({
+          undoManager,
+          fragment: document.getXmlFragment("body"),
+          bindHistory: () => () => undefined,
+          getSemanticSelection: () => undefined,
+          restoreSemanticSelection: () => false,
+        }),
+      } as unknown as BlockNoteEditor<any, any, any>;
+      const session = new NfmStructuralEditingSession({
+        historyReconciliation: availableHistoryReconciliation,
+        editor,
+        runtime: {
+          accessContext: { kind: "library" },
+          libraryId: "library:test",
+          source: { documentId: document.guid, storeEpoch: "epoch:test", generation: 1 },
+          participant: {
+            prepareAndFence: async () => {
+              if (requests.length > 0 && failureMode !== "rejected")
+                throw new Error("A committed inverse must not need a new head");
+              return {
+                documentId: document.guid,
+                storeEpoch: "epoch:test",
+                generation: 1,
+                expectedHeadSeq: 1,
+              };
+            },
+          },
+          getContainer: () => null,
+          onError: (error) => {
+            errors.push(error);
+          },
+        },
+        apply: async (_context, request) => {
+          if (
+            request.operation.kind === "apply_structural_edit" &&
+            request.operation.command.kind === "move_selection"
+          )
+            return receipt(structuralEdit({ operationKind: "cut" }));
+          if (request.operation.kind === "reverse_structural_edit") {
+            requests.push(request);
+            if (requests.length === 1) {
+              if (failureMode === "thrown") throw new Error("Response lost after commit");
+              return {
+                ok: false,
+                error: {
+                  code: failureMode === "rejected" ? "revision_conflict" : "unknown",
+                  message: "Response lost after commit",
+                  retryable: true,
+                },
+              };
+            }
+            return receipt(structuralEdit({ operationKind: "inverse" }));
+          }
+          if (
+            request.operation.kind === "apply_structural_edit" &&
+            request.operation.command.kind === "release_history"
+          ) {
+            released.push(
+              ...request.operation.command.tokens.map((item) => item.recipeOperationId),
+            );
+          }
+          return receipt(structuralEdit({ operationKind: "release_history" }));
+        },
+      });
+      try {
+        await transfer(session, document.guid);
+        session.handleKeyDown({ key: "z", metaKey: true } as KeyboardEvent);
+        await session.whenIdle();
+        await session.recoverHistory();
+        expect(errors).toEqual(["Response lost after commit"]);
+        expect(requests).toHaveLength(2);
+        if (failureMode === "rejected")
+          expect(requests[1]!.operationId).not.toBe(requests[0]!.operationId);
+        else expect(requests[1]).toEqual(requests[0]);
+        await session.close();
+        expect(released).toEqual(["recipe:inverse"]);
+      } finally {
+        await session.close();
+        undoManager.destroy();
+        document.destroy();
+      }
+    },
+  );
+
   test("cuts only after native clipboard verification and pastes through Core", async () => {
     const events: string[] = [];
     const commands: unknown[] = [];
@@ -140,6 +782,13 @@ describe("NFM structural editing session", () => {
       readonly cursorPlacementCount: number;
     }> = [];
     const editor = {
+      getExtension: () => ({
+        undoManager,
+        fragment: document.getXmlFragment("body"),
+        bindHistory: () => () => undefined,
+        getSemanticSelection: () => undefined,
+        restoreSemanticSelection: () => false,
+      }),
       document: [blocks.get("text"), blocks.get("page"), blocks.get("after")],
       getSelection: () => (selectedBlocks.length > 0 ? { blocks: selectedBlocks } : undefined),
       getTextCursorPosition: () => ({
@@ -256,6 +905,7 @@ describe("NFM structural editing session", () => {
       };
     };
     const session = new NfmStructuralEditingSession({
+      historyReconciliation: availableHistoryReconciliation,
       editor,
       runtime: {
         accessContext: { kind: "project", projectId: "project:test" },
@@ -540,12 +1190,12 @@ describe("NFM structural editing session", () => {
 
       events.length = 0;
       expect(
-        session.moveBlocksToDocument(["text", "page"], {
+        session.moveBlocksToDocument(["text", "page"], async () => ({
           documentId: "document:target",
           storeEpoch: "epoch:test",
           generation: 2,
           headSeq: 9,
-        }),
+        })),
       ).toBe(true);
       await session.whenIdle();
       expect(events).toEqual(["fence", "move_selection"]);
@@ -560,10 +1210,29 @@ describe("NFM structural editing session", () => {
         },
       });
 
-      session.adoptStructuralResult(
-        structuralEdit({ operationKind: "move_selection", resultRootBlockIds: ["pasted"] }),
-        "toggle",
-      );
+      events.length = 0;
+      expect(
+        session.moveBlocksToDocument(["text"], async () => ({
+          documentId: "document:target",
+          storeEpoch: "epoch:test",
+          generation: 2,
+          headSeq: 9,
+        })),
+      ).toBe(true);
+      await session.whenIdle();
+      expect(events).toEqual(["fence", "move_selection"]);
+      expect(commands.at(-1)).toMatchObject({
+        command: {
+          kind: "move_selection",
+          selection: { rootBlockIds: ["text"] },
+          target: {
+            targetDocumentId: "document:target",
+            targetHead: { generation: 2, expectedHeadSeq: 9 },
+          },
+        },
+      });
+
+      await transfer(session, "document:test", "toggle");
       await session.whenIdle();
       expect(cursorPlacements.at(-1)).toEqual({ blockId: "toggle", edge: "end" });
 
@@ -627,16 +1296,24 @@ describe("NFM structural editing session", () => {
       ).toBe(true);
       selectedBlocks = [];
       await session.whenIdle();
-      expect(portableReplacements.at(-1)).toEqual({
-        blockIds: ["text", "page"],
-        replacement: [
-          {
-            type: "paragraph",
-            props: {},
-            content: [{ type: "text", text: "diagram.png", styles: {} }],
-            children: [],
+      expect(portableReplacements).toEqual([]);
+      expect(commands.at(-1)).toMatchObject({
+        kind: "apply_structural_edit",
+        command: {
+          kind: "replace_selection",
+          selection: { rootBlockIds: ["text", "page"] },
+          replacement: {
+            kind: "blocks",
+            blocks: [
+              {
+                blockType: "paragraph",
+                props: {},
+                content: [{ type: "text", text: "diagram.png", styles: {} }],
+                children: [],
+              },
+            ],
           },
-        ],
+        },
       });
     } finally {
       session.dispose();
@@ -645,10 +1322,17 @@ describe("NFM structural editing session", () => {
     }
   });
 
-  test("keeps editor-installed callbacks live across retained view remounts", () => {
+  test("keeps editor-installed callbacks live across retained view remounts", async () => {
     const document = new Y.Doc();
     const undoManager = new Y.UndoManager(document.getArray("history"));
     const editor = {
+      getExtension: () => ({
+        undoManager,
+        fragment: document.getXmlFragment("body"),
+        bindHistory: () => () => undefined,
+        getSemanticSelection: () => undefined,
+        restoreSemanticSelection: () => false,
+      }),
       prosemirrorState: {
         plugins: [
           {
@@ -658,7 +1342,7 @@ describe("NFM structural editing session", () => {
         ],
       },
     } as unknown as BlockNoteEditor<any, any, any>;
-    const controller = new NfmStructuralEditingController();
+    const controller = new NfmStructuralEditingController(availableHistoryReconciliation);
     const session = controller.attachEditor(editor);
     const installedCallback = () => controller.current;
     const runtime = {
@@ -690,12 +1374,85 @@ describe("NFM structural editing session", () => {
         "cannot change its editor",
       );
     } finally {
-      controller.dispose();
+      await controller.dispose();
       undoManager.destroy();
       document.destroy();
     }
     expect(installedCallback()).toBeNull();
   });
+});
+
+test("eviction during inverse preparation prevents a late Core submission", async () => {
+  const document = new Y.Doc();
+  const manager = new Y.UndoManager(document.getArray("history"));
+  const history = new NfmHistoryLane({ undoManager: manager, limits: { maxEntries: 1 } });
+  let resume = () => {};
+  const preparation = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  let started = () => {};
+  const preparing = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let inverses = 0;
+  const editor = {
+    getExtension: () => ({
+      undoManager: manager,
+      fragment: document.getXmlFragment("body"),
+      bindHistory: () => () => undefined,
+      getSemanticSelection: () => undefined,
+      restoreSemanticSelection: () => false,
+    }),
+  } as unknown as BlockNoteEditor<any, any, any>;
+  const session = new NfmStructuralEditingSession({
+    editor,
+    historyLane: history,
+    historyReconciliation: availableHistoryReconciliation,
+    runtime: {
+      accessContext: { kind: "library" },
+      libraryId: "library:test",
+      source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
+      getContainer: () => null,
+      participant: {
+        prepareAndFence: async () => {
+          started();
+          await preparation;
+          return {
+            documentId: "document:test",
+            storeEpoch: "epoch:test",
+            generation: 1,
+            expectedHeadSeq: 1,
+          };
+        },
+      },
+    },
+    apply: async (_access, request) => {
+      if (request.operation.kind === "reverse_structural_edit") inverses++;
+      if (
+        request.operation.kind === "apply_structural_edit" &&
+        request.operation.command.kind === "move_selection"
+      )
+        return receipt(structuralEdit({ operationKind: "A" }));
+      return receipt({ ...structuralEdit({ operationKind: "release" }), history: null });
+    },
+  });
+  try {
+    await transfer(session);
+    history.requestUndo();
+    await preparing;
+    document.getArray("history").push(["B"]);
+    resume();
+    await history.whenIdle();
+    expect(inverses).toBe(0);
+    expect(history.canRedo()).toBe(false);
+    expect(history.canUndo()).toBe(true);
+  } finally {
+    resume();
+    await history.close();
+    await session.close();
+    manager.destroy();
+    document.destroy();
+  }
 });
 
 test("cancelling a structural preparation releases the queue and prevents late submission", async () => {
@@ -707,7 +1464,13 @@ test("cancelling a structural preparation releases the queue and prevents late s
     getBlock: () => owner,
     getParentBlock: () => undefined,
     focus: () => undefined,
-    prosemirrorState: { plugins: [{ key: "y-undo$cancel", getState: () => ({ undoManager }) }] },
+    getExtension: () => ({
+      undoManager,
+      fragment: document.getXmlFragment("body"),
+      bindHistory: () => () => undefined,
+      getSemanticSelection: () => undefined,
+      restoreSemanticSelection: () => false,
+    }),
   } as unknown as BlockNoteEditor<any, any, any>;
   let complete: () => void = () => undefined;
   const pending = new Promise<void>((resolve) => {
@@ -717,6 +1480,7 @@ test("cancelling a structural preparation releases the queue and prevents late s
   let submissions = 0;
   const errors: string[] = [];
   const session = new NfmStructuralEditingSession({
+    historyReconciliation: availableHistoryReconciliation,
     editor,
     runtime: {
       accessContext: { kind: "library" },
@@ -764,6 +1528,54 @@ test("cancelling a structural preparation releases the queue and prevents late s
   }
 });
 
+test("history cannot cross authorization scopes or take over an active IME composition", () => {
+  const document = new Y.Doc();
+  const undoManager = new Y.UndoManager(document.getArray("history"));
+  const editor = {
+    prosemirrorView: { composing: true },
+    getExtension: () => ({
+      undoManager,
+      fragment: document.getXmlFragment("body"),
+      bindHistory: () => () => undefined,
+      getSemanticSelection: () => undefined,
+      restoreSemanticSelection: () => false,
+    }),
+  } as unknown as BlockNoteEditor<any, any, any>;
+  const runtime = {
+    accessContext: { kind: "library" as const },
+    libraryId: "library:test",
+    source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
+    getContainer: () => null,
+    participant: {
+      prepareAndFence: async () => ({
+        documentId: "document:test",
+        storeEpoch: "epoch:test",
+        generation: 1,
+        expectedHeadSeq: 1,
+      }),
+    },
+  };
+  const session = new NfmStructuralEditingSession({
+    editor,
+    runtime,
+    historyReconciliation: availableHistoryReconciliation,
+  });
+  try {
+    expect(session.handleKeyDown({ key: "z", metaKey: true } as KeyboardEvent)).toBe(false);
+    expect(session.handleBeforeInput({ inputType: "historyUndo" } as InputEvent)).toBe(false);
+    expect(() =>
+      session.rebind({ ...runtime, accessContext: { kind: "project", projectId: "other" } }),
+    ).toThrow("cannot change its Document authority");
+    expect(() => session.rebind({ ...runtime, libraryId: "another-library" })).toThrow(
+      "cannot change its Document authority",
+    );
+  } finally {
+    session.dispose();
+    undoManager.destroy();
+    document.destroy();
+  }
+});
+
 test("refreshing an equivalent view binding preserves queued and active structural waits", async () => {
   const document = new Y.Doc();
   const undoManager = new Y.UndoManager(document.getArray("history"));
@@ -773,7 +1585,13 @@ test("refreshing an equivalent view binding preserves queued and active structur
     getBlock: () => owner,
     getParentBlock: () => undefined,
     focus: () => undefined,
-    prosemirrorState: { plugins: [{ key: "y-undo$rebind", getState: () => ({ undoManager }) }] },
+    getExtension: () => ({
+      undoManager,
+      fragment: document.getXmlFragment("body"),
+      bindHistory: () => () => undefined,
+      getSemanticSelection: () => undefined,
+      restoreSemanticSelection: () => false,
+    }),
   } as unknown as BlockNoteEditor<any, any, any>;
   let complete = () => {};
   const pending = new Promise<void>((resolve) => {
@@ -802,6 +1620,7 @@ test("refreshing an equivalent view binding preserves queued and active structur
     },
   };
   const session = new NfmStructuralEditingSession({
+    historyReconciliation: availableHistoryReconciliation,
     editor,
     runtime,
     apply: async () => {

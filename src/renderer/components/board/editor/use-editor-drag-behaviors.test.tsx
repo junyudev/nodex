@@ -87,19 +87,13 @@ function DragBehaviorHarness({
                 generation: 1,
                 expectedHeadSeq: 0,
               }),
-              createOperationId: () => "operation-a",
-              transfer: async () => ({
-                ok: false,
-                error: {
-                  code: "unknown",
-                  message: "not used",
-                  retryable: false,
-                  reloadRequired: false,
-                },
-              }),
-              structuralTransfer: async () => undefined,
+              receivePages: async () => undefined,
               reportError: () => undefined,
               ...dropBoundary,
+              structuralTransfer: async (input) => {
+                await input.prepareHeads();
+                await dropBoundary?.structuralTransfer?.(input);
+              },
             },
           },
         }

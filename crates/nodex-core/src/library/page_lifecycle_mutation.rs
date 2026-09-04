@@ -24,10 +24,6 @@ use crate::domain::block_materialization::MaterializedBlockNode;
 use crate::domain::fractional_rank::{
     FractionalRankErrorCode, RankedItem, plan as plan_fractional_rank,
 };
-use crate::domain::ordered_position::{
-    LogicalPositionItem, PositionPlanError, SiblingRankWrite, SiblingRankWriteKind,
-    plan_position_run,
-};
 use crate::domain::rich_text::{RichTextItem, RichTextStyles};
 use crate::infrastructure::durable_mutation::{
     self, DurableMutationScope, OperationIdentity, SealedOutcome,
@@ -403,13 +399,6 @@ fn create_page(
     } else {
         None
     };
-    let view_rank_key = allocate_create_view_position(
-        connection,
-        &source.view_id,
-        data_source_id,
-        page_id,
-        view_placement,
-    )?;
     let document_id = format!("document:{page_id}");
     let membership_id = format!(
         "membership:{}",
@@ -471,12 +460,6 @@ fn create_page(
                     return Err(conflict("Tags Property changed during Page creation"));
                 }
             }
-            let positioned_sibling_page_ids = synchronize_create_view_siblings(
-                connection,
-                &source.view_id,
-                &view_rank_key.sibling_writes,
-                &now,
-            )?;
             let indexed_scheduled_start = values
                 .get("scheduled_start")
                 .and_then(|(_, value)| value.as_str());
@@ -594,11 +577,19 @@ fn create_page(
                 reminders,
             );
             insert_intrinsic_properties(connection, page_id, library_id, &intrinsic_values, &now)?;
-            connection.execute(
-                "INSERT INTO database_view_page_positions( \
-           view_id, page_block_id, rank_key, revision, created_at, updated_at \
-         ) VALUES (?1, ?2, ?3, 1, ?4, ?4)",
-                params![source.view_id, page_id, view_rank_key.rank_key, now],
+            let placement = match view_placement {
+                LibraryPageLifecycleViewPlacement::Start => database::ViewOrderPlacement::Start,
+                LibraryPageLifecycleViewPlacement::End => database::ViewOrderPlacement::End,
+                LibraryPageLifecycleViewPlacement::Before { page_id } => {
+                    database::ViewOrderPlacement::Before(page_id)
+                }
+            };
+            let view_rank_key = database::position_page_in_view(
+                connection,
+                &source.view_id,
+                page_id,
+                placement,
+                &now,
             )?;
             connection.execute(
         "INSERT INTO scheduled_page_index( \
@@ -682,9 +673,7 @@ fn create_page(
                     }),
                     affected_parent_keys: vec![format!("database:{}", source.database_id)],
                     affected_block_ids: created_block_ids,
-                    affected_page_ids: std::iter::once(page_id.clone())
-                        .chain(positioned_sibling_page_ids)
-                        .collect(),
+                    affected_page_ids: vec![page_id.clone()],
                     affected_database_ids: vec![source.database_id.clone()],
                     affected_view_ids: vec![source.view_id.clone()],
                     affected_document_ids: vec![document_id],
@@ -1009,129 +998,6 @@ fn database_group_key(value: &(String, Value)) -> Result<Option<String>, StoreEr
     serde_json::to_string(value)
         .map(Some)
         .map_err(|_| corrupt("Database group value cannot encode"))
-}
-
-#[derive(Debug)]
-struct CreateViewPositionPlan {
-    rank_key: String,
-    sibling_writes: Vec<SiblingRankWrite>,
-}
-
-fn allocate_create_view_position(
-    connection: &Connection,
-    view_id: &str,
-    data_source_id: &str,
-    page_id: &str,
-    placement: &LibraryPageLifecycleViewPlacement,
-) -> Result<CreateViewPositionPlan, StoreError> {
-    let items = connection
-        .prepare(
-            "SELECT membership.page_block_id, position.rank_key \
-             FROM data_source_page_memberships membership \
-             JOIN page_read_model model \
-               ON model.page_block_id = membership.page_block_id \
-               AND model.membership_id = membership.id AND model.lifecycle = 'active' \
-               AND model.view_id = ?1 \
-             JOIN documents document \
-               ON document.id = model.document_id \
-               AND document.generation = model.document_generation \
-               AND document.head_seq = model.document_projected_seq \
-             JOIN document_materializations materialization \
-               ON materialization.document_id = document.id \
-               AND materialization.generation = document.generation \
-               AND materialization.projected_seq = document.head_seq \
-               AND materialization.schema_version = document.schema_version \
-             LEFT JOIN database_view_page_positions position \
-               ON position.view_id = ?1 \
-               AND position.page_block_id = membership.page_block_id \
-             WHERE membership.data_source_id = ?2 AND membership.removed_at IS NULL \
-               AND model.view_rank_key IS position.rank_key \
-             ORDER BY CASE WHEN position.rank_key IS NULL THEN 1 ELSE 0 END, \
-               position.rank_key, membership.page_block_id",
-        )?
-        .query_map(params![view_id, data_source_id], |row| {
-            Ok(LogicalPositionItem {
-                page_id: row.get(0)?,
-                rank_key: row.get(1)?,
-            })
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let before_page_id = match placement {
-        LibraryPageLifecycleViewPlacement::Start => items.first().map(|item| item.page_id.as_str()),
-        LibraryPageLifecycleViewPlacement::End => None,
-        LibraryPageLifecycleViewPlacement::Before { page_id } => {
-            if !items.iter().any(|item| item.page_id == *page_id) {
-                return Err(invalid("View placement anchor is unavailable"));
-            }
-            Some(page_id.as_str())
-        }
-    };
-    let plan = plan_position_run(&items, &[page_id.to_owned()], before_page_id, false)
-        .map_err(create_view_position_plan_error)?;
-    let rank_key = plan
-        .moved_rank_keys
-        .get(page_id)
-        .cloned()
-        .ok_or_else(|| corrupt("Create View rank plan omitted the new Page"))?;
-    Ok(CreateViewPositionPlan {
-        rank_key,
-        sibling_writes: plan.sibling_writes,
-    })
-}
-
-fn create_view_position_plan_error(error: PositionPlanError) -> StoreError {
-    match error {
-        PositionPlanError::InvalidInput(message) | PositionPlanError::AnchorNotFound(message) => {
-            invalid(&message)
-        }
-        PositionPlanError::FractionalRank(error) => rank_error(error),
-    }
-}
-
-fn synchronize_create_view_siblings(
-    connection: &Connection,
-    view_id: &str,
-    sibling_writes: &[SiblingRankWrite],
-    now: &str,
-) -> Result<Vec<String>, StoreError> {
-    let mut affected_page_ids = Vec::with_capacity(sibling_writes.len());
-    for write in sibling_writes {
-        match write.kind {
-            SiblingRankWriteKind::Materialize => {
-                connection.execute(
-                    "INSERT INTO database_view_page_positions( \
-                       view_id, page_block_id, rank_key, revision, created_at, updated_at \
-                     ) VALUES (?1, ?2, ?3, 1, ?4, ?4)",
-                    params![view_id, write.page_id, write.rank_key, now],
-                )?;
-            }
-            SiblingRankWriteKind::Rebalance => {
-                let position_changed = connection.execute(
-                    "UPDATE database_view_page_positions SET rank_key = ?1, updated_at = ?2 \
-                     WHERE view_id = ?3 AND page_block_id = ?4",
-                    params![write.rank_key, now, view_id, write.page_id],
-                )?;
-                if position_changed != 1 {
-                    return Err(corrupt(
-                        "Database View sibling position disappeared during Page creation",
-                    ));
-                }
-            }
-        }
-        let projection_changed = connection.execute(
-            "UPDATE page_read_model SET view_rank_key = ?1, \
-               projection_version = projection_version + 1, updated_at = ?2 \
-             WHERE page_block_id = ?3 AND view_id = ?4",
-            params![write.rank_key, now, write.page_id, view_id],
-        )?;
-        if projection_changed != 1 {
-            return Err(corrupt(
-                "Database View sibling projection disappeared during Page creation",
-            ));
-        }
-        affected_page_ids.push(write.page_id.clone());
-    }
-    Ok(affected_page_ids)
 }
 
 fn parse_create_rich_title(
@@ -1710,10 +1576,7 @@ fn delete_page(
             context,
         },
         |scope| {
-            connection.execute(
-                "DELETE FROM database_view_page_positions WHERE page_block_id = ?1",
-                [page_id],
-            )?;
+            database::forget_page_view_order(connection, page_id)?;
             let relation_outcomes = membership
                 .as_ref()
                 .map(|membership| {
@@ -2027,12 +1890,6 @@ fn restore_page(
                 restored_membership = Some(restore_membership(
                     connection, library_id, page_id, requested, &now,
                 )?);
-                if let Some(position) = &requested.position {
-                    let rank_key =
-                        restore_view_position(connection, page_id, requested, position, &now)?;
-                    view_id = Some(position.view_id.clone());
-                    view_rank_key = Some(rank_key);
-                }
             }
             let target_lifecycle = match evidence.previous_lifecycle {
                 LibraryLifecycle::Active => "active",
@@ -2057,6 +1914,15 @@ fn restore_page(
             )?;
             if changed != 1 {
                 return Err(conflict("Page changed during restore"));
+            }
+            if let Some(requested) = requested_membership {
+                database::join_page_view_orders(connection, page_id, &now)?;
+                if let Some(position) = &requested.position {
+                    let rank_key =
+                        restore_view_position(connection, page_id, requested, position, &now)?;
+                    view_id = Some(position.view_id.clone());
+                    view_rank_key = Some(rank_key);
+                }
             }
             if requested_membership.is_none() && page.parent_kind == "library" {
                 library_rank_key = Some(restore_library_placement(
@@ -2897,34 +2763,18 @@ fn restore_view_position(
     if valid_view.is_none() {
         return Err(invalid("Restore View is unavailable"));
     }
-    let items = connection
-        .prepare(
-            "SELECT page_block_id, rank_key FROM database_view_page_positions \
-             WHERE view_id = ?1 ORDER BY rank_key, page_block_id",
-        )?
-        .query_map([&position.view_id], |row| {
-            Ok(RankedItem {
-                id: row.get(0)?,
-                rank_key: row.get(1)?,
-            })
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let plan = plan_fractional_rank(&items, page_id, position.before_view_page_id.as_deref())
-        .map_err(rank_error)?;
-    for (positioned_page_id, rank_key) in &plan.rebalanced_rank_keys {
-        connection.execute(
-            "UPDATE database_view_page_positions SET rank_key = ?1, revision = revision + 1, \
-               updated_at = ?2 WHERE view_id = ?3 AND page_block_id = ?4 AND rank_key <> ?1",
-            params![rank_key, now, position.view_id, positioned_page_id],
-        )?;
-    }
-    connection.execute(
-        "INSERT INTO database_view_page_positions( \
-           view_id, page_block_id, rank_key, revision, created_at, updated_at \
-         ) VALUES (?1, ?2, ?3, 1, ?4, ?4)",
-        params![position.view_id, page_id, plan.rank_key, now],
-    )?;
-    Ok(plan.rank_key)
+    let placement = position.before_view_page_id.as_deref().map_or(
+        database::ViewOrderPlacement::End,
+        database::ViewOrderPlacement::Before,
+    );
+    Ok(database::restore_page_view_position(
+        connection,
+        &position.view_id,
+        page_id,
+        placement,
+        now,
+    )?
+    .rank_key)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3113,20 +2963,25 @@ fn read_active_membership(
 ) -> Result<Option<MembershipCoordinates>, StoreError> {
     let row = connection
         .query_row(
-            "SELECT membership.id, source.home_database_block_id, membership.data_source_id, \
-               membership.revision, status.value_json, position.view_id, position.rank_key \
+            &format!("SELECT membership.id, source.home_database_block_id, membership.data_source_id, \
+               membership.revision, status.value_json, \
+               CASE WHEN {rank} IS NULL THEN NULL \
+                 ELSE coalesce(position.view_id, position_import.view_id) END, {rank} \
              FROM data_source_page_memberships membership \
              JOIN data_sources source ON source.id = membership.data_source_id \
              JOIN data_source_property_values status ON status.data_source_id = membership.data_source_id \
                AND status.membership_id = membership.id AND status.property_id = 'status' \
-             LEFT JOIN database_view_page_positions position ON position.page_block_id = membership.page_block_id \
-               AND position.view_id = (SELECT view.id FROM database_views view \
+             LEFT JOIN database_views position_view \
+               ON position_view.id = (SELECT view.id FROM database_views view \
                  JOIN database_containers container ON container.block_id = view.database_block_id \
                  WHERE view.data_source_id = membership.data_source_id AND view.lifecycle = 'active' \
                  ORDER BY CASE WHEN view.id = container.default_view_id THEN 0 ELSE 1 END, \
                    view.rank_key, view.id LIMIT 1) \
+             {joins} \
              WHERE membership.page_block_id = ?1 AND membership.removed_at IS NULL \
              ORDER BY membership.id LIMIT 1",
+                rank = crate::database::POSITION_RANK,
+                joins = crate::database::view_position_joins("position_view.id", "membership.page_block_id")),
             [page_id],
             |row| {
                 Ok((
@@ -3487,15 +3342,13 @@ fn corrupt(message: &str) -> StoreError {
 mod tests {
     use std::collections::BTreeMap;
 
-    use nodex_core_contracts::library::LibraryPageLifecycleViewPlacement;
     use rusqlite::Connection;
     use serde_json::{Value, json};
 
     use crate::infrastructure::sqlite::StoreErrorCode;
 
     use super::{
-        CreateProperty, LibraryPageWorkflowStatus, allocate_create_view_position,
-        read_create_source, synchronize_create_view_siblings, validate_create_values,
+        CreateProperty, LibraryPageWorkflowStatus, read_create_source, validate_create_values,
     };
 
     fn exact_primary_board_config() -> Value {
@@ -3585,228 +3438,6 @@ mod tests {
                 .expect(label);
             assert_eq!(error.code, StoreErrorCode::InvalidInput, "{label}");
         }
-    }
-
-    #[test]
-    fn create_view_placement_resolves_start_end_and_before_in_core() {
-        let connection = Connection::open_in_memory().expect("in-memory Database");
-        connection
-            .execute_batch(
-                "CREATE TABLE database_view_page_positions( \
-                   view_id TEXT NOT NULL, page_block_id TEXT NOT NULL, \
-                   rank_key TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, \
-                   created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT ''); \
-                 CREATE TABLE data_source_page_memberships( \
-                   id TEXT NOT NULL, data_source_id TEXT NOT NULL, page_block_id TEXT NOT NULL, \
-                   removed_at TEXT); \
-                 CREATE TABLE page_read_model( \
-                   page_block_id TEXT NOT NULL, membership_id TEXT, lifecycle TEXT NOT NULL, \
-                   document_id TEXT NOT NULL, document_generation INTEGER NOT NULL, \
-                   document_projected_seq INTEGER NOT NULL, view_id TEXT, view_group_key TEXT, \
-                   view_rank_key TEXT); \
-                 CREATE TABLE documents( \
-                   id TEXT NOT NULL, generation INTEGER NOT NULL, head_seq INTEGER NOT NULL, \
-                   schema_version INTEGER NOT NULL); \
-                 CREATE TABLE document_materializations( \
-                   document_id TEXT NOT NULL, generation INTEGER NOT NULL, \
-                   projected_seq INTEGER NOT NULL, schema_version INTEGER NOT NULL); \
-                 INSERT INTO database_view_page_positions( \
-                   view_id, page_block_id, rank_key) VALUES \
-                   ('view-1', 'first', '55555555555555555555555555555555'), \
-                   ('view-1', 'second', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), \
-                   ('view-1', 'other-group', '66666666666666666666666666666666'), \
-                   ('view-1', 'archived', '11111111111111111111111111111111'), \
-                   ('view-1', 'foreign-source', '00000000000000000000000000000000'), \
-                   ('view-1', 'removed', 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz'), \
-                   ('view-1', 'stale-position', '77777777777777777777777777777777'), \
-                   ('view-1', 'stale-head', '88888888888888888888888888888888'); \
-                 INSERT INTO data_source_page_memberships VALUES \
-                   ('membership-first', 'source-1', 'first', NULL), \
-                   ('membership-second', 'source-1', 'second', NULL), \
-                   ('membership-unpositioned', 'source-1', 'unpositioned', NULL), \
-                   ('membership-other-group', 'source-1', 'other-group', NULL), \
-                   ('membership-archived', 'source-1', 'archived', NULL), \
-                   ('membership-foreign-source', 'source-2', 'foreign-source', NULL), \
-                   ('membership-removed', 'source-1', 'removed', '2026-08-09T00:00:00.000Z'), \
-                   ('membership-stale-position', 'source-1', 'stale-position', NULL), \
-                   ('membership-stale-head', 'source-1', 'stale-head', NULL); \
-                 INSERT INTO page_read_model VALUES \
-                   ('first', 'membership-first', 'active', 'document-first', 1, 1, \
-                     'view-1', 'triage', '55555555555555555555555555555555'), \
-                   ('second', 'membership-second', 'active', 'document-second', 1, 1, \
-                     'view-1', 'triage', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), \
-                   ('unpositioned', 'membership-unpositioned', 'active', \
-                     'document-unpositioned', 1, 1, 'view-1', 'triage', NULL), \
-                   ('other-group', 'membership-other-group', 'active', 'document-other-group', 1, 1, \
-                     'view-1', 'build', '55555555555555555555555555555555'), \
-                   ('archived', 'membership-archived', 'archived', 'document-archived', 1, 1, \
-                     'view-1', 'triage', '11111111111111111111111111111111'), \
-                   ('foreign-source', 'membership-foreign-source', 'active', \
-                     'document-foreign-source', 1, 1, 'view-1', 'triage', \
-                     '00000000000000000000000000000000'), \
-                   ('removed', 'membership-removed', 'active', 'document-removed', 1, 1, \
-                     'view-1', 'triage', 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz'), \
-                   ('stale-position', 'membership-stale-position', 'active', \
-                     'document-stale-position', 1, 1, 'view-1', 'triage', 'old-rank'), \
-                   ('stale-head', 'membership-stale-head', 'active', 'document-stale-head', 1, 1, \
-                     'view-1', 'triage', '88888888888888888888888888888888'); \
-                 INSERT INTO documents VALUES \
-                   ('document-first', 1, 1, 2), \
-                   ('document-second', 1, 1, 2), \
-                   ('document-unpositioned', 1, 1, 2), \
-                   ('document-other-group', 1, 1, 2), \
-                   ('document-archived', 1, 1, 2), \
-                   ('document-foreign-source', 1, 1, 2), \
-                   ('document-removed', 1, 1, 2), \
-                   ('document-stale-position', 1, 1, 2), \
-                   ('document-stale-head', 1, 2, 2); \
-                 INSERT INTO document_materializations VALUES \
-                   ('document-first', 1, 1, 2), \
-                   ('document-second', 1, 1, 2), \
-                   ('document-unpositioned', 1, 1, 2), \
-                   ('document-other-group', 1, 1, 2), \
-                   ('document-archived', 1, 1, 2), \
-                   ('document-foreign-source', 1, 1, 2), \
-                   ('document-removed', 1, 1, 2), \
-                   ('document-stale-position', 1, 1, 2), \
-                   ('document-stale-head', 1, 2, 2); \
-                 ALTER TABLE page_read_model \
-                   ADD COLUMN projection_version INTEGER NOT NULL DEFAULT 1; \
-                 ALTER TABLE page_read_model \
-                   ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';",
-            )
-            .expect("seed exact and stale View positions");
-
-        let start = allocate_create_view_position(
-            &connection,
-            "view-1",
-            "source-1",
-            "new-start",
-            &LibraryPageLifecycleViewPlacement::Start,
-        )
-        .expect("start placement");
-        let end = allocate_create_view_position(
-            &connection,
-            "view-1",
-            "source-1",
-            "new-end",
-            &LibraryPageLifecycleViewPlacement::End,
-        )
-        .expect("end placement");
-        let before_second = allocate_create_view_position(
-            &connection,
-            "view-1",
-            "source-1",
-            "new-before",
-            &LibraryPageLifecycleViewPlacement::Before {
-                page_id: "second".to_owned(),
-            },
-        )
-        .expect("before placement");
-        let before_unpositioned = allocate_create_view_position(
-            &connection,
-            "view-1",
-            "source-1",
-            "new-before-unpositioned",
-            &LibraryPageLifecycleViewPlacement::Before {
-                page_id: "unpositioned".to_owned(),
-            },
-        )
-        .expect("before unpositioned placement");
-
-        assert!(start.rank_key.as_str() < "55555555555555555555555555555555");
-        assert!(end.rank_key.as_str() > before_unpositioned.rank_key.as_str());
-        assert!(before_second.rank_key.as_str() > "55555555555555555555555555555555");
-        assert!(before_second.rank_key.as_str() < "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-        assert!(!before_unpositioned.sibling_writes.is_empty());
-
-        synchronize_create_view_siblings(
-            &connection,
-            "view-1",
-            &before_unpositioned.sibling_writes,
-            "2026-08-09T00:00:00.000Z",
-        )
-        .expect("materialize the logical group");
-        let materialized = connection
-            .query_row(
-                "SELECT count(*) FROM database_view_page_positions \
-                 WHERE view_id = 'view-1' AND page_block_id = 'unpositioned'",
-                [],
-                |row| row.get::<_, i64>(0),
-            )
-            .expect("read materialized position");
-        assert_eq!(materialized, 1);
-
-        for unavailable_anchor in [
-            "other-group",
-            "archived",
-            "foreign-source",
-            "removed",
-            "stale-position",
-            "stale-head",
-        ] {
-            let error = allocate_create_view_position(
-                &connection,
-                "view-1",
-                "source-1",
-                "new-invalid",
-                &LibraryPageLifecycleViewPlacement::Before {
-                    page_id: unavailable_anchor.to_owned(),
-                },
-            )
-            .expect_err("inactive or stale anchor");
-            assert_eq!(error.code, StoreErrorCode::InvalidInput);
-        }
-
-        connection
-            .execute_batch(
-                "UPDATE database_view_page_positions \
-                   SET rank_key = '00000000000000000000000000000001' \
-                   WHERE page_block_id = 'first'; \
-                 UPDATE database_view_page_positions \
-                   SET rank_key = '00000000000000000000000000000002' \
-                   WHERE page_block_id = 'second'; \
-                 UPDATE page_read_model \
-                   SET view_rank_key = '00000000000000000000000000000001' \
-                   WHERE page_block_id = 'first'; \
-                 UPDATE page_read_model \
-                   SET view_rank_key = '00000000000000000000000000000002' \
-                   WHERE page_block_id = 'second';",
-            )
-            .expect("exhaust rank interval");
-        let rebalanced = allocate_create_view_position(
-            &connection,
-            "view-1",
-            "source-1",
-            "new-rebalanced",
-            &LibraryPageLifecycleViewPlacement::Before {
-                page_id: "second".to_owned(),
-            },
-        )
-        .expect("rebalance placement");
-        assert!(!rebalanced.sibling_writes.is_empty());
-        let affected_page_ids = synchronize_create_view_siblings(
-            &connection,
-            "view-1",
-            &rebalanced.sibling_writes,
-            "2026-08-09T00:00:00.000Z",
-        )
-        .expect("synchronize rebalance");
-        assert!(affected_page_ids.contains(&"first".to_owned()));
-        assert!(affected_page_ids.contains(&"second".to_owned()));
-        let mismatched_ranks = connection
-            .query_row(
-                "SELECT count(*) FROM database_view_page_positions position \
-                 JOIN page_read_model model ON model.page_block_id = position.page_block_id \
-                 WHERE position.view_id = 'view-1' \
-                   AND position.page_block_id IN ('first', 'second') \
-                   AND model.lifecycle = 'active' \
-                   AND position.rank_key <> model.view_rank_key",
-                [],
-                |row| row.get::<_, i64>(0),
-            )
-            .expect("read synchronized ranks");
-        assert_eq!(mismatched_ranks, 0);
     }
 
     #[test]
