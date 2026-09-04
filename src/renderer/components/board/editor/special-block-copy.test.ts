@@ -2,6 +2,10 @@ import { describe, expect, test } from "vite-plus/test";
 import { TextSelection } from "@tiptap/pm/state";
 import { Schema } from "@tiptap/pm/model";
 import {
+  readNodexClipboardFragment,
+  inspectNodexClipboardHtml,
+} from "../../../../shared/clipboard-paste";
+import {
   createCopiedBlockPayload,
   createCopiedSelectionPayloadFromSelection,
   createStructuredPlainTextPayload,
@@ -1142,7 +1146,10 @@ describe("special block copy", () => {
     expect(calls.includes(a)).toBe(true);
     expect(calls.includes(b)).toBe(true);
     expect(rewritten.clipboardHTML).toBe(payload.clipboardHTML);
-    expect(rewritten.externalHTML).toBe(payload.externalHTML);
+    expect(readNodexClipboardFragment(rewritten.externalHTML)).toBe(payload.clipboardHTML);
+    expect(inspectNodexClipboardHtml(rewritten.externalHTML).fallbackHtml).toContain(
+      payload.externalHTML,
+    );
     expect(rewritten.structuredText.includes("nodex://")).toBe(false);
   });
 
@@ -1157,7 +1164,10 @@ describe("special block copy", () => {
     const rewritten = preparePortableCopiedSelectionPayload(payload);
 
     expect(rewritten.clipboardHTML).toBe(payload.clipboardHTML);
-    expect(rewritten.externalHTML).toBe(payload.externalHTML);
+    expect(readNodexClipboardFragment(rewritten.externalHTML)).toBe(payload.clipboardHTML);
+    expect(inspectNodexClipboardHtml(rewritten.externalHTML).fallbackHtml).toContain(
+      payload.externalHTML,
+    );
     expect(rewritten.structuredText).toBe("![diagram](nodex://assets/diagram.png)");
   });
 
@@ -1190,7 +1200,10 @@ describe("special block copy", () => {
     });
 
     expect(rewritten.clipboardHTML).toBe(payload.clipboardHTML);
-    expect(rewritten.externalHTML).toBe(payload.externalHTML);
+    expect(readNodexClipboardFragment(rewritten.externalHTML)).toBe(payload.clipboardHTML);
+    expect(inspectNodexClipboardHtml(rewritten.externalHTML).fallbackHtml).toContain(
+      payload.externalHTML,
+    );
     expect(rewritten.structuredText).toBe("![diagram](/workspace/.nodex/assets/image.png)");
   });
 

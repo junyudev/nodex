@@ -2,6 +2,7 @@ import { resolveManagedAssetPath } from "../../../lib/assets";
 import { blockNoteToNfm, serializeClipboardText } from "../../../lib/nfm";
 import { decodeXmlCharacterReferences } from "../../../../shared/xml-character-references";
 import { TextSelection } from "@tiptap/pm/state";
+import { attachNodexClipboardFragment } from "../../../../shared/clipboard-paste";
 
 const NODEX_FILE_REFERENCE_SOURCE_PATTERN =
   /nodex:\/\/(?:assets\/[A-Za-z0-9._%-]+|files\/[A-Za-z0-9._~-]+)/g;
@@ -190,7 +191,7 @@ export function preparePortableCopiedSelectionPayload(
 ): CopiedSelectionPayload {
   return {
     clipboardHTML: payload.clipboardHTML,
-    externalHTML: payload.externalHTML,
+    externalHTML: attachNodexClipboardFragment(payload.externalHTML, payload.clipboardHTML),
     structuredText: convertNfmImageTagsToMarkdown(payload.structuredText),
   };
 }

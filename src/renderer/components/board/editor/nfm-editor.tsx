@@ -230,6 +230,7 @@ import {
   resolveTypedOwnerDocumentChanges,
 } from "@/lib/typed-owner-blocks";
 import { NfmStructuralEditingController } from "./nfm-structural-editing-extension";
+import { readNodexClipboardFragment } from "../../../../shared/clipboard-paste";
 import { applyLocalNfmTurnInto, type NfmTurnBlocksIntoInput } from "@/lib/nfm-turn-into-targets";
 import {
   copiedSelectionHasFileReferences,
@@ -1598,7 +1599,10 @@ function NfmEditorInstance({
           textPayload: plainText,
           htmlPayload: event.clipboardData.getData("text/html") || undefined,
           markdownPayload: event.clipboardData.getData("text/markdown") || undefined,
-          blocknoteHtmlPayload: event.clipboardData.getData("blocknote/html") || undefined,
+          blocknoteHtmlPayload:
+            event.clipboardData.getData("blocknote/html") ||
+            readNodexClipboardFragment(event.clipboardData.getData("text/html")) ||
+            undefined,
           allowLink: false,
         });
       }

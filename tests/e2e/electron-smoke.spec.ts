@@ -1362,144 +1362,226 @@ test.describe("parallel functional Electron smoke", () => {
     }
   });
 
-  test("preserves Block hierarchy around consecutive Images through native paste", async () => {
-    test.setTimeout(180_000);
-    const harness = await ElectronScenarioHarness.create({ label: "image-hierarchy-clipboard" });
-    const workspace = harness.profile.initialProjectsDirectory;
-    try {
-      const page = await harness.launch();
-      const project = await createConvergenceProject(page, "Image hierarchy clipboard", workspace);
-      const source = await createConvergenceBoardPage(
-        page,
-        project,
-        "Image hierarchy source",
-        "Source body",
-      );
-      const target = await createConvergenceBoardPage(
-        page,
-        project,
-        "Image hierarchy target",
-        "Target body",
-      );
-      const seeded = await seedConvergenceDocument(
-        page,
-        project,
-        source,
-        [
-          "Parent",
-          "\tParent child",
-          '\t<image source="data:image/png;base64,YQ==">One</image>',
-          '\t<image source="data:image/png;base64,Yg==">Two</image>',
-          "\tAfter child",
-          "After root",
-          "\tAfter root child",
-          "Tail",
-        ].join("\n"),
-      );
-      const targetSeeded = await seedConvergenceDocument(
-        page,
-        project,
-        target,
-        "Target before\n\nTarget after",
-      );
-      const savedClipboard = await harness.application.evaluate(({ clipboard }) => ({
-        html: clipboard.readHTML(),
-        text: clipboard.readText(),
-      }));
-
+  for (const command of ["copy", "cut"] as const) {
+    test(`preserves mouse-selected nested Images through local-path ${command} and native paste`, async () => {
+      test.setTimeout(180_000);
+      const harness = await ElectronScenarioHarness.create({ label: "image-hierarchy-clipboard" });
+      const workspace = harness.profile.initialProjectsDirectory;
       try {
-        await page
-          .getByRole("button", { name: "Open Image hierarchy clipboard", exact: true })
-          .click();
-        await page.getByRole("tab", { name: "Project Home" }).waitFor();
-        const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
-        await expect(board).toBeVisible({ timeout: 15_000 });
-        await openBoardPageFromCard({
-          card: board.locator(`[data-board-uuid-v7="${source.pageId}"]`),
+        const page = await harness.launch();
+        const project = await createConvergenceProject(
           page,
-          tabName: "Image hierarchy source",
-        });
-
-        const sourcePanel = page.getByRole("tabpanel", { name: /Image hierarchy source$/ });
-        const sourceEditor = sourcePanel.locator(
-          '.nfm-editor .ProseMirror[contenteditable="true"]',
+          "Image hierarchy clipboard",
+          workspace,
         );
-        await expect(sourceEditor).toBeVisible({ timeout: 15_000 });
-        const firstInline = sourceEditor
-          .locator(`.bn-block[data-id="${seeded.blockIds[0]}"]`)
-          .locator(":scope > .bn-block-content .bn-inline-content");
-        await firstInline.click();
-        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+C`);
-        const nativeClipboard = await harness.application.evaluate(({ clipboard }) => ({
-          formats: clipboard.availableFormats(),
-        }));
-        expect(nativeClipboard.formats).toContain("blocknote/html");
-
-        await openBoardPageFromCard({
-          card: board.locator(`[data-board-uuid-v7="${target.pageId}"]`),
+        const source = await createConvergenceBoardPage(
           page,
-          tabName: "Image hierarchy target",
-        });
-        const targetPanel = page.getByRole("tabpanel", { name: /Image hierarchy target$/ });
-        const targetEditor = targetPanel.locator(
-          '.nfm-editor .ProseMirror[contenteditable="true"]',
+          project,
+          "Image hierarchy source",
+          "Source body",
         );
-        const emptyTarget = targetEditor.locator(
-          `.bn-block[data-id="${targetSeeded.blockIds[1]}"]`,
+        const target = await createConvergenceBoardPage(
+          page,
+          project,
+          "Image hierarchy target",
+          "Target body",
         );
-        await emptyTarget.click();
-        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+V`);
-        await expect(targetEditor.getByText("Parent child", { exact: true })).toBeVisible({
-          timeout: 15_000,
-        });
-        await expect(targetEditor.getByText("After child", { exact: true })).toBeVisible();
-
-        const hierarchy = await targetEditor.evaluate((editor) => {
-          const records = Array.from(editor.querySelectorAll<HTMLElement>(".bn-block-outer")).map(
-            (outer) => {
-              const block = outer.querySelector<HTMLElement>(":scope > .bn-block");
-              const content = block?.querySelector<HTMLElement>(":scope > .bn-block-content");
-              const inline = content?.querySelector<HTMLElement>(":scope > .bn-inline-content");
-              return {
-                id: block?.dataset.id ?? null,
-                parentId:
-                  outer.parentElement?.closest<HTMLElement>(".bn-block-outer")?.dataset.id ?? null,
-                type: block?.dataset.contentType ?? content?.dataset.contentType ?? null,
-                text: inline?.textContent ?? "",
-              };
+        const operationId = createUuidV7();
+        const fileId = createUuidV7();
+        const prepared = await page.evaluate(
+          async ({ projectId, operationId }) => {
+            const bytes = Uint8Array.from(
+              atob(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+              ),
+              (value) => value.charCodeAt(0),
+            );
+            return await window.api!.invoke(
+              "page-files:prepare",
+              { kind: "project", projectId },
+              {
+                operationId,
+                source: { kind: "bytes", logicalPath: "image.png", mimeType: "image/png", bytes },
+              },
+            );
+          },
+          { projectId: project.projectId, operationId },
+        );
+        if (!isRecord(prepared)) throw new Error("Missing prepared image");
+        const manifest = await readConvergencePageFiles(page, project.projectId, source.pageId);
+        requireIpcValue(
+          await invokeIpc(
+            page,
+            "library-module:apply",
+            { kind: "project", projectId: project.projectId },
+            {
+              operationId,
+              storeEpoch: project.storeEpoch,
+              operation: {
+                kind: "apply_page_file_changes",
+                pageId: source.pageId,
+                expectedManifestRevision: manifest.revision,
+                changes: [
+                  {
+                    kind: "create",
+                    fileId,
+                    logicalPath: "image.png",
+                    mimeType: "image/png",
+                    preparedBlobReceiptId: requireString(prepared.receiptId, "Image receipt"),
+                    collisionPolicy: "suffix",
+                  },
+                ],
+              },
             },
+          ),
+          "Create image Files",
+        );
+        await page.evaluate(() =>
+          localStorage.setItem("nodex-copy-file-references-as-local-paths-v1", "true"),
+        );
+        const seeded = await seedConvergenceDocument(
+          page,
+          project,
+          source,
+          [
+            "Parent",
+            "\tParent child",
+            `\t<image source="nodex://files/${fileId}">One</image>`,
+            `\t<image source="nodex://files/${fileId}">Two</image>`,
+            "\tAfter child",
+            "After root",
+            "\tAfter root child",
+            "Tail",
+          ].join("\n"),
+        );
+        const targetSeeded = await seedConvergenceDocument(
+          page,
+          project,
+          target,
+          "Target before\n\nTarget after",
+        );
+        const savedClipboard = await harness.application.evaluate(({ clipboard }) => ({
+          html: clipboard.readHTML(),
+          text: clipboard.readText(),
+        }));
+
+        try {
+          await page.setViewportSize({ width: 1400, height: 2400 });
+          await page
+            .getByRole("button", { name: "Open Image hierarchy clipboard", exact: true })
+            .click();
+          await page.getByRole("tab", { name: "Project Home" }).waitFor();
+          const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
+          await expect(board).toBeVisible({ timeout: 15_000 });
+          await openBoardPageFromCard({
+            card: board.locator(`[data-board-uuid-v7="${source.pageId}"]`),
+            page,
+            tabName: "Image hierarchy source",
+          });
+
+          const sourcePanel = page.getByRole("tabpanel", { name: /Image hierarchy source$/ });
+          const sourceEditor = sourcePanel.locator(
+            '.nfm-editor .ProseMirror[contenteditable="true"]',
           );
-          const idForText = (text: string) =>
-            records.find((record) => record.text === text)?.id ?? null;
-          const copiedParentId = idForText("Parent");
-          return {
-            records,
-            copiedParentId,
-            parentChildParentId:
-              records.find((record) => record.text === "Parent child")?.parentId ?? null,
-            afterChildParentId:
-              records.find((record) => record.text === "After child")?.parentId ?? null,
-            imageParentIds: records
-              .filter((record) => record.type === "image")
-              .map((record) => record.parentId),
-          };
-        });
-        expect(hierarchy).toEqual({
-          copiedParentId: expect.any(String),
-          parentChildParentId: hierarchy.copiedParentId,
-          afterChildParentId: hierarchy.copiedParentId,
-          imageParentIds: [hierarchy.copiedParentId, hierarchy.copiedParentId],
-          records: expect.any(Array),
-        });
+          await expect(sourceEditor).toBeVisible({ timeout: 15_000 });
+          const firstInline = sourceEditor
+            .locator(`.bn-block[data-id="${seeded.blockIds[0]}"]`)
+            .locator(":scope > .bn-block-content .bn-inline-content");
+          const afterChild = sourceEditor.getByText("After child", { exact: true });
+          const start = await firstInline.boundingBox();
+          const end = await afterChild.boundingBox();
+          if (!start || !end) throw new Error("Missing clipboard selection endpoints");
+          await page.mouse.move(start.x + 1, start.y + start.height / 2);
+          await page.mouse.down();
+          try {
+            await page.mouse.move(end.x + end.width - 1, end.y + end.height / 2, { steps: 20 });
+          } finally {
+            await page.mouse.up();
+          }
+          expect(await page.evaluate(() => window.getSelection()?.toString())).toContain(
+            "After child",
+          );
+          await page.keyboard.press(
+            `${process.platform === "darwin" ? "Meta" : "Control"}+${command === "copy" ? "C" : "X"}`,
+          );
+          await expect
+            .poll(() => harness.application.evaluate(({ clipboard }) => clipboard.readText()))
+            .toContain("![One](/");
+          expect(
+            await harness.application.evaluate(({ clipboard }) => clipboard.availableFormats()),
+          ).not.toContain("blocknote/html");
+          await expect(
+            sourceEditor.locator('.bn-block-content[data-content-type="image"]'),
+          ).toHaveCount(command === "copy" ? 2 : 0);
+
+          await openBoardPageFromCard({
+            card: board.locator(`[data-board-uuid-v7="${target.pageId}"]`),
+            page,
+            tabName: "Image hierarchy target",
+          });
+          const targetPanel = page.getByRole("tabpanel", { name: /Image hierarchy target$/ });
+          const targetEditor = targetPanel.locator(
+            '.nfm-editor .ProseMirror[contenteditable="true"]',
+          );
+          const emptyTarget = targetEditor.locator(
+            `.bn-block[data-id="${targetSeeded.blockIds[1]}"]`,
+          );
+          await emptyTarget.click();
+          await page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowRight" : "End");
+          await page.keyboard.press("Enter");
+          await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+V`);
+          await expect(targetEditor.getByText("Parent child", { exact: true })).toBeVisible({
+            timeout: 15_000,
+          });
+
+          const hierarchy = await targetEditor.evaluate((editor) => {
+            const records = Array.from(editor.querySelectorAll<HTMLElement>(".bn-block-outer")).map(
+              (outer) => {
+                const block = outer.querySelector<HTMLElement>(":scope > .bn-block");
+                const content = block?.querySelector<HTMLElement>(":scope > .bn-block-content");
+                const inline = content?.querySelector<HTMLElement>(":scope > .bn-inline-content");
+                return {
+                  id: block?.dataset.id ?? null,
+                  parentId:
+                    outer.parentElement?.closest<HTMLElement>(".bn-block-outer")?.dataset.id ??
+                    null,
+                  type: block?.dataset.contentType ?? content?.dataset.contentType ?? null,
+                  text: inline?.textContent ?? "",
+                };
+              },
+            );
+            const idForText = (text: string) =>
+              records.find((record) => record.text === text)?.id ?? null;
+            const copiedParentId = idForText("Parent");
+            return {
+              records,
+              copiedParentId,
+              parentChildParentId:
+                records.find((record) => record.text === "Parent child")?.parentId ?? null,
+              afterChildParentId:
+                records.find((record) => record.text === "After child")?.parentId ?? null,
+              imageParentIds: records
+                .filter((record) => record.type === "image")
+                .map((record) => record.parentId),
+            };
+          });
+          expect(hierarchy).toEqual({
+            copiedParentId: expect.any(String),
+            parentChildParentId: hierarchy.copiedParentId,
+            afterChildParentId: hierarchy.copiedParentId,
+            imageParentIds: [hierarchy.copiedParentId, hierarchy.copiedParentId],
+            records: expect.any(Array),
+          });
+        } finally {
+          await harness.application.evaluate(({ clipboard }, saved) => {
+            clipboard.write({ html: saved.html, text: saved.text });
+          }, savedClipboard);
+        }
       } finally {
-        await harness.application.evaluate(({ clipboard }, saved) => {
-          clipboard.write({ html: saved.html, text: saved.text });
-        }, savedClipboard);
+        await harness.close();
       }
-    } finally {
-      await harness.close();
-    }
-  });
+    });
+  }
 
   test("deletes, copies, pastes, and restores a mixed subpage selection", async () => {
     test.setTimeout(180_000);

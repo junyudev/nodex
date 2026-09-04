@@ -6,6 +6,7 @@ import {
   decodeNodexStructuralClipboardDescriptor,
   inspectNodexClipboardHtml,
   NODEX_STRUCTURAL_CLIPBOARD_MIME,
+  readNodexClipboardFragment,
 } from "../shared/clipboard-paste";
 import type {
   ClipboardPastePayload,
@@ -131,7 +132,9 @@ export function inspectClipboardPasteItems(
     ...result,
     ...(descriptor ? { structuralDescriptor: descriptor } : {}),
     ...(inspected.envelope ? { structuralEnvelope: inspected.envelope } : {}),
-    ...(inspected.writeClaim ? { structuralWriteClaim: inspected.writeClaim } : {}),
+    ...(inspected.hasStructuralFallback && inspected.writeClaim
+      ? { structuralWriteClaim: inspected.writeClaim }
+      : {}),
   };
 }
 
@@ -207,9 +210,14 @@ export function readClipboardPastePayload(clipboard: ClipboardPasteTarget): Clip
   const html = readClipboardHtml(clipboard);
   if (html) {
     const inspected = inspectNodexClipboardHtml(html);
+    if (!payload.blocknoteHtml) {
+      assignWithinBudget("blocknoteHtml", readNodexClipboardFragment(html) ?? undefined);
+    }
     assignWithinBudget("html", inspected.fallbackHtml);
     if (inspected.envelope) payload.structuralEnvelope = inspected.envelope;
-    if (inspected.writeClaim) payload.structuralWriteClaim = inspected.writeClaim;
+    if (inspected.hasStructuralFallback && inspected.writeClaim) {
+      payload.structuralWriteClaim = inspected.writeClaim;
+    }
   }
   assignWithinBudget("text", readClipboardText(clipboard));
 

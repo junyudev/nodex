@@ -2,6 +2,8 @@ import { describe, expect, test, vi } from "vite-plus/test";
 
 import {
   attachNodexClipboardEnvelope,
+  attachNodexClipboardFragment,
+  attachNodexClipboardWriteClaim,
   attachNodexStructuralClipboardWriteClaim,
   encodeNodexStructuralClipboardDescriptor,
   inspectNodexClipboardHtml,
@@ -18,6 +20,32 @@ import { createEmptyThreadSectionBlock } from "./thread-section";
 
 describe("nfm editor extensions", () => {
   const writeClaim = "0199134e-cbb0-7000-8000-000000000006";
+  test("pastes an ordinary local-path copy immediately without starting structural rendezvous", () => {
+    const internal = '<div data-pm-slice="0 0 -1 []"><p>Rich fragment</p></div>';
+    const html = attachNodexClipboardWriteClaim(
+      attachNodexClipboardFragment("<p>Portable presentation</p>", internal),
+      writeClaim,
+    );
+    const pasteHTML = vi.fn();
+    const onStructuralClaimPaste = vi.fn(() => true);
+    const defaultPasteHandler = vi.fn();
+    const handler = createNfmPasteHandler({ onStructuralClaimPaste });
+    expect(
+      handler({
+        event: {
+          clipboardData: {
+            types: ["text/html", "text/plain"],
+            getData: (type: string) => (type === "text/html" ? html : ""),
+          },
+        } as unknown as ClipboardEvent,
+        editor: { pasteHTML } as never,
+        defaultPasteHandler,
+      }),
+    ).toBe(true);
+    expect(pasteHTML).toHaveBeenCalledWith(internal, true);
+    expect(onStructuralClaimPaste).not.toHaveBeenCalled();
+    expect(defaultPasteHandler).not.toHaveBeenCalled();
+  });
   test("replaces the built-in divider shortcut with the thread-section shortcut", () => {
     const extensions = createNfmEditorExtensions();
 

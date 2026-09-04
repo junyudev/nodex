@@ -36,7 +36,7 @@ All notable changes to this project will be documented in this file.
 - Fixed Page, Canvas, and manual version saves failing in Profiles used for more than a week.
 
 - Fixed Page and Canvas sync getting stuck after a lost subscription; structural edits now have cancellable save waits, and rejected or uncertain edits remain available as explicit recovery exports with accurate local-save status.
-- Fixed copying or cutting a nested Block range ending in consecutive Images flattening the copied hierarchy when pasted; complete Block forests now retain their parent-child boundaries through every rich clipboard path.
+- Fixed copying or cutting nested Blocks losing their hierarchy when pasted, including consecutive Images and copies that export File references as local paths.
 - Fixed Page Stage returning to the top or drifting after tab switches when images, equations, diagrams, or other Blocks changed height; Page tabs now restore a semantic content anchor, continuously absorb delayed layout, and keep image geometry stable throughout loading and failure states.
 - Fixed Page and Canvas content links opening in an unrelated split group; source-relative navigation now stays in the invoking tab group across Project, Session, and Pages scenes.
 - Fixed automatic editor formatting and typing links collapsing into the preceding input history; Undo now restores literal syntax first, Redo follows the same intent order, and collaborative editor surfaces remain isolated.

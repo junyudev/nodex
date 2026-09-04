@@ -1,5 +1,6 @@
 import type { PasteResourceSettings } from "../../../lib/paste-resource-settings";
 import { DEFAULT_PASTE_RESOURCE_SETTINGS } from "../../../lib/paste-resource-settings";
+import { readNodexClipboardFragment } from "../../../../shared/clipboard-paste";
 
 export interface PasteResourceTarget {
   selectedBlockIds: string[];
@@ -322,7 +323,10 @@ export function continueInlinePaste(
   >,
 ): boolean {
   const plainText = dialogState.textPayload ?? "";
-  const blocknoteHtml = dialogState.blocknoteHtmlPayload?.trim() ?? "";
+  const blocknoteHtml =
+    dialogState.blocknoteHtmlPayload?.trim() ||
+    readNodexClipboardFragment(dialogState.htmlPayload ?? "") ||
+    "";
   const markdown = dialogState.markdownPayload?.trim() ?? "";
   const html = dialogState.htmlPayload?.trim() ?? "";
 

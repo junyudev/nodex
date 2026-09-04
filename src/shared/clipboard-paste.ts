@@ -6,6 +6,8 @@ export const NODEX_STRUCTURAL_CLIPBOARD_MIME =
 export const NODEX_STRUCTURAL_CLIPBOARD_FALLBACK_ATTRIBUTE =
   "data-nodex-structural-fallback" as const;
 export const NODEX_CLIPBOARD_WRITE_CLAIM_ATTRIBUTE = "data-nodex-clipboard-write-claim" as const;
+export const NODEX_CLIPBOARD_FRAGMENT_ATTRIBUTE = "data-nodex-clipboard-fragment-v1" as const;
+export const NODEX_CLIPBOARD_FRAGMENT_MAX_ENCODED_LENGTH = 8 * 1024 * 1024;
 export const NODEX_CLIPBOARD_ENVELOPE_MAX_BYTES = 4 * 1024;
 export const NODEX_STRUCTURAL_CLIPBOARD_DESCRIPTOR_MAX_BYTES = 4 * 1024;
 const NODEX_CLIPBOARD_ENVELOPE_SCAN_BYTES = NODEX_CLIPBOARD_ENVELOPE_MAX_BYTES * 2;
@@ -222,6 +224,32 @@ function stripNodexClipboardWriteClaims(html: string): string {
   return html.replace(CLIPBOARD_WRITE_CLAIM_HTML_ATTRIBUTE_PATTERN, "");
 }
 
+const CLIPBOARD_FRAGMENT_ATTRIBUTE_PATTERN =
+  /\sdata-nodex-clipboard-fragment-v1\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/giu;
+
+function stripNodexClipboardFragments(html: string): string {
+  return html.replace(CLIPBOARD_FRAGMENT_ATTRIBUTE_PATTERN, "");
+}
+
+/** Keep the editor fragment with standard HTML when a native clipboard drops custom MIME data. */
+export function attachNodexClipboardFragment(html: string, blocknoteHtml: string): string {
+  if (!blocknoteHtml.trim()) return html;
+  const fragment = sanitizeUntrustedTypedOwnerHtml(stripNodexClipboardFragments(blocknoteHtml));
+  const encoded = encodeBase64Url(fragment);
+  if (html.includes(` ${NODEX_CLIPBOARD_FRAGMENT_ATTRIBUTE}="${encoded}"`)) return html;
+  return `<div ${NODEX_CLIPBOARD_FRAGMENT_ATTRIBUTE}="${encoded}">${stripNodexClipboardFragments(html)}</div>`;
+}
+
+/** This is untrusted presentation, never a capability to create Page/Database/Canvas owners. */
+export function readNodexClipboardFragment(html: string): string | null {
+  const match = /\sdata-nodex-clipboard-fragment-v1\s*=\s*(["'])(.*?)\1/iu.exec(html);
+  const encoded = match?.[2];
+  if (!encoded || encoded.length > NODEX_CLIPBOARD_FRAGMENT_MAX_ENCODED_LENGTH) return null;
+  const decoded = decodeBase64Url(encoded);
+  if (!decoded?.trim()) return null;
+  return sanitizeUntrustedTypedOwnerHtml(stripNodexClipboardFragments(decoded));
+}
+
 /** Generic HTML is presentation only and must never materialize owner authority. */
 export function sanitizeUntrustedTypedOwnerHtml(html: string): string {
   return html.replace(
@@ -333,7 +361,7 @@ export interface NodexClipboardHtmlInspection {
 export function inspectNodexClipboardHtml(html: string): NodexClipboardHtmlInspection {
   return {
     envelope: decodeNodexClipboardEnvelope(html),
-    fallbackHtml: stripNodexClipboardMetaTags(html),
+    fallbackHtml: stripNodexClipboardFragments(stripNodexClipboardMetaTags(html)),
     hasStructuralFallback: hasNodexStructuralClipboardFallback(html),
     writeClaim: readNodexClipboardWriteClaim(html),
   };

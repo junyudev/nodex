@@ -122,7 +122,15 @@ For a non-empty selection, the helper starts from `editor.getSelectionCutBlocks(
   so paste never infers a deeper open boundary and lifts descendants out of
   their copied parent. Partial text selections remain open and retain their
   normal boundary-merge behavior.
-- `externalHTML` from `editor.blocksToHTMLLossy(...)`
+- `externalHTML` presents `editor.blocksToHTMLLossy(...)` to other applications
+  and carries the lossless clipboard fragment in a versioned HTML attribute.
+  Native clipboard replacement and context-menu reads can discard custom MIME
+  data, so standard HTML must independently retain the selected tree and its
+  ProseMirror Slice boundaries. Nodex recovers that fragment before generic
+  HTML/Markdown parsing, including after the oversized-text prompt; Code Blocks
+  still accept literal plain text. The fragment is bounded, untrusted
+  presentation with typed-owner semantics removed, never a structural
+  capability. Invalid fragments fall back to the visible HTML/text.
 - `structuredText` from `blockNoteToNfm(...)` plus `serializeClipboardText(...)`
 
 If the cut-aware range path is unavailable or throws, the helper falls back to BlockNote's `selectedFragmentToHTML(...)` output and keeps the existing HTML-parse fallback for `text/plain`. A collapsed-caret Block target never degrades into an empty text-range payload.
@@ -145,6 +153,11 @@ still owns the system clipboard, so a newer copy from Nodex or another app is
 never overwritten. The portable payload remains usable while resolution is in
 flight or if it fails. Structural copy uses the same claim/CAS writer after Core
 prepares its authoritative clipboard capability.
+
+The rich fragment survives both the pending and final standard-HTML writes;
+rewriting plain-text paths never changes its File locators, Block hierarchy,
+or partial-selection boundaries. Ordinary write claims are not structural
+descriptors and never start a Core clipboard wait.
 
 Local-path rewriting is all-or-nothing for one copied payload. If any Nodex File
 reference cannot be resolved, every reference remains portable instead of

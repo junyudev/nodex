@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 
 import {
   attachNodexClipboardEnvelope,
+  attachNodexClipboardFragment,
   attachNodexClipboardWriteClaim,
   attachNodexStructuralClipboardWriteClaim,
   decodeNodexStructuralClipboardDescriptor,
@@ -10,6 +11,8 @@ import {
   hasNodexStructuralClipboardFallback,
   hasUntrustedTypedOwnerHtml,
   inspectNodexClipboardHtml,
+  NODEX_CLIPBOARD_FRAGMENT_MAX_ENCODED_LENGTH,
+  readNodexClipboardFragment,
   readNodexClipboardWriteClaim,
   sanitizeUntrustedTypedOwnerHtml,
   type NodexClipboardEnvelopeV1,
@@ -26,6 +29,40 @@ const envelope: NodexClipboardEnvelopeV1 = {
   actionHint: "copy",
 };
 const writeClaim = "0199134e-cbb0-7000-8000-000000000004";
+
+describe("portable clipboard fragments", () => {
+  test("round-trips Unicode rich content and slice boundaries through native HTML wrappers", () => {
+    const fragment = '<div data-pm-slice="0 0 -1 []"><p>层级 🎨 &amp; text</p></div>';
+    const html = attachNodexClipboardFragment("<p>层级 🎨 &amp; text</p>", fragment);
+    expect(attachNodexClipboardFragment(html, fragment)).toBe(html);
+    const inspected = inspectNodexClipboardHtml(
+      attachNodexClipboardEnvelope(html, envelope, writeClaim),
+    );
+    expect(
+      readNodexClipboardFragment(attachNodexClipboardEnvelope(html, envelope, writeClaim)),
+    ).toBe(fragment);
+    expect(inspected.envelope).toEqual(envelope);
+    expect(inspected.fallbackHtml).toContain("<p>层级 🎨 &amp; text</p>");
+    expect(readNodexClipboardFragment(inspected.fallbackHtml)).toBeNull();
+  });
+
+  test("cannot smuggle typed-owner authority through an encoded fragment", () => {
+    const unsafe = '<div data-content-type="page">Subpage</div>';
+    // Bypass our writer to exercise the external/untrusted reader boundary.
+    const html = `<p data-nodex-clipboard-fragment-v1="${Buffer.from(unsafe).toString("base64url")}">Subpage</p>`;
+    expect(readNodexClipboardFragment(html)).toBe(sanitizeUntrustedTypedOwnerHtml(unsafe));
+    expect(inspectNodexClipboardHtml(html).envelope).toBeNull();
+  });
+
+  test.each(["%%%", "_w", "", "A".repeat(NODEX_CLIPBOARD_FRAGMENT_MAX_ENCODED_LENGTH + 1)])(
+    "ignores malformed or oversized fragment %#",
+    (encoded) => {
+      const html = `<div data-nodex-clipboard-fragment-v1="${encoded}"><p>Fallback</p></div>`;
+      expect(readNodexClipboardFragment(html)).toBeNull();
+      expect(inspectNodexClipboardHtml(html).fallbackHtml).toBe("<div><p>Fallback</p></div>");
+    },
+  );
+});
 
 describe("Nodex structural clipboard sidecar", () => {
   test("round-trips strict preparing and ready private descriptors", () => {

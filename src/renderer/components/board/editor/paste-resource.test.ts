@@ -14,6 +14,7 @@ import {
   shouldPromptForOversizedText,
 } from "./paste-resource";
 import { DEFAULT_PASTE_RESOURCE_SETTINGS } from "../../../lib/paste-resource-settings";
+import { attachNodexClipboardFragment } from "../../../../shared/clipboard-paste";
 
 describe("paste resource helpers", () => {
   test("reads screenshot clipboard images from DataTransfer items when files is empty", () => {
@@ -361,5 +362,14 @@ describe("paste resource helpers", () => {
       }),
     ).toBe(true);
     expect(calls[2]).toBe("blocknote:<div data-blocknote>plain</div>");
+
+    const internal = '<div data-pm-slice="0 0 -1 []"><p>Rich fragment</p></div>';
+    expect(
+      continueInlinePaste(editor, {
+        textPayload: "**Portable Markdown**",
+        htmlPayload: attachNodexClipboardFragment("<p>Portable presentation</p>", internal),
+      }),
+    ).toBe(true);
+    expect(calls[3]).toBe(`blocknote:${internal}`);
   });
 });

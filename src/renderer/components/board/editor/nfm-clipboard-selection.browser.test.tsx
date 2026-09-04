@@ -14,8 +14,11 @@ import type { EditorView } from "@tiptap/pm/view";
 import { act, render } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
-import { NODEX_STRUCTURAL_CLIPBOARD_MIME } from "../../../../shared/clipboard-paste";
-import { NfmStructuredClipboardExtension } from "./nfm-editor-extensions";
+import {
+  attachNodexClipboardFragment,
+  NODEX_STRUCTURAL_CLIPBOARD_MIME,
+} from "../../../../shared/clipboard-paste";
+import { createNfmPasteHandler, NfmStructuredClipboardExtension } from "./nfm-editor-extensions";
 import { nfmSchema } from "./nfm-schema";
 
 const typedOwnerConfig = {
@@ -233,9 +236,9 @@ describe("current Block clipboard behavior in Chromium", () => {
 
       const copied = await dispatchClipboardEvent(view, "copy");
       const clipboardHtml = copied.data.getData("blocknote/html");
-      expect(clipboardHtml).toContain('data-pm-slice="0 0 -1 []"');
       const parsed = editor.tryParseHTMLToBlocks(clipboardHtml);
 
+      expect(clipboardHtml).toContain('data-pm-slice="0 0 -1 []"');
       expect(parsed.map((block) => block.id)).toEqual(["parent", "image-one", "image-two"]);
       expect(parsed[0]?.children.map((block) => block.id)).toEqual(["parent-child", "after-child"]);
 
@@ -276,6 +279,137 @@ describe("current Block clipboard behavior in Chromium", () => {
         targetRendered.unmount();
         target._tiptapEditor.destroy();
       }
+    } finally {
+      rendered.unmount();
+      editor._tiptapEditor.destroy();
+    }
+  });
+
+  test.each([
+    { command: "copy", transport: "internal" },
+    { command: "cut", transport: "internal" },
+    { command: "copy", transport: "standard" },
+    { command: "cut", transport: "standard" },
+  ] as const)(
+    "preserves nested Images and partial text boundaries through $command with $transport HTML",
+    async ({ command, transport }) => {
+      const editor = BlockNoteEditor.create({
+        schema: nfmSchema,
+        initialContent: [
+          {
+            id: "parent",
+            type: "paragraph",
+            content: "Parent",
+            children: [
+              { id: "child", type: "paragraph", content: "Child" },
+              { id: "image-one", type: "image", props: { url: "https://example.com/one.png" } },
+              { id: "image-two", type: "image", props: { url: "https://example.com/two.png" } },
+              {
+                id: "last-child",
+                type: "paragraph",
+                content: "Last child",
+                children: [{ id: "grandchild", type: "paragraph", content: "Grandchild" }],
+              },
+            ],
+          },
+          { id: "tail", type: "paragraph", content: "Tail" },
+        ],
+        extensions: [NfmStructuredClipboardExtension()],
+      });
+      const target = BlockNoteEditor.create({
+        schema: nfmSchema,
+        initialContent: [{ id: "target", type: "paragraph", content: "BeforeAfter" }],
+        pasteHandler: createNfmPasteHandler(),
+      });
+      const rendered = renderClipboardEditor(editor);
+      const targetRendered = renderClipboardEditor(target);
+      try {
+        await act(settleEditor);
+        const view = requireView(editor);
+        await act(async () => {
+          view.dispatch(
+            view.state.tr.setSelection(
+              TextSelection.create(
+                view.state.doc,
+                inlinePosition(view.state.doc, "parent", 2),
+                inlinePosition(view.state.doc, "tail", 2),
+              ),
+            ),
+          );
+          editor.focus();
+          await settleEditor();
+        });
+        const copied = await dispatchClipboardEvent(view, command);
+        // Native standard-format rewrites and context-menu reads can lose Chromium's custom MIME.
+        if (transport === "standard") copied.data.clearData("blocknote/html");
+        await setTextSelection(target, "target", 6);
+        await act(async () => {
+          requireView(target).dom.dispatchEvent(
+            new ClipboardEvent("paste", {
+              bubbles: true,
+              cancelable: true,
+              clipboardData: copied.data,
+            }),
+          );
+          await settleEditor();
+        });
+        expect(target.document.map((block) => block.type)).toEqual(["paragraph", "paragraph"]);
+        expect(target.document[0]?.content).toEqual([
+          { type: "text", text: "Beforerent", styles: {} },
+        ]);
+        expect(target.document[1]?.content).toEqual([
+          { type: "text", text: "TaAfter", styles: {} },
+        ]);
+        expect(target.document[0]?.children.map((block) => block.type)).toEqual([
+          "paragraph",
+          "image",
+          "image",
+          "paragraph",
+        ]);
+        expect(target.document[0]?.children[3]?.children[0]?.content).toEqual([
+          { type: "text", text: "Grandchild", styles: {} },
+        ]);
+        expect(editor.getBlock("image-one") !== undefined).toBe(command === "copy");
+      } finally {
+        targetRendered.unmount();
+        rendered.unmount();
+        target._tiptapEditor.destroy();
+        editor._tiptapEditor.destroy();
+      }
+    },
+  );
+
+  test("keeps recovered rich fragments literal when pasted into a Code Block", async () => {
+    const editor = BlockNoteEditor.create({
+      initialContent: [{ id: "code", type: "codeBlock", content: "Prefix " }],
+      pasteHandler: createNfmPasteHandler(),
+    });
+    const rendered = renderClipboardEditor(editor);
+    try {
+      await act(settleEditor);
+      await setTextSelection(editor, "code", 7);
+      const data = new DataTransfer();
+      data.setData(
+        "text/html",
+        attachNodexClipboardFragment(
+          "<p>Formatted</p>",
+          editor.blocksToClipboardHTML([{ type: "paragraph", content: "Formatted" }], {
+            slice: "closed",
+          }),
+        ),
+      );
+      data.setData("text/plain", "**literal**\n\tchild");
+      await act(async () => {
+        requireView(editor).dom.dispatchEvent(
+          new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }),
+        );
+        await settleEditor();
+      });
+      expect(editor.document).toHaveLength(1);
+      expect(editor.document[0]?.type).toBe("codeBlock");
+      expect(editor.document[0]?.content).toEqual([
+        { type: "text", text: "Prefix **literal**\n\tchild", styles: {} },
+      ]);
     } finally {
       rendered.unmount();
       editor._tiptapEditor.destroy();

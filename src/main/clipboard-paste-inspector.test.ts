@@ -14,6 +14,8 @@ import {
 } from "./clipboard-paste-inspector";
 import {
   attachNodexClipboardEnvelope,
+  attachNodexClipboardFragment,
+  attachNodexClipboardWriteClaim,
   attachNodexStructuralClipboardWriteClaim,
   encodeNodexStructuralClipboardDescriptor,
   NODEX_STRUCTURAL_CLIPBOARD_MIME,
@@ -22,6 +24,24 @@ import {
 const writeClaim = "0199134e-cbb0-7000-8000-000000000005";
 
 describe("clipboard paste inspector", () => {
+  test("recovers the editor fragment when native reads cannot access Chromium custom MIME data", () => {
+    const blocknoteHtml = '<div data-pm-slice="0 0 -1 []"><p>Nested fragment</p></div>';
+    const payload = readClipboardPastePayload({
+      availableFormats: () => ["text/html", "text/plain", "blocknote/html"],
+      readFormat: () => "",
+      readHtml: () =>
+        attachNodexClipboardWriteClaim(
+          attachNodexClipboardFragment("<p>Portable presentation</p>", blocknoteHtml),
+          writeClaim,
+        ),
+      readText: () => "Portable text",
+    });
+    expect(payload.blocknoteHtml).toBe(blocknoteHtml);
+    expect(payload.html).toContain("<div><p>Portable presentation</p></div>");
+    expect(payload.text).toBe("Portable text");
+    expect(payload.structuralEnvelope).toBeUndefined();
+    expect(payload.structuralWriteClaim).toBeUndefined();
+  });
   test("collects unique pasted file and folder paths from text payloads", () => {
     const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-clipboard-inspect-"));
     const filePath = path.join(fixtureRoot, "notes.txt");

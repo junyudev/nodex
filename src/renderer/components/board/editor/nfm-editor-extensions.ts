@@ -35,6 +35,7 @@ import {
   hasUntrustedTypedOwnerHtml,
   inspectNodexClipboardHtml,
   NODEX_STRUCTURAL_CLIPBOARD_MIME,
+  readNodexClipboardFragment,
   sanitizeUntrustedTypedOwnerHtml,
   type NodexClipboardEnvelopeV1,
   type NodexStructuralClipboardDescriptorV1,
@@ -598,6 +599,7 @@ export interface NfmPasteHandlerOptions {
 const readPortableClipboardBlocks = (
   editor: BlockNoteEditor,
   clipboardData: DataTransfer | null,
+  internalHtml: string | null,
 ): readonly NfmStructuralReplacementBlockLike[] | null => {
   if (!clipboardData) return null;
   const notionBlocks = extractNotionNfmBlocksFromClipboardData(clipboardData);
@@ -605,9 +607,9 @@ const readPortableClipboardBlocks = (
     return nfmToBlockNote(notionBlocks) as readonly NfmStructuralReplacementBlockLike[];
   }
   const types = Array.from(clipboardData.types);
-  if (types.includes("blocknote/html")) {
+  if (internalHtml) {
     return editor.tryParseHTMLToBlocks(
-      sanitizeUntrustedTypedOwnerHtml(clipboardData.getData("blocknote/html")),
+      sanitizeUntrustedTypedOwnerHtml(internalHtml),
     ) as readonly NfmStructuralReplacementBlockLike[];
   }
   if (types.includes("text/markdown")) {
@@ -629,10 +631,18 @@ const readPortableClipboardBlocks = (
 export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): NfmPasteHandler {
   return ({ event, editor, defaultPasteHandler }) => {
     const clipboardData = event.clipboardData;
+    const types = Array.from(clipboardData?.types ?? []);
+    const internalHtml = types.includes("blocknote/html")
+      ? (clipboardData?.getData("blocknote/html") ?? "")
+      : "";
+    const externalHtml = types.includes("text/html")
+      ? (clipboardData?.getData("text/html") ?? "")
+      : "";
+    const recoveredHtml = internalHtml ? null : readNodexClipboardFragment(externalHtml);
     const privateDescriptor = decodeNodexStructuralClipboardDescriptor(
       clipboardData?.getData(NODEX_STRUCTURAL_CLIPBOARD_MIME) ?? "",
     );
-    const htmlInspection = inspectNodexClipboardHtml(clipboardData?.getData("text/html") ?? "");
+    const htmlInspection = inspectNodexClipboardHtml(externalHtml);
     const readyHtmlDescriptor =
       htmlInspection.envelope && htmlInspection.writeClaim
         ? ({
@@ -646,7 +656,7 @@ export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): Nfm
     const descriptor =
       readyHtmlDescriptor ??
       privateDescriptor ??
-      (htmlInspection.writeClaim
+      (htmlInspection.hasStructuralFallback && htmlInspection.writeClaim
         ? ({
             version: 1,
             phase: "preparing",
@@ -655,7 +665,7 @@ export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): Nfm
           } satisfies NodexStructuralClipboardDescriptorV1)
         : null);
     const portableBlocks = descriptor
-      ? (readPortableClipboardBlocks(editor, clipboardData) ?? [])
+      ? (readPortableClipboardBlocks(editor, clipboardData, internalHtml || recoveredHtml) ?? [])
       : [];
     if (
       descriptor &&
@@ -673,7 +683,11 @@ export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): Nfm
       return true;
     }
     if (options.shouldHandleStructuralBlockPaste?.()) {
-      const structuralBlocks = readPortableClipboardBlocks(editor, clipboardData);
+      const structuralBlocks = readPortableClipboardBlocks(
+        editor,
+        clipboardData,
+        internalHtml || recoveredHtml,
+      );
       if (structuralBlocks?.length && options.onStructuralBlockPaste?.(structuralBlocks)) {
         event.preventDefault();
         return true;
@@ -685,13 +699,14 @@ export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): Nfm
     );
     if (handled) return true;
 
-    const types = Array.from(clipboardData?.types ?? []);
-    const internalHtml = types.includes("blocknote/html")
-      ? (clipboardData?.getData("blocknote/html") ?? "")
-      : "";
-    const externalHtml = types.includes("text/html")
-      ? (clipboardData?.getData("text/html") ?? "")
-      : "";
+    if (recoveredHtml) {
+      const selection = editor.prosemirrorView?.state.selection;
+      if (selection?.$from.parent.type.spec.code && selection.$to.parent.type.spec.code) {
+        return defaultPasteHandler();
+      }
+      editor.pasteHTML(recoveredHtml, true);
+      return true;
+    }
     const unsafeHtml = internalHtml || externalHtml;
     if (hasUntrustedTypedOwnerHtml(unsafeHtml)) {
       editor.pasteHTML(sanitizeUntrustedTypedOwnerHtml(unsafeHtml), internalHtml.length > 0);
