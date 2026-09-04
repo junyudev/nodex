@@ -574,6 +574,8 @@ impl CoreEventLog {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LibraryMetadata {
+    #[serde(default)]
+    file_revisions: std::collections::BTreeMap<String, i64>,
     module: String,
     affected_page_ids: Vec<String>,
     affected_database_ids: Vec<String>,
@@ -1094,6 +1096,7 @@ fn reconstruct_event(
                 "Page File content",
             )?;
             CoreModuleEventPayload::Library(LibraryEvent {
+                file_revisions: metadata.file_revisions,
                 kind: LibraryEventKind::LibraryChanged,
                 page_ids: metadata.affected_page_ids,
                 database_ids: metadata.affected_database_ids,
@@ -1281,6 +1284,7 @@ fn decode_library_metadata(row: &ChangeLogRow) -> Result<LibraryMetadata, StoreE
             // Core Library metadata. Reconstruct the event facet without
             // rewriting the immutable historical payload.
             Ok(LibraryMetadata {
+                file_revisions: Default::default(),
                 module: "library".to_owned(),
                 affected_page_ids: Vec::new(),
                 affected_database_ids: Vec::new(),

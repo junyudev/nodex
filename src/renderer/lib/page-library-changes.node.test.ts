@@ -17,6 +17,7 @@ const event = (overrides: Partial<LibraryEvent> = {}): LibraryEvent => ({
   database_ids: [],
   view_ids: [],
   parent_keys: [],
+  file_revisions: {},
   page_file_manifest_invalidations: {},
   page_file_body_usage_revisions: {},
   page_file_content_invalidations: {},
@@ -30,6 +31,7 @@ describe("Page File Library subscriptions", () => {
     expect(
       pageFileManifestRevisionFromLibraryEvent(
         event({
+          file_revisions: {},
           page_file_manifest_invalidations: {
             "page-1": { kind: "exact", revision: 7, file_ids: ["file-a"] },
             "page-2": { kind: "reset", revision: 3 },
@@ -74,6 +76,7 @@ describe("Page File Library subscriptions", () => {
 
   test("projects exact File IDs from generated invalidation variants", () => {
     const libraryEvent = event({
+      file_revisions: {},
       page_file_manifest_invalidations: {
         "page-1": { kind: "exact", revision: 12, file_ids: ["file-a", "file-b"] },
       },
@@ -94,6 +97,7 @@ describe("Page File Library subscriptions", () => {
 
   test("projects generated reset variants as page-wide invalidation", () => {
     const libraryEvent = event({
+      file_revisions: {},
       page_file_manifest_invalidations: { "page-1": { kind: "reset", revision: 3 } },
       page_file_content_invalidations: { "page-1": { kind: "reset", revision: 4 } },
     });

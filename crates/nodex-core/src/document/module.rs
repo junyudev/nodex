@@ -1,4 +1,7 @@
 mod recovery_drafts;
+pub(crate) use recovery_drafts::{
+    resolve_recovery_canvas_file_target, resolve_recovery_file_target,
+};
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -172,6 +175,7 @@ enum PreparedPlacementAttribution {
 
 enum PreparedUpdate {
     Apply {
+        file_restore: Option<crate::library::FileRestorePlan>,
         base_head_seq: i64,
         update_id: String,
         touched_block_ids: Vec<String>,
@@ -2010,11 +2014,13 @@ impl OwnedDocumentModule {
                         false,
                     ));
                 }
-                let prepared = prepare_incremental_canvas_mutation(
+                let prepared =
+                    prepare_incremental_canvas_mutation(&transaction, &authority, &mutation)?;
+                super::canvas_files::authorize_additions(
                     &transaction,
+                    &context,
                     &authority,
-                    &mutation,
-                    &assets_root,
+                    prepared.added_files(),
                 )?;
                 let committed_at = sqlite_now(&transaction)?;
                 let (committed, event) = if prepared.changed() {
@@ -2635,6 +2641,7 @@ impl OwnedDocumentModule {
                     return Ok(PreparedUpdate::Recovery { artifact_id });
                 }
                 Ok(PreparedUpdate::Apply {
+                    file_restore: None,
                     base_head_seq,
                     update_id,
                     touched_block_ids,
@@ -2859,6 +2866,7 @@ impl OwnedDocumentModule {
                     &mutation_effect.created_block_ids,
                 )?;
                 Ok(PreparedUpdate::Apply {
+                    file_restore: None,
                     base_head_seq: authority.head.head_seq,
                     update_id,
                     touched_block_ids: mutation_effect.touched_block_ids.clone(),
@@ -2973,6 +2981,7 @@ impl OwnedDocumentModule {
                     &mutation_effect.created_block_ids,
                 )?;
                 Ok(PreparedUpdate::Apply {
+                    file_restore: None,
                     base_head_seq: authority.head.head_seq,
                     update_id,
                     touched_block_ids: mutation_effect.touched_block_ids.clone(),
@@ -3252,8 +3261,13 @@ impl OwnedDocumentModule {
             },
             move |connection, authority, engine, materialization, _store_epoch| {
                 assert_document_head(authority, generation, expected_head_seq)?;
-                let Some(prepared) =
-                    prepare_version_restore(connection, authority, engine, &version_id)?
+                let Some((prepared, file_restore)) = prepare_version_restore(
+                    connection,
+                    authority,
+                    engine,
+                    &version_id,
+                    &operation_id,
+                )?
                 else {
                     return Ok(PreparedUpdate::NoChange);
                 };
@@ -3288,6 +3302,7 @@ impl OwnedDocumentModule {
                     },
                 )?;
                 Ok(PreparedUpdate::Apply {
+                    file_restore: Some(file_restore),
                     base_head_seq: authority.head.head_seq,
                     update_id: operation_id,
                     touched_block_ids: Vec::new(),
@@ -3378,16 +3393,29 @@ impl OwnedDocumentModule {
                     DocumentAccessKind::Write,
                 )?;
                 assert_document_head(&authority, generation, expected_head_seq)?;
+                let actor_project_id = context
+                    .project_id
+                    .as_ref()
+                    .map(|project| Ok(project.0.clone()))
+                    .unwrap_or_else(|| {
+                        crate::library::resolve_library_actor_project_id(
+                            &transaction,
+                            &context.library_id.0,
+                        )
+                    })?;
                 let loaded = load_canvas_scene(&transaction, &authority)?;
-                let version = get_document_version(&transaction, &authority, &version_id)?
-                    .ok_or_else(|| not_found("Canvas Document version was not found"))?;
-                let target = version.canvas_scene.ok_or_else(|| {
-                    StoreError::new(
-                        StoreErrorCode::UnsupportedSchema,
-                        "Canvas restore requires a scene-native checkpoint",
-                        false,
-                    )
-                })?;
+                let target = super::canvas_files::validated_revision_scene(
+                    &transaction,
+                    &context,
+                    &document_id,
+                    &version_id,
+                )?;
+                let (target, file_plans) = super::canvas_files::plan_restore(
+                    &transaction,
+                    &context.library_id.0,
+                    &operation_id,
+                    &target,
+                )?;
                 let Some(mutation) = prepare_canvas_restore(&loaded.scene, &target, &operation_id)?
                 else {
                     let commit_head = read_event_head(&transaction)?;
@@ -3417,7 +3445,7 @@ impl OwnedDocumentModule {
                     });
                 };
                 let now = sqlite_now(&transaction)?;
-                let mut delivered_event = None;
+                let mut delivered_events = Vec::new();
                 let result = durable_mutation::run(
                     &transaction,
                     OperationIdentity {
@@ -3430,6 +3458,13 @@ impl OwnedDocumentModule {
                         context: &context,
                     },
                     |scope| {
+                        let restored_files =
+                            super::canvas_files::apply_restore(scope, &context, &file_plans)?;
+                        if let Some(event) =
+                            crate::library::publish_file_restore(scope, &context, &restored_files)?
+                        {
+                            delivered_events.push(event);
+                        }
                         let safety_label = format!("Before restore {version_id}");
                         insert_canvas_checkpoint(
                             &transaction,
@@ -3452,7 +3487,7 @@ impl OwnedDocumentModule {
                             &transaction,
                             Some(scope.evidence()),
                             &authority,
-                            bound_actor_project_id(&context)?,
+                            &actor_project_id,
                             &document_access_context(&context),
                             &store_epoch,
                             &operation_id,
@@ -3507,7 +3542,7 @@ impl OwnedDocumentModule {
                             title_changed: false,
                             coordination: DocumentMutationCoordination::WriteFence,
                         });
-                        delivered_event = Some(load_committed_event_by_sequence(
+                        delivered_events.push(load_committed_event_by_sequence(
                             &transaction,
                             persisted.event_sequence,
                         )?);
@@ -3520,8 +3555,6 @@ impl OwnedDocumentModule {
                     },
                 )?;
                 let committed = resolve_typed_commit(result);
-                let event = delivered_event
-                    .ok_or_else(|| internal("Canvas restore omitted its delivery event"))?;
                 transaction.commit()?;
                 if fail_after_commit.swap(false, Ordering::AcqRel) {
                     return Err(StoreError::new(
@@ -3532,7 +3565,7 @@ impl OwnedDocumentModule {
                 }
                 Ok(OwnedDocumentApplyOutcome {
                     committed,
-                    events: vec![event],
+                    events: delivered_events,
                 })
             })
             .map_err(core_error)
@@ -3735,6 +3768,7 @@ impl OwnedDocumentModule {
                     }));
                 }
                 let PreparedUpdate::Apply {
+                    file_restore,
                     base_head_seq,
                     update_id,
                     touched_block_ids,
@@ -3821,6 +3855,8 @@ impl OwnedDocumentModule {
                 drop(candidate_transaction);
                 let revision_now = sqlite_now(&transaction)?;
                 let mut committed_delivery = None;
+                let mut file_events = Vec::new();
+                let authorized_file_ids = file_restore.as_ref().map(|plan| plan.authorized_file_ids()).unwrap_or_default();
                 let result = durable_mutation::run(
                     &transaction,
                     OperationIdentity {
@@ -3840,6 +3876,10 @@ impl OwnedDocumentModule {
                             &actor_context,
                             &revision_now,
                         )?;
+                        if let Some(plan) = &file_restore {
+                            let restored = crate::library::apply_file_restore(scope, &job.context, plan)?;
+                            file_events.extend(crate::library::publish_file_restore(scope, &job.context, &restored)?);
+                        }
                         let persisted = persist_yjs_commit_with_local_commit(
                             &transaction,
                             PersistYjsCommit {
@@ -3866,7 +3906,7 @@ impl OwnedDocumentModule {
                                 write_fence_block_ids: &write_fence_block_ids,
                                 title_write_fence_required,
                                 document_write_fence_required,
-                                placement: match &placement_attribution {
+                                placement: (match &placement_attribution {
                                     PreparedPlacementAttribution::Collaborative => {
                                         DocumentPlacementEvidence::COLLABORATIVE
                                     }
@@ -3874,7 +3914,7 @@ impl OwnedDocumentModule {
                                         DocumentPlacementEvidence::STRUCTURAL
                                             .with_exact_moves(block_ids)
                                     }
-                                },
+                                }).with_authorized_file_ids(&authorized_file_ids),
                             },
                             scope.evidence(),
                         )?;
@@ -3992,7 +4032,7 @@ impl OwnedDocumentModule {
                     .install(&next_head, engine);
                 Ok(OwnedDocumentApplyOutcome {
                     committed,
-                    events: vec![event],
+                    events: { file_events.push(event); file_events },
                 })
             })
             .map_err(core_error)
@@ -4752,6 +4792,7 @@ fn prepare_semantic_update(
             )?;
             Ok((
                 PreparedUpdate::Apply {
+                    file_restore: None,
                     base_head_seq: authority.head.head_seq,
                     update_id: update_id.to_owned(),
                     touched_block_ids: mutation_effect.touched_block_ids.clone(),
@@ -6422,14 +6463,17 @@ mod tests {
                     )?;
                     let view_config = serde_json::to_string(&json!({
                         "schemaKey": "nodex.database-view",
-                        "schemaVersion": 5,
-                        "filter": { "kind": "group", "operator": "and", "children": [] },
-                        "presentation": {
-                            "sort": [{
+                        "schemaVersion": 6,
+                        "rules": {
+                            "propertyFilters": [],
+                            "advancedFilter": null,
+                            "sorts": [{
                                 "field": { "kind": "manual" },
                                 "direction": "asc",
                                 "nulls": "last"
-                            }],
+                            }]
+                        },
+                        "presentation": {
                             "group": null,
                             "subgroup": null,
                             "groupDirection": "asc",
@@ -6888,7 +6932,7 @@ mod tests {
                         "INSERT INTO documents(\
                            id, library_id, generation, head_seq, schema_key, schema_version, \
                            state_vector, state_hash, readiness, authority, created_at, updated_at, sync_engine\
-                         ) VALUES (?1, ?2, 1, 0, 'nodex.canvas', 1, X'', ?3, \
+                         ) VALUES (?1, ?2, 1, 0, 'nodex.canvas', 2, X'', ?3, \
                            'ready', 'ydoc_primary', ?4, ?4, 'canvas_scene')",
                         params![DOCUMENT_ID, LIBRARY_ID, "0".repeat(64), NOW],
                     )?;
@@ -6928,6 +6972,55 @@ mod tests {
             full_state: Vec::new(),
             state_vector: Vec::new(),
         }
+    }
+
+    fn create_canvas_file(seeded: &SeededModule, file_id: &str, bytes: &[u8]) {
+        use crate::infrastructure::managed_blobs::BlobWriter;
+        use nodex_core_contracts::library::{
+            LIBRARY_CONTRACT_VERSION, LibraryFileChange, LibraryIntent,
+        };
+        let root = seeded._directory.path().join("assets");
+        let mut writer = BlobWriter::new(&root, 10 * 1024 * 1024).unwrap();
+        writer.write_chunk(bytes).unwrap();
+        let published = writer.finish().unwrap();
+        let library = crate::library::LibraryModule::new(PROFILE_ID, LIBRARY_ID, &seeded.kernel);
+        let operation = format!("create:{file_id}");
+        let expiry = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 60_000;
+        let receipt = library
+            .register_prepared_file_blob(
+                &context(),
+                STORE_EPOCH,
+                &operation,
+                &operation,
+                &published.content_hash,
+                &published.physical_asset_name,
+                published.byte_length,
+                expiry,
+            )
+            .unwrap();
+        library
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: operation,
+                    store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
+                    intent: LibraryIntent::ApplyFileChange {
+                        change: LibraryFileChange::Create {
+                            file_id: file_id.to_owned(),
+                            default_name: "image.png".to_owned(),
+                            mime_type: "image/png".to_owned(),
+                            prepared_blob_receipt_id: receipt.receipt_id,
+                        },
+                        turn_id: None,
+                    },
+                },
+            )
+            .unwrap();
     }
 
     fn canvas_mutation_request(
@@ -7505,11 +7598,7 @@ mod tests {
         assert!(recovered.committed.receipt.mutation.duplicate);
         assert!(recovered.events.is_empty());
 
-        fs::write(
-            seeded._directory.path().join("assets/canvas-image.png"),
-            b"managed-canvas-asset",
-        )
-        .expect("managed Canvas asset");
+        create_canvas_file(&seeded, "canvas-image", b"managed-canvas-asset");
         let image = seeded
             .module
             .apply(
@@ -7536,7 +7625,8 @@ mod tests {
                                 "file:image": {
                                     "id": "file:image",
                                     "mimeType": "image/png",
-                                    "source": "nodex://assets/canvas-image.png",
+                                    "source": "nodex://files/canvas-image",
+                                    "fileVersion": 1, "defaultName": "image.png",
                                     "created": 1
                                 }
                             }
@@ -7572,14 +7662,6 @@ mod tests {
             })
             .expect("Canvas asset evidence");
 
-        fs::write(
-            seeded
-                ._directory
-                .path()
-                .join("assets/canvas-image-copy.png"),
-            b"managed-canvas-asset",
-        )
-        .expect("duplicate managed Canvas asset");
         let duplicate_image = seeded
             .module
             .apply(
@@ -7599,7 +7681,8 @@ mod tests {
                                 "file:image": {
                                     "id": "file:image",
                                     "mimeType": "image/png",
-                                    "source": "nodex://assets/canvas-image-copy.png",
+                                    "source": "nodex://files/canvas-image",
+                                    "fileVersion": 1, "defaultName": "image.png",
                                     "created": 999
                                 }
                             }
@@ -7614,14 +7697,7 @@ mod tests {
             DocumentCommitOutcome::NoChange,
         );
 
-        fs::write(
-            seeded
-                ._directory
-                .path()
-                .join("assets/canvas-image-conflict.png"),
-            b"different-canvas-asset",
-        )
-        .expect("conflicting managed Canvas asset");
+        create_canvas_file(&seeded, "canvas-image-conflict", b"different-canvas-asset");
         let conflicting_image = seeded
             .module
             .apply(
@@ -7641,7 +7717,8 @@ mod tests {
                                 "file:image": {
                                     "id": "file:image",
                                     "mimeType": "image/png",
-                                    "source": "nodex://assets/canvas-image-conflict.png",
+                                    "source": "nodex://files/canvas-image-conflict",
+                                    "fileVersion": 1, "defaultName": "image.png",
                                     "created": 999
                                 }
                             }
@@ -10210,7 +10287,7 @@ mod tests {
         };
         assert_eq!(
             value["summary"]["checkpointMetadata"]["format"],
-            "block_tree_snapshot_v2"
+            "block_tree_snapshot_v3"
         );
 
         let update = title_update(

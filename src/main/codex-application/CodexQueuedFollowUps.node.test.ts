@@ -18,10 +18,7 @@ import {
 import { CoreModules } from "../core-runtime/CoreModules";
 import { RendererClientRuntime } from "../host-runtime/RendererClientRuntime";
 import { CodexConversationProjection } from "./CodexConversationProjection";
-import {
-  CodexQueuedFollowUpPayloadStore,
-  type CodexQueuedFollowUpDurableEntry,
-} from "./CodexQueuedFollowUpPayloadStore";
+import { CodexInputAssets, type CodexQueuedFollowUpDurableEntry } from "./CodexInputAssets";
 import { make } from "./CodexQueuedFollowUps";
 import {
   CodexRendererConversationRegistry,
@@ -68,12 +65,14 @@ const canonical = (activeTurnId: string | null): CodexCanonicalConversationState
       : [],
   }) as unknown as CodexCanonicalConversationState;
 
-const payloadStore = (state: DurableTestState): CodexQueuedFollowUpPayloadStore["Service"] =>
-  CodexQueuedFollowUpPayloadStore.of({
+const payloadStore = (state: DurableTestState): CodexInputAssets["Service"] =>
+  CodexInputAssets.of({
+    retainPrepared: (_threadId, _submissionId, prepared) => Effect.succeed(prepared),
+    publish: () => Effect.succeed([]),
     freeze: (row) =>
       Effect.sync(() => {
         const payloadRef = {
-          schemaVersion: 1 as const,
+          schemaVersion: 2 as const,
           assetUri: `nodex://assets/queued-follow-up-v1-${row.followUpId}.json`,
           sha256: "a".repeat(64),
           byteLength: 128,
@@ -170,7 +169,7 @@ const makeHarness = (
     } as unknown as CodexConversationProjection["Service"]);
     const queued = yield* make.pipe(
       Effect.provideService(CoreModules, coreModules(state)),
-      Effect.provideService(CodexQueuedFollowUpPayloadStore, payloadStore(state)),
+      Effect.provideService(CodexInputAssets, payloadStore(state)),
       Effect.provideService(CodexRendererConversationRegistry, registry),
       Effect.provideService(RendererClientRuntime, rendererClients),
       Effect.provideService(CodexTurnCommands, turns),

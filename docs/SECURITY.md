@@ -46,12 +46,12 @@ follow the same content-redaction policy as Page titles and search queries.
 
 Nodex is local-first. Main risks are malformed local inputs, accidental data loss, renderer capability abuse, and unsafe command/file-change approvals during Codex thread execution.
 
-## Page File boundaries
+## Library File boundaries
 
-Owner Files manifests, mutations, lifecycle, and version history are authorized
-by the canonical owner Page and Project scope. A containing Page may resolve
-only current metadata and bytes for a File in its canonical placement
-projection. File references carry opaque stable IDs, but the ID alone grants no
+File metadata, lifecycle, content versions, and direct grants are owned by the
+Library. A Page owns only its optional path entries. A containing Page may
+resolve only current metadata and bytes for a File in its canonical entry or
+body-use projection. File references carry opaque stable IDs, but the ID alone grants no
 access, exposes no content hash, and reveals no Profile path. Core verifies the
 requesting Page placement on every current-content read and rejects missing,
 deleted, cross-Library, or unauthorized references before Document commit.
@@ -67,13 +67,23 @@ collisions, control characters, and bounded depth/length violations. Desktop
 file and directory import accepts only regular files, rejects symlinks and
 special nodes, and enforces 64 MiB per File, 100 Files, and 256 MiB per batch.
 Text previews are separately bounded. Download chooses a user destination and
-does not reinterpret a logical path as a host filesystem authority.
+does not reinterpret a logical path as a host filesystem authority. Canvas
+stores stable File identity plus an immutable version and frozen name in each
+slot. Upload creates a File first; display, history, and recovery then read only
+through that exact authorized Canvas slot. Revocation clears pending binary
+reads and remounts the active presentation after pending scene work is retained.
 
 Exact-format scripts and binaries are inert content. Agents cannot execute a
 managed blob root or use it as cwd; execution requires explicit materialization
 into the normal workspace and remains governed by existing filesystem and
-command approval policy. Backup restore hashes every managed Page File blob
+command approval policy. Backup restore hashes every managed Blob
 before Profile switch, and garbage collection is serialized against snapshots.
+
+Queued and submitted Thread attachments retain exact Blob bytes independently
+of Library File permissions. New queue content requires prepared receipts for
+the same operation; only that Thread's existing queue closure can be reused
+without publication. Reads require the Thread's Project or trusted Library
+authority. A known hash or a local cache hit never grants access to Core bytes.
 
 ## Security Controls in Place
 
@@ -383,8 +393,7 @@ CI` push run. The privileged release `workflow_run` additionally validates the
   the verified canonical helper app.
 - Workspace-file IPC is available only to the top-level renderer frame of an owned app window. Directory browsing accepts canonical root-relative coordinates, verifies lexical and resolved-realpath containment, and omits directory symlinks that escape the selected root. Exact-file metadata/text/binary operations intentionally accept an absolute local path without a Project-root grant so user-visible agent outputs and patches remain openable outside the active source; this relies on the trusted-renderer boundary rather than path sandboxing. Bounded raster previews become ephemeral `blob:` URLs and renderer cleanup revokes them. PDF bytes are transferred to the bundled PDF.js worker as a `Uint8Array`; canvas, selectable text, and annotation links are rendered in app-owned DOM without iframe navigation, form rendering, or embedded script execution. PDF external links cross a top-level trusted-renderer IPC that accepts only bounded, credential-free HTTP(S) URLs before Main calls the system browser. Write requests use an expected-modification-time CAS guard and never create missing parent directories implicitly.
 - Renderer file references use a semantic Workbench router: ordinary references enter the validated Files surface, while explicit external/reveal actions use typed IPC. Local references are never opened through renderer-created `file://` windows or a document-wide link capture handler; bounded copy-contents actions still go through the existing `read-file` IPC budget.
-- Managed-asset mutation, byte reads, bounded previews, path resolution, and dictation IPC are likewise available only to the top-level frame of an owned app window and validate payload types and byte budgets again in Main. Persisted `nodex://assets/<safe-name>` identities do not expose filesystem roots. The trusted renderer resolves a managed locator to an absolute path through the synchronous preload capability and uses the shared `app://fs/@fs/...` display transport; successful resolutions are cached only for the renderer window lifetime. The `app://fs/*` request gate admits the `app://-` renderer and the exact configured HTTP(S) development origin, excluding the Browser-sidebar partition. The handler accepts extension-addressed image, audio, and video MIME families, follows filesystem symlinks, and does not grant renderer script code a general file-read IPC capability. Production CSP admits `app:` for image and media elements but does not admit `file:`.
-- Opt-in local-path clipboard presentation resolves a Page File only after an authorized metadata read exposes its current SHA-256. The synchronous preload capability accepts only that exact lowercase hash, considers only regular non-symlink files under the Profile `assets` directory, and returns no arbitrary caller-selected path. The resulting physical locator appears only in copied `text/plain`; stored NFM, rich clipboard payloads, and general File interfaces retain stable semantic locators.
+- Managed-asset mutation, byte reads, bounded previews, path resolution, and dictation IPC are likewise available only to the top-level frame of an owned app window and validate payload types and byte budgets again in Main. Temporary `nodex://assets/<safe-name>` locators resolve only in the Profile media cache and do not expose the Core Blob root. Durable File and Thread bytes use their independently authorized Core read boundary. File clipboard exports use a validated File source and exact version on every materialization; Main places verified bytes in `cache/file-exports`, never returns a Core Blob path, and does not treat a cache hit as authority. The trusted renderer resolves a managed locator to an absolute path through the synchronous preload capability and uses the shared `app://fs/@fs/...` display transport; successful resolutions are cached only for the renderer window lifetime. The `app://fs/*` request gate admits the `app://-` renderer and the exact configured HTTP(S) development origin, excluding the Browser-sidebar partition. The handler accepts extension-addressed image, audio, and video MIME families, follows filesystem symlinks, and does not grant renderer script code a general file-read IPC capability. Production CSP admits `app:` for image and media elements but does not admit `file:`.
 - Electron bootstrap fixes Rust Core as the only production authority before
   store startup; the retired selector and JavaScript SQLite/Yjs implementation
   are absent. Native launch validates a regular, executable,

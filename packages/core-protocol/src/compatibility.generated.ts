@@ -5,11 +5,11 @@ export const CORE_CLIENT_REQUIREMENTS = {
     "min": 12,
     "max": 12
   },
-  "event_version": 9,
+  "event_version": 10,
   "modules": [
     {
       "module": "library",
-      "contract_version": 44
+      "contract_version": 45
     },
     {
       "module": "database",
@@ -35,8 +35,8 @@ export const CORE_CLIENT_REQUIREMENTS = {
   "accepted_store_formats": [
     {
       "lineage": "nodex-rust-core",
-      "version": 151,
-      "schema_fingerprint": "d32046ad5c4925f75d322ff2c3678202876dd4ee68d9618240aeab64695660db"
+      "version": 152,
+      "schema_fingerprint": "3b73eede1826e640113d7e25e4ec2eee0fa0a616fb3c5451c3f6a5bdcf356289"
     }
   ]
 } as const satisfies components["schemas"]["CoreClientRequirements"];
@@ -47,7 +47,8 @@ export const CORE_TRANSPORT_BUDGETS = {
   "event_frame_bytes": 2359296,
   "document_json_request_bytes": 67108864,
   "document_response_bytes": 25165832,
-  "page_file_blob_bytes": 67108864,
+  "file_blob_bytes": 67108864,
+  "managed_blob_bytes": 268435456,
   "request_deadline_min_ms": 250,
   "request_deadline_max_ms": 300000,
   "interactive_request_deadline_ms": 20000,

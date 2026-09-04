@@ -20,6 +20,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/blobs/prepare": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["prepare_blob"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/core/v1/events": {
         readonly parameters: {
             readonly query?: never;
@@ -30,6 +46,38 @@ export interface paths {
         readonly get: operations["events"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/core/v1/files/blobs/{file_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["read_file_blob"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/core/v1/files/blobs/prepare": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["prepare_file_blob"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -276,38 +324,6 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/core/v1/page-files/blobs/{file_id}": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get: operations["read_page_file_blob"];
-        readonly put?: never;
-        readonly post?: never;
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/core/v1/page-files/blobs/prepare": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        readonly post: operations["prepare_page_file_blob"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/core/v1/requests/cancel": {
         readonly parameters: {
             readonly query?: never;
@@ -318,6 +334,22 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         readonly post: operations["cancel_request"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/core/v1/threads/{thread_id}/blobs/{content_hash}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["read_thread_asset_blob"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -563,9 +595,10 @@ export interface components {
                 readonly block_transfer?: null | components["schemas"]["LibraryBlockTransferResult"];
                 readonly block_transfer_undo?: null | components["schemas"]["LibraryBlockTransferUndoResult"];
                 readonly canvas_mutation?: null | components["schemas"]["LibraryCanvasMutationResult"];
+                readonly file_mutation?: null | components["schemas"]["LibraryFileMutationResult"];
                 readonly page_copy?: null | components["schemas"]["LibraryPageCopyResult"];
                 readonly page_create?: null | components["schemas"]["LibraryPageCreateResult"];
-                readonly page_files?: null | components["schemas"]["LibraryPageFileMutationReceipt"];
+                readonly page_file_entries: readonly components["schemas"]["LibraryPageFileEntryReceipt"][];
                 readonly page_lifecycle?: null | components["schemas"]["LibraryPageLifecycleMutationReceipt"];
                 readonly page_relocation_undo?: null | components["schemas"]["LibraryPageRelocationUndoResult"];
                 readonly structural_edit?: null | components["schemas"]["LibraryStructuralEditResult"];
@@ -598,9 +631,10 @@ export interface components {
                 readonly block_transfer?: null | components["schemas"]["LibraryBlockTransferResult"];
                 readonly block_transfer_undo?: null | components["schemas"]["LibraryBlockTransferUndoResult"];
                 readonly canvas_mutation?: null | components["schemas"]["LibraryCanvasMutationResult"];
+                readonly file_mutation?: null | components["schemas"]["LibraryFileMutationResult"];
                 readonly page_copy?: null | components["schemas"]["LibraryPageCopyResult"];
                 readonly page_create?: null | components["schemas"]["LibraryPageCreateResult"];
-                readonly page_files?: null | components["schemas"]["LibraryPageFileMutationReceipt"];
+                readonly page_file_entries: readonly components["schemas"]["LibraryPageFileEntryReceipt"][];
                 readonly page_lifecycle?: null | components["schemas"]["LibraryPageLifecycleMutationReceipt"];
                 readonly page_relocation_undo?: null | components["schemas"]["LibraryPageRelocationUndoResult"];
                 readonly structural_edit?: null | components["schemas"]["LibraryStructuralEditResult"];
@@ -1897,15 +1931,17 @@ export interface components {
             /** Format: int64 */
             readonly event_frame_bytes: number;
             /** Format: int64 */
+            readonly file_blob_bytes: number;
+            /** Format: int64 */
             readonly interactive_request_deadline_ms: number;
             /** Format: int64 */
             readonly maintenance_request_deadline_ms: number;
             /** Format: int64 */
+            readonly managed_blob_bytes: number;
+            /** Format: int64 */
             readonly ordinary_json_request_bytes: number;
             /** Format: int64 */
             readonly ordinary_json_response_bytes: number;
-            /** Format: int64 */
-            readonly page_file_blob_bytes: number;
             /** Format: int64 */
             readonly request_deadline_max_ms: number;
             /** Format: int64 */
@@ -3554,7 +3590,6 @@ export interface components {
         readonly LibraryAgentMovePagesResult: {
             readonly affected_database_ids: readonly string[];
             readonly document_commits: readonly components["schemas"]["LibraryBlockTransferDocumentCommit"][];
-            readonly file_ownership_moves: readonly components["schemas"]["LibraryPageFileOwnershipMove"][];
             readonly pages: readonly components["schemas"]["LibraryAgentMovedPage"][];
         };
         readonly LibraryAgentPageCopyPreparation: {
@@ -3856,7 +3891,6 @@ export interface components {
                 readonly [key: string]: string;
             };
             readonly document_commits: readonly components["schemas"]["LibraryBlockTransferDocumentCommit"][];
-            readonly file_ownership_moves: readonly components["schemas"]["LibraryPageFileOwnershipMove"][];
             readonly final_location_revisions: {
                 readonly [key: string]: number;
             };
@@ -3942,7 +3976,6 @@ export interface components {
         };
         readonly LibraryBlockTransferUndoResult: {
             readonly document_commits: readonly components["schemas"]["LibraryBlockTransferDocumentCommit"][];
-            readonly file_ownership_moves: readonly components["schemas"]["LibraryPageFileOwnershipMove"][];
             readonly removed_page_ids: readonly string[];
             readonly restored_source_root_ids: readonly string[];
             readonly transfer_operation_id: string;
@@ -4024,7 +4057,7 @@ export interface components {
             readonly location_revision: number;
             /** Format: int64 */
             readonly metadata_revision: number;
-            readonly target: components["schemas"]["LibraryResourceTarget"];
+            readonly target: components["schemas"]["LibraryPlacedResourceTarget"];
             readonly title: string;
             readonly updated_at: string;
         };
@@ -4089,6 +4122,9 @@ export interface components {
         };
         readonly LibraryEvent: {
             readonly database_ids: readonly string[];
+            readonly file_revisions: {
+                readonly [key: string]: number;
+            };
             readonly kind: components["schemas"]["LibraryEventKind"];
             readonly page_file_body_usage_revisions: {
                 readonly [key: string]: number;
@@ -4105,6 +4141,184 @@ export interface components {
         };
         /** @enum {string} */
         readonly LibraryEventKind: "library_changed";
+        readonly LibraryFile: {
+            readonly blob_etag: string;
+            /** Format: int64 */
+            readonly byte_length: number;
+            readonly created_at: string;
+            readonly created_by_actor_id: string;
+            readonly created_by_turn_id?: string | null;
+            readonly default_name: string;
+            readonly file_id: string;
+            /** Format: int64 */
+            readonly head_version: number;
+            readonly library_id: string;
+            readonly lifecycle: components["schemas"]["LibraryFileLifecycle"];
+            readonly mime_type: string;
+            /** Format: int64 */
+            readonly revision: number;
+            readonly updated_at: string;
+        };
+        readonly LibraryFileChange: {
+            readonly default_name: string;
+            readonly file_id: string;
+            /** @enum {string} */
+            readonly kind: "create";
+            readonly mime_type: string;
+            readonly prepared_blob_receipt_id: string;
+        } | {
+            /** Format: int64 */
+            readonly expected_head_version: number;
+            /** Format: int64 */
+            readonly expected_revision: number;
+            readonly file_id: string;
+            /** @enum {string} */
+            readonly kind: "replace_content";
+            readonly mime_type: string;
+            readonly prepared_blob_receipt_id: string;
+        } | {
+            readonly default_name: string;
+            /** Format: int64 */
+            readonly expected_revision: number;
+            readonly file_id: string;
+            /** @enum {string} */
+            readonly kind: "rename";
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            readonly file_id: string;
+            /** @enum {string} */
+            readonly kind: "trash";
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            readonly file_id: string;
+            /** @enum {string} */
+            readonly kind: "restore";
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            readonly file_id: string;
+            /** @enum {string} */
+            readonly kind: "purge";
+        } | {
+            readonly default_name: string;
+            readonly file_id: string;
+            /** @enum {string} */
+            readonly kind: "fork";
+            readonly source: components["schemas"]["LibraryFileReadSource"];
+            readonly source_file_id: string;
+            /** Format: int64 */
+            readonly source_version: number;
+        };
+        /** @enum {string} */
+        readonly LibraryFileLifecycle: "live" | "trashed";
+        readonly LibraryFileMutationResult: {
+            readonly file?: null | components["schemas"]["LibraryFile"];
+            readonly file_id: string;
+            /** Format: int64 */
+            readonly revision: number;
+        };
+        readonly LibraryFilePage: {
+            readonly has_more: boolean;
+            readonly items: readonly components["schemas"]["LibraryFile"][];
+            readonly next_cursor?: string | null;
+            /** Format: int64 */
+            readonly total: number;
+        };
+        /**
+         * @description One authorized content target. Historical names and bytes are independent
+         *     of the shared File's current metadata and head.
+         */
+        readonly LibraryFilePresentation: {
+            readonly blob_etag: string;
+            /** Format: int64 */
+            readonly byte_length: number;
+            readonly default_name: string;
+            readonly file_id: string;
+            readonly mime_type: string;
+            /** Format: int64 */
+            readonly version: number;
+        };
+        /** @description An exact read selected by an owning preview. It conveys no authority beyond its source. */
+        readonly LibraryFileReadBinding: {
+            readonly file_id: string;
+            readonly source: components["schemas"]["LibraryFileReadSource"];
+            /** Format: int64 */
+            readonly version: number;
+        };
+        readonly LibraryFileReadSource: {
+            /** @enum {string} */
+            readonly kind: "direct";
+        } | {
+            /** @enum {string} */
+            readonly kind: "page";
+            readonly page_id: string;
+        } | {
+            readonly document_id: string;
+            /** @enum {string} */
+            readonly kind: "document_revision";
+            readonly revision_id: string;
+        } | {
+            readonly document_id: string;
+            readonly draft_id: string;
+            /** @enum {string} */
+            readonly kind: "recovery_draft";
+        } | {
+            readonly canvas_id: string;
+            /** @enum {string} */
+            readonly kind: "canvas";
+            readonly scene_file_id: string;
+        } | {
+            readonly document_id: string;
+            /** @enum {string} */
+            readonly kind: "canvas_revision";
+            readonly revision_id: string;
+            readonly scene_file_id: string;
+        } | {
+            readonly document_id: string;
+            readonly draft_id: string;
+            /** @enum {string} */
+            readonly kind: "canvas_recovery";
+            readonly scene_file_id: string;
+        };
+        readonly LibraryFileUsage: {
+            readonly lifecycle: components["schemas"]["LibraryPageLifecycleState"];
+            readonly logical_path?: string | null;
+            /** Format: int64 */
+            readonly occurrence_count: number;
+            readonly target: components["schemas"]["LibraryPlacedResourceTarget"];
+            readonly title: string;
+        };
+        /** @enum {string} */
+        readonly LibraryFileUsageFilter: "all" | "unused";
+        readonly LibraryFileUsagePage: {
+            readonly can_purge: boolean;
+            readonly can_restore: boolean;
+            readonly can_trash: boolean;
+            readonly can_write: boolean;
+            readonly has_more: boolean;
+            readonly items: readonly components["schemas"]["LibraryFileUsage"][];
+            readonly next_cursor?: string | null;
+        };
+        readonly LibraryFileVersion: {
+            readonly actor_id: string;
+            readonly blob_etag: string;
+            /** Format: int64 */
+            readonly byte_length: number;
+            readonly file_id: string;
+            readonly mime_type: string;
+            readonly occurred_at: string;
+            readonly operation_id: string;
+            readonly turn_id?: string | null;
+            /** Format: int64 */
+            readonly version: number;
+        };
+        readonly LibraryFileVersionPage: {
+            readonly has_more: boolean;
+            readonly items: readonly components["schemas"]["LibraryFileVersion"][];
+            readonly next_cursor?: string | null;
+        };
         /** @enum {string} */
         readonly LibraryHeadingLevel: "one" | "two" | "three";
         readonly LibraryInheritedProjectAccessSource: {
@@ -4374,26 +4588,20 @@ export interface components {
             readonly metadata_projection_version: number;
             /** Format: int64 */
             readonly metadata_revision: number;
-            readonly page_files: components["schemas"]["LibraryPageFileManifest"];
+            readonly page_files: components["schemas"]["LibraryPageFileInventory"];
             readonly page_id: string;
             readonly store_epoch: string;
             readonly title_etag: string;
             /** Format: int32 */
             readonly version: number;
         };
-        readonly LibraryPageFileBodyUsage: {
-            /** @enum {string} */
-            readonly kind: "not_in_body";
-        } | {
-            /** @enum {string} */
-            readonly kind: "placed";
-            /** Format: int64 */
-            readonly placement_count: number;
-        };
-        readonly LibraryPageFileChange: {
+        /** @enum {string} */
+        readonly LibraryPageFileCollisionPolicy: "reject" | "suffix";
+        readonly LibraryPageFileEntryChange: {
+            readonly collision_policy: components["schemas"]["LibraryPageFileCollisionPolicy"];
             readonly file_id: string;
             /** @enum {string} */
-            readonly kind: "put";
+            readonly kind: "import";
             readonly logical_path: string;
             readonly mime_type: string;
             readonly prepared_blob_receipt_id: string;
@@ -4401,51 +4609,43 @@ export interface components {
             readonly collision_policy: components["schemas"]["LibraryPageFileCollisionPolicy"];
             readonly file_id: string;
             /** @enum {string} */
-            readonly kind: "create";
+            readonly kind: "attach";
             readonly logical_path: string;
-            readonly mime_type: string;
-            readonly prepared_blob_receipt_id: string;
+            readonly source: components["schemas"]["LibraryFileReadSource"];
         } | {
-            /** Format: int64 */
-            readonly expected_version: number;
-            readonly file_id: string;
-            /** @enum {string} */
-            readonly kind: "replace_content";
-            readonly mime_type: string;
-            readonly prepared_blob_receipt_id: string;
-        } | {
-            /** Format: int64 */
-            readonly expected_version: number;
             readonly file_id: string;
             /** @enum {string} */
             readonly kind: "rename";
             readonly logical_path: string;
         } | {
-            /** Format: int64 */
-            readonly expected_version: number;
             readonly file_id: string;
             /** @enum {string} */
-            readonly kind: "delete";
+            readonly kind: "remove";
         } | {
-            /** Format: int64 */
-            readonly expected_version: number;
             readonly file_id: string;
             /** @enum {string} */
-            readonly kind: "restore_version";
-            /** Format: int64 */
-            readonly source_version: number;
+            readonly kind: "retarget";
+            readonly replacement_file_id: string;
+            readonly source: components["schemas"]["LibraryFileReadSource"];
         } | {
+            readonly file_id: string;
             /** @enum {string} */
-            readonly kind: "clone_into_page";
-            readonly logical_path: string;
-            readonly source_file_id: string;
-            readonly source_page_id: string;
-            readonly target_file_id: string;
+            readonly kind: "replace";
+            readonly mime_type: string;
+            readonly prepared_blob_receipt_id: string;
+            readonly replacement_file_id: string;
         };
-        /** @enum {string} */
-        readonly LibraryPageFileChangeKind: "create" | "replace" | "rename" | "delete" | "restore" | "clone" | "rehome";
-        /** @enum {string} */
-        readonly LibraryPageFileCollisionPolicy: "reject" | "suffix";
+        readonly LibraryPageFileEntryReceipt: {
+            readonly changed_file_ids: readonly string[];
+            readonly consumed_blob_receipt_ids: readonly string[];
+            readonly created_file_ids: readonly string[];
+            /** Format: int64 */
+            readonly manifest_revision: number;
+            readonly page_id: string;
+            readonly replacements: {
+                readonly [key: string]: string;
+            };
+        };
         readonly LibraryPageFileInvalidation: {
             readonly file_ids: readonly string[];
             /** @enum {string} */
@@ -4458,15 +4658,12 @@ export interface components {
             /** Format: int64 */
             readonly revision: number;
         };
-        readonly LibraryPageFileManifest: {
+        readonly LibraryPageFileInventory: {
             /** Format: int64 */
             readonly body_usage_revision: number;
-            /** Format: int64 */
-            readonly deleted_total: number;
-            readonly files: readonly components["schemas"]["LibraryPageFileSummary"][];
+            readonly can_write: boolean;
+            readonly files: readonly components["schemas"]["LibraryPageFileItem"][];
             readonly has_more: boolean;
-            /** Format: int64 */
-            readonly live_total: number;
             readonly next_cursor?: string | null;
             readonly page_id: string;
             /** Format: int64 */
@@ -4478,67 +4675,20 @@ export interface components {
             /** Format: int64 */
             readonly unplaced_total: number;
         };
-        readonly LibraryPageFileMutationReceipt: {
-            readonly consumed_blob_receipt_ids: readonly string[];
-            readonly created_file_ids: readonly string[];
-            readonly deleted_file_ids: readonly string[];
+        readonly LibraryPageFileItem: {
             /** Format: int64 */
-            readonly manifest_revision: number;
-            readonly page_id: string;
-            readonly updated_file_ids: readonly string[];
+            readonly body_count: number;
+            readonly file: components["schemas"]["LibraryFile"];
+            readonly logical_path?: string | null;
         };
-        readonly LibraryPageFileOwnershipMove: {
+        readonly LibraryPageFileSelector: {
             readonly file_id: string;
+            /** @enum {string} */
+            readonly kind: "file_id";
+        } | {
+            /** @enum {string} */
+            readonly kind: "path";
             readonly logical_path: string;
-            readonly owner_page_id: string;
-            readonly previous_logical_path: string;
-            readonly previous_owner_page_id: string;
-            /** Format: int64 */
-            readonly version: number;
-        };
-        /** @enum {string} */
-        readonly LibraryPageFileState: "live" | "deleted";
-        readonly LibraryPageFileSummary: {
-            readonly blob_etag: string;
-            readonly body_usage: components["schemas"]["LibraryPageFileBodyUsage"];
-            /** Format: int64 */
-            readonly byte_length: number;
-            readonly created_at: string;
-            readonly created_by_actor_id: string;
-            readonly created_by_turn_id?: string | null;
-            readonly file_id: string;
-            readonly logical_path: string;
-            readonly mime_type: string;
-            readonly owner_page_id: string;
-            readonly state: components["schemas"]["LibraryPageFileState"];
-            readonly updated_at: string;
-            /** Format: int64 */
-            readonly version: number;
-        };
-        readonly LibraryPageFileVersion: {
-            readonly actor_id: string;
-            readonly blob_etag?: string | null;
-            /** Format: int64 */
-            readonly byte_length: number;
-            readonly change_kind: components["schemas"]["LibraryPageFileChangeKind"];
-            readonly file_id: string;
-            readonly logical_path: string;
-            /** Format: int64 */
-            readonly manifest_revision: number;
-            readonly mime_type: string;
-            readonly occurred_at: string;
-            readonly operation_id: string;
-            readonly owner_page_id: string;
-            readonly turn_id?: string | null;
-            /** Format: int64 */
-            readonly version: number;
-        };
-        readonly LibraryPageFileVersionPage: {
-            readonly file_id: string;
-            readonly has_more: boolean;
-            readonly next_cursor?: string | null;
-            readonly page_id: string;
-            readonly versions: readonly components["schemas"]["LibraryPageFileVersion"][];
         };
         /** @enum {string} */
         readonly LibraryPageHistoryCategory: "checkpoint" | "content" | "property" | "database" | "lifecycle" | "location" | "unknown";
@@ -5153,18 +5303,27 @@ export interface components {
             readonly kind: "data_source";
             readonly view_id?: string | null;
         };
+        /**
+         * @description Resources with a Block placement in Library navigation. Files have independent
+         *     identity and authorization; Page entries never give them a Block placement.
+         */
+        readonly LibraryPlacedResourceTarget: {
+            /** @enum {string} */
+            readonly kind: "page";
+            readonly page_id: string;
+        } | {
+            readonly database_id: string;
+            /** @enum {string} */
+            readonly kind: "database";
+        } | {
+            readonly canvas_id: string;
+            /** @enum {string} */
+            readonly kind: "canvas";
+        };
         readonly LibraryPlacementAnchor: {
             readonly block_id: string;
             /** Format: int64 */
             readonly expected_location_revision: number;
-        };
-        readonly LibraryPreparedPageFileBlob: {
-            readonly blob_etag: string;
-            /** Format: int64 */
-            readonly byte_length: number;
-            /** Format: int64 */
-            readonly expires_at_unix_ms: number;
-            readonly receipt_id: string;
         };
         readonly LibraryProjectAccessChange: {
             readonly access?: null | components["schemas"]["LibraryAccess"];
@@ -5232,6 +5391,10 @@ export interface components {
             readonly canvas_id: string;
             /** @enum {string} */
             readonly kind: "canvas";
+        } | {
+            readonly file_id: string;
+            /** @enum {string} */
+            readonly kind: "file";
         };
         readonly LibraryRouteTarget: {
             /** @enum {string} */
@@ -5424,7 +5587,6 @@ export interface components {
                 readonly [key: string]: string;
             };
             readonly document_commits: readonly components["schemas"]["LibraryBlockTransferDocumentCommit"][];
-            readonly file_ownership_moves: readonly components["schemas"]["LibraryPageFileOwnershipMove"][];
             readonly history?: null | components["schemas"]["LibraryStructuralHistoryToken"];
             readonly operation_kind: string;
             readonly result_root_block_ids: readonly string[];
@@ -5823,6 +5985,43 @@ export interface components {
             /** Format: int32 */
             readonly contract_version: number;
             readonly intent: {
+                /** Format: int64 */
+                readonly expected_manifest_revision: number;
+                readonly file_id: string;
+                /** @enum {string} */
+                readonly kind: "put_page_file_entry";
+                readonly logical_path: string;
+                readonly mime_type: string;
+                readonly page_id: string;
+                readonly prepared_blob_receipt_id: string;
+                readonly replace_entry: boolean;
+                readonly turn_id?: string | null;
+            } | {
+                readonly changes: readonly components["schemas"]["LibraryPageFileEntryChange"][];
+                /** Format: int64 */
+                readonly expected_manifest_revision: number;
+                /** @enum {string} */
+                readonly kind: "apply_page_file_entries";
+                readonly page_id: string;
+                readonly turn_id?: string | null;
+            } | {
+                readonly copy: boolean;
+                readonly file_id: string;
+                /** @enum {string} */
+                readonly kind: "transfer_page_file_entry";
+                /** Format: int64 */
+                readonly source_manifest_revision: number;
+                readonly source_page_id: string;
+                readonly target_logical_path: string;
+                /** Format: int64 */
+                readonly target_manifest_revision: number;
+                readonly target_page_id: string;
+            } | {
+                readonly change: components["schemas"]["LibraryFileChange"];
+                /** @enum {string} */
+                readonly kind: "apply_file_change";
+                readonly turn_id?: string | null;
+            } | {
                 readonly document_id: string;
                 /** @enum {string} */
                 readonly kind: "create_page";
@@ -5843,23 +6042,6 @@ export interface components {
                 readonly kind: "create_page_from_nfm";
                 readonly nfm: string;
                 readonly title_markdown: string;
-            } | {
-                readonly changes: readonly components["schemas"]["LibraryPageFileChange"][];
-                /** Format: int64 */
-                readonly expected_manifest_revision: number;
-                /** @enum {string} */
-                readonly kind: "apply_page_file_changes";
-                readonly page_id: string;
-                readonly turn_id?: string | null;
-            } | {
-                readonly file_id: string;
-                /** @enum {string} */
-                readonly kind: "put_page_file";
-                readonly logical_path: string;
-                readonly mime_type: string;
-                readonly page_id: string;
-                readonly prepared_blob_receipt_id: string;
-                readonly turn_id?: string | null;
             } | {
                 readonly data_source_id: string;
                 readonly database_id: string;
@@ -5947,19 +6129,19 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "move_block";
                 readonly parent: components["schemas"]["LibraryWriteParent"];
-                readonly target: components["schemas"]["LibraryResourceTarget"];
+                readonly target: components["schemas"]["LibraryPlacedResourceTarget"];
             } | {
                 /** Format: int64 */
                 readonly expected_metadata_revision: number;
                 /** @enum {string} */
                 readonly kind: "archive_resource";
-                readonly target: components["schemas"]["LibraryResourceTarget"];
+                readonly target: components["schemas"]["LibraryPlacedResourceTarget"];
             } | {
                 /** Format: int64 */
                 readonly expected_metadata_revision: number;
                 /** @enum {string} */
                 readonly kind: "restore_resource";
-                readonly target: components["schemas"]["LibraryResourceTarget"];
+                readonly target: components["schemas"]["LibraryPlacedResourceTarget"];
             } | {
                 /** @enum {string} */
                 readonly kind: "apply_page_lifecycle";
@@ -6314,11 +6496,17 @@ export interface components {
                 readonly kind: "delete_thread";
                 readonly thread_id: string;
             } | {
+                /** @enum {string} */
+                readonly kind: "retain_thread_assets";
+                readonly prepared_blob_receipt_ids: readonly string[];
+                readonly thread_id: string;
+            } | {
                 readonly entries: readonly components["schemas"]["ProjectWorkspaceQueuedFollowUpEntry"][];
                 /** Format: int64 */
                 readonly expected_revision: number;
                 /** @enum {string} */
                 readonly kind: "commit_queued_follow_up_ledger";
+                readonly prepared_blob_receipt_ids: readonly string[];
                 readonly thread_id: string;
             } | {
                 /** @enum {string} */
@@ -6933,6 +7121,53 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "metadata";
             } | {
+                readonly cursor?: string | null;
+                /** @enum {string} */
+                readonly kind: "files";
+                readonly lifecycle: components["schemas"]["LibraryFileLifecycle"];
+                /** Format: int32 */
+                readonly limit?: number | null;
+                readonly query?: string | null;
+                readonly usage: components["schemas"]["LibraryFileUsageFilter"];
+            } | {
+                readonly file_id: string;
+                /** @enum {string} */
+                readonly kind: "file";
+            } | {
+                readonly file_id: string;
+                /** @enum {string} */
+                readonly kind: "file_presentation";
+                readonly source: components["schemas"]["LibraryFileReadSource"];
+                /** Format: int64 */
+                readonly version?: number | null;
+            } | {
+                readonly cursor?: string | null;
+                readonly file_id: string;
+                /** @enum {string} */
+                readonly kind: "file_usages";
+                /** Format: int32 */
+                readonly limit?: number | null;
+            } | {
+                readonly cursor?: string | null;
+                readonly file_id: string;
+                /** @enum {string} */
+                readonly kind: "file_versions";
+                /** Format: int32 */
+                readonly limit?: number | null;
+            } | {
+                readonly cursor?: string | null;
+                /** @enum {string} */
+                readonly kind: "page_file_inventory";
+                /** Format: int32 */
+                readonly limit?: number | null;
+                readonly page_id: string;
+                readonly query?: string | null;
+            } | {
+                /** @enum {string} */
+                readonly kind: "resolve_page_file";
+                readonly page_id: string;
+                readonly selector: components["schemas"]["LibraryPageFileSelector"];
+            } | {
                 /** @enum {string} */
                 readonly kind: "resource_project_access";
                 readonly target: components["schemas"]["LibraryResourceTarget"];
@@ -6951,7 +7186,7 @@ export interface components {
                 readonly parent: components["schemas"]["LibraryNavigationParent"];
             } | {
                 readonly cursor?: string | null;
-                readonly force_include_target?: null | components["schemas"]["LibraryResourceTarget"];
+                readonly force_include_target?: null | components["schemas"]["LibraryPlacedResourceTarget"];
                 /** @enum {string} */
                 readonly kind: "standalone_roots";
                 /** Format: int32 */
@@ -6976,7 +7211,7 @@ export interface components {
                 /** Format: int32 */
                 readonly limit?: number | null;
                 readonly scope: components["schemas"]["LibraryMoveDestinationScope"];
-                readonly target: components["schemas"]["LibraryResourceTarget"];
+                readonly target: components["schemas"]["LibraryPlacedResourceTarget"];
             } | {
                 readonly cursor?: string | null;
                 /** @enum {string} */
@@ -6996,28 +7231,6 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "page_content";
-                readonly page_id: string;
-            } | {
-                readonly cursor?: string | null;
-                readonly include_deleted?: boolean | null;
-                /** @enum {string} */
-                readonly kind: "page_files";
-                /** Format: int32 */
-                readonly limit?: number | null;
-                readonly page_id: string;
-                readonly query?: string | null;
-            } | {
-                readonly file_id: string;
-                /** @enum {string} */
-                readonly kind: "page_file_metadata";
-                readonly page_id: string;
-            } | {
-                readonly cursor?: string | null;
-                readonly file_id: string;
-                /** @enum {string} */
-                readonly kind: "page_file_versions";
-                /** Format: int32 */
-                readonly limit?: number | null;
                 readonly page_id: string;
             } | {
                 readonly file_kind: components["schemas"]["LibraryPageProjectionFileKind"];
@@ -7606,7 +7819,15 @@ export interface components {
             /** Format: int32 */
             readonly offsetMinutes: number;
         };
-        readonly PreparePageFileBlobQuery: {
+        readonly PreparedBlobReceipt: {
+            readonly blob_etag: string;
+            /** Format: int64 */
+            readonly byte_length: number;
+            /** Format: int64 */
+            readonly expires_at_unix_ms: number;
+            readonly receipt_id: string;
+        };
+        readonly PrepareFileBlobQuery: {
             readonly idempotency_slot?: string | null;
             readonly operation_id: string;
             readonly store_epoch: string;
@@ -8361,8 +8582,7 @@ export interface components {
             readonly thread_id: string;
             readonly turn_id: string;
         };
-        readonly ReadPageFileBlobQuery: {
-            readonly page_id: string;
+        readonly ReadFileBlobQuery: components["schemas"]["LibraryFileReadSource"] & {
             /** Format: int64 */
             readonly version?: number | null;
         };
@@ -8457,12 +8677,18 @@ export interface components {
             readonly target_owner_id?: string | null;
         };
         readonly RecoveryPreview: {
+            readonly files: {
+                readonly [key: string]: components["schemas"]["LibraryFileReadBinding"];
+            };
             /** @enum {string} */
             readonly kind: "document";
             readonly nfm: string;
             readonly rich_title: unknown;
             readonly title: string;
         } | {
+            readonly files: {
+                readonly [key: string]: components["schemas"]["LibraryFileReadBinding"];
+            };
             /** @enum {string} */
             readonly kind: "canvas";
             readonly scene: unknown;
@@ -8570,6 +8796,10 @@ export interface components {
             readonly canvas_id: string;
             /** @enum {string} */
             readonly kind: "canvas";
+        } | {
+            readonly file_id: string;
+            /** @enum {string} */
+            readonly kind: "file";
         };
         /** @enum {string} */
         readonly ResourceRevocationReason: "ownership_moved" | "access_revoked" | "archived" | "deleted";
@@ -8715,9 +8945,10 @@ export interface components {
                     readonly block_transfer?: null | components["schemas"]["LibraryBlockTransferResult"];
                     readonly block_transfer_undo?: null | components["schemas"]["LibraryBlockTransferUndoResult"];
                     readonly canvas_mutation?: null | components["schemas"]["LibraryCanvasMutationResult"];
+                    readonly file_mutation?: null | components["schemas"]["LibraryFileMutationResult"];
                     readonly page_copy?: null | components["schemas"]["LibraryPageCopyResult"];
                     readonly page_create?: null | components["schemas"]["LibraryPageCreateResult"];
-                    readonly page_files?: null | components["schemas"]["LibraryPageFileMutationReceipt"];
+                    readonly page_file_entries: readonly components["schemas"]["LibraryPageFileEntryReceipt"][];
                     readonly page_lifecycle?: null | components["schemas"]["LibraryPageLifecycleMutationReceipt"];
                     readonly page_relocation_undo?: null | components["schemas"]["LibraryPageRelocationUndoResult"];
                     readonly structural_edit?: null | components["schemas"]["LibraryStructuralEditResult"];
@@ -8750,9 +8981,10 @@ export interface components {
                     readonly block_transfer?: null | components["schemas"]["LibraryBlockTransferResult"];
                     readonly block_transfer_undo?: null | components["schemas"]["LibraryBlockTransferUndoResult"];
                     readonly canvas_mutation?: null | components["schemas"]["LibraryCanvasMutationResult"];
+                    readonly file_mutation?: null | components["schemas"]["LibraryFileMutationResult"];
                     readonly page_copy?: null | components["schemas"]["LibraryPageCopyResult"];
                     readonly page_create?: null | components["schemas"]["LibraryPageCreateResult"];
-                    readonly page_files?: null | components["schemas"]["LibraryPageFileMutationReceipt"];
+                    readonly page_file_entries: readonly components["schemas"]["LibraryPageFileEntryReceipt"][];
                     readonly page_lifecycle?: null | components["schemas"]["LibraryPageLifecycleMutationReceipt"];
                     readonly page_relocation_undo?: null | components["schemas"]["LibraryPageRelocationUndoResult"];
                     readonly structural_edit?: null | components["schemas"]["LibraryStructuralEditResult"];
@@ -9127,6 +9359,34 @@ export interface components {
                 readonly contract_version: number;
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
+                    /** @enum {string} */
+                    readonly kind: "page_file_inventory";
+                    readonly value: components["schemas"]["LibraryPageFileInventory"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "resolved_page_file";
+                    readonly value: components["schemas"]["LibraryPageFileItem"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "files";
+                    readonly value: components["schemas"]["LibraryFilePage"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "file";
+                    readonly value: components["schemas"]["LibraryFile"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "file_presentation";
+                    readonly value: components["schemas"]["LibraryFilePresentation"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "file_usages";
+                    readonly value: components["schemas"]["LibraryFileUsagePage"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "file_versions";
+                    readonly value: components["schemas"]["LibraryFileVersionPage"];
+                } | {
                     /** Format: int64 */
                     readonly commit_seq: number;
                     /** @enum {string} */
@@ -9180,7 +9440,7 @@ export interface components {
                     readonly next_cursor?: string | null;
                     readonly root_is_current: boolean;
                     readonly scope: components["schemas"]["LibraryMoveDestinationScope"];
-                    readonly target: components["schemas"]["LibraryResourceTarget"];
+                    readonly target: components["schemas"]["LibraryPlacedResourceTarget"];
                     /** Format: int64 */
                     readonly total: number;
                 } | {
@@ -9205,18 +9465,6 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "page_content";
                     readonly value: components["schemas"]["LibraryPageContent"];
-                } | {
-                    /** @enum {string} */
-                    readonly kind: "page_files";
-                    readonly value: components["schemas"]["LibraryPageFileManifest"];
-                } | {
-                    /** @enum {string} */
-                    readonly kind: "page_file_metadata";
-                    readonly value: components["schemas"]["LibraryPageFileSummary"];
-                } | {
-                    /** @enum {string} */
-                    readonly kind: "page_file_versions";
-                    readonly value: components["schemas"]["LibraryPageFileVersionPage"];
                 } | {
                     /** @enum {string} */
                     readonly kind: "page_projection_file";
@@ -9726,6 +9974,33 @@ export interface operations {
             };
         };
     };
+    readonly prepare_blob: {
+        readonly parameters: {
+            readonly query: {
+                readonly idempotency_slot?: string;
+                readonly operation_id: string;
+                readonly store_epoch: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/octet-stream": readonly number[];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PreparedBlobReceipt"];
+                };
+            };
+        };
+    };
     readonly events: {
         readonly parameters: {
             readonly query?: {
@@ -9745,6 +10020,67 @@ export interface operations {
                 };
                 content: {
                     readonly "text/event-stream": components["schemas"]["EventEnvelope"];
+                };
+            };
+        };
+    };
+    readonly read_file_blob: {
+        readonly parameters: {
+            readonly query: {
+                readonly canvas_id?: string;
+                readonly document_id?: string;
+                /** @description direct, page, document_revision, or canvas */
+                readonly kind: string;
+                readonly page_id?: string;
+                readonly revision_id?: string;
+                readonly scene_file_id?: string;
+                readonly version?: number;
+            };
+            readonly header?: {
+                readonly "x-nodex-request-class"?: null | components["schemas"]["CoreRequestClass"];
+                readonly "x-nodex-request-deadline-ms"?: number | null;
+                readonly "x-nodex-request-id"?: string | null;
+            };
+            readonly path: {
+                readonly file_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/octet-stream": readonly number[];
+                };
+            };
+        };
+    };
+    readonly prepare_file_blob: {
+        readonly parameters: {
+            readonly query: {
+                readonly idempotency_slot?: string;
+                readonly operation_id: string;
+                readonly store_epoch: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/octet-stream": readonly number[];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PreparedBlobReceipt"];
                 };
             };
         };
@@ -10142,65 +10478,6 @@ export interface operations {
             };
         };
     };
-    readonly read_page_file_blob: {
-        readonly parameters: {
-            readonly query: {
-                readonly page_id: string;
-                readonly version?: number;
-            };
-            readonly header?: {
-                readonly "x-nodex-request-class"?: null | components["schemas"]["CoreRequestClass"];
-                readonly "x-nodex-request-deadline-ms"?: number | null;
-                readonly "x-nodex-request-id"?: string | null;
-            };
-            readonly path: {
-                readonly file_id: string;
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/octet-stream": readonly number[];
-                };
-            };
-        };
-    };
-    readonly prepare_page_file_blob: {
-        readonly parameters: {
-            readonly query: {
-                readonly idempotency_slot?: string;
-                readonly operation_id: string;
-                readonly store_epoch: string;
-            };
-            readonly header?: {
-                readonly "x-nodex-request-class"?: null | components["schemas"]["CoreRequestClass"];
-                readonly "x-nodex-request-deadline-ms"?: number | null;
-                readonly "x-nodex-request-id"?: string | null;
-            };
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/octet-stream": readonly number[];
-            };
-        };
-        readonly responses: {
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["LibraryPreparedPageFileBlob"];
-                };
-            };
-        };
-    };
     readonly cancel_request: {
         readonly parameters: {
             readonly query?: never;
@@ -10220,6 +10497,28 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["CoreRequestCancelResponse"];
+                };
+            };
+        };
+    };
+    readonly read_thread_asset_blob: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly content_hash: string;
+                readonly thread_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/octet-stream": readonly number[];
                 };
             };
         };

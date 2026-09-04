@@ -37,7 +37,7 @@ import {
   encodeNodexStructuralClipboardDescriptor,
   NODEX_STRUCTURAL_CLIPBOARD_MIME,
 } from "../../src/shared/clipboard-paste";
-import type { LibraryPageFileManifest } from "../../src/shared/library-module";
+import type { LibraryPageFileInventory } from "../../src/shared/library-files";
 import type { DatabaseModuleReadSnapshotV2 } from "../../src/shared/database-module-v2";
 import {
   ElectronScenarioHarness,
@@ -108,7 +108,7 @@ async function readConvergencePageFiles(
   page: Page,
   projectId: string,
   pageId: string,
-): Promise<LibraryPageFileManifest> {
+): Promise<LibraryPageFileInventory> {
   const snapshot = requireIpcValue<Record<string, unknown>>(
     await invokeIpc(
       page,
@@ -116,20 +116,19 @@ async function readConvergencePageFiles(
       { kind: "project", projectId },
       {
         read: {
-          mode: "page_files",
-          pageId,
+          mode: "page_file_inventory",
+          page_id: pageId,
           limit: 100,
-          includeDeleted: false,
         },
       },
     ),
     `Read Page Files for ${pageId}`,
   );
   const value = snapshot.value;
-  if (!isRecord(value) || value.kind !== "page_files" || !isRecord(value.value)) {
+  if (!isRecord(value) || value.kind !== "page_file_inventory" || !isRecord(value.value)) {
     throw new Error(`Page Files for ${pageId} returned an unexpected value`);
   }
-  return value.value as unknown as LibraryPageFileManifest;
+  return value.value as unknown as LibraryPageFileInventory;
 }
 
 async function createConvergenceProject(
@@ -1424,7 +1423,7 @@ test.describe("parallel functional Electron smoke", () => {
               (value) => value.charCodeAt(0),
             );
             return await window.api!.invoke(
-              "page-files:prepare",
+              "files:prepare",
               { kind: "project", projectId },
               {
                 operationId,
@@ -1435,7 +1434,7 @@ test.describe("parallel functional Electron smoke", () => {
           { projectId: project.projectId, operationId },
         );
         if (!isRecord(prepared)) throw new Error("Missing prepared image");
-        const manifest = await readConvergencePageFiles(page, project.projectId, source.pageId);
+        const inventory = await readConvergencePageFiles(page, project.projectId, source.pageId);
         requireIpcValue(
           await invokeIpc(
             page,
@@ -1445,17 +1444,17 @@ test.describe("parallel functional Electron smoke", () => {
               operationId,
               storeEpoch: project.storeEpoch,
               operation: {
-                kind: "apply_page_file_changes",
-                pageId: source.pageId,
-                expectedManifestRevision: manifest.revision,
+                kind: "apply_page_file_entries",
+                page_id: source.pageId,
+                expected_manifest_revision: inventory.revision,
                 changes: [
                   {
-                    kind: "create",
-                    fileId,
-                    logicalPath: "image.png",
-                    mimeType: "image/png",
-                    preparedBlobReceiptId: requireString(prepared.receiptId, "Image receipt"),
-                    collisionPolicy: "suffix",
+                    kind: "import",
+                    file_id: fileId,
+                    logical_path: "image.png",
+                    mime_type: "image/png",
+                    prepared_blob_receipt_id: requireString(prepared.receiptId, "Image receipt"),
+                    collision_policy: "suffix",
                   },
                 ],
               },
@@ -4091,33 +4090,15 @@ test.describe("parallel functional Electron smoke", () => {
         /^(?:blob:|data:image\/png;base64,)/u,
         { timeout: 15_000 },
       );
-      const restoredSourceFiles = requireIpcValue<Record<string, unknown>>(
-        await invokeIpc(
-          page,
-          "library-module:read",
-          { kind: "project", projectId: project.projectId },
-          {
-            read: {
-              mode: "page_files",
-              pageId: source.pageId,
-              limit: 100,
-              includeDeleted: false,
-            },
-          },
-        ),
-        "Read restored source Page Files",
+      const restoredSourceFiles = await readConvergencePageFiles(
+        page,
+        project.projectId,
+        source.pageId,
       );
-      expect(restoredSourceFiles.value).toMatchObject({
-        kind: "page_files",
-        value: {
-          liveTotal: 1,
-          files: [
-            {
-              ownerPageId: source.pageId,
-              bodyUsage: { kind: "placed", placementCount: 1 },
-            },
-          ],
-        },
+      expect(restoredSourceFiles).toMatchObject({
+        total: 1,
+        placed_total: 1,
+        files: [{ body_count: 1 }],
       });
       const moreSourceProperties = sourcePanel.getByRole("button", {
         name: /\d+ more propert(?:y|ies)/u,
@@ -4235,9 +4216,9 @@ test.describe("parallel functional Electron smoke", () => {
       );
       const sourceBefore = await readConvergencePageFiles(page, project.projectId, source.pageId);
       const targetBefore = await readConvergencePageFiles(page, project.projectId, target.pageId);
-      expect(sourceBefore.liveTotal).toBe(1);
-      expect(targetBefore.liveTotal).toBe(1);
-      const sourceFileId = requireString(sourceBefore.files[0]?.fileId, "Source File id");
+      expect(sourceBefore.total).toBe(1);
+      expect(targetBefore.total).toBe(1);
+      const sourceFileId = requireString(sourceBefore.files[0]?.file.file_id, "Source File id");
 
       const sourceImageBlockId = requireString(
         await sourceImage.evaluate((image) =>
@@ -4298,10 +4279,8 @@ test.describe("parallel functional Electron smoke", () => {
       await expect
         .poll(
           async () => ({
-            source: (await readConvergencePageFiles(page, project.projectId, source.pageId))
-              .liveTotal,
-            target: (await readConvergencePageFiles(page, project.projectId, target.pageId))
-              .liveTotal,
+            source: (await readConvergencePageFiles(page, project.projectId, source.pageId)).total,
+            target: (await readConvergencePageFiles(page, project.projectId, target.pageId)).total,
           }),
           { timeout: 15_000 },
         )
@@ -4310,10 +4289,9 @@ test.describe("parallel functional Electron smoke", () => {
       expect(targetAfter.files).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            fileId: sourceFileId,
-            ownerPageId: target.pageId,
-            logicalPath: "image (2).png",
-            bodyUsage: { kind: "placed", placementCount: 1 },
+            file: expect.objectContaining({ file_id: sourceFileId }),
+            logical_path: null,
+            body_count: 1,
           }),
         ]),
       );
@@ -4373,13 +4351,13 @@ test.describe("parallel functional Electron smoke", () => {
         project.projectId,
         target.pageId,
       );
-      expect(afterSecondPaste.liveTotal).toBe(2);
+      expect(afterSecondPaste.total).toBe(2);
       expect(afterSecondPaste.files).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            fileId: sourceFileId,
-            ownerPageId: target.pageId,
-            bodyUsage: { kind: "placed", placementCount: 2 },
+            file: expect.objectContaining({ file_id: sourceFileId }),
+            logical_path: null,
+            body_count: 2,
           }),
         ]),
       );
@@ -4408,17 +4386,16 @@ test.describe("parallel functional Electron smoke", () => {
         )
         .toMatchObject({
           source: {
-            liveTotal: 1,
+            total: 1,
             files: [
               {
-                fileId: sourceFileId,
-                ownerPageId: source.pageId,
-                logicalPath: "image (2).png",
-                bodyUsage: { kind: "placed", placementCount: 1 },
+                file: expect.objectContaining({ file_id: sourceFileId }),
+                logical_path: null,
+                body_count: 1,
               },
             ],
           },
-          target: { liveTotal: 1 },
+          target: { total: 1 },
         });
       await expect(page.getByText("Image unavailable", { exact: true })).toHaveCount(0);
     } finally {

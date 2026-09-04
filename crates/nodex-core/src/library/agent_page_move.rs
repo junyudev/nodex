@@ -387,6 +387,9 @@ pub(super) fn execute_move_pages(
                     &agent_context,
                     &operation_id,
                     MutationEffects {
+                        page_file_entries: Vec::new(),
+                        file_revisions: BTreeMap::new(),
+                        file_mutation: Default::default(),
                         project_id: preflight.actor_project_id,
                         operation_kind: "agent_move_pages",
                         change_kind: "library.changed",
@@ -401,7 +404,6 @@ pub(super) fn execute_move_pages(
                         committed_revisions: execution.committed_revisions,
                         page_create: None,
                         page_copy: None,
-                        page_files: None,
                         canvas_mutation: None,
                         block_transfer: None,
                         block_transfer_undo: None,
@@ -471,7 +473,6 @@ fn apply_pages(
     let mut affected_view_ids = BTreeSet::new();
     let mut affected_document_ids = BTreeSet::new();
     let mut committed_revisions = BTreeMap::new();
-    let mut file_ownership_moves = Vec::new();
     affected_parent_keys.insert(destination_parent_key(library_id, &request.destination));
 
     for (index, step) in preflight.steps.iter_mut().enumerate() {
@@ -521,7 +522,6 @@ fn apply_pages(
         }
         document_commits.extend(transfer.document_commits);
         affected_database_ids.extend(transfer.affected_database_ids);
-        file_ownership_moves.extend(transfer.file_ownership_moves);
         affected_page_ids.extend(outcome.committed.receipt.affected_page_ids);
         affected_view_ids.extend(outcome.committed.receipt.affected_view_ids);
         committed_revisions.extend(outcome.committed.receipt.committed_revisions);
@@ -590,7 +590,6 @@ fn apply_pages(
             pages,
             document_commits,
             affected_database_ids: affected_database_ids.into_iter().collect(),
-            file_ownership_moves,
         },
         affected_parent_keys: affected_parent_keys.into_iter().collect(),
         affected_page_ids: affected_page_ids.into_iter().collect(),

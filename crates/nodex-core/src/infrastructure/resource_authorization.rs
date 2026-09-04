@@ -277,6 +277,26 @@ fn authorization_proof_in_view(
                 resource,
             )
         }
+        ResourceKey::File { file_id } => match scope {
+            DeliveryAuthorizationScope::Library { .. } => {
+                let exists = connection.query_row(
+                        "SELECT EXISTS(SELECT 1 FROM library_files WHERE file_id = ?1 AND library_id = ?2)",
+                        params![file_id, context.library_id.0],
+                        |row| row.get::<_, bool>(0),
+                    )?;
+                Ok(exists.then(|| vec![resource.clone()]))
+            }
+            DeliveryAuthorizationScope::Project { project_id, .. } => {
+                crate::library::file_grant_authorization_proof(
+                    connection,
+                    &context.library_id.0,
+                    project_id,
+                    file_id,
+                    false,
+                )
+            }
+            DeliveryAuthorizationScope::Document { .. } => Ok(None),
+        },
         ResourceKey::Canvas { canvas_id } => {
             canvas_authorization_proof(connection, scope, context, canvas_id, resource)
         }

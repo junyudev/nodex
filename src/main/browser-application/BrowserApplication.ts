@@ -5,7 +5,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { ProfileAssets } from "../local-store/ProfileAssets";
+import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import type {
   BrowserBrowsingDataClearResult,
   BrowserBrowsingDataKind,
@@ -198,13 +198,17 @@ export const live = (
 ): Layer.Layer<
   BrowserApplication,
   BrowserApplicationError,
-  BrowserSiteStatusRuntime | ElectronNet | ElectronClipboard | FileSystem.FileSystem | ProfileAssets
+  | BrowserSiteStatusRuntime
+  | ElectronNet
+  | ElectronClipboard
+  | FileSystem.FileSystem
+  | TemporaryAssets
 > =>
   Layer.effect(
     BrowserApplication,
     Effect.gen(function* () {
       const siteStatus = yield* BrowserSiteStatusRuntime;
-      const assets = yield* ProfileAssets;
+      const assets = yield* TemporaryAssets;
       const electronNet = yield* ElectronNet;
       const clipboard = yield* ElectronClipboard;
       const events = yield* makeBrowserSidebarEventHub;

@@ -1127,7 +1127,7 @@ describe("special block copy", () => {
     expect(output).toBe(`before ${resolved} middle ${resolved} after`);
   });
 
-  test("rewriteCopiedSelectionFileReferences resolves unique asset and Page File URLs once", async () => {
+  test("rewriteCopiedSelectionFileReferences resolves unique asset and File URLs once", async () => {
     const a = "nodex://assets/a.png";
     const b = "nodex://files/0199134e-cbb0-7000-8000-000000000006";
     const payload: CopiedSelectionPayload = {

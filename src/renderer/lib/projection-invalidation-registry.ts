@@ -17,6 +17,7 @@ export interface ProjectionResourceDependencies {
   readonly viewIds?: readonly string[];
   readonly documentIds?: readonly string[];
   readonly canvasIds?: readonly string[];
+  readonly fileIds?: readonly string[];
   readonly aggregate?: boolean;
 }
 
@@ -365,6 +366,8 @@ export const revocationMatches = (
       return intersects(dependencies.viewIds, ids);
     case "canvas":
       return intersects(dependencies.canvasIds, ids);
+    case "file":
+      return intersects(dependencies.fileIds, ids);
   }
 };
 

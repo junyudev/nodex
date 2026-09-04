@@ -130,8 +130,8 @@ function resolveStoredExtension(fileName: string, mimeType: string): string {
 function writeAssetBytesAtRoot(assetsRootPath: string, fileName: string, bytes: Buffer): string {
   const absolutePath = resolveAssetPathInRoot(assetsRootPath, fileName);
   const stagingRootPath = `${path.resolve(assetsRootPath)}.staging`;
-  fs.mkdirSync(assetsRootPath, { recursive: true });
-  fs.mkdirSync(stagingRootPath, { recursive: true });
+  fs.mkdirSync(assetsRootPath, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(stagingRootPath, { recursive: true, mode: 0o700 });
   const temporaryName = `.${fileName}.${process.pid}.${randomUUID()}.tmp`;
   const temporaryPath = resolveAssetPathInRoot(stagingRootPath, temporaryName);
   let fileDescriptor: number | null = null;
@@ -170,17 +170,17 @@ const decodeInlineImageDataUrl = (
 const assertContentAddressedAsset = (absolutePath: string, expectedHash: string): void => {
   const stats = fs.lstatSync(absolutePath);
   if (!stats.isFile() || stats.isSymbolicLink()) {
-    throw new Error("Managed Canvas image asset must be a regular file");
+    throw new Error("Cached media must be a regular file");
   }
   const actualHash = createHash("sha256").update(fs.readFileSync(absolutePath)).digest("hex");
   if (actualHash === expectedHash) return;
-  throw new Error("Managed Canvas image asset hash collision");
+  throw new Error("Cached media content hash does not match");
 };
 
 const isAlreadyExistsError = (error: unknown): error is NodeJS.ErrnoException =>
   error instanceof Error && "code" in error && error.code === "EEXIST";
 
-export const publishContentAddressedAsset = (
+export const cacheContentAddressedBytes = (
   assetsRootPath: string,
   fileName: string,
   bytes: Buffer,
@@ -188,8 +188,8 @@ export const publishContentAddressedAsset = (
 ): void => {
   const absolutePath = resolveAssetPathInRoot(assetsRootPath, fileName);
   const stagingRootPath = `${path.resolve(assetsRootPath)}.staging`;
-  fs.mkdirSync(assetsRootPath, { recursive: true });
-  fs.mkdirSync(stagingRootPath, { recursive: true });
+  fs.mkdirSync(assetsRootPath, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(stagingRootPath, { recursive: true, mode: 0o700 });
   if (fs.existsSync(absolutePath)) {
     assertContentAddressedAsset(absolutePath, contentHash);
     return;
@@ -236,7 +236,7 @@ const materializeCanvasImageBytesAtRoot = (
   const contentHash = createHash("sha256").update(bytes).digest("hex");
   const extension = IMAGE_MIME_TO_EXTENSION[mimeType] ?? "";
   const fileName = `canvas-${contentHash}${extension}`;
-  publishContentAddressedAsset(assetsRootPath, fileName, bytes, contentHash);
+  cacheContentAddressedBytes(assetsRootPath, fileName, bytes, contentHash);
   return {
     source: getAssetSource(fileName),
     fileName,
@@ -266,7 +266,7 @@ export function materializeInlineImageAtRoot(
   const contentHash = createHash("sha256").update(bytes).digest("hex");
   const extension = IMAGE_MIME_TO_EXTENSION[mimeType] ?? "";
   const fileName = `${options.namespace}-${contentHash}${extension}`;
-  publishContentAddressedAsset(options.assetsRootPath, fileName, bytes, contentHash);
+  cacheContentAddressedBytes(options.assetsRootPath, fileName, bytes, contentHash);
   return { source: getAssetSource(fileName), fileName, mimeType };
 }
 
@@ -585,7 +585,7 @@ function readManagedAssetPreviewAtRoot(
   return { kind: "folder", manifest: parsed };
 }
 
-export interface ProfileAssetsService {
+export interface TemporaryAssetsService {
   readonly rootPath: string;
   readonly resolveAssetPath: (fileName: string) => string;
   readonly materializeCanvasImage: (
@@ -599,11 +599,11 @@ export interface ProfileAssetsService {
 }
 
 /** Binds all managed-asset operations to one immutable Profile root. */
-export function makeProfileAssets(input: {
+export function makeTemporaryAssets(input: {
   readonly assetsRootPath: string;
-}): ProfileAssetsService {
+}): TemporaryAssetsService {
   const rootPath = path.resolve(input.assetsRootPath);
-  const service: ProfileAssetsService = {
+  const service: TemporaryAssetsService = {
     rootPath,
     resolveAssetPath: (fileName) => resolveAssetPathInRoot(rootPath, fileName),
     materializeCanvasImage: (upload) => materializeCanvasImageAtRoot(upload, rootPath),

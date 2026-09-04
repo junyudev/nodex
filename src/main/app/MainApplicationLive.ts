@@ -64,7 +64,7 @@ import * as ApplicationOperationsLive from "./ApplicationOperationsLive";
 import * as RendererIngressLive from "./RendererIngressLive";
 import * as WindowApplicationLive from "./WindowApplicationLive";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { ProfileAssets } from "../local-store/ProfileAssets";
+import { TemporaryAssets } from "../local-store/TemporaryAssets";
 
 const runtimeError = (operation: string, cause: unknown) =>
   new MainApplicationError({ phase: "startup", operation, cause });
@@ -105,7 +105,7 @@ export const live: Layer.Layer<
   | MainApplicationError,
   | ElectronApp
   | ApplicationSettings
-  | ProfileAssets
+  | TemporaryAssets
   | ElectronDesktop
   | ElectronIpc
   | ElectronSyncIpc

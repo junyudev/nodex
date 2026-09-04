@@ -150,7 +150,9 @@ describe("portable Canvas scene kernel", () => {
         "file-1": {
           id: "file-1",
           mimeType: "image/png",
-          source: "nodex://assets/image.png",
+          source: "nodex://files/image.png",
+          fileVersion: 1,
+          defaultName: "image.png",
         },
       },
     });
@@ -244,5 +246,33 @@ describe("portable Canvas scene kernel", () => {
         restoreIdentity: "overflow",
       }),
     ).toThrow(CanvasSceneContractError);
+  });
+  test("keeps two slot versions of one File as independent exact targets", () => {
+    const scene = materializePortableCanvasScene({
+      elements: [
+        element("old", 1, 1, { type: "image", fileId: "old-slot" }),
+        element("new", 1, 2, { type: "image", fileId: "new-slot" }),
+      ],
+      files: {
+        "old-slot": {
+          id: "old-slot",
+          source: "nodex://files/shared",
+          fileVersion: 1,
+          defaultName: "Old.png",
+          mimeType: "image/png",
+        },
+        "new-slot": {
+          id: "new-slot",
+          source: "nodex://files/shared",
+          fileVersion: 4,
+          defaultName: "New.png",
+          mimeType: "image/png",
+        },
+      },
+    });
+    expect(scene.schemaVersion).toBe(2);
+    expect(scene.files["old-slot"]?.fileVersion).toBe(1);
+    expect(scene.files["new-slot"]?.fileVersion).toBe(4);
+    expect(scene.files["old-slot"]?.source).toBe(scene.files["new-slot"]?.source);
   });
 });

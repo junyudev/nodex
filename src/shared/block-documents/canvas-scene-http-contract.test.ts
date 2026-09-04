@@ -13,7 +13,7 @@ import { committedLocalCommit } from "../testing/local-commit";
 describe("Canvas scene HTTP contract", () => {
   const emptyScene = {
     kind: "canvas_scene",
-    schemaVersion: 1,
+    schemaVersion: 2,
     elements: [],
     appState: {},
     files: {},

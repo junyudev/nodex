@@ -5,7 +5,7 @@ import type { ElectronRendererBridge } from "./electron-renderer-transport";
 
 const emptyScene = {
   kind: "canvas_scene" as const,
-  schemaVersion: 1 as const,
+  schemaVersion: 2 as const,
   elements: [],
   appState: {},
   files: {},

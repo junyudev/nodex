@@ -41,6 +41,7 @@ export function RecoveryReview({
   const revision = state.drafts.find((draft) => draft.draft_id === draftId)?.revision;
   useEffect(() => {
     const version = ++request.current;
+    setInspection(null);
     if (!draftId) return;
     void module
       .inspect(draftId)
@@ -49,7 +50,13 @@ export function RecoveryReview({
         setInspection(value);
         setError(null);
         setConfirmDiscard(false);
-        setView(value.can_restore && value.restored ? "restored" : "retained");
+        setView((previous) =>
+          previous === "current" && value.current
+            ? "current"
+            : value.can_restore && value.restored
+              ? "restored"
+              : "retained",
+        );
       })
       .catch((error: unknown) => {
         if (request.current === version)
@@ -58,7 +65,7 @@ export function RecoveryReview({
     return () => {
       request.current += 1;
     };
-  }, [module, draftId, revision]);
+  }, [module, draftId, revision, state.previewRevision]);
   const current = inspection?.summary.draft_id === draftId ? inspection : null;
   const run = async (choice: RecoveryChoice) => {
     if (!current || busy) return;
@@ -203,6 +210,7 @@ export function RecoveryReview({
                 <RecoveryPreview
                   value={current[view]}
                   scope={module.scope}
+                  storeEpoch={state.storeEpoch}
                   documentId={current.capture.document_id}
                   draftId={current.summary.draft_id}
                 />

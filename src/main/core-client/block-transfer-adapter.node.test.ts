@@ -62,7 +62,6 @@ const coreResult = () => ({
     },
   ],
   affected_database_ids: [],
-  file_ownership_moves: [],
   page_keys: {},
   page_etags: {},
   move_etags: {},
@@ -79,6 +78,7 @@ const committedApply = (
 ): LibraryApplyResult => ({
   status: "committed",
   outcome: {
+    page_file_entries: [],
     affected_resource_ids: ["block:root"],
     page_copy: null,
     block_transfer: coreResult(),
@@ -195,11 +195,11 @@ describe("Core Block Transfer Adapter", () => {
       },
       final_location_revisions: { "page:wrapper": 2 },
       affected_database_ids: ["database:target"],
-      file_ownership_moves: [],
     };
     client.enqueueApply({
       ...committedApply(),
       outcome: {
+        page_file_entries: [],
         affected_resource_ids: ["page:wrapper", "database:target"],
         page_copy: null,
         block_transfer: dataSourceResult,
@@ -273,6 +273,7 @@ describe("Core Block Transfer Adapter", () => {
     client.enqueueApply({
       ...committedApply(),
       outcome: {
+        page_file_entries: [],
         affected_resource_ids: ["page:promoted"],
         page_copy: null,
         block_transfer: {
@@ -388,6 +389,7 @@ describe("Core Block Transfer Adapter", () => {
     client.enqueueApply({
       ...committedApply(),
       outcome: {
+        page_file_entries: [],
         affected_resource_ids: ["block:root", "page:promoted"],
         page_copy: null,
         block_transfer: null,
@@ -396,7 +398,6 @@ describe("Core Block Transfer Adapter", () => {
           restored_source_root_ids: ["block:root"],
           removed_page_ids: ["page:promoted"],
           document_commits: [],
-          file_ownership_moves: [],
         },
       },
       receipt: {

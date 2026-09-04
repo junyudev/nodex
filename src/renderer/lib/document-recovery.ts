@@ -34,8 +34,10 @@ export const documentRecoveryPort = {
       { ...scope.accessContext, libraryId: scope.libraryId },
       (_packet, atom) => {
         const payload = atom.payload;
-        if (payload.module === "owned_document" && payload.event.kind === "recovery_changed")
+        if (payload.module === "owned_document" && "document_id" in payload.event)
           listener(payload.event.document_id);
+        if (payload.module === "library" && Object.keys(payload.event.file_revisions).length > 0)
+          listener(null);
       },
       () => listener(null),
     );
@@ -49,6 +51,7 @@ export const documentRecoveryPort = {
 };
 export type DocumentRecoveryPort = typeof documentRecoveryPort;
 export interface DocumentRecoveryState {
+  readonly previewRevision: number;
   readonly drafts: readonly RecoveryDraftSummary[];
   readonly loading: boolean;
   readonly error: string | null;
@@ -57,6 +60,7 @@ export interface DocumentRecoveryState {
   readonly pendingCount: number;
 }
 const EMPTY: DocumentRecoveryState = {
+  previewRevision: 0,
   drafts: [],
   loading: true,
   error: null,
@@ -180,6 +184,7 @@ export class DocumentRecovery {
         loading: false,
         error: drainError,
         storeEpoch: epoch,
+        previewRevision: this.state.previewRevision + 1,
         hasMore: Boolean(this.cursor),
         pendingCount: result.value.page.pending_count,
       });

@@ -29,7 +29,12 @@ import {
 } from "@/lib/canvas-card-elements";
 import type { BoardSummary, DatabasePageSummary } from "@/lib/types";
 import type { PortableCanvasScene } from "../../../shared/block-documents";
-import { CanvasBinaryFileResolver, type CanvasBinaryFiles } from "@/lib/canvas-assets";
+import {
+  CanvasBinaryFileResolver,
+  createCanvasFileBridge,
+  subscribeCanvasFileAuthority,
+  type CanvasBinaryFiles,
+} from "@/lib/canvas-assets";
 import { CanvasSceneBinding } from "@/lib/canvas-scene-binding";
 import { CanvasSceneProvider } from "@/lib/canvas-scene-provider";
 import { canvasDocumentSessionRegistry } from "@/lib/canvas-document-session";
@@ -199,6 +204,7 @@ function CanvasEditor({
     readonly materialization: PortableCanvasScene;
     readonly files: CanvasBinaryFiles;
   } | null>(null);
+  const [fileReadGeneration, setFileReadGeneration] = useState(0);
   const [sceneError, setSceneError] = useState<string | null>(null);
   const exportRecoveryRef = useRef<(() => Promise<void>) | null>(null);
   const retrySceneRef = useRef<(() => void) | null>(null);
@@ -271,7 +277,15 @@ function CanvasEditor({
   useEffect(() => {
     let active = true;
     let preferencesRevision = 0;
-    const fileResolver = new CanvasBinaryFileResolver();
+    const fileBridge = createCanvasFileBridge(
+      {
+        libraryId: descriptor.libraryId,
+        storeEpoch: descriptor.storeEpoch,
+        contentAccessContext: descriptor.accessContext,
+      },
+      (file) => ({ kind: "canvas", canvas_id: descriptor.ownerBlockId, scene_file_id: file.id }),
+    );
+    const fileResolver = new CanvasBinaryFileResolver(fileBridge);
     let binding: CanvasSceneBinding | null = null;
     let presence: CanvasPresenceController | null = null;
     const documentSession = canvasDocumentSessionRegistry.acquire({
@@ -347,6 +361,7 @@ function CanvasEditor({
     window.addEventListener("blur", handleWindowBlur);
     binding = new CanvasSceneBinding({
       provider,
+      assetDependencies: fileBridge,
       stagedFileCatalog: documentSession.stagedFileCatalog,
       onRemoteScene: (scene) => {
         void presentScene(scene);
@@ -356,6 +371,35 @@ function CanvasEditor({
       },
     });
     bindingRef.current = binding;
+    let fileAuthorityReloading = false;
+    const releaseFileAuthority = subscribeCanvasFileAuthority(
+      {
+        libraryId: descriptor.libraryId,
+        storeEpoch: descriptor.storeEpoch,
+        contentAccessContext: descriptor.accessContext,
+      },
+      { canvasId: descriptor.ownerBlockId, documentId: descriptor.documentId },
+      () => {
+        if (!active) return;
+        if (fileAuthorityReloading) return;
+        fileAuthorityReloading = true;
+        preferencesRevision += 1;
+        fileResolver.clear();
+        excalidrawApiRef.current = null;
+        setResolvedScene(null);
+        setFileReadGeneration((value) => value + 1);
+        void (async () => {
+          try {
+            await binding?.persistDurable();
+          } catch {
+            await provider.checkpointRecovery();
+          }
+          await onReload();
+        })().catch((error: unknown) => {
+          if (active) setSceneError(error instanceof Error ? error.message : String(error));
+        });
+      },
+    );
     const unsubscribeScene = documentSession.subscribeScene(binding.presentRemoteScene);
     const unsubscribePresence = documentSession.subscribePresence(presence.receive);
     const runtime = canvasSceneSurfaceRegistry.acquire({
@@ -383,6 +427,7 @@ function CanvasEditor({
         });
       },
       disposeSubscriptions: () => {
+        releaseFileAuthority();
         unsubscribeScene();
         unsubscribePresence();
         unsubscribeStatus();
@@ -725,6 +770,7 @@ function CanvasEditor({
           onPointerDown={(event) => event.stopPropagation()}
         >
           <ExcalidrawLazy
+            key={fileReadGeneration}
             name={surfaceKey}
             excalidrawAPI={handleExcalidrawAPI}
             initialData={{

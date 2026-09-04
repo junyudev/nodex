@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
 
-import { parseAuthorizedReadStamp, type AuthorityResource } from "./authorized-read-stamp";
+import {
+  canonicalizeAuthorityResources,
+  parseAuthorizedReadStamp,
+  type AuthorityResource,
+} from "./authorized-read-stamp";
+import { revocationsFromVisibilityDelta } from "./local-commit-delivery";
 import { authorizedReadStampFixture } from "./testing/authorized-read-stamp-fixture";
 
 const address = {
@@ -10,6 +15,32 @@ const address = {
 } as const;
 
 describe("AuthorizedReadStamp boundary", () => {
+  test("accepts independent File reads and delivers exact File revocations", () => {
+    const file = { kind: "file", file_id: "file-1" } as const;
+    const canvas = { kind: "canvas", canvas_id: "canvas-1" } as const;
+    expect(canonicalizeAuthorityResources([file, canvas, file])).toEqual([canvas, file]);
+    const stamp = authorizedReadStampFixture({ deliveryAddress: address, subject: file });
+    expect(parseAuthorizedReadStamp(stamp)).toEqual(stamp);
+    expect(
+      revocationsFromVisibilityDelta({
+        authorization_scope: address,
+        roots: [file],
+        change: { kind: "revoke", reason: "access_revoked" },
+        delta_hash: "a".repeat(64),
+      }),
+    ).toEqual([
+      {
+        authorization_scope: address,
+        resource_kind: "file",
+        resource_id: "file-1",
+        reason: "access_revoked",
+      },
+    ]);
+    expect(() =>
+      parseAuthorizedReadStamp({ ...stamp, subject: { ...file, page_id: "page-1" } }),
+    ).toThrow();
+  });
+
   test("rejects resource kinds outside the generated ResourceKey union", () => {
     const stamp = authorizedReadStampFixture({
       deliveryAddress: address,

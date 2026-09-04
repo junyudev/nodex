@@ -36,6 +36,7 @@ const AUTHORITY_RELATIONS: &[&str] = &[
     "database_views",
     "data_source_page_memberships",
     "canvas_owners",
+    "library_files",
 ];
 #[derive(Debug)]
 pub(crate) struct VisibilityDeltaJournal {
@@ -734,6 +735,9 @@ fn candidate_resources(facts: &[DirtyFact]) -> Result<Vec<ResourceKey>, StoreErr
                             &mut resources,
                             ResourceKey::Canvas { canvas_id: root_id },
                         ),
+                        "file" => {
+                            insert_resource(&mut resources, ResourceKey::File { file_id: root_id })
+                        }
                         _ => return Err(corrupt("Visibility grant root kind is invalid")),
                     }
                 }
@@ -832,6 +836,12 @@ fn candidate_resources(facts: &[DirtyFact]) -> Result<Vec<ResourceKey>, StoreErr
                         },
                     );
                 }
+                "library_files" => insert_resource(
+                    &mut resources,
+                    ResourceKey::File {
+                        file_id: required_string(row, "file_id")?,
+                    },
+                ),
                 "canvas_owners" => insert_resource(
                     &mut resources,
                     ResourceKey::Canvas {
@@ -908,6 +918,9 @@ fn born_resources(facts: &[DirtyFact]) -> Result<BTreeSet<ResourceKey>, StoreErr
             continue;
         }
         for resource in [
+            inserted_resource(fact, "library_files", "file_id", |file_id| {
+                ResourceKey::File { file_id }
+            })?,
             inserted_resource(fact, "documents", "id", |document_id| {
                 ResourceKey::Document { document_id }
             })?,
@@ -978,6 +991,9 @@ fn fact_is_resource_birth(
         "data_source_page_memberships" => Ok(born.contains(&ResourceKey::Page {
             page_id: required_string(row, "page_block_id")?,
         })),
+        "library_files" => Ok(born.contains(&ResourceKey::File {
+            file_id: required_string(row, "file_id")?,
+        })),
         "canvas_owners" => Ok(born.contains(&ResourceKey::Canvas {
             canvas_id: required_string(row, "block_id")?,
         })),
@@ -989,6 +1005,7 @@ fn fact_is_resource_birth(
                     database_id: root_id,
                 }),
                 "canvas" => born.contains(&ResourceKey::Canvas { canvas_id: root_id }),
+                "file" => born.contains(&ResourceKey::File { file_id: root_id }),
                 _ => false,
             })
         }
@@ -1197,6 +1214,7 @@ fn observation(
         }
         ResourceKey::View { view_id } => (RevokedResourceKind::View, view_id),
         ResourceKey::Canvas { canvas_id } => (RevokedResourceKind::Canvas, canvas_id),
+        ResourceKey::File { file_id } => (RevokedResourceKind::File, file_id),
         ResourceKey::Library { .. } | ResourceKey::Project { .. } => return None,
     };
     Some(AuthorizedResourceObservation {
@@ -1226,6 +1244,9 @@ fn resource_from_observation(observation: &AuthorizedResourceObservation) -> Res
         },
         RevokedResourceKind::Canvas => ResourceKey::Canvas {
             canvas_id: resource_id,
+        },
+        RevokedResourceKind::File => ResourceKey::File {
+            file_id: resource_id,
         },
     }
 }

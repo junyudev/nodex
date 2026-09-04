@@ -35,6 +35,10 @@ import {
 import { parseNfm, nfmToBlockNote } from "@/lib/nfm";
 import { resolveAssetSourceToDisplayUrl } from "@/lib/assets";
 import { resolveAgentConfigChip, type AgentConfigProps } from "./agent-config-chip";
+import type { FileReadAuthority, FilePreviewAuthority } from "@/lib/library-file-resources";
+import { parseFileSource } from "../../../../shared/file-resources";
+import { FileReadBoundary, useFilePlacementRuntime } from "./file-runtime";
+import { AttachmentInlineContent } from "./attachment-chip";
 import { formatAttachmentBytes } from "./attachment-chip-format";
 import { AttachmentResourceIcon } from "../attachment-resource-icon";
 import { createReadonlyDateMentionInlineContentSpec } from "./date-mention-inline-content-spec";
@@ -70,6 +74,7 @@ import {
 import { BLOCK_CHILDREN_RULES } from "../../../../shared/block-documents/block-children-policy";
 
 interface ReadonlyNfmBlockNotePreviewProps {
+  fileAuthority?: FileReadAuthority | FilePreviewAuthority | null;
   content: string;
   projectId: string;
   pageId: string;
@@ -202,6 +207,8 @@ const createReadonlyAttachmentInlineContentSpec = () =>
   createReactInlineContentSpec(attachmentInlineContentConfig, {
     render: ({ inlineContent }) => {
       const props = inlineContent.props as PreviewAttachmentProps;
+      if (parseFileSource(props.source))
+        return <AttachmentInlineContent inlineContent={{ props }} />;
       return (
         <NodexTooltip tooltipContent={props.source}>
           <InlineReferenceVisual
@@ -336,7 +343,15 @@ function setToggleStates(toggleStates: ReadonlyPreviewDocument["toggleStates"]):
   return ids;
 }
 
-export function ReadonlyNfmBlockNotePreview({
+export function ReadonlyNfmBlockNotePreview(props: ReadonlyNfmBlockNotePreviewProps) {
+  return (
+    <FileReadBoundary authority={props.fileAuthority}>
+      <ReadonlyNfmPreviewContent {...props} />
+    </FileReadBoundary>
+  );
+}
+
+function ReadonlyNfmPreviewContent({
   content,
   projectId,
   pageId,
@@ -344,6 +359,7 @@ export function ReadonlyNfmBlockNotePreview({
   projectWorkspacePath,
   className,
 }: ReadonlyNfmBlockNotePreviewProps) {
+  const fileRuntime = useFilePlacementRuntime();
   const fileReferenceRouter = useFileReferenceRouter();
   const hostRuntime = useBlockReferenceHostRuntime();
   const { resolved: themeMode } = useTheme();
@@ -373,6 +389,10 @@ export function ReadonlyNfmBlockNotePreview({
       extensions: [nfmSyntaxHighlighter],
       initialContent: previewDocument.initialContent,
       resolveFileUrl: async (source) => {
+        if (parseFileSource(source)) {
+          if (!fileRuntime) throw new Error("File preview authority is unavailable");
+          return fileRuntime.readImageDataUrl(source);
+        }
         const displayUrl = resolveAssetSourceToDisplayUrl(source);
         if (!displayUrl) throw new Error("Managed image path is unavailable");
         return displayUrl;
@@ -384,7 +404,7 @@ export function ReadonlyNfmBlockNotePreview({
         splitCells: false,
       },
     },
-    [projectId, pageId, historyId, content],
+    [projectId, pageId, historyId, content, fileRuntime],
   );
 
   const openLocalReference = useCallback(

@@ -42,6 +42,20 @@ pub(crate) fn validate_current_store(connection: &Connection) -> Result<(), Stor
 /// current schema. Migration sources intentionally skip this check so a
 /// corrective migration can repair a previously published incomplete state.
 fn validate_current_document_projections(connection: &Connection) -> Result<(), StoreError> {
+    let invalid_files: i64 = connection.query_row(
+        "SELECT count(*) FROM library_files file WHERE
+         EXISTS(SELECT 1 FROM retired_file_ids retired WHERE retired.file_id = file.file_id)
+         OR (file.lifecycle = 'trashed' AND (
+           EXISTS(SELECT 1 FROM page_file_entries entry WHERE entry.file_id = file.file_id)
+           OR EXISTS(SELECT 1 FROM block_asset_refs reference WHERE reference.file_id = file.file_id)
+           OR EXISTS(SELECT 1 FROM canvas_scene_file_refs reference WHERE reference.target_file_id = file.file_id)
+         ))", [], |row| row.get(0),
+    )?;
+    expect_zero(
+        invalid_files,
+        "retired or trashed Files with live relationships",
+    )?;
+
     let invalid_materializations: i64 = connection.query_row(
         "SELECT \
            (SELECT count(*) FROM documents document \
@@ -283,7 +297,7 @@ fn validate_current_document_projections(connection: &Connection) -> Result<(), 
 
 /// Validates semantic authority encoded by the current Store contract.
 pub(crate) fn validate_store_semantics(connection: &Connection) -> Result<(), StoreError> {
-    validate_store_semantics_for_view_contract(connection, DatabaseViewStorageContract::V6)
+    validate_store_semantics_for_view_contract(connection, DatabaseViewStorageContract::V6, true)
 }
 
 /// Validates semantic authority while decoding versioned storage envelopes
@@ -291,13 +305,15 @@ pub(crate) fn validate_store_semantics(connection: &Connection) -> Result<(), St
 pub(crate) fn validate_migration_source_semantics(
     connection: &Connection,
     view_contract: DatabaseViewStorageContract,
+    has_library_files: bool,
 ) -> Result<(), StoreError> {
-    validate_store_semantics_for_view_contract(connection, view_contract)
+    validate_store_semantics_for_view_contract(connection, view_contract, has_library_files)
 }
 
 fn validate_store_semantics_for_view_contract(
     connection: &Connection,
     view_contract: DatabaseViewStorageContract,
+    has_library_files: bool,
 ) -> Result<(), StoreError> {
     let started_at = Instant::now();
     validate_codex_thread_timestamp_invariants(connection)?;
@@ -316,18 +332,20 @@ fn validate_store_semantics_for_view_contract(
     validate_database_relation_invariants(connection)?;
     validate_database_priority_invariants_for_view_contract(connection, view_contract)?;
     validate_library_content_ownership(connection)?;
-    validate_canvas_resource_grants(connection)?;
+    validate_project_resource_grants(connection, has_library_files)?;
     validate_document_block_tombstones(connection)?;
     validate_document_page_references(connection)?;
     validate_block_transfer_undo(connection)?;
-    validate_structural_edit_evidence(connection)?;
+    validate_structural_edit_evidence(connection, has_library_files)?;
     validate_document_version_retention_index(connection)?;
     validate_block_retention_state(connection)?;
     validate_document_materialization_derivation(connection)?;
-    crate::workspace::queued_follow_up::validate_all_stored_ledgers(
-        connection,
-        crate::workspace::queued_follow_up::QueuedAssetEvidenceMode::DatabaseOnly,
-    )?;
+    if has_library_files {
+        crate::workspace::queued_follow_up::validate_all_stored_ledgers(
+            connection,
+            crate::workspace::queued_follow_up::QueuedAssetEvidenceMode::DatabaseOnly,
+        )?;
+    }
     tracing::info!(
         durationMs = duration_millis(started_at.elapsed()),
         "Semantic Store validation completed"
@@ -899,15 +917,39 @@ fn validate_library_content_ownership(connection: &Connection) -> Result<(), Sto
     expect_zero(invalid, "Library content ownership mismatches")
 }
 
-fn validate_canvas_resource_grants(connection: &Connection) -> Result<(), StoreError> {
+fn validate_project_resource_grants(
+    connection: &Connection,
+    has_library_files: bool,
+) -> Result<(), StoreError> {
+    if !has_library_files {
+        let invalid: i64 = connection.query_row(
+            "SELECT count(*) FROM project_resource_grants grant_row \
+             LEFT JOIN projects project ON project.id = grant_row.project_id \
+             LEFT JOIN blocks block ON block.id = grant_row.root_id \
+             WHERE grant_row.lifecycle = 'active' AND ( \
+               project.id IS NULL OR project.library_id <> grant_row.library_id \
+               OR block.id IS NULL OR block.library_id <> grant_row.library_id \
+               OR block.type <> grant_row.root_kind \
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+        return expect_zero(invalid, "invalid active Project resource grants");
+    }
     let invalid: i64 = connection.query_row(
         "SELECT count(*) FROM project_resource_grants grant_row \
          LEFT JOIN projects project ON project.id = grant_row.project_id \
-         LEFT JOIN blocks block ON block.id = grant_row.root_id \
+         LEFT JOIN blocks block \
+           ON grant_row.root_kind <> 'file' AND block.id = grant_row.root_id \
+         LEFT JOIN library_files file \
+           ON grant_row.root_kind = 'file' AND file.file_id = grant_row.root_id \
          WHERE grant_row.lifecycle = 'active' AND ( \
            project.id IS NULL OR project.library_id <> grant_row.library_id \
-           OR block.id IS NULL OR block.library_id <> grant_row.library_id \
-           OR block.type <> grant_row.root_kind \
+           OR (grant_row.root_kind = 'file' AND ( \
+                file.file_id IS NULL OR file.library_id <> grant_row.library_id)) \
+           OR (grant_row.root_kind <> 'file' AND ( \
+                block.id IS NULL OR block.library_id <> grant_row.library_id \
+                OR block.type <> grant_row.root_kind)) \
          )",
         [],
         |row| row.get(0),
@@ -973,7 +1015,10 @@ fn validate_block_transfer_undo(connection: &Connection) -> Result<(), StoreErro
     expect_zero(invalid, "invalid Block transfer Undo recipes")
 }
 
-fn validate_structural_edit_evidence(connection: &Connection) -> Result<(), StoreError> {
+fn validate_structural_edit_evidence(
+    connection: &Connection,
+    has_library_files: bool,
+) -> Result<(), StoreError> {
     let installed = connection
         .query_row(
             "SELECT 1 FROM sqlite_schema WHERE type = 'table' \
@@ -1029,8 +1074,16 @@ fn validate_structural_edit_evidence(connection: &Connection) -> Result<(), Stor
     )?;
     expect_zero(invalid_roots, "invalid structural cut roots")?;
 
+    let file_clause = if has_library_files {
+        "OR (member.member_kind = 'file' AND NOT EXISTS ( \
+           SELECT 1 FROM library_files file WHERE file.file_id = member.member_id \
+             AND file.library_id = member.library_id))"
+    } else {
+        ""
+    };
     let invalid_members: i64 = connection.query_row(
-        "SELECT count(*) FROM structural_retention_members member \
+        &format!(
+            "SELECT count(*) FROM structural_retention_members member \
          WHERE (member.authority_kind = 'clipboard_bundle' AND NOT EXISTS ( \
                   SELECT 1 FROM structural_clipboard_bundles bundle \
                   WHERE bundle.bundle_id = member.authority_id \
@@ -1045,9 +1098,11 @@ fn validate_structural_edit_evidence(connection: &Connection) -> Result<(), Stor
             OR (member.member_kind = 'document' AND NOT EXISTS ( \
                   SELECT 1 FROM documents document WHERE document.id = member.member_id \
                     AND document.library_id = member.library_id)) \
+            {file_clause} \
             OR (member.member_kind = 'database' AND NOT EXISTS ( \
                   SELECT 1 FROM blocks block WHERE block.id = member.member_id \
-                    AND block.library_id = member.library_id AND block.type = 'database'))",
+                    AND block.library_id = member.library_id AND block.type = 'database'))"
+        ),
         [],
         |row| row.get(0),
     )?;

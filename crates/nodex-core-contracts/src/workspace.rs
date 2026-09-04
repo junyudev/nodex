@@ -1232,10 +1232,15 @@ pub enum ProjectWorkspaceIntent {
     DeleteThread {
         thread_id: String,
     },
+    RetainThreadAssets {
+        thread_id: String,
+        prepared_blob_receipt_ids: Vec<String>,
+    },
     CommitQueuedFollowUpLedger {
         thread_id: String,
         expected_revision: i64,
         entries: Vec<ProjectWorkspaceQueuedFollowUpEntry>,
+        prepared_blob_receipt_ids: Vec<String>,
     },
     ObserveAppServerThreadWindow {
         sweep_id: String,
@@ -1617,6 +1622,7 @@ mod tests {
     #[test]
     fn queued_follow_up_contract_keeps_queue_and_wire_identities_distinct() {
         let intent = ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+            prepared_blob_receipt_ids: Vec::new(),
             thread_id: "thread-1".to_owned(),
             expected_revision: 7,
             entries: vec![ProjectWorkspaceQueuedFollowUpEntry {
@@ -1627,8 +1633,8 @@ mod tests {
                     reason: "Interrupted before the steer was accepted.".to_owned(),
                 }),
                 payload: ProjectWorkspaceQueuedFollowUpPayloadRef {
-                    schema_version: 1,
-                    asset_uri: "nodex://assets/queued-follow-up-v1-abc.json".to_owned(),
+                    schema_version: 2,
+                    asset_uri: format!("nodex://assets/{}.blob", "a".repeat(64)),
                     sha256: "a".repeat(64),
                     byte_length: 123,
                 },
@@ -1639,6 +1645,6 @@ mod tests {
         assert_eq!(encoded["entries"][0]["follow_up_id"], "follow-up-1");
         assert_eq!(encoded["entries"][0]["client_user_message_id"], "message-1");
         assert_eq!(encoded["entries"][0]["pause"]["kind"], "interrupted");
-        assert_eq!(encoded["entries"][0]["payload"]["schema_version"], 1);
+        assert_eq!(encoded["entries"][0]["payload"]["schema_version"], 2);
     }
 }

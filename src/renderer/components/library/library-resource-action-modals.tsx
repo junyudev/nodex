@@ -25,9 +25,10 @@ import { LibraryResourceAccessDialog } from "./library-resource-access-dialog";
 import {
   libraryResourceTargetKey,
   type LibraryProjectOption,
-  type LibraryResourceTarget,
+  type LibraryResourceTarget as PlacedLibraryResourceTarget,
   type OpenLibraryResourceInProject,
 } from "./library-resource-action-types";
+import type { LibraryResourceTarget } from "../../../shared/library-module";
 
 interface LibraryResourceAccessModalProps extends ModalCloseProps {
   readonly target: LibraryResourceTarget;
@@ -68,14 +69,18 @@ function LibraryResourceAccessModalContent({
   );
 }
 
+const accessTargetKey = (target: LibraryResourceTarget): string => {
+  if (target.kind === "file") return `file:${target.fileId}`;
+  if (target.kind === "canvas") return `canvas:${target.canvasId}`;
+  return libraryResourceTargetKey(target);
+};
+
 export function LibraryResourceAccessModal(props: LibraryResourceAccessModalProps) {
-  return (
-    <LibraryResourceAccessModalContent key={libraryResourceTargetKey(props.target)} {...props} />
-  );
+  return <LibraryResourceAccessModalContent key={accessTargetKey(props.target)} {...props} />;
 }
 
 interface LibraryOpenInProjectModalProps extends ModalCloseProps {
-  readonly target: LibraryResourceTarget;
+  readonly target: PlacedLibraryResourceTarget;
   readonly title: string;
   readonly projects: readonly LibraryProjectOption[];
   readonly onOpenInProject: OpenLibraryResourceInProject;

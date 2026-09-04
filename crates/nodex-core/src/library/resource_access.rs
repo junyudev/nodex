@@ -188,6 +188,15 @@ fn target_coordinates(
     target: &LibraryResourceTarget,
 ) -> Result<TargetCoordinates, StoreError> {
     match target {
+        LibraryResourceTarget::File { file_id } => {
+            super::files::metadata(connection, library_id, file_id)?;
+            Ok(TargetCoordinates {
+                target_kind: "file",
+                target_id: file_id.clone(),
+                ancestor_pages: HashMap::new(),
+                owning_database: None,
+            })
+        }
         LibraryResourceTarget::Database { database_id } => {
             let (name, containing_document_id) = connection
                 .query_row(

@@ -4,46 +4,38 @@ import { act, fireEvent, render, waitFor, within } from "@testing-library/react"
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import { PageFileReadCache } from "@/lib/page-file-read-cache";
+import { FileReadCache } from "@/lib/file-read-cache";
 import "../../../globals.css";
 import type { AttachmentProps } from "./attachment-chip";
 import { nfmSchema } from "./nfm-schema";
 import {
-  createPageFilePlacementRuntime,
-  PageFileRuntimeProvider,
-  type PageFilePlacementRuntime,
-} from "./page-file-runtime";
+  createFilePlacementRuntime,
+  FileRuntimeProvider,
+  type FilePlacementRuntime,
+} from "./file-runtime";
 
 const settleEditor = async (): Promise<void> => {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   await Promise.resolve();
 };
 
-type PageFileMetadata = Awaited<ReturnType<PageFilePlacementRuntime["metadata"]>>;
+type FileMetadata = Awaited<ReturnType<FilePlacementRuntime["metadata"]>>;
 
-const createPageFileMetadata = (overrides: Partial<PageFileMetadata> = {}): PageFileMetadata => ({
-  fileId: "file-1",
-  ownerPageId: "page-1",
-  logicalPath: "videos/review.webm",
-  mimeType: "video/webm",
-  byteLength: 0,
+const createFileMetadata = (overrides: Partial<FileMetadata> = {}): FileMetadata => ({
+  file_id: "file-1",
+  default_name: "review.webm",
+  mime_type: "video/webm",
+  byte_length: 0,
   version: 1,
-  blobEtag: "etag-1",
-  state: "live",
-  createdByActorId: "actor-1",
-  createdByTurnId: null,
-  createdAt: "2026-08-28T00:00:00.000Z",
-  updatedAt: "2026-08-28T00:00:00.000Z",
-  bodyUsage: { kind: "placed", placementCount: 1 },
+  blob_etag: "etag-1",
   ...overrides,
 });
 
-const createPageFileRuntime = (
-  overrides: Partial<PageFilePlacementRuntime> = {},
-): PageFilePlacementRuntime => {
+const createFileRuntime = (overrides: Partial<FilePlacementRuntime> = {}): FilePlacementRuntime => {
   const authority = {
+    libraryId: "library-1",
     contentAccessContext: { kind: "project", projectId: "project-1" },
-    pageId: "page-1",
+    readSource: { kind: "page", page_id: "page-1" },
     storeEpoch: "store-1",
   } as const;
   const read =
@@ -53,15 +45,15 @@ const createPageFileRuntime = (
       mimeType: "video/webm",
       etag: "etag-1",
     }));
-  const readMetadata = overrides.metadata ?? (async () => createPageFileMetadata());
-  const cache = new PageFileReadCache({
+  const readMetadata = overrides.metadata ?? (async () => createFileMetadata());
+  const cache = new FileReadCache({
     readMetadata: (_, fileId) => readMetadata(`nodex://files/${fileId}`),
     readBytes: (_, fileId) => read(`nodex://files/${fileId}`),
     createObjectUrl: (file) => `blob:${file.etag}`,
     revokeObjectUrl: () => undefined,
   });
   return {
-    ...createPageFilePlacementRuntime(authority, cache),
+    ...createFilePlacementRuntime(authority, cache),
     ...(overrides.upload ? { upload: overrides.upload } : {}),
     ...(overrides.readImageDataUrl ? { readImageDataUrl: overrides.readImageDataUrl } : {}),
     ...(overrides.save ? { save: overrides.save } : {}),
@@ -69,7 +61,7 @@ const createPageFileRuntime = (
 };
 
 const renderAttachment = (
-  pageFileRuntime: PageFilePlacementRuntime,
+  fileRuntime: FilePlacementRuntime,
   props: AttachmentProps,
   blockId: string,
 ) => {
@@ -85,7 +77,7 @@ const renderAttachment = (
   });
   const view = render(
     <NodexTooltipProvider>
-      <PageFileRuntimeProvider value={pageFileRuntime}>
+      <FileRuntimeProvider value={fileRuntime}>
         <BlockNoteView
           editor={editor}
           formattingToolbar={false}
@@ -94,16 +86,16 @@ const renderAttachment = (
           sideMenu={false}
           tableHandles={false}
         />
-      </PageFileRuntimeProvider>
+      </FileRuntimeProvider>
     </NodexTooltipProvider>,
   );
   return { editor, view };
 };
 
-describe("attachment chip Page Files", () => {
+describe("attachment chip Library Files", () => {
   test("uses the same format icon in the chip and its popover", async () => {
     const { editor, view } = renderAttachment(
-      createPageFileRuntime(),
+      createFileRuntime(),
       {
         kind: "file",
         mode: "materialized",
@@ -159,24 +151,22 @@ describe("attachment chip Page Files", () => {
   });
 
   test("reuses preview bytes while open and releases them when the popover closes", async () => {
-    let resolveMetadata!: (
-      value: Awaited<ReturnType<PageFilePlacementRuntime["metadata"]>>,
-    ) => void;
+    let resolveMetadata!: (value: Awaited<ReturnType<FilePlacementRuntime["metadata"]>>) => void;
     const metadata = vi.fn(
       () =>
-        new Promise<Awaited<ReturnType<PageFilePlacementRuntime["metadata"]>>>((resolve) => {
+        new Promise<Awaited<ReturnType<FilePlacementRuntime["metadata"]>>>((resolve) => {
           resolveMetadata = resolve;
         }),
     );
-    let resolveRead!: (value: Awaited<ReturnType<PageFilePlacementRuntime["read"]>>) => void;
+    let resolveRead!: (value: Awaited<ReturnType<FilePlacementRuntime["read"]>>) => void;
     const read = vi.fn(
       () =>
-        new Promise<Awaited<ReturnType<PageFilePlacementRuntime["read"]>>>((resolve) => {
+        new Promise<Awaited<ReturnType<FilePlacementRuntime["read"]>>>((resolve) => {
           resolveRead = resolve;
         }),
     );
     const { editor, view } = renderAttachment(
-      createPageFileRuntime({ read, metadata }),
+      createFileRuntime({ read, metadata }),
       {
         kind: "file",
         mode: "materialized",
@@ -205,10 +195,10 @@ describe("attachment chip Page Files", () => {
 
       await act(async () => {
         resolveMetadata(
-          createPageFileMetadata({
-            logicalPath: "reports/renamed-result.json",
-            mimeType: "application/json",
-            byteLength: 18,
+          createFileMetadata({
+            default_name: "renamed-result.json",
+            mime_type: "application/json",
+            byte_length: 18,
           }),
         );
         await Promise.resolve();
@@ -261,15 +251,15 @@ describe("attachment chip Page Files", () => {
   });
 
   test("keeps the current label visible while exact metadata refreshes", async () => {
-    let resolveRefresh!: (value: PageFileMetadata) => void;
-    const refresh = new Promise<PageFileMetadata>((resolve) => {
+    let resolveRefresh!: (value: FileMetadata) => void;
+    const refresh = new Promise<FileMetadata>((resolve) => {
       resolveRefresh = resolve;
     });
     const metadata = vi
-      .fn<() => Promise<PageFileMetadata>>()
-      .mockResolvedValueOnce(createPageFileMetadata({ logicalPath: "reports/current.json" }))
+      .fn<() => Promise<FileMetadata>>()
+      .mockResolvedValueOnce(createFileMetadata({ default_name: "current.json" }))
       .mockImplementationOnce(() => refresh);
-    const runtime = createPageFileRuntime({ metadata });
+    const runtime = createFileRuntime({ metadata });
     const { editor, view } = renderAttachment(
       runtime,
       {
@@ -298,50 +288,11 @@ describe("attachment chip Page Files", () => {
       expect(metadata).toHaveBeenCalledTimes(2);
 
       await act(async () => {
-        resolveRefresh(createPageFileMetadata({ logicalPath: "reports/renamed.json", version: 2 }));
+        resolveRefresh(createFileMetadata({ default_name: "renamed.json", version: 2 }));
         await refresh;
       });
       await view.findByText("renamed.json");
       expect(view.queryByText("current.json")).toBeNull();
-    } finally {
-      view.unmount();
-      editor._tiptapEditor.destroy();
-    }
-  });
-
-  test("discloses a foreign owner without exposing an unreadable Page identity", async () => {
-    const { editor, view } = renderAttachment(
-      createPageFileRuntime({
-        metadata: async () =>
-          createPageFileMetadata({
-            ownerPageId: "page-secret-uuid",
-            logicalPath: "references/source.json",
-            mimeType: "application/json",
-          }),
-      }),
-      {
-        kind: "file",
-        mode: "materialized",
-        source: "nodex://files/file-1",
-        name: "source.json",
-        mimeType: "application/json",
-      },
-      "foreign-owner-attachment-block",
-    );
-
-    try {
-      const chip = (await view.findByText("source.json")).closest("button");
-      expect(chip).not.toBeNull();
-      if (!chip) throw new Error("Attachment chip was not rendered");
-
-      await act(async () => {
-        fireEvent.click(chip);
-        await settleEditor();
-      });
-
-      const popover = await view.findByRole("dialog");
-      expect(within(popover).getByText("From another Page")).toBeVisible();
-      expect(within(popover).queryByText("page-secret-uuid")).toBeNull();
     } finally {
       view.unmount();
       editor._tiptapEditor.destroy();
@@ -353,13 +304,13 @@ describe("attachment chip Page Files", () => {
       throw new Error("preview unavailable");
     });
     const { editor, view } = renderAttachment(
-      createPageFileRuntime({
+      createFileRuntime({
         read,
         metadata: async () =>
-          createPageFileMetadata({
-            logicalPath: "result.json",
-            mimeType: "application/json",
-            byteLength: 18,
+          createFileMetadata({
+            default_name: "result.json",
+            mime_type: "application/json",
+            byte_length: 18,
           }),
       }),
       {

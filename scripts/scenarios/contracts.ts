@@ -21,6 +21,11 @@ import type {
   SidebarSectionSummary,
 } from "../../src/shared/sidebar-sections";
 import type { ProjectSession } from "../../src/shared/types";
+import type {
+  LibraryFile,
+  LibraryPageFileEntryReceipt,
+  LibraryPageFileInventory,
+} from "../../src/shared/library-files";
 
 export const SCENARIO_MANIFEST_VERSION = 1 as const;
 
@@ -51,6 +56,32 @@ export interface ScenarioDocumentReplacement {
   readonly projectId: string;
   readonly pageId: string;
   readonly nfm: string;
+}
+
+export interface ScenarioLibraryFileSeed {
+  readonly operationId: string;
+  readonly projectId: string;
+  readonly fileId: string;
+  readonly defaultName: string;
+  readonly mimeType: string;
+  readonly bytes: Uint8Array;
+}
+
+export interface ScenarioPageFileEntrySeed {
+  readonly operationId: string;
+  readonly projectId: string;
+  readonly pageId: string;
+  readonly fileId: string;
+  readonly logicalPath: string;
+  readonly expectedManifestRevision: number;
+}
+
+export interface ScenarioDocumentCheckpointSeed {
+  readonly operationId: string;
+  readonly projectId: string;
+  readonly pageId: string;
+  readonly documentId: string;
+  readonly label: string;
 }
 
 export interface ScenarioPageObservation {
@@ -107,6 +138,10 @@ export interface ScenarioSeedPort {
   replaceOwnedDocument(
     input: ScenarioDocumentReplacement,
   ): Promise<{ readonly commitSeq: number; readonly createdBlockIds: readonly string[] }>;
+  createLibraryFile(input: ScenarioLibraryFileSeed): Promise<LibraryFile>;
+  addPageFileEntry(input: ScenarioPageFileEntrySeed): Promise<LibraryPageFileEntryReceipt>;
+  readPageFileInventory(projectId: string, pageId: string): Promise<LibraryPageFileInventory>;
+  createDocumentCheckpoint(input: ScenarioDocumentCheckpointSeed): Promise<string>;
   readPage(
     projectId: string,
     pageId: string,

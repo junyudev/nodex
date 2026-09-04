@@ -17,6 +17,7 @@ import {
   type LibraryPageRelocationUndoToken,
   type LibraryReadValue,
   type LibraryResourceTarget,
+  type LibraryPlacedResourceTarget,
   type LibraryRouteTarget,
 } from "../../shared/library-module";
 import { libraryContentAccess } from "../../shared/content-access-context";
@@ -157,7 +158,7 @@ export const libraryCatalogQueryOptions = (
   });
 
 export const libraryMoveDestinationsQueryOptions = (
-  target: LibraryResourceTarget,
+  target: LibraryPlacedResourceTarget,
   input: Omit<
     Extract<LibraryModuleReadRequest["read"], { mode: "move_destinations" }>,
     "mode" | "target"
@@ -420,7 +421,7 @@ export const useLibraryCatalog = (
 ) => useQuery({ ...libraryCatalogQueryOptions(input), enabled });
 
 export const useLibraryMoveDestinations = (
-  target: LibraryResourceTarget,
+  target: LibraryPlacedResourceTarget,
   input: Parameters<typeof libraryMoveDestinationsQueryOptions>[1],
   enabled = true,
 ) =>
@@ -430,7 +431,7 @@ export const useLibraryMoveDestinations = (
   });
 
 export const useInfiniteLibraryMoveDestinations = (
-  target: LibraryResourceTarget,
+  target: LibraryPlacedResourceTarget,
   input: Omit<Parameters<typeof libraryMoveDestinationsQueryOptions>[1], "cursor">,
   enabled = true,
 ) =>
@@ -456,7 +457,7 @@ export const useInfiniteLibraryMoveDestinations = (
   });
 
 export const useLibraryMoveDestinationChildren = (
-  target: LibraryResourceTarget,
+  target: LibraryPlacedResourceTarget,
   pageIds: readonly string[],
   enabled = true,
 ) =>

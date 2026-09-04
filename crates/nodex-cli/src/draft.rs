@@ -82,7 +82,7 @@ struct DraftManifest {
     normalized_base_metadata_sha256: String,
     base_title_etag: String,
     base_body_etag: String,
-    base_page_files: nodex_core_contracts::library::LibraryPageFileManifest,
+    base_page_files: nodex_core_contracts::library::LibraryPageFileInventory,
     paths: DraftPaths,
 }
 
@@ -1695,7 +1695,7 @@ mod tests {
             document_head_seq: 1,
             meta_yaml: String::new(),
             body_nested_markdown: body.to_owned(),
-            page_files: nodex_core_contracts::library::LibraryPageFileManifest {
+            page_files: nodex_core_contracts::library::LibraryPageFileInventory {
                 page_id: "page-1".to_owned(),
                 revision: 0,
                 body_usage_revision: 0,
@@ -1703,10 +1703,8 @@ mod tests {
                 next_cursor: None,
                 has_more: false,
                 total: 0,
-                live_total: 0,
                 unplaced_total: 0,
                 placed_total: 0,
-                deleted_total: 0,
             },
             title_etag: "title-etag".to_owned(),
             body_etag: body_etag.to_owned(),
@@ -1736,7 +1734,7 @@ mod tests {
             normalized_base_metadata_sha256: normalized_metadata_hash(&parsed).unwrap(),
             base_title_etag: "title-etag".to_owned(),
             base_body_etag: "body-etag".to_owned(),
-            base_page_files: nodex_core_contracts::library::LibraryPageFileManifest {
+            base_page_files: nodex_core_contracts::library::LibraryPageFileInventory {
                 page_id: "page-1".to_owned(),
                 revision: 0,
                 body_usage_revision: 0,
@@ -1744,10 +1742,8 @@ mod tests {
                 next_cursor: None,
                 has_more: false,
                 total: 0,
-                live_total: 0,
                 unplaced_total: 0,
                 placed_total: 0,
-                deleted_total: 0,
             },
             paths: DraftPaths::default(),
         };

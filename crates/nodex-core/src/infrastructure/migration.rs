@@ -195,6 +195,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 151,
         apply: migrate_v150_to_v151,
     },
+    MigrationStep {
+        from_revision: 151,
+        to_revision: 152,
+        apply: migrate_v151_to_v152,
+    },
 ];
 
 fn resolve_migration_path(
@@ -415,7 +420,11 @@ fn validate_migration_source(
     } else {
         DatabaseViewStorageContract::V6
     };
-    validate_migration_source_semantics(connection, view_contract)?;
+    validate_migration_source_semantics(
+        connection,
+        view_contract,
+        source_revision >= CURRENT_STORE_REVISION,
+    )?;
     if source_revision >= CURRENT_DOCUMENT_SCHEMA_REVISION {
         validate_restore_documents(connection)?;
     } else {
@@ -1761,10 +1770,10 @@ fn normalize_stored_view_filter_arities(value: &mut Value) -> Result<u64, StoreE
             }
         }
     }
-    if let Some(advanced_filter) = value.pointer_mut("/rules/advancedFilter") {
-        if !advanced_filter.is_null() {
-            repaired += normalize_filter_value_arity(advanced_filter)?;
-        }
+    if let Some(advanced_filter) = value.pointer_mut("/rules/advancedFilter")
+        && !advanced_filter.is_null()
+    {
+        repaired += normalize_filter_value_arity(advanced_filter)?;
     }
     Ok(repaired)
 }
@@ -1961,6 +1970,33 @@ fn migrate_v150_to_v151(
             context.target_schema_fingerprint,
             context.backup_name,
             context.completed_at_unix_ms,
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v151_to_v152(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    let evidence = super::library_files_migration::migrate_v151_to_v152(
+        connection,
+        context.completed_at_unix_ms,
+    )?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(
+           source_revision, target_revision, source_schema_fingerprint,
+           target_schema_fingerprint, backup_name, completed_at_unix_ms, evidence_json
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+            evidence,
         ],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
@@ -2180,6 +2216,8 @@ fn with_schema_rebuild_transaction<T>(
 ) -> Result<T, StoreError> {
     let foreign_keys_enabled: bool =
         connection.query_row("PRAGMA foreign_keys", [], |row| row.get::<_, bool>(0))?;
+    let legacy_alter_table_enabled: bool =
+        connection.query_row("PRAGMA legacy_alter_table", [], |row| row.get::<_, bool>(0))?;
     if foreign_keys_enabled {
         connection.pragma_update(None, "foreign_keys", false)?;
     }
@@ -2193,16 +2231,19 @@ fn with_schema_rebuild_transaction<T>(
         )?;
         Ok(value)
     });
-    let restore = if foreign_keys_enabled {
+    // Both pragmas are connection state rather than transaction state. Restore
+    // them after commit or rollback so a failed rebuild cannot poison a retry.
+    let restore_legacy_alter_table =
+        connection.pragma_update(None, "legacy_alter_table", legacy_alter_table_enabled);
+    let restore_foreign_keys = if foreign_keys_enabled {
         connection.pragma_update(None, "foreign_keys", true)
     } else {
         Ok(())
     };
-    match (result, restore) {
-        (Ok(value), Ok(())) => Ok(value),
-        (Err(error), Ok(())) => Err(error),
-        (Ok(_), Err(error)) => Err(StoreError::from(error)),
-        (Err(error), Err(_)) => Err(error),
+    match (result, restore_legacy_alter_table, restore_foreign_keys) {
+        (Ok(value), Ok(()), Ok(())) => Ok(value),
+        (Err(error), _, _) => Err(error),
+        (Ok(_), Err(error), _) | (Ok(_), Ok(()), Err(error)) => Err(StoreError::from(error)),
     }
 }
 
@@ -3519,6 +3560,34 @@ mod tests {
         .expect("published v148 fixture");
     }
 
+    fn install_v151_fixture(home: &Path) {
+        install_v136_fixture(home);
+        let mut connection = open_writer(&home.join("nodex.db")).expect("v136 writer");
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            for step in MIGRATION_STEPS
+                .iter()
+                .filter(|step| step.from_revision >= 136 && step.to_revision <= 151)
+            {
+                let source = published_format(step.from_revision)?;
+                let target = published_format(step.to_revision)?;
+                (step.apply)(
+                    transaction,
+                    &MigrationContext {
+                        source_revision: step.from_revision,
+                        target_revision: step.to_revision,
+                        backup_name: "published-v151-fixture.db".to_owned(),
+                        source_schema_fingerprint: source.schema_fingerprint,
+                        target_schema_fingerprint: target.schema_fingerprint,
+                        completed_at_unix_ms: 1,
+                    },
+                )?;
+                validate_schema_identity(transaction, step.to_revision)?;
+            }
+            Ok(())
+        })
+        .expect("published v151 fixture");
+    }
+
     fn profile_secrets(connection: &Connection) -> (Vec<u8>, String) {
         let token = connection
             .query_row(
@@ -3821,7 +3890,7 @@ mod tests {
                 .schema_fingerprint
         );
         assert!(history.iter().all(|row| row.4 == history[0].4));
-        assert!(history[0].4.starts_with("v130-to-v151-"));
+        assert!(history[0].4.starts_with("v130-to-v152-"));
         assert!(history[0].4.ends_with(".db"));
         assert!(history.iter().all(|row| row.5 > 0));
         let backup_path = directory
@@ -3966,7 +4035,6 @@ mod tests {
             "codex_queued_follow_up_entries",
             "codex_queued_follow_up_payload_manifests",
             "codex_queued_follow_up_payload_asset_refs",
-            "codex_queued_follow_up_manifest_gc",
         ] {
             let exists = connection
                 .query_row(
@@ -3979,6 +4047,18 @@ mod tests {
                 .is_some();
             assert!(exists, "missing {table}");
         }
+        assert!(
+            connection
+                .query_row(
+                    "SELECT 1 FROM sqlite_schema WHERE type = 'table' \
+                     AND name = 'codex_queued_follow_up_manifest_gc'",
+                    [],
+                    |_| Ok(()),
+                )
+                .optional()
+                .expect("legacy queue GC schema query")
+                .is_none()
+        );
     }
 
     #[test]
@@ -4016,8 +4096,8 @@ mod tests {
                 },
             )
             .expect("v136 migration history");
-        assert_eq!((source_revision, target_revision), (150, 151));
-        assert!(backup_name.starts_with("v136-to-v151-"));
+        assert_eq!((source_revision, target_revision), (151, 152));
+        assert!(backup_name.starts_with("v136-to-v152-"));
         let backup_path = directory
             .path()
             .join("backups/core-migrations")
@@ -4044,6 +4124,787 @@ mod tests {
                 .expect("backups")
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn v151_page_owned_file_migrates_to_library_identity_bytes_entry_and_grant() {
+        let directory = tempdir().expect("Profile");
+        install_v151_fixture(directory.path());
+        let mut connection = open_writer(&directory.path().join("nodex.db")).expect("writer");
+        validate_schema_identity(&connection, 151).expect("exact published v151 Store");
+
+        let library_id = connection
+            .query_row("SELECT id FROM libraries ORDER BY id LIMIT 1", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .expect("fixture Library");
+        let source_epoch = connection
+            .query_row(
+                "SELECT store_epoch FROM block_store_metadata WHERE id = 1",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .expect("source epoch");
+        let alpha = b"alpha";
+        let beta = b"beta";
+        let alpha_hash = hex::encode(Sha256::digest(alpha));
+        let beta_hash = hex::encode(Sha256::digest(beta));
+        let canvas_bytes = b"legacy-canvas-image";
+        let canvas_hash = hex::encode(Sha256::digest(canvas_bytes));
+        let canvas_name = "legacy-canvas.png";
+        let canvas_uri = format!("nodex://assets/{canvas_name}");
+        let canvas_file = json!({
+            "id": "slot:legacy",
+            "mimeType": "image/png",
+            "source": canvas_uri.clone(),
+            "created": 1
+        });
+        let canvas_file_json = crate::document::canonical_canvas_json(&canvas_file)
+            .expect("canonical legacy Canvas File");
+        let canvas_file_hash = hex::encode(Sha256::digest(canvas_file_json.as_bytes()));
+        let mut canvas_bucket_hasher = Sha256::new();
+        canvas_bucket_hasher.update(b"nodex.canvas.bucket-index.v1\0");
+        canvas_bucket_hasher.update(b"file");
+        canvas_bucket_hasher.update([0]);
+        canvas_bucket_hasher.update(b"slot:legacy");
+        let canvas_bucket_digest = canvas_bucket_hasher.finalize();
+        let canvas_bucket =
+            (u16::from_be_bytes([canvas_bucket_digest[0], canvas_bucket_digest[1]]) >> 6) & 0x03ff;
+        let canvas_checkpoint = serde_json::to_vec(&json!({
+            "kind": "canvas_scene",
+            "schemaVersion": 1,
+            "elements": [],
+            "appState": {},
+            "files": { "slot:legacy": canvas_file },
+            "pageReferences": [],
+            "plainText": "",
+            "preview": ""
+        }))
+        .expect("legacy Canvas checkpoint");
+        let canvas_checkpoint_hash = hex::encode(Sha256::digest(&canvas_checkpoint));
+
+        let queued_asset = b"queued-attachment";
+        let queued_asset_hash = hex::encode(Sha256::digest(queued_asset));
+        let queued_asset_uri = "nodex://assets/legacy-queued.txt";
+        let queued_manifest = serde_json::to_vec(&json!({
+            "schema_version": 1,
+            "payload": {
+                "prompt": "inspect attachment",
+                "prompt_input": { "attachment": queued_asset_uri }
+            }
+        }))
+        .expect("legacy queued manifest");
+        let queued_manifest_hash = hex::encode(Sha256::digest(&queued_manifest));
+        let queued_manifest_name = "queued-follow-up-v1-migration.json";
+        let genesis = crate::document::prepare_page_yjs_genesis(
+            "document:file-migration",
+            "",
+            "01890f44-7f00-7000-8000-000000000010",
+        )
+        .expect("Page genesis");
+        fs::create_dir_all(directory.path().join("assets")).expect("asset directory");
+        fs::write(directory.path().join("assets/legacy-alpha.txt"), alpha).expect("alpha bytes");
+        fs::write(directory.path().join("assets/legacy-beta.txt"), beta).expect("beta bytes");
+        fs::write(
+            directory.path().join("assets").join(canvas_name),
+            canvas_bytes,
+        )
+        .expect("Canvas bytes");
+        fs::write(
+            directory.path().join("assets/legacy-queued.txt"),
+            queued_asset,
+        )
+        .expect("queued attachment bytes");
+        fs::write(
+            directory.path().join("assets").join(queued_manifest_name),
+            &queued_manifest,
+        )
+        .expect("queued manifest bytes");
+
+        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+            &connection,
+        )
+        .expect("fixture maintenance writes");
+
+        with_immediate_transaction(&mut connection, |transaction| {
+            transaction.execute(
+                "INSERT INTO projects( \
+                   id, name, description, created, updated, library_id, lifecycle, binding_revision \
+                 ) VALUES ('project:file-migration', 'Files', '', \
+                   '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z', ?1, 'active', 1), \
+                          ('project:file-outsider', 'Outsider', '', \
+                   '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z', ?1, 'active', 1)",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO blocks( \
+                   id, library_id, type, lifecycle, placement_revision, metadata_revision, \
+                   created_at, updated_at \
+                 ) VALUES ('page:file-migration', ?1, 'page', 'active', 1, 1, \
+                   '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z')",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO documents( \
+                   id, library_id, generation, head_seq, schema_key, schema_version, state_vector, \
+                   state_hash, readiness, authority, created_at, updated_at, sync_engine \
+                 ) VALUES ('document:file-migration', ?1, 1, 0, 'nodex.page', 3, X'', '', \
+                   'pending_genesis', 'legacy_shadow', '2026-09-05T00:00:00.000Z', \
+                   '2026-09-05T00:00:00.000Z', 'yjs')",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO block_documents(block_id, document_id, library_id, created_at) \
+                 VALUES ('page:file-migration', 'document:file-migration', ?1, \
+                   '2026-09-05T00:00:00.000Z')",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO pages( \
+                   block_id, library_id, document_id, parent_kind, parent_id, created_at, updated_at \
+                 ) VALUES ('page:file-migration', ?1, 'document:file-migration', \
+                   'library', ?1, '2026-09-05T00:00:00.000Z', \
+                   '2026-09-05T00:00:00.000Z')",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO library_block_placements( \
+                   library_id, block_id, rank_key, created_at, updated_at \
+                 ) VALUES (?1, 'page:file-migration', 'a0', \
+                   '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z')",
+                [&library_id],
+            )?;
+            let authority = crate::document::read_document_authority(
+                transaction,
+                "document:file-migration",
+            )?
+            .ok_or_else(|| corrupt("Fixture Page authority is unavailable"))?;
+            let full_state = genesis.engine.full_state_v1();
+            crate::document::persist_yjs_genesis(
+                transaction,
+                crate::document::PersistYjsGenesis {
+                    authority: &authority,
+                    actor_project_id: "project:file-migration",
+                    materialization: &genesis.materialization,
+                    update_id: "update:file-migration-genesis",
+                    client_session_id: "migration-fixture",
+                    update: &genesis.update_v1,
+                    state_vector: &genesis.state_vector_v1,
+                    full_state: &full_state,
+                    store_epoch: &source_epoch,
+                    operation_id: "operation:file-migration-genesis",
+                    placement: crate::document::DocumentPlacementEvidence::STRUCTURAL,
+                    emit_event: false,
+                },
+            )
+            .map_err(|error| StoreError {
+                message: format!("Fixture genesis failed: {}", error.message),
+                ..error
+            })?;
+            transaction.execute(
+                "INSERT INTO page_read_model( \
+                   page_block_id, library_id, lifecycle, parent_kind, parent_id, library_rank_key, \
+                   placement_revision, metadata_revision, document_id, document_generation, \
+                   document_projected_seq, document_schema_version, document_authority, title, \
+                   description_preview, description_length, has_description, created_at, updated_at \
+                 ) VALUES ('page:file-migration', ?1, 'active', 'library', ?1, 'a0', 1, 1, \
+                   'document:file-migration', 1, 1, 3, 'ydoc_primary', ?2, ?3, ?4, ?5, \
+                   '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z')",
+                params![
+                    library_id,
+                    genesis.materialization.title,
+                    genesis.materialization.preview,
+                    genesis.materialization.nfm.len() as i64,
+                    i64::from(!genesis.materialization.nfm.trim().is_empty())
+                ],
+            )?;
+            transaction.execute(
+                "INSERT INTO project_resource_grants( \
+                   id, project_id, library_id, root_kind, root_id, access, recursive, revision, \
+                   lifecycle, created_at, updated_at \
+                 ) VALUES ('grant:file-owner-page', 'project:file-migration', ?1, 'page', \
+                   'page:file-migration', 'read_write', 1, 1, 'active', \
+                   '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z')",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO managed_blobs( \
+                   content_hash, physical_asset_name, byte_length, created_at \
+                 ) VALUES (?1, 'legacy-alpha.txt', ?2, '2026-09-05T00:00:00.000Z'), \
+                          (?3, 'legacy-beta.txt', ?4, '2026-09-05T00:00:00.000Z')",
+                params![
+                    alpha_hash,
+                    alpha.len() as i64,
+                    beta_hash,
+                    beta.len() as i64
+                ],
+            )?;
+            transaction.execute(
+                "UPDATE page_file_manifests SET revision = 1, \
+                   updated_at = '2026-09-05T00:00:01.000Z' \
+                 WHERE page_id = 'page:file-migration'",
+                [],
+            )?;
+            transaction.execute(
+                "INSERT INTO page_file_versions( \
+                   file_id, version, library_id, owner_page_id, manifest_revision, change_kind, \
+                   logical_path, path_key, mime_type, blob_hash, byte_length, actor_id, operation_id, \
+                   occurred_at \
+                 ) VALUES ('file:migrated', 1, ?1, 'page:file-migration', 1, 'create', \
+                   'reports/report.txt', 'reports/report.txt', 'text/plain', ?2, ?3, \
+                   'actor:file-migration', 'operation:file-v1', '2026-09-05T00:00:01.000Z')",
+                params![library_id, alpha_hash, alpha.len() as i64],
+            )?;
+            transaction.execute(
+                "UPDATE page_file_manifests SET revision = 2, \
+                   updated_at = '2026-09-05T00:00:02.000Z' \
+                 WHERE page_id = 'page:file-migration'",
+                [],
+            )?;
+            transaction.execute(
+                "INSERT INTO page_file_versions( \
+                   file_id, version, library_id, owner_page_id, manifest_revision, change_kind, \
+                   logical_path, path_key, mime_type, blob_hash, byte_length, actor_id, operation_id, \
+                   occurred_at \
+                 ) VALUES ('file:migrated', 2, ?1, 'page:file-migration', 2, 'replace', \
+                   'reports/report.txt', 'reports/report.txt', 'text/plain', ?2, ?3, \
+                   'actor:file-migration', 'operation:file-v2', '2026-09-05T00:00:02.000Z')",
+                params![library_id, beta_hash, beta.len() as i64],
+            )?;
+            transaction.execute(
+                "INSERT INTO page_file_namespace(owner_page_id, library_id, path_key, file_id) \
+                 VALUES ('page:file-migration', ?1, 'reports/report.txt', 'file:migrated')",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO page_files( \
+                   file_id, library_id, owner_page_id, logical_path, path_key, mime_type, \
+                   byte_length, current_version, state, created_by_actor_id, created_at, updated_at \
+                 ) VALUES ('file:migrated', ?1, 'page:file-migration', 'reports/report.txt', \
+                   'reports/report.txt', 'text/plain', ?2, 2, 'live', \
+                   'actor:file-migration', '2026-09-05T00:00:01.000Z', \
+                   '2026-09-05T00:00:02.000Z')",
+                params![library_id, beta.len() as i64],
+            )?;
+            transaction.execute(
+                "INSERT INTO blocks( \
+                   id, library_id, type, lifecycle, placement_revision, metadata_revision, \
+                   created_at, updated_at \
+                 ) VALUES ('canvas:file-migration', ?1, 'canvas', 'active', 1, 1, \
+                   '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z')",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO documents( \
+                   id, library_id, generation, head_seq, schema_key, schema_version, state_vector, \
+                   state_hash, readiness, authority, created_at, updated_at, sync_engine \
+                 ) VALUES ('document:canvas-migration', ?1, 1, 0, 'nodex.canvas', 1, X'', ?2, \
+                   'ready', 'ydoc_primary', '2026-09-05T00:00:00.000Z', \
+                   '2026-09-05T00:00:00.000Z', 'canvas_scene')",
+                params![library_id, "0".repeat(64)],
+            )?;
+            transaction.execute(
+                "INSERT INTO block_documents(block_id, document_id, library_id, created_at) \
+                 VALUES ('canvas:file-migration', 'document:canvas-migration', ?1, \
+                   '2026-09-05T00:00:00.000Z')",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO canvas_owners(block_id, library_id, created_at, updated_at) \
+                 VALUES ('canvas:file-migration', ?1, '2026-09-05T00:00:00.000Z', \
+                   '2026-09-05T00:00:00.000Z')",
+                [&library_id],
+            )?;
+            transaction.execute(
+                "INSERT INTO canvas_scenes( \
+                   document_id, generation, head_seq, schema_version, scene_hash_version, \
+                   app_state_json, app_state_hash, scene_hash, element_count, tombstone_count, \
+                   file_count, element_json_bytes, file_json_bytes, scene_byte_length, updated_at \
+                 ) VALUES ('document:canvas-migration', 1, 0, 1, 2, '{}', ?1, ?1, 0, 0, 1, \
+                   0, ?2, ?2, '2026-09-05T00:00:00.000Z')",
+                params![hex::encode(Sha256::digest(b"{}")), canvas_file_json.len() as i64],
+            )?;
+            transaction.execute(
+                "INSERT INTO canvas_scene_files( \
+                   document_id, file_id, mime_type, asset_uri, created_ms, file_json, file_hash, \
+                   hash_bucket, updated_at \
+                 ) VALUES ('document:canvas-migration', 'slot:legacy', 'image/png', ?1, 1, ?2, \
+                   ?3, ?4, '2026-09-05T00:00:00.000Z')",
+                params![canvas_uri, canvas_file_json, canvas_file_hash, i64::from(canvas_bucket)],
+            )?;
+            transaction.execute(
+                "INSERT INTO canvas_scene_file_refs( \
+                   document_id, file_id, owner_block_id, library_id, document_generation, \
+                   projected_seq, mime_type, asset_uri, managed_file_name, asset_hash, \
+                   byte_length, updated_at \
+                 ) VALUES ('document:canvas-migration', 'slot:legacy', 'canvas:file-migration', \
+                   ?1, 1, 0, 'image/png', ?2, ?3, ?4, ?5, '2026-09-05T00:00:00.000Z')",
+                params![
+                    library_id,
+                    canvas_uri,
+                    canvas_name,
+                    canvas_hash,
+                    canvas_bytes.len() as i64
+                ],
+            )?;
+            transaction.execute(
+                "INSERT INTO document_versions( \
+                   version_id, document_id, project_id, generation, base_head_seq, schema_key, \
+                   schema_version, cause, actor_json, revision_kind, pinned, checkpoint_format, \
+                   full_update_blob, state_vector, checkpoint_hash, byte_length, created_at \
+                 ) VALUES ('version:canvas-legacy', 'document:canvas-migration', \
+                   'project:file-migration', 1, 0, 'nodex.canvas', 1, 'manual', '{}', 'manual', 1, \
+                   'canvas_scene_json_v1', ?1, X'', ?2, ?3, '2026-09-05T00:00:00.000Z')",
+                params![
+                    canvas_checkpoint,
+                    canvas_checkpoint_hash,
+                    canvas_checkpoint.len() as i64
+                ],
+            )?;
+            transaction.execute(
+                "INSERT INTO document_version_retention_index( \
+                   version_id, checkpoint_hash, member_count, indexed_at \
+                 ) VALUES ('version:canvas-legacy', ?1, 0, '2026-09-05T00:00:00.000Z')",
+                [&canvas_checkpoint_hash],
+            )?;
+
+            transaction.execute(
+                "INSERT INTO codex_threads( \
+                   thread_id, project_id, created_at, updated_at, recency_at, linked_at \
+                 ) VALUES ('thread:file-migration', 'project:file-migration', 1, 1, 1, \
+                   '2026-09-05T00:00:00.000Z')",
+                [],
+            )?;
+            transaction.execute(
+                "INSERT INTO codex_queued_follow_up_ledgers(thread_id, revision, ledger_hash, updated_at) \
+                 VALUES ('thread:file-migration', 1, ?1, '2026-09-05T00:00:00.000Z')",
+                ["0".repeat(64)],
+            )?;
+            transaction.execute(
+                "INSERT INTO codex_queued_follow_up_payload_manifests( \
+                   payload_sha256, schema_version, asset_uri, byte_length \
+                 ) VALUES (?1, 1, ?2, ?3)",
+                params![
+                    queued_manifest_hash,
+                    format!("nodex://assets/{queued_manifest_name}"),
+                    queued_manifest.len() as i64
+                ],
+            )?;
+            transaction.execute(
+                "INSERT INTO codex_queued_follow_up_payload_asset_refs( \
+                   payload_sha256, ordinal, asset_uri, sha256, byte_length \
+                 ) VALUES (?1, 0, ?2, ?3, ?4)",
+                params![
+                    queued_manifest_hash,
+                    queued_asset_uri,
+                    queued_asset_hash,
+                    queued_asset.len() as i64
+                ],
+            )?;
+            transaction.execute(
+                "INSERT INTO codex_queued_follow_up_entries( \
+                   thread_id, follow_up_id, position, client_user_message_id, created_at_ms, \
+                   payload_sha256 \
+                 ) VALUES ('thread:file-migration', 'follow-up:migration', 0, \
+                   'message:migration', 1, ?1)",
+                [&queued_manifest_hash],
+            )?;
+            Ok(())
+        })
+        .expect("seed valid v151 Page File");
+        connection.execute_batch(
+            "INSERT INTO blocks SELECT 'canvas:empty-migration', library_id, type, lifecycle,
+               placement_revision, metadata_revision, created_at, updated_at
+             FROM blocks WHERE id = 'canvas:file-migration';
+             INSERT INTO documents(id, library_id, generation, head_seq, schema_key, schema_version,
+               state_vector, state_hash, readiness, authority, created_at, updated_at, sync_engine)
+             SELECT 'document:empty-canvas', library_id, generation, head_seq, schema_key, schema_version,
+               state_vector, state_hash, readiness, authority, created_at, updated_at, sync_engine
+             FROM documents WHERE id = 'document:canvas-migration';
+             INSERT INTO block_documents SELECT 'canvas:empty-migration', 'document:empty-canvas',
+               library_id, created_at FROM block_documents WHERE block_id = 'canvas:file-migration';
+             INSERT INTO canvas_owners SELECT 'canvas:empty-migration', library_id, created_at, updated_at
+               FROM canvas_owners WHERE block_id = 'canvas:file-migration';
+             INSERT INTO canvas_scenes(document_id, generation, head_seq, schema_version, scene_hash_version,
+               app_state_json, app_state_hash, scene_hash, element_count, tombstone_count, file_count,
+               element_json_bytes, file_json_bytes, scene_byte_length, updated_at) SELECT 'document:empty-canvas', generation, head_seq, schema_version,
+               scene_hash_version, app_state_json, app_state_hash, scene_hash, 0, 0, 0, 0, 0, 0, updated_at
+               FROM canvas_scenes WHERE document_id = 'document:canvas-migration';"
+        ).expect("empty Canvas migration fixture");
+        // Retired Page capabilities leave ready Documents for retained history.
+        connection.execute(
+            "INSERT INTO documents(id, library_id, generation, head_seq, schema_key, schema_version, \
+               state_vector, state_hash, readiness, authority, created_at, updated_at, sync_engine) \
+             SELECT 'document:detached-migration', library_id, generation, head_seq, schema_key, \
+               schema_version, state_vector, state_hash, readiness, authority, created_at, updated_at, \
+               sync_engine FROM documents WHERE id = 'document:file-migration'",
+            [],
+        ).expect("retained detached Document");
+        connection.execute(
+            "INSERT INTO document_snapshots SELECT 'document:detached-migration', generation, \
+               snapshot_seq, state_vector, snapshot_update, snapshot_hash, schema_version, created_at \
+             FROM document_snapshots WHERE document_id = 'document:file-migration'",
+            [],
+        ).expect("retained detached snapshot");
+        connection.execute(
+            "INSERT INTO document_materializations \
+             SELECT 'document:detached-migration', generation, projected_seq, schema_version, title, \
+               title_rich_json, title_rich_hash, nfm, plain_text, preview, block_tree_json, \
+               references_json, asset_refs_json, updated_at, materialization_derivation_version \
+             FROM document_materializations WHERE document_id = 'document:file-migration'",
+            [],
+        ).expect("retained detached materialization");
+        connection
+            .execute("DELETE FROM local_commit_visibility_context", [])
+            .expect("finish fixture maintenance writes");
+        validate_migration_source(&connection, 151).expect("valid v151 File source");
+
+        let preparation = prepare_profile_store(&mut connection, directory.path())
+            .expect("migrate v151 Page File");
+        assert_eq!(preparation.migrated_from_version, Some(151));
+        validate_current_store(&connection).expect("valid current File Store");
+
+        let empty_canvas_version: i64 = connection
+            .query_row(
+                "SELECT schema_version FROM documents WHERE id = 'document:empty-canvas'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("empty Canvas schema");
+        assert_eq!(empty_canvas_version, 2);
+
+        let detached: (i64, i64) = connection.query_row(
+            "SELECT (SELECT count(*) FROM documents WHERE id = 'document:detached-migration'), \
+               (SELECT count(*) FROM document_versions WHERE document_id = 'document:detached-migration')",
+            [], |row| Ok((row.get(0)?, row.get(1)?)),
+        ).expect("detached Document retained without a new current checkpoint");
+        assert_eq!(detached, (1, 0));
+        let snapshots: i64 = connection.query_row(
+            "SELECT count(*) FROM document_snapshots WHERE document_id = 'document:detached-migration'",
+            [], |row| row.get(0),
+        ).expect("retained snapshot");
+        assert!(snapshots > 0);
+
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT library_id, default_name, head_version, revision, lifecycle \
+                     FROM library_files WHERE file_id = 'file:migrated'",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, i64>(3)?,
+                            row.get::<_, String>(4)?,
+                        ))
+                    },
+                )
+                .expect("migrated File"),
+            (
+                library_id.clone(),
+                "report.txt".to_owned(),
+                2,
+                2,
+                "live".to_owned()
+            )
+        );
+        assert_eq!(
+            connection
+                .prepare(
+                    "SELECT version, blob_hash FROM file_versions \
+                     WHERE file_id = 'file:migrated' ORDER BY version",
+                )
+                .expect("File version query")
+                .query_map([], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })
+                .expect("File version rows")
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .expect("File versions"),
+            vec![(1, alpha_hash.clone()), (2, beta_hash.clone())]
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT logical_path FROM page_file_entries \
+                     WHERE page_id = 'page:file-migration' AND file_id = 'file:migrated'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("migrated Page path"),
+            "reports/report.txt"
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT access FROM project_resource_grants \
+                     WHERE project_id = 'project:file-migration' \
+                       AND root_kind = 'file' AND root_id = 'file:migrated'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("materialized File grant"),
+            "read_write"
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM project_resource_grants \
+                     WHERE project_id = 'project:file-outsider' AND root_kind = 'file'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("outsider File grant count"),
+            0
+        );
+        for (hash, expected) in [
+            (&alpha_hash, alpha.as_slice()),
+            (&beta_hash, beta.as_slice()),
+        ] {
+            let physical_name = connection
+                .query_row(
+                    "SELECT physical_asset_name FROM managed_blobs WHERE content_hash = ?1",
+                    [hash],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("managed Blob");
+            assert_eq!(physical_name, format!("{hash}.blob"));
+            assert_eq!(
+                fs::read(directory.path().join("assets").join(physical_name))
+                    .expect("migrated Blob bytes"),
+                expected
+            );
+        }
+        assert_ne!(
+            connection
+                .query_row(
+                    "SELECT store_epoch FROM block_store_metadata WHERE id = 1",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("migrated epoch"),
+            source_epoch
+        );
+        for table in ["page_files", "page_file_versions", "page_file_namespace"] {
+            assert!(
+                connection
+                    .query_row(
+                        "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?1",
+                        [table],
+                        |_| Ok(()),
+                    )
+                    .optional()
+                    .expect("legacy table lookup")
+                    .is_none(),
+                "legacy table {table} remains"
+            );
+        }
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT json_extract(evidence_json, '$.libraryFiles') \
+                     FROM core_store_migration_history WHERE source_revision = 151",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("migration evidence"),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT json_extract(evidence_json, '$.retainedLegacyBlobSources') \
+                     FROM core_store_migration_history WHERE source_revision = 151",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .expect("retained legacy Blob evidence"),
+            5
+        );
+        for (name, expected) in [
+            ("legacy-alpha.txt", alpha.as_slice()),
+            ("legacy-beta.txt", beta.as_slice()),
+            (canvas_name, canvas_bytes.as_slice()),
+            ("legacy-queued.txt", queued_asset.as_slice()),
+            (queued_manifest_name, queued_manifest.as_slice()),
+        ] {
+            assert_eq!(
+                fs::read(directory.path().join("assets").join(name))
+                    .expect("retained rollback Blob source"),
+                expected
+            );
+        }
+        let migrated_canvas_file = connection
+            .query_row(
+                "SELECT scene.schema_version, reference.target_file_id, reference.file_version, \
+                        reference.default_name, version.checkpoint_format, version.schema_version \
+                 FROM canvas_scenes scene \
+                 JOIN canvas_scene_file_refs reference ON reference.document_id = scene.document_id \
+                 JOIN document_versions version ON version.version_id = 'version:canvas-legacy' \
+                 WHERE scene.document_id = 'document:canvas-migration' \
+                   AND reference.file_id = 'slot:legacy'",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, i64>(5)?,
+                    ))
+                },
+            )
+            .expect("migrated current and historical Canvas File");
+        assert_eq!(migrated_canvas_file.0, 2);
+        assert_eq!(migrated_canvas_file.2, 1);
+        assert_eq!(migrated_canvas_file.4, "canvas_scene_json_v2");
+        assert_eq!(migrated_canvas_file.5, 2);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT file_id, file_version, default_name FROM document_version_file_refs \
+                     WHERE version_id = 'version:canvas-legacy' \
+                       AND binding_kind = 'canvas' AND binding_id = 'slot:legacy'",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, String>(2)?,
+                        ))
+                    },
+                )
+                .expect("migrated Canvas history binding"),
+            (
+                migrated_canvas_file.1.clone(),
+                1,
+                migrated_canvas_file.3.clone()
+            )
+        );
+        assert_eq!(
+            fs::read(
+                directory
+                    .path()
+                    .join("assets")
+                    .join(format!("{canvas_hash}.blob")),
+            )
+            .expect("migrated Canvas bytes"),
+            canvas_bytes
+        );
+
+        let migrated_queue = connection
+            .query_row(
+                "SELECT manifest.payload_sha256, manifest.schema_version, manifest.asset_uri, \
+                        reference.asset_uri, reference.mime_type, entry.payload_sha256 \
+                 FROM codex_queued_follow_up_payload_manifests manifest \
+                 JOIN codex_queued_follow_up_payload_asset_refs reference \
+                   ON reference.payload_sha256 = manifest.payload_sha256 \
+                 JOIN codex_queued_follow_up_entries entry \
+                   ON entry.payload_sha256 = manifest.payload_sha256 \
+                 WHERE entry.follow_up_id = 'follow-up:migration'",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                    ))
+                },
+            )
+            .expect("migrated queued follow-up");
+        assert_ne!(migrated_queue.0, queued_manifest_hash);
+        assert_eq!(migrated_queue.1, 2);
+        assert_eq!(
+            migrated_queue.2,
+            format!("nodex://assets/{}.blob", migrated_queue.0)
+        );
+        assert_eq!(
+            migrated_queue.3,
+            format!("nodex://assets/{queued_asset_hash}.blob")
+        );
+        assert_eq!(migrated_queue.4, "text/plain");
+        assert_eq!(migrated_queue.5, migrated_queue.0);
+        let migrated_manifest_bytes = fs::read(
+            directory
+                .path()
+                .join("assets")
+                .join(format!("{}.blob", migrated_queue.0)),
+        )
+        .expect("migrated queue manifest bytes");
+        let migrated_manifest: Value =
+            serde_json::from_slice(&migrated_manifest_bytes).expect("migrated queue manifest JSON");
+        assert_eq!(migrated_manifest["schema_version"], 2);
+        assert_eq!(
+            migrated_manifest["payload"]["prompt_input"]["attachment"],
+            format!("nodex://assets/{queued_asset_hash}.blob")
+        );
+        assert_eq!(
+            fs::read(
+                directory
+                    .path()
+                    .join("assets")
+                    .join(format!("{queued_asset_hash}.blob")),
+            )
+            .expect("migrated queued attachment bytes"),
+            queued_asset
+        );
+
+        let stable_counts = connection
+            .query_row(
+                "SELECT \
+                   (SELECT count(*) FROM library_files), \
+                   (SELECT count(*) FROM file_versions), \
+                   (SELECT count(*) FROM page_file_entries), \
+                   (SELECT count(*) FROM project_resource_grants WHERE root_kind = 'file'), \
+                   (SELECT count(*) FROM core_store_migration_history)",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, i64>(4)?,
+                    ))
+                },
+            )
+            .expect("post-migration counts");
+        drop(connection);
+
+        let mut reopened = open_writer(&directory.path().join("nodex.db")).expect("reopen writer");
+        let reopened_preparation =
+            prepare_profile_store(&mut reopened, directory.path()).expect("reopen migrated Store");
+        assert_eq!(reopened_preparation.migrated_from_version, None);
+        validate_current_store(&reopened).expect("valid reopened current Store");
+        assert_eq!(
+            reopened
+                .query_row(
+                    "SELECT \
+                       (SELECT count(*) FROM library_files), \
+                       (SELECT count(*) FROM file_versions), \
+                       (SELECT count(*) FROM page_file_entries), \
+                       (SELECT count(*) FROM project_resource_grants WHERE root_kind = 'file'), \
+                       (SELECT count(*) FROM core_store_migration_history)",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, i64>(3)?,
+                            row.get::<_, i64>(4)?,
+                        ))
+                    },
+                )
+                .expect("reopened counts"),
+            stable_counts
         );
     }
 
@@ -4234,6 +5095,7 @@ mod tests {
                 from_revision: BASELINE_STORE_REVISION,
                 to_revision: CURRENT_STORE_REVISION,
                 apply: |connection, _| {
+                    connection.pragma_update(None, "legacy_alter_table", true)?;
                     connection.execute("CREATE TABLE should_roll_back(id INTEGER)", [])?;
                     Err(corrupt("injected migration failure"))
                 },
@@ -4263,6 +5125,11 @@ mod tests {
                 .count(),
             1
         );
+        assert!(
+            !connection
+                .query_row("PRAGMA legacy_alter_table", [], |row| row.get::<_, bool>(0))
+                .expect("restored legacy_alter_table")
+        );
     }
 
     #[cfg(unix)]
@@ -4282,7 +5149,7 @@ mod tests {
         install_baseline_fixture(non_file.path());
         let backup_directory = non_file.path().join("backups/core-migrations");
         fs::create_dir_all(&backup_directory).expect("backup directory");
-        fs::create_dir(backup_directory.join(".v130-to-v151.pending.db"))
+        fs::create_dir(backup_directory.join(".v130-to-v152.pending.db"))
             .expect("non-file pending candidate");
         let mut connection = open_writer(&non_file.path().join("nodex.db")).expect("writer");
         let error = prepare_profile_store(&mut connection, non_file.path())

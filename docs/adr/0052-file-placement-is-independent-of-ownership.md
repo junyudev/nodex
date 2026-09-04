@@ -1,6 +1,6 @@
 # ADR 0052: File placement is independent of ownership
 
-- Status: Accepted
+- Status: Superseded for File ownership, exclusive rehome, and owner-closure copy by [ADR 0057](0057-library-files-and-page-relations.md); canonical placement and narrow presentation authority remain valid
 - Date: 2026-08-29
 
 ## Context

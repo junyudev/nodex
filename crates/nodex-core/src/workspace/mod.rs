@@ -17,8 +17,10 @@ mod task_window;
 #[cfg(test)]
 mod test_support;
 mod thread;
+mod thread_assets;
 
 pub(crate) use execution::validate_persisted_turn_authority;
+pub use thread_assets::ThreadAssetBlob;
 
 use std::path::PathBuf;
 
@@ -64,8 +66,9 @@ impl ProjectWorkspaceModule {
             .expect("Profile database has a parent")
             .join("assets");
         let sweep_root = assets_root.clone();
-        let _ = writer
-            .call(move |connection| queued_follow_up::sweep_manifest_gc(connection, &sweep_root));
+        let _ = writer.call(move |connection| {
+            crate::infrastructure::managed_blob_gc::collect(connection, &sweep_root, 512)
+        });
         Ok(Self {
             profile_id: profile_id.into(),
             library_id: library_id.into(),
@@ -89,6 +92,18 @@ impl ProjectWorkspaceModule {
         };
         let profile_id = self.profile_id.clone();
         let library_id = self.library_id.clone();
+        let context = context.clone();
+        let _asset_lease = if matches!(
+            &request.read,
+            ProjectWorkspaceRead::QueuedFollowUpLedger { .. }
+        ) {
+            Some(
+                crate::infrastructure::managed_asset_snapshot::acquire_snapshot_lease()
+                    .map_err(core_error)?,
+            )
+        } else {
+            None
+        };
         let assets_root = self
             .assets_root
             .clone()
@@ -96,6 +111,9 @@ impl ProjectWorkspaceModule {
         readers
             .read_default(move |connection| {
                 let transaction = connection.unchecked_transaction()?;
+                if let ProjectWorkspaceRead::QueuedFollowUpLedger { thread_id } = &request.read {
+                    thread_assets::require_access(&transaction, &context, thread_id, false)?;
+                }
                 let identity = transaction
                     .query_row(
                         "SELECT 1 FROM libraries WHERE id = ?1 AND profile_id = ?2",
@@ -148,7 +166,7 @@ impl ProjectWorkspaceModule {
         let Some(writer) = &self.writer else {
             return Err(unavailable("Project Workspace Module has no durable store"));
         };
-        let should_sweep_queue_manifests = matches!(
+        let should_collect_blobs = matches!(
             &request.intent,
             ProjectWorkspaceIntent::CommitQueuedFollowUpLedger { .. }
                 | ProjectWorkspaceIntent::DeleteThread { .. }
@@ -167,13 +185,12 @@ impl ProjectWorkspaceModule {
             assets_root,
         )
         .map_err(core_error)?;
-        if should_sweep_queue_manifests {
+        if should_collect_blobs {
             let assets_root = assets_root.to_path_buf();
-            // The durable tombstone is the ownership boundary. Sweeping is best-effort so an
-            // already-committed queue mutation is never reported as failed because unlinking a
-            // private manifest was temporarily unavailable.
+            // Domain roots have committed. Physical collection is best-effort and
+            // cannot turn an already committed mutation into a reported failure.
             let _ = writer.call(move |connection| {
-                queued_follow_up::sweep_manifest_gc(connection, &assets_root)
+                crate::infrastructure::managed_blob_gc::collect(connection, &assets_root, 512)
             });
         }
         Ok(outcome)

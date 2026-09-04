@@ -168,7 +168,7 @@ pub(crate) fn finalize_idle_document_revisions(
             ],
             |row| row.get::<_, bool>(0),
         )?;
-        if !already_covered {
+        if !already_covered || authority.head.sync_engine == DocumentSyncEngine::Yjs {
             let operation_id = format!(
                 "revision-idle:{}:{}:{}",
                 authority.head.id, authority.head.generation, authority.head.head_seq
@@ -184,7 +184,7 @@ pub(crate) fn finalize_idle_document_revisions(
                 context: &actor_context,
                 now: &now,
             };
-            match authority.head.sync_engine {
+            let inserted = match authority.head.sync_engine {
                 DocumentSyncEngine::Yjs => {
                     let schema = BlockDocumentSchema::from_identity(
                         &authority.head.schema_key,
@@ -197,20 +197,30 @@ pub(crate) fn finalize_idle_document_revisions(
                     let materialization = materialize_decoded_document(&decoded).map_err(|_| {
                         corrupt("Document revision authority cannot be materialized")
                     })?;
-                    insert_document_checkpoint(
+                    if !super::history::has_current_document_checkpoint(
                         &transaction,
                         &authority,
                         &materialization,
-                        checkpoint,
-                    )?;
+                    )? {
+                        insert_document_checkpoint(
+                            &transaction,
+                            &authority,
+                            &materialization,
+                            checkpoint,
+                        )?;
+                        true
+                    } else {
+                        false
+                    }
                 }
                 DocumentSyncEngine::CanvasScene => {
                     let loaded = load_canvas_scene(&transaction, &authority)?;
                     insert_canvas_checkpoint(&transaction, &authority, &loaded.scene, checkpoint)?;
+                    true
                 }
-            }
+            };
             finalized = finalized
-                .checked_add(1)
+                .checked_add(usize::from(inserted))
                 .ok_or_else(|| corrupt("Document revision finalization count overflowed"))?;
         }
         transaction.execute(

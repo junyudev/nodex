@@ -1,3 +1,4 @@
+import type { ReadFileBytesInput } from "../../shared/library-files";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -36,7 +37,7 @@ import {
   createCoreLibraryModuleAdapter,
   type CoreLibraryModuleAdapter,
 } from "../core-client/library-module-adapter";
-import type { CoreClientPort, PageFileBlobBytes, PreparedPageFileBlob } from "../core-client/types";
+import type { CoreClientPort, ManagedBlobBytes, PreparedBlobReceipt } from "../core-client/types";
 import { CoreAuthority, CoreSessionAccess } from "../core-runtime/CoreAuthority";
 import {
   type CoreMinimumCommitTimeout,
@@ -69,16 +70,16 @@ export class LibraryModule extends Context.Service<
       accessContext: ContentAccessContext,
       request: LibraryModuleApplyRequest,
     ) => LibraryEffect<LibraryModuleApplyResult>;
-    readonly preparePageFileBlob: (
+    readonly prepareFileBlob: (
       accessContext: ContentAccessContext,
       operationId: string,
       idempotencySlot: string,
       bytes: Uint8Array,
-    ) => LibraryEffect<PreparedPageFileBlob>;
-    readonly readPageFileBlob: (
+    ) => LibraryEffect<PreparedBlobReceipt>;
+    readonly readFileBlob: (
       accessContext: ContentAccessContext,
-      input: { readonly pageId: string; readonly fileId: string; readonly version?: number },
-    ) => LibraryEffect<PageFileBlobBytes>;
+      input: ReadFileBytesInput,
+    ) => LibraryEffect<ManagedBlobBytes>;
     readonly readProjectPageDetail: (
       projectId: string,
       pageId: string,
@@ -189,18 +190,16 @@ export const live: Layer.Layer<LibraryModule, never, CoreAuthority | CoreSession
           use("library.read", projectIdForAccess(accessContext), (core) => core.read(request)),
         apply: (accessContext, request) =>
           use("library.apply", projectIdForAccess(accessContext), (core) => core.apply(request)),
-        preparePageFileBlob: (accessContext, operationId, idempotencySlot, bytes) =>
+        prepareFileBlob: (accessContext, operationId, idempotencySlot, bytes) =>
           useClient(
-            "library.preparePageFileBlob",
+            "library.prepareFileBlob",
             projectIdForAccess(accessContext),
             (client, signal) =>
-              client.preparePageFileBlob({ operationId, idempotencySlot, bytes }, { signal }),
+              client.prepareFileBlob({ operationId, idempotencySlot, bytes }, { signal }),
           ),
-        readPageFileBlob: (accessContext, input) =>
-          useClient(
-            "library.readPageFileBlob",
-            projectIdForAccess(accessContext),
-            (client, signal) => client.readPageFileBlob(input, { signal }),
+        readFileBlob: (accessContext, input) =>
+          useClient("library.readFileBlob", projectIdForAccess(accessContext), (client, signal) =>
+            client.readFileBlob(input, { signal }),
           ),
         readProjectPageDetail: (projectId, pageId, minimumCommitSeq) =>
           readPageDetailAtLeast(

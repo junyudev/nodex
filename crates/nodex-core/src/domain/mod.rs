@@ -4,6 +4,8 @@ pub mod block_materialization;
 pub mod block_to_page;
 pub mod block_tree;
 pub mod derived_records;
+pub(crate) mod file_path;
+pub(crate) mod files;
 pub mod fractional_rank;
 pub(crate) mod identity;
 pub mod materialized_inline;

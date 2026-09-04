@@ -9,7 +9,7 @@ import {
   COMPOSER_IMAGE_FILE_EXTENSIONS,
   prepareComposerPickedFiles,
 } from "../../composer-picked-files";
-import { ProfileAssets } from "../../local-store/ProfileAssets";
+import { TemporaryAssets } from "../../local-store/TemporaryAssets";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import { ElectronClipboard } from "../../platform/electron/ElectronClipboard";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -24,11 +24,11 @@ export class ManagedMediaIpcError extends Schema.TaggedError<ManagedMediaIpcErro
 export const live: Layer.Layer<
   never,
   never,
-  ElectronDesktop | ElectronClipboard | ElectronIpc | MainConfig | ProfileAssets | WindowRuntime
+  ElectronDesktop | ElectronClipboard | ElectronIpc | MainConfig | TemporaryAssets | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* MainConfig;
-    const assets = yield* ProfileAssets;
+    const assets = yield* TemporaryAssets;
     const clipboard = yield* ElectronClipboard;
     const desktop = yield* ElectronDesktop;
     const ipc = yield* ElectronIpc;

@@ -2,9 +2,9 @@ import { act, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { render } from "@/test/dom";
-import { PageFileReadCache } from "@/lib/page-file-read-cache";
+import { FileReadCache } from "@/lib/file-read-cache";
 import { useAttachmentPreview } from "./attachment-preview";
-import { createPageFilePlacementRuntime, type PageFilePlacementRuntime } from "./page-file-runtime";
+import { createFilePlacementRuntime, type FilePlacementRuntime } from "./file-runtime";
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -19,21 +19,20 @@ const deferred = <T,>(): Deferred<T> => {
   return { promise, resolve };
 };
 
-const activeRuntimes: PageFilePlacementRuntime[] = [];
+const activeRuntimes: FilePlacementRuntime[] = [];
 
 afterEach(() => {
   for (const runtime of activeRuntimes.splice(0)) runtime.release();
 });
 
-const createPageFileRuntime = (
-  read: PageFilePlacementRuntime["read"],
-): PageFilePlacementRuntime => {
+const createFileRuntime = (read: FilePlacementRuntime["read"]): FilePlacementRuntime => {
   const authority = {
+    libraryId: "library-1",
     contentAccessContext: { kind: "project", projectId: "project-1" },
-    pageId: "page-1",
+    readSource: { kind: "page", page_id: "page-1" },
     storeEpoch: "store-1",
   } as const;
-  const cache = new PageFileReadCache({
+  const cache = new FileReadCache({
     readMetadata: async () => {
       throw new Error("not used");
     },
@@ -41,7 +40,7 @@ const createPageFileRuntime = (
     createObjectUrl: (file) => `blob:${file.etag}`,
     revokeObjectUrl: () => undefined,
   });
-  const runtime = createPageFilePlacementRuntime(authority, cache);
+  const runtime = createFilePlacementRuntime(authority, cache);
   activeRuntimes.push(runtime);
   return runtime;
 };
@@ -52,7 +51,7 @@ function PreviewHarness({
   mimeType = "application/json",
 }: {
   readonly source: string;
-  readonly runtime: PageFilePlacementRuntime;
+  readonly runtime: FilePlacementRuntime;
   readonly mimeType?: string;
 }) {
   const { state } = useAttachmentPreview(
@@ -77,13 +76,13 @@ function PreviewHarness({
 
 describe("attachment preview lifecycle", () => {
   test("ignores a stale File response after the attachment identity changes", async () => {
-    const firstRead = deferred<Awaited<ReturnType<PageFilePlacementRuntime["read"]>>>();
-    const secondRead = deferred<Awaited<ReturnType<PageFilePlacementRuntime["read"]>>>();
+    const firstRead = deferred<Awaited<ReturnType<FilePlacementRuntime["read"]>>>();
+    const secondRead = deferred<Awaited<ReturnType<FilePlacementRuntime["read"]>>>();
     const read = vi.fn((source: string) => {
       if (source === "nodex://files/file-1") return firstRead.promise;
       return secondRead.promise;
     });
-    const runtime = createPageFileRuntime(read);
+    const runtime = createFileRuntime(read);
 
     const view = render(<PreviewHarness source="nodex://files/file-1" runtime={runtime} />);
     await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
@@ -116,7 +115,7 @@ describe("attachment preview lifecycle", () => {
 
   test("applies the shared text preview bounds to Page Files", async () => {
     const content = Array.from({ length: 201 }, (_, index) => `line ${index + 1}`).join("\n");
-    const runtime = createPageFileRuntime(async () => ({
+    const runtime = createFileRuntime(async () => ({
       bytes: new TextEncoder().encode(content),
       mimeType: "application/json",
       etag: "etag-1",
@@ -134,7 +133,7 @@ describe("attachment preview lifecycle", () => {
       mimeType: "video/webm",
       etag: "etag-1",
     }));
-    const runtime = createPageFileRuntime(read);
+    const runtime = createFileRuntime(read);
     const view = render(
       <PreviewHarness source="nodex://files/file-1" runtime={runtime} mimeType="video/webm" />,
     );

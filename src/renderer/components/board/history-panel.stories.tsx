@@ -52,6 +52,7 @@ const revisionDetail: DocumentVersionDetail = {
     documentId: revisionEntry.documentId,
     projectId: "project-1",
     actor: { kind: "renderer" },
+    fileSnapshotStatus: "exact",
     checkpointMetadata: {
       format: "block_tree_snapshot_v2",
     },

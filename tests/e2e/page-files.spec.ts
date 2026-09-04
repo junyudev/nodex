@@ -123,11 +123,8 @@ test("previews a pasted image above editor chrome and refreshes Files only for p
       await expect(inPageSummary).toHaveText("1 in page");
       await inPageSummary.click();
 
-      const dialog = page.getByRole("dialog", { name: "Files" });
-      await expect(dialog.getByRole("button", { name: "In page · 1" })).toHaveAttribute(
-        "aria-expanded",
-        "true",
-      );
+      const dialog = page.getByRole("dialog", { name: "Page files" });
+      await expect(dialog).toBeVisible();
       await expect(
         dialog.getByRole("button", { name: /^Preview /u }).locator('[data-file-tab-icon="image"]'),
       ).toBeVisible();
@@ -178,15 +175,17 @@ test("copies portable File references by default and local blob paths when enabl
       await page.keyboard.press(primaryShortcut("c"));
       await expect
         .poll(() => application.evaluate(({ clipboard }) => clipboard.readText()))
-        .toMatch(/\/assets\/[0-9a-f]{64}\.blob/u);
+        .toMatch(/\/cache\/file-exports\/[0-9a-f]{64}\.png/u);
       const resolvedText = await application.evaluate(({ clipboard }) => clipboard.readText());
-      const blobPath = resolvedText.match(/(\/[^\n()<>]*\/assets\/[0-9a-f]{64}\.blob)/u)?.[1];
+      const blobPath = resolvedText.match(
+        /(\/[^\n()<>]*\/cache\/file-exports\/[0-9a-f]{64}\.png)/u,
+      )?.[1];
       if (!blobPath) throw new Error(`Copied text has no local Blob path: ${resolvedText}`);
-      expect(path.dirname(blobPath)).toBe(path.join(profile.nodexHome, "assets"));
+      expect(path.dirname(blobPath)).toBe(path.join(profile.nodexHome, "cache", "file-exports"));
       expect((await stat(blobPath)).isFile()).toBe(true);
       const bytes = await readFile(blobPath);
       expect(path.basename(blobPath)).toBe(
-        `${createHash("sha256").update(bytes).digest("hex")}.blob`,
+        `${createHash("sha256").update(bytes).digest("hex")}.png`,
       );
 
       const imageBlocks = stage.locator('[data-content-type="image"][data-url^="nodex://files/"]');
@@ -243,7 +242,7 @@ test("imports native files and folders with canonical identities", async () => {
       const stage = page.locator('[data-page-stage-surface="true"]:visible');
       await revealQuietPageProperties(stage);
       await stage.getByRole("button", { name: "Add Page Files" }).click();
-      const dialog = page.getByRole("dialog", { name: "Files" });
+      const dialog = page.getByRole("dialog", { name: "Page files" });
       await expect(dialog).toBeVisible();
       await expect(dialog.getByRole("button", { name: "New text" })).toHaveCount(0);
 
@@ -290,29 +289,27 @@ test("imports native files and folders with canonical identities", async () => {
         await cdp.detach();
       }
 
-      await expect(dialog.getByText("dropped-notes.txt", { exact: true })).toBeVisible({
-        timeout: 15_000,
-      });
-      await expect(dialog.getByText("dropped-references/api.md", { exact: true })).toBeVisible();
-      await expect(
-        dialog.getByText("dropped-references/nested/schema.json", { exact: true }),
-      ).toBeVisible();
       await expect(
         dialog
           .getByRole("button", { name: "Preview dropped-notes.txt" })
           .locator('[data-file-tab-icon="document"]'),
+      ).toBeVisible({ timeout: 15_000 });
+      await expect(
+        dialog.getByRole("button", { name: "Preview dropped-references/api.md" }),
+      ).toBeVisible();
+      await expect(
+        dialog.getByRole("button", {
+          name: "Preview dropped-references/nested/schema.json",
+        }),
       ).toBeVisible();
 
       await dialog.getByRole("button", { name: "Add files" }).click();
 
-      await expect(dialog.getByText("picked-reference.md", { exact: true })).toBeVisible({
-        timeout: 15_000,
-      });
       await expect(
         dialog
           .getByRole("button", { name: "Preview picked-data.json" })
           .locator('[data-file-tab-icon="json"]'),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 15_000 });
       await expect(
         dialog
           .getByRole("button", { name: "Preview picked-reference.md" })
@@ -338,9 +335,11 @@ test("imports native files and folders with canonical identities", async () => {
       const firstFilePath = (await firstFileChip.textContent())?.trim();
       if (!firstFilePath) throw new Error("Page File chip has no visible path");
       await firstFileChip.click();
-      const preview = page.getByRole("dialog", { name: firstFilePath });
-      await expect(preview).toBeVisible();
-      await expect(preview.locator("[data-file-tab-icon]").first()).toBeVisible();
+      const reopened = page.getByRole("dialog", { name: "Page files" });
+      await expect(reopened).toBeVisible();
+      await expect(
+        reopened.getByRole("button", { name: `Preview ${firstFilePath}` }),
+      ).toHaveAttribute("aria-pressed", "true");
     },
   );
 });

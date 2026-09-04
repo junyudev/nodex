@@ -380,7 +380,7 @@ fn canvas_draft_restores_only_its_elements_and_preserves_the_other_scene_content
         .expect("scene");
     let mut capture = capture(vec![]);
     capture.schema_key = crate::document::CANVAS_SCHEMA_KEY.to_owned();
-    capture.schema_version = crate::document::CANVAS_SCHEMA_VERSION.into();
+    capture.schema_version = crate::document::CANVAS_SCHEMA_VERSION;
     capture.content = RecoveryDraftContent::Canvas {
         scene: Some(scene),
         mutations: vec![mutation],
@@ -412,7 +412,7 @@ fn canvas_draft_restores_only_its_elements_and_preserves_the_other_scene_content
         .expect("restore Canvas");
     let after = inspect_draft(&seeded);
     assert_eq!(after.summary.resolution, Some(RecoveryResolution::Restored));
-    let Some(RecoveryPreview::Canvas { scene }) = after.current else {
+    let Some(RecoveryPreview::Canvas { scene, .. }) = after.current else {
         panic!("Canvas preview");
     };
     assert_eq!(scene["elements"].as_array().unwrap().len(), 2);
@@ -570,7 +570,7 @@ fn conflicting_canvas_draft_copies_the_retained_intent_without_overwriting_the_c
     let retained = json!({ "id":"element", "type":"rectangle", "version":2, "versionNonce":7, "index":"a0", "isDeleted":false, "x":20 });
     let mut draft = capture(vec![]);
     draft.schema_key = crate::document::CANVAS_SCHEMA_KEY.to_owned();
-    draft.schema_version = crate::document::CANVAS_SCHEMA_VERSION.into();
+    draft.schema_version = crate::document::CANVAS_SCHEMA_VERSION;
     draft.content = RecoveryDraftContent::Canvas {
         scene: Some({
             let mut scene = crate::document::canvas_scene::CanvasScene::empty().canonical_value();
@@ -597,7 +597,7 @@ fn conflicting_canvas_draft_copies_the_retained_intent_without_overwriting_the_c
     assert!(!inspection.can_restore);
     assert!(inspection.can_copy);
     assert!(!inspection.already_saved);
-    let Some(RecoveryPreview::Canvas { scene }) = &inspection.retained else {
+    let Some(RecoveryPreview::Canvas { scene, .. }) = &inspection.retained else {
         panic!("retained scene");
     };
     assert_eq!(scene["elements"][0]["x"], 20);
@@ -747,5 +747,329 @@ fn recovery_metadata_reaches_live_audiences_without_document_update_resources() 
                 nodex_core_contracts::DeliveryAtomPayload::OwnedDocument { event: nodex_core_contracts::AuthorizedOwnedDocumentEvent::RecoveryChanged { document_id, .. }, .. } if document_id == DOCUMENT_ID
             )), "both authorized audiences must observe resolution metadata");
         }
+    }
+}
+
+#[test]
+fn canvas_draft_restores_or_copies_its_captured_file_after_shared_update_and_revocation() {
+    use nodex_core_contracts::library::{
+        LIBRARY_CONTRACT_VERSION, LibraryFileChange, LibraryFileReadSource, LibraryIntent,
+        LibraryProjectAccessChange, LibraryResourceTarget,
+    };
+    for (choice, trashed) in [
+        (RecoveryChoice::Restore, false),
+        (RecoveryChoice::Copy, false),
+        (RecoveryChoice::Restore, true),
+        (RecoveryChoice::Copy, true),
+    ] {
+        let seeded = canvas_module();
+        seeded
+            .module
+            .apply(
+                &context(),
+                request(
+                    "canvas:prepare",
+                    OwnedDocumentIntent::PrepareOwner {
+                        owner_block_id: OWNER_BLOCK_ID.to_owned(),
+                    },
+                ),
+            )
+            .unwrap();
+        create_canvas_file(&seeded, "canvas-image", b"alpha");
+        let library = crate::library::LibraryModule::new(PROFILE_ID, LIBRARY_ID, &seeded.kernel);
+        let scene = seeded
+            .kernel
+            .readers()
+            .read_default(|connection| {
+                let authority = read_document_authority(connection, DOCUMENT_ID)?.unwrap();
+                Ok(load_canvas_scene(connection, &authority)?
+                    .scene
+                    .canonical_value())
+            })
+            .unwrap();
+        let mut package = capture(vec![]);
+        package.base_head_seq = 0;
+        package.schema_key = crate::document::CANVAS_SCHEMA_KEY.to_owned();
+        package.schema_version = crate::document::CANVAS_SCHEMA_VERSION;
+        package.content = RecoveryDraftContent::Canvas {
+            scene: Some(scene),
+            mutations: vec![json!({
+                "elementCandidates":[{"id":"image-retained", "type":"image", "version":1, "versionNonce":1, "isDeleted":false, "fileId":"slot-retained"}],
+                "appStateIntents":{}, "fileAdditions":{"slot-retained":{"id":"slot-retained", "mimeType":"image/png", "source":"nodex://files/canvas-image", "fileVersion":1, "defaultName":"image.png"}}
+            })],
+        };
+        seeded
+            .module
+            .apply(
+                &context(),
+                request(
+                    "capture:canvas-file",
+                    OwnedDocumentIntent::CaptureRecovery {
+                        capture: Box::new(package),
+                    },
+                ),
+            )
+            .unwrap();
+        let mut writer = crate::infrastructure::managed_blobs::BlobWriter::new(
+            &seeded._directory.path().join("assets"),
+            1024,
+        )
+        .unwrap();
+        writer.write_chunk(b"beta").unwrap();
+        let published = writer.finish().unwrap();
+        let expiry = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 60_000;
+        let receipt = library
+            .register_prepared_file_blob(
+                &context(),
+                STORE_EPOCH,
+                "canvas:replace",
+                "canvas:receipt",
+                &published.content_hash,
+                &published.physical_asset_name,
+                published.byte_length,
+                expiry,
+            )
+            .unwrap();
+        library
+            .apply(
+                &context(),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "canvas:replace".to_owned(),
+                    store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
+                    intent: LibraryIntent::ApplyFileChange {
+                        change: LibraryFileChange::ReplaceContent {
+                            file_id: "canvas-image".to_owned(),
+                            expected_revision: 1,
+                            expected_head_version: 1,
+                            mime_type: "image/png".to_owned(),
+                            prepared_blob_receipt_id: receipt.receipt_id,
+                        },
+                        turn_id: None,
+                    },
+                },
+            )
+            .unwrap();
+        if trashed {
+            library
+                .apply(
+                    &context(),
+                    ModuleApplyRequest {
+                        contract_version: LIBRARY_CONTRACT_VERSION,
+                        operation_id: "canvas:trash".to_owned(),
+                        store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
+                        intent: LibraryIntent::ApplyFileChange {
+                            change: LibraryFileChange::Trash {
+                                file_id: "canvas-image".to_owned(),
+                                expected_revision: 2,
+                            },
+                            turn_id: None,
+                        },
+                    },
+                )
+                .unwrap();
+        }
+        library
+            .apply(
+                &library_context_for("revoke", AdapterKind::Test),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "canvas:revoke".to_owned(),
+                    store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
+                    intent: LibraryIntent::SetProjectAccess {
+                        target: LibraryResourceTarget::File {
+                            file_id: "canvas-image".to_owned(),
+                        },
+                        changes: vec![LibraryProjectAccessChange {
+                            project_id: PROJECT_ID.to_owned(),
+                            access: None,
+                            expected_revision: Some(1),
+                        }],
+                    },
+                },
+            )
+            .unwrap();
+        let source = LibraryFileReadSource::CanvasRecovery {
+            document_id: DOCUMENT_ID.to_owned(),
+            draft_id: "draft:test".to_owned(),
+            scene_file_id: "slot-retained".to_owned(),
+        };
+        let blob = library
+            .resolve_file_blob(&context(), "canvas-image", &source, None)
+            .unwrap();
+        assert_eq!(fs::read(blob.physical_path).unwrap(), b"alpha");
+        assert!(
+            library
+                .resolve_file_blob(&context(), "canvas-image", &source, Some(2))
+                .is_err()
+        );
+        let inspection = inspect_draft(&seeded);
+        assert!(
+            inspection.can_copy && inspection.can_restore,
+            "{:?}",
+            inspection.explanation
+        );
+        let command = request("resolve:canvas-file", resolve(&inspection, choice));
+        let result = seeded.module.apply(&context(), command.clone()).unwrap();
+        let summary = result.committed.value.recovery.unwrap();
+        let target = summary.target_owner_id.unwrap();
+        let restored_id = seeded.kernel.readers().read_default(|connection| {
+            connection.query_row("SELECT reference.target_file_id FROM canvas_scene_file_refs reference WHERE reference.owner_block_id = ?1 AND reference.file_id = 'slot-retained'", [&target], |row| row.get::<_, String>(0)).map_err(StoreError::from)
+        }).unwrap();
+        assert_eq!(restored_id == "canvas-image", !trashed);
+        let bytes = library
+            .resolve_file_blob(
+                &context(),
+                &restored_id,
+                &LibraryFileReadSource::Canvas {
+                    canvas_id: target.clone(),
+                    scene_file_id: "slot-retained".to_owned(),
+                },
+                None,
+            )
+            .unwrap();
+        assert_eq!(fs::read(bytes.physical_path).unwrap(), b"alpha");
+        let replay = seeded.module.apply(&context(), command).unwrap();
+        assert_eq!(
+            replay.committed.value.recovery.unwrap().target_owner_id,
+            Some(target)
+        );
+        assert!(replay.events.is_empty());
+        seeded
+            .kernel
+            .readers()
+            .read_default(move |connection| {
+                let count =
+                    connection.query_row("SELECT count(*) FROM library_files", [], |row| {
+                        row.get::<_, i64>(0)
+                    })?;
+                assert_eq!(
+                    count,
+                    if trashed { 2 } else { 1 },
+                    "only a trashed fixed target needs a new File"
+                );
+                Ok(())
+            })
+            .unwrap();
+    }
+}
+
+#[test]
+fn canvas_recovery_rebuilds_missing_slots_but_never_reuses_a_changed_binding() {
+    for changed_binding in [false, true] {
+        let seeded = canvas_module();
+        seeded
+            .module
+            .apply(
+                &context(),
+                request(
+                    "prepare",
+                    OwnedDocumentIntent::PrepareOwner {
+                        owner_block_id: OWNER_BLOCK_ID.to_owned(),
+                    },
+                ),
+            )
+            .unwrap();
+        create_canvas_file(&seeded, "original-image", b"original");
+        create_canvas_file(&seeded, "other-image", b"other");
+        let image = |id: &str, version: i64| json!({"id":id,"type":"image","version":version,"versionNonce":1,"isDeleted":false,"fileId":"slot"});
+        let binding = |file: &str| json!({"id":"slot","mimeType":"image/png","source":format!("nodex://files/{file}"),"fileVersion":1,"defaultName":"image.png"});
+        let apply = |operation: &str, head: i64, elements: Vec<Value>, files: Value| {
+            seeded.module.apply(&context(), request(operation, OwnedDocumentIntent::ApplyCanvasMutation {
+                document_id: DOCUMENT_ID.to_owned(), generation:1, expected_head_seq:head,
+                mutation:json!({"elementCandidates":elements,"appStateIntents":{},"fileAdditions":files}),
+            })).unwrap();
+        };
+        apply(
+            "initial",
+            0,
+            vec![image("existing", 1)],
+            json!({"slot":binding("original-image")}),
+        );
+        let scene = seeded
+            .kernel
+            .readers()
+            .read_default(|connection| {
+                let authority = read_document_authority(connection, DOCUMENT_ID)?.unwrap();
+                Ok(load_canvas_scene(connection, &authority)?
+                    .scene
+                    .canonical_value())
+            })
+            .unwrap();
+        let mut package = capture(vec![]);
+        package.schema_key = crate::document::CANVAS_SCHEMA_KEY.to_owned();
+        package.schema_version = crate::document::CANVAS_SCHEMA_VERSION;
+        package.content = RecoveryDraftContent::Canvas {
+            scene: Some(scene),
+            mutations: vec![
+                json!({"elementCandidates":[image("retained",1)],"appStateIntents":{},"fileAdditions":{}}),
+            ],
+        };
+        seeded
+            .module
+            .apply(
+                &context(),
+                request(
+                    "capture",
+                    OwnedDocumentIntent::CaptureRecovery {
+                        capture: Box::new(package),
+                    },
+                ),
+            )
+            .unwrap();
+        let mut deleted = image("existing", 2);
+        deleted["isDeleted"] = json!(true);
+        apply("remove", 1, vec![deleted], json!({}));
+        if changed_binding {
+            apply(
+                "reuse-slot",
+                2,
+                vec![image("unrelated", 1)],
+                json!({"slot":binding("other-image")}),
+            );
+        }
+        let inspection = inspect_draft(&seeded);
+        assert!(inspection.can_copy, "{:?}", inspection.explanation);
+        assert_eq!(
+            inspection.can_restore, !changed_binding,
+            "{:?}",
+            inspection.explanation
+        );
+        let choice = if changed_binding {
+            RecoveryChoice::Copy
+        } else {
+            RecoveryChoice::Restore
+        };
+        let result = seeded
+            .module
+            .apply(&context(), request("resolve", resolve(&inspection, choice)))
+            .unwrap();
+        let document = result
+            .committed
+            .value
+            .recovery
+            .unwrap()
+            .target_document_id
+            .unwrap();
+        seeded
+            .kernel
+            .readers()
+            .read_default(|connection| {
+                let authority = read_document_authority(connection, &document)?.unwrap();
+                let scene = load_canvas_scene(connection, &authority)?.scene;
+                assert_eq!(scene.files["slot"].target_file_id, "original-image");
+                assert!(
+                    scene
+                        .elements
+                        .iter()
+                        .any(|element| element.id == "retained")
+                );
+                Ok(())
+            })
+            .unwrap();
     }
 }

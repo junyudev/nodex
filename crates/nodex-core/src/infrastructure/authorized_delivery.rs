@@ -476,6 +476,9 @@ fn revocation_root(revocation: &ResourceRevocation) -> ResourceKey {
         nodex_core_contracts::RevokedResourceKind::Canvas => ResourceKey::Canvas {
             canvas_id: revocation.resource_id.clone(),
         },
+        nodex_core_contracts::RevokedResourceKind::File => ResourceKey::File {
+            file_id: revocation.resource_id.clone(),
+        },
     }
 }
 

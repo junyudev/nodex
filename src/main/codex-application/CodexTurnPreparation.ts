@@ -30,7 +30,10 @@ import type {
   CodexSteerTurnInput,
 } from "../../shared/types";
 import type { CodexCanonicalSteeringUserMessageItem } from "../../shared/codex-conversation-state/codex-conversation-state";
-import { ProfileAssets } from "../local-store/ProfileAssets";
+import { CodexInputAssets } from "./CodexInputAssets";
+import { CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
+import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
+import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import { buildTurnPermissionOverrides } from "../codex/codex-permission-resolver";
 import {
   CodexAgentConfigRuntime,
@@ -194,7 +197,9 @@ export const make: Effect.Effect<
   | CodexPermissions
   | CodexPreferences
   | CodexThreadSettingsRuntime
-  | ProfileAssets
+  | TemporaryAssets
+  | CodexInputAssets
+  | CodexThreadHostResolver
 > = Effect.gen(function* () {
   const agentConfig = yield* CodexAgentConfigRuntime;
   const attachments = yield* CodexAttachments;
@@ -203,7 +208,9 @@ export const make: Effect.Effect<
   const permissions = yield* CodexPermissions;
   const preferences = yield* CodexPreferences;
   const threadSettings = yield* CodexThreadSettingsRuntime;
-  const assets = yield* ProfileAssets;
+  const assets = yield* TemporaryAssets;
+  const inputAssets = yield* CodexInputAssets;
+  const hosts = yield* CodexThreadHostResolver;
 
   const preparePrompt = Effect.fn("CodexTurnPreparation.preparePrompt")(function* (
     prompt: string,
@@ -240,7 +247,7 @@ export const make: Effect.Effect<
   const start: CodexTurnPreparation["Service"]["start"] = (input) =>
     Effect.gen(function* () {
       yield* threadSettings.awaitCurrent(input.threadId);
-      const prepared = yield* preparePrompt(
+      let prepared: CodexPreparedPrompt = yield* preparePrompt(
         input.prompt,
         input.overrides?.promptInput,
         input.overrides?.preparedPrompt,
@@ -316,6 +323,12 @@ export const make: Effect.Effect<
           );
       const serviceTier = serviceTierRequest.serviceTier ?? null;
       const clientUserMessageId = input.overrides?.clientUserMessageId ?? randomUUID();
+      prepared = yield* inputAssets.retainPrepared(
+        input.threadId,
+        clientUserMessageId,
+        prepared,
+        (yield* hosts.resolve(input.threadId)) === CODEX_APP_LOCAL_HOST_ID,
+      );
       const request: TurnStartParams = {
         threadId: input.threadId,
         clientUserMessageId,
@@ -456,7 +469,10 @@ export const make: Effect.Effect<
     Effect.gen(function* () {
       const threadId = input.command.threadId;
       const state = yield* projection.read(threadId);
-      const prepared = yield* preparePrompt(input.command.prompt, input.command.promptInput);
+      let prepared: CodexPreparedPrompt = yield* preparePrompt(
+        input.command.prompt,
+        input.command.promptInput,
+      );
       const fail = (cause: unknown) =>
         Effect.fail(new CodexTurnPreparationError({ operation: "steer", threadId, cause }));
       if (prepared.agentConfigs.length > 0) {
@@ -478,6 +494,12 @@ export const make: Effect.Effect<
         : state.canonical.turns.findLast((turn) => turn.protocol.status === "inProgress");
       const expectedTurnId = input.command.expectedTurnId ?? activeTurn?.protocol.id ?? null;
       if (!expectedTurnId) return yield* fail(new Error("No active Turn is available to steer"));
+      prepared = yield* inputAssets.retainPrepared(
+        threadId,
+        input.recoveryRow.clientUserMessageId,
+        prepared,
+        (yield* hosts.resolve(threadId)) === CODEX_APP_LOCAL_HOST_ID,
+      );
       const request: TurnSteerParams = {
         threadId,
         expectedTurnId,

@@ -1,3 +1,4 @@
+import type { ReadFileBytesInput, SaveFileInput } from "../../shared/library-files";
 import { resolveRendererTransport } from "./renderer-transport";
 import type { IpcApi } from "../../shared/ipc-api";
 import type {
@@ -57,16 +58,14 @@ import type {
   LibraryModuleReadResult,
 } from "../../shared/library-module";
 import type {
-  PageFileBytes,
-  PickPageFilesInput,
-  PickPageFilesResult,
-  PreparedPickedPageFile,
-  PrepareDroppedPageFilesInput,
-  PreparePageFileInput,
-  ReadPageFileBytesInput,
-  SavePageFileInput,
-  SavePageFileResult,
-} from "../../shared/page-files";
+  FileBytes,
+  PickFilesInput,
+  PickFilesResult,
+  PreparedFileBlob,
+  PrepareDroppedFilesInput,
+  PrepareFileBlobInput,
+  SaveFileResult,
+} from "../../shared/file-resources";
 import type { LibraryPageDetailResult, PageDetailResult } from "../../shared/page-detail";
 import type {
   DocumentMutationRequest,
@@ -279,35 +278,43 @@ const removePastedTextCommand = defineRendererCommand({
   protocol: { kind: "returned_value" },
 });
 
-const pickAndPreparePageFilesCommand = defineRendererCommand({
-  key: "page_files.pick_and_prepare",
-  channel: "page-files:pick-and-prepare",
+const prepareFileBlobCommand = defineRendererCommand({
+  key: "files.prepare",
+  channel: "files:prepare",
   authority: "external",
-  owner: "PageFiles",
+  owner: "Files",
   protocol: { kind: "returned_value" },
 });
 
-const prepareDroppedPageFilesCommand = defineRendererCommand({
-  key: "page_files.prepare_dropped",
-  channel: "page-files:prepare-local-drop",
+const pickAndPrepareFilesCommand = defineRendererCommand({
+  key: "files.pick_and_prepare",
+  channel: "files:pick-and-prepare",
   authority: "external",
-  owner: "PageFiles",
+  owner: "Files",
   protocol: { kind: "returned_value" },
 });
 
-const preparePageFileCommand = defineRendererCommand({
-  key: "page_files.prepare",
-  channel: "page-files:prepare",
+const prepareDroppedFilesCommand = defineRendererCommand({
+  key: "files.prepare_dropped",
+  channel: "files:prepare-local-drop",
   authority: "external",
-  owner: "PageFiles",
+  owner: "Files",
   protocol: { kind: "returned_value" },
 });
 
-const savePageFileCommand = defineRendererCommand({
-  key: "page_files.save",
-  channel: "page-files:save",
+const materializeFileCommand = defineRendererCommand({
+  key: "files.materialize",
+  channel: "files:materialize",
   authority: "external",
-  owner: "PageFiles",
+  owner: "Files",
+  protocol: { kind: "returned_value" },
+});
+
+const saveFileCommand = defineRendererCommand({
+  key: "files.save",
+  channel: "files:save",
+  authority: "external",
+  owner: "Files",
   protocol: { kind: "returned_value" },
 });
 
@@ -861,48 +868,55 @@ export async function applyLibraryModule(
   return await invokeLocalCommitCommandResult(definition, accessContext, request);
 }
 
-export function pickAndPreparePageFiles(
+export function prepareFileBlob(
   accessContext: ContentAccessContext,
-  input: PickPageFilesInput,
-): Promise<PickPageFilesResult> {
-  return invokePlainCommand(pickAndPreparePageFilesCommand, accessContext, input);
+  input: PrepareFileBlobInput,
+): Promise<PreparedFileBlob> {
+  return invokePlainCommand(prepareFileBlobCommand, accessContext, input);
 }
 
-export async function prepareDroppedPageFiles(
+export function pickAndPrepareFiles(
+  accessContext: ContentAccessContext,
+  input: PickFilesInput,
+): Promise<PickFilesResult> {
+  return invokePlainCommand(pickAndPrepareFilesCommand, accessContext, input);
+}
+
+export async function prepareDroppedFiles(
   accessContext: ContentAccessContext,
   operationId: string,
   files: readonly File[],
-): Promise<readonly PreparedPickedPageFile[]> {
+): Promise<readonly PreparedFileBlob[]> {
   const getPathForFile = window.api?.getPathForFile;
-  if (!getPathForFile) throw new Error("Native file drop is unavailable");
+  if (!getPathForFile) throw new Error("Native File drop is unavailable");
   const localPaths = Array.from(files, (file) => getPathForFile(file));
   if (localPaths.length === 0 || localPaths.some((localPath) => !localPath)) {
-    throw new Error("Dropped files are unavailable to the desktop host");
+    throw new Error("Dropped Files are unavailable to the desktop host");
   }
-  const input: PrepareDroppedPageFilesInput = { operationId, localPaths };
-  const result = await invokePlainCommand(prepareDroppedPageFilesCommand, accessContext, input);
+  const input: PrepareDroppedFilesInput = { operationId, localPaths };
+  const result = await invokePlainCommand(prepareDroppedFilesCommand, accessContext, input);
   return result.files;
 }
 
-export function preparePageFile(
+export function readFileBytes(
   accessContext: ContentAccessContext,
-  input: PreparePageFileInput,
-): Promise<PreparedPickedPageFile> {
-  return invokePlainCommand(preparePageFileCommand, accessContext, input);
+  input: ReadFileBytesInput,
+): Promise<FileBytes> {
+  return invokeRendererQuery("files:read", accessContext, input);
 }
 
-export function readPageFileBytes(
+export function materializeFile(
   accessContext: ContentAccessContext,
-  input: ReadPageFileBytesInput,
-): Promise<PageFileBytes> {
-  return invokeRendererQuery("page-files:read", accessContext, input);
+  input: SaveFileInput,
+): Promise<string> {
+  return invokePlainCommand(materializeFileCommand, accessContext, input);
 }
 
-export function savePageFile(
+export function saveFile(
   accessContext: ContentAccessContext,
-  input: SavePageFileInput,
-): Promise<SavePageFileResult> {
-  return invokePlainCommand(savePageFileCommand, accessContext, input);
+  input: SaveFileInput,
+): Promise<SaveFileResult> {
+  return invokePlainCommand(saveFileCommand, accessContext, input);
 }
 
 export function readLibraryDatabaseModule(

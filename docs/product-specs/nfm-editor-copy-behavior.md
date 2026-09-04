@@ -1,7 +1,7 @@
 # NFM Editor Copy Behavior
 
 Status: Active
-Last Updated: 2026-09-04
+Last Updated: 2026-09-05
 
 This document describes copy-related behavior inside the NFM / BlockNote editor. It covers ordinary selection copy/cut, structural selection copy/cut, and the separate image-toolbar copy action.
 
@@ -78,7 +78,7 @@ application/x-nodex-structural-clipboard+json
 
 The private descriptor carries only the structural protocol version, lifecycle phase, exact native write claim, action hint, and a ready capability locator when available. It never contains the copied Block forest, Page content, File bytes, or another copy of the Core bundle. It is routing evidence, not permission to create, move, or read content.
 
-The standard HTML and plain-text presentations are always written alongside the private descriptor. They remain useful in another application, another Profile, after the host runtime has restarted, or whenever private data is missing, malformed, stale, superseded, or unsupported. Portable HTML cannot create an owning Page, Canvas, or Database, and a foreign presentation cannot materialize `nodex://files/...` as a live Page File placement.
+The standard HTML and plain-text presentations are always written alongside the private descriptor. They remain useful in another application, another Profile, after the host runtime has restarted, or whenever private data is missing, malformed, stale, superseded, or unsupported. Portable HTML cannot create an owning Page, Canvas, or Database, and a foreign presentation cannot materialize `nodex://files/...` as an authorized Library File reference.
 
 On success, the handler calls `preventDefault()`.
 
@@ -140,12 +140,12 @@ If the cut-aware range path is unavailable or throws, the helper falls back to B
 Standard copy/cut keeps `nodex://assets/...` and `nodex://files/...` locators
 portable by default. The `Copy file references as local paths` setting is off
 by default. When enabled, Nodex resolves both locator families to their current
-absolute local files only inside `text/plain`. A Page File resolves to the
-immutable `.blob` backing its current version; the logical File name and rich
-HTML presentation remain unchanged.
+absolute local files only inside `text/plain`. A Library File resolves to a
+private materialization of the exact version authorized by the current read
+source; the File presentation name and rich HTML remain unchanged.
 
-Legacy managed assets resolve synchronously. Page File identity resolves through
-the Page's authorized current metadata and a hash-only preload capability. For
+Legacy managed assets resolve synchronously. Library File identity resolves
+through its direct, Page, Canvas, history, or recovery read source. For
 ordinary selections, Nodex synchronously writes a portable rich fallback with a
 bounded native clipboard claim, resolves the local paths, and asks Main to
 enhance only its plain-text representation. Main writes only when the claim
@@ -543,7 +543,7 @@ On success, the editor is focused again.
 - uses structure-preserving `text/plain`
 - preserves `blocknote/html` and `text/html` exactly as serialized for portable standard copy
 - preserves the serialized `text/html` presentation when opt-in local-path resolution completes
-- keeps Nodex File locators portable by default and optionally resolves both Page Files and legacy managed assets only in `text/plain`
+- keeps Nodex File locators portable by default and optionally resolves both Library Files and legacy managed assets only in `text/plain`
 - rewrites image lines in `text/plain` to Markdown image syntax after plain-text asset resolution
 - cut deletes the resolved range or current Block only after successful copy handling
 

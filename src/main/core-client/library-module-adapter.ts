@@ -1,3 +1,5 @@
+import { toCoreLibraryFileRead } from "../../shared/library-files-transport";
+import type { components } from "@nodex/core-protocol";
 import {
   parseDatabaseId,
   parseDatabaseViewId,
@@ -21,6 +23,7 @@ import type {
   LibraryPageInsertion,
   LibraryReadValue,
   LibraryResourceTarget,
+  LibraryPlacedResourceTarget,
   LibraryRouteTarget,
   LibraryStructuralReplacementBlock,
   LibraryWriteParent,
@@ -145,13 +148,18 @@ const toCoreRouteTarget = (target: LibraryRouteTarget) => {
   return { kind: target.kind, view_id: target.viewId } as const;
 };
 
-const toCoreResourceTarget = (target: LibraryResourceTarget) => {
+const toCorePlacedTarget = (target: LibraryPlacedResourceTarget) => {
   if (target.kind === "page") return { kind: target.kind, page_id: target.pageId } as const;
   if (target.kind === "database") {
     return { kind: target.kind, database_id: target.databaseId } as const;
   }
   return { kind: target.kind, canvas_id: target.canvasId } as const;
 };
+
+const toCoreResourceTarget = (target: LibraryResourceTarget) =>
+  target.kind === "file"
+    ? ({ kind: target.kind, file_id: target.fileId } as const)
+    : toCorePlacedTarget(target);
 
 const toCoreParent = (parent: LibraryNavigationParent) => {
   if (parent.kind === "library") return parent;
@@ -297,6 +305,14 @@ const toCoreCanvasDestination = (destination: LibraryCanvasDestination) => {
 const toCoreRead = (request: LibraryModuleReadRequest): LibraryRead => {
   const read = request.read;
   switch (read.mode) {
+    case "files":
+    case "file":
+    case "file_presentation":
+    case "file_usages":
+    case "file_versions":
+    case "page_file_inventory":
+    case "resolve_page_file":
+      return toCoreLibraryFileRead(read);
     case "metadata":
       return { kind: "metadata" };
     case "resource_project_access":
@@ -322,7 +338,7 @@ const toCoreRead = (request: LibraryModuleReadRequest): LibraryRead => {
         cursor: read.cursor ?? null,
         limit: read.limit,
         force_include_target: read.forceIncludeTarget
-          ? toCoreResourceTarget(read.forceIncludeTarget)
+          ? toCorePlacedTarget(read.forceIncludeTarget)
           : null,
       };
     case "path":
@@ -339,7 +355,7 @@ const toCoreRead = (request: LibraryModuleReadRequest): LibraryRead => {
     case "move_destinations":
       return {
         kind: "move_destinations",
-        target: toCoreResourceTarget(read.target),
+        target: toCorePlacedTarget(read.target),
         scope: toCoreMoveDestinationScope(read.scope),
         cursor: read.cursor ?? null,
         limit: read.limit,
@@ -368,29 +384,6 @@ const toCoreRead = (request: LibraryModuleReadRequest): LibraryRead => {
       return {
         kind: "page_backlinks",
         target_page_id: read.targetPageId,
-        cursor: read.cursor ?? null,
-        limit: read.limit ?? null,
-      };
-    case "page_files":
-      return {
-        kind: "page_files",
-        page_id: read.pageId,
-        query: read.query ?? null,
-        cursor: read.cursor ?? null,
-        limit: read.limit ?? null,
-        include_deleted: read.includeDeleted ?? null,
-      };
-    case "page_file_metadata":
-      return {
-        kind: "page_file_metadata",
-        page_id: read.pageId,
-        file_id: read.fileId,
-      };
-    case "page_file_versions":
-      return {
-        kind: "page_file_versions",
-        page_id: read.pageId,
-        file_id: read.fileId,
         cursor: read.cursor ?? null,
         limit: read.limit ?? null,
       };
@@ -527,6 +520,12 @@ const toCoreStructuralCommand = (command: StructuralEditCommand) => {
 
 const toCoreIntent = (operation: LibraryApplyOperation): LibraryIntent => {
   switch (operation.kind) {
+    case "put_page_file_entry":
+    case "apply_file_change":
+    case "apply_page_file_entries":
+    case "transfer_page_file_entry":
+      return operation;
+
     case "create_page":
       return {
         kind: operation.kind,
@@ -676,62 +675,6 @@ const toCoreIntent = (operation: LibraryApplyOperation): LibraryIntent => {
           { kind: "page_metadata" },
           operation.clientSessionId,
         ),
-      };
-    case "apply_page_file_changes":
-      return {
-        kind: operation.kind,
-        page_id: operation.pageId,
-        expected_manifest_revision: operation.expectedManifestRevision,
-        turn_id: operation.turnId ?? null,
-        changes: operation.changes.map((change) => {
-          switch (change.kind) {
-            case "create":
-              return {
-                kind: change.kind,
-                file_id: change.fileId,
-                logical_path: change.logicalPath,
-                mime_type: change.mimeType,
-                prepared_blob_receipt_id: change.preparedBlobReceiptId,
-                collision_policy: change.collisionPolicy,
-              };
-            case "replace_content":
-              return {
-                kind: change.kind,
-                file_id: change.fileId,
-                expected_version: change.expectedVersion,
-                mime_type: change.mimeType,
-                prepared_blob_receipt_id: change.preparedBlobReceiptId,
-              };
-            case "rename":
-              return {
-                kind: change.kind,
-                file_id: change.fileId,
-                expected_version: change.expectedVersion,
-                logical_path: change.logicalPath,
-              };
-            case "delete":
-              return {
-                kind: change.kind,
-                file_id: change.fileId,
-                expected_version: change.expectedVersion,
-              };
-            case "restore_version":
-              return {
-                kind: change.kind,
-                file_id: change.fileId,
-                expected_version: change.expectedVersion,
-                source_version: change.sourceVersion,
-              };
-            case "clone_into_page":
-              return {
-                kind: change.kind,
-                source_page_id: change.sourcePageId,
-                source_file_id: change.sourceFileId,
-                target_file_id: change.targetFileId,
-                logical_path: change.logicalPath,
-              };
-          }
-        }),
       };
     case "apply_structural_edit":
       return {
@@ -958,23 +901,22 @@ const fromCoreNode = (node: CoreNavigationNode): LibraryNavigationNode => {
 const mapReadValue = (snapshot: LibraryReadSnapshot): LibraryReadValue => {
   const value = snapshot.value;
   switch (value.kind) {
+    case "files":
+    case "file":
+    case "file_presentation":
+    case "file_usages":
+    case "file_versions":
+    case "page_file_inventory":
+    case "resolved_page_file":
+      return value;
+
     case "metadata":
       return { kind: value.kind } as const;
     case "resource_project_access":
       return {
         kind: value.kind,
         value: {
-          target:
-            value.value.target.kind === "page"
-              ? { kind: "page" as const, pageId: value.value.target.page_id }
-              : value.value.target.kind === "database"
-                ? {
-                    kind: "database" as const,
-                    databaseId: parseDatabaseId(value.value.target.database_id),
-                  }
-                : (() => {
-                    throw new Error("Canvas access is inherited and cannot be managed directly");
-                  })(),
+          target: fromCoreCreatedTarget(value.value.target),
           projects: value.value.projects.map((project) => ({
             projectId: project.project_id,
             projectName: project.project_name,
@@ -1232,92 +1174,10 @@ const mapReadValue = (snapshot: LibraryReadSnapshot): LibraryReadValue => {
         total: value.total,
         sourcePageCount: value.source_page_count,
       } as const;
-    case "page_files":
-      return {
-        kind: value.kind,
-        value: {
-          pageId: value.value.page_id,
-          revision: value.value.revision,
-          bodyUsageRevision: value.value.body_usage_revision,
-          files: value.value.files.map(mapPageFileSummary),
-          nextCursor: value.value.next_cursor ?? null,
-          hasMore: value.value.has_more,
-          total: value.value.total,
-          liveTotal: value.value.live_total,
-          unplacedTotal: value.value.unplaced_total,
-          placedTotal: value.value.placed_total,
-          deletedTotal: value.value.deleted_total,
-        },
-      } as const;
-    case "page_file_metadata":
-      return {
-        kind: value.kind,
-        value: mapPageFileSummary(value.value),
-      } as const;
-    case "page_file_versions":
-      return {
-        kind: value.kind,
-        value: {
-          pageId: value.value.page_id,
-          fileId: value.value.file_id,
-          versions: value.value.versions.map((version) => ({
-            fileId: version.file_id,
-            version: version.version,
-            ownerPageId: version.owner_page_id,
-            manifestRevision: version.manifest_revision,
-            changeKind: version.change_kind,
-            logicalPath: version.logical_path,
-            mimeType: version.mime_type,
-            byteLength: version.byte_length,
-            blobEtag: version.blob_etag ?? null,
-            actorId: version.actor_id,
-            turnId: version.turn_id ?? null,
-            operationId: version.operation_id,
-            occurredAt: version.occurred_at,
-          })),
-          nextCursor: value.value.next_cursor ?? null,
-          hasMore: value.value.has_more,
-        },
-      } as const;
     default:
       throw new Error(`Core Library read ${value.kind} cannot satisfy the catalog Adapter`);
   }
 };
-
-const mapPageFileSummary = (file: {
-  readonly file_id: string;
-  readonly owner_page_id: string;
-  readonly logical_path: string;
-  readonly mime_type: string;
-  readonly byte_length: number;
-  readonly version: number;
-  readonly blob_etag: string;
-  readonly state: "live" | "deleted";
-  readonly created_by_actor_id: string;
-  readonly created_by_turn_id?: string | null;
-  readonly created_at: string;
-  readonly updated_at: string;
-  readonly body_usage:
-    | { readonly kind: "not_in_body" }
-    | { readonly kind: "placed"; readonly placement_count: number };
-}) => ({
-  fileId: file.file_id,
-  ownerPageId: file.owner_page_id,
-  logicalPath: file.logical_path,
-  mimeType: file.mime_type,
-  byteLength: file.byte_length,
-  version: file.version,
-  blobEtag: file.blob_etag,
-  state: file.state,
-  createdByActorId: file.created_by_actor_id,
-  createdByTurnId: file.created_by_turn_id ?? null,
-  createdAt: file.created_at,
-  updatedAt: file.updated_at,
-  bodyUsage:
-    file.body_usage.kind === "placed"
-      ? { kind: file.body_usage.kind, placementCount: file.body_usage.placement_count }
-      : { kind: file.body_usage.kind },
-});
 
 const mapPageDataSourceContext = (context: CorePageDetail["data_source_context"]): unknown => {
   if (context.kind === "standalone") return { kind: "standalone" };
@@ -1944,8 +1804,9 @@ const pageHistoryError = (error: unknown): PageHistoryCommandError => {
 };
 
 const fromCoreCreatedTarget = (
-  target: NonNullable<Extract<LibraryIntent, { kind: "archive_resource" }>["target"]>,
-): Exclude<LibraryRouteTarget, { kind: "view" }> => {
+  target: components["schemas"]["LibraryResourceTarget"],
+): LibraryResourceTarget => {
+  if (target.kind === "file") return { kind: target.kind, fileId: target.file_id };
   if (target.kind === "page") return { kind: target.kind, pageId: target.page_id };
   if (target.kind === "database") {
     return { kind: target.kind, databaseId: parseDatabaseId(target.database_id) };
@@ -2216,6 +2077,12 @@ export const createCoreLibraryModuleAdapter = (
             operationKind: request.operation.kind,
             duplicate: receipt.duplicate,
             didMutate: receipt.did_mutate,
+            ...(committed.outcome.file_mutation
+              ? { fileMutation: committed.outcome.file_mutation }
+              : {}),
+            ...(committed.outcome.page_file_entries.length > 0
+              ? { pageFileEntries: committed.outcome.page_file_entries }
+              : {}),
             createdTarget: receipt.created_target
               ? fromCoreCreatedTarget(receipt.created_target)
               : null,
@@ -2261,16 +2128,6 @@ export const createCoreLibraryModuleAdapter = (
                   affectedPageIds: committed.outcome.structural_edit.affected_page_ids,
                   affectedDatabaseIds:
                     committed.outcome.structural_edit.affected_database_ids.map(parseDatabaseId),
-                  fileOwnershipMoves: committed.outcome.structural_edit.file_ownership_moves.map(
-                    (move) => ({
-                      fileId: move.file_id,
-                      previousOwnerPageId: move.previous_owner_page_id,
-                      ownerPageId: move.owner_page_id,
-                      previousLogicalPath: move.previous_logical_path,
-                      logicalPath: move.logical_path,
-                      version: move.version,
-                    }),
-                  ),
                   clipboard: committed.outcome.structural_edit.clipboard
                     ? {
                         bundleId: committed.outcome.structural_edit.clipboard.bundle_id,
@@ -2299,16 +2156,6 @@ export const createCoreLibraryModuleAdapter = (
                           committed.outcome.structural_edit.resume.fallback_after_block_id ?? null,
                       }
                     : null,
-                }
-              : null,
-            pageFiles: committed.outcome.page_files
-              ? {
-                  pageId: committed.outcome.page_files.page_id,
-                  manifestRevision: committed.outcome.page_files.manifest_revision,
-                  createdFileIds: committed.outcome.page_files.created_file_ids,
-                  updatedFileIds: committed.outcome.page_files.updated_file_ids,
-                  deletedFileIds: committed.outcome.page_files.deleted_file_ids,
-                  consumedBlobReceiptIds: committed.outcome.page_files.consumed_blob_receipt_ids,
                 }
               : null,
             pageRelocation:

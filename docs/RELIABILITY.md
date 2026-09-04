@@ -151,6 +151,13 @@ backup retain recovery evidence; current reopen is idempotent. Accepted
 source/current identities are executable data owned by the Store catalog,
 migration code, snapshot, and tests rather than prose.
 
+A migration that changes physical asset names publishes verified
+content-addressed copies and keeps the source names referenced by its SQLite
+backup. Migration history records the retained-source count. Those source files
+form part of the rollback pair and remain outside ordinary managed-Blob garbage
+collection; they may be removed only together with the corresponding migration
+backup under an explicit backup-retention operation.
+
 Read [Core Lifecycle and Store Reliability](reliability/core-lifecycle-and-store.md).
 
 ## Documents and collaborative state
@@ -227,21 +234,32 @@ replacement, publishes all-or-nothing, rotates the Store epoch, and relaunches
 Electron. Old outboxes, checkpoints, Awareness, and cursors cannot replay across
 that epoch.
 
-### Page File blobs
+### Managed File blobs
 
-Page File bytes use a publish-before-reference protocol owned by Core. A bounded
-stream is hashed into a private same-directory staging file, fsynced, published
-without replacement under a content-addressed immutable name, and revalidated
-before Core returns an opaque prepared receipt. The receipt is bound to Store
-epoch, Project, operation identity, hash, size, and expiry. Only the matching
-Page File manifest mutation may consume it. Consequently a failed metadata
-commit can leave reclaimable unreferenced bytes, but a committed File version
-cannot point to bytes that were never published.
+Main stages captures in private temporary media and input caches. Those caches
+are not durable retention roots and are excluded from the Core asset namespace.
+Submitted input is retained in Core before transport; queue hydration reconstructs
+missing cache entries through an authorized Thread read.
+
+Core publishes bounded File streams through its shared immutable Blob storage.
+A private sibling staging file is hashed and fsynced, published without
+replacement under a content-addressed name, and verified before its prepared
+receipt is registered. The receipt binds Store epoch, Project, operation, hash,
+size, and expiry; only the matching domain mutation can consume it. Thread
+attachment retention consumes the same receipts without creating Library Files.
+
+Publication holds an owned namespace lease through durable receipt registration.
+Snapshots use the same lease, and destructive collection yields while either is
+active. Authorized reads open a regular, non-symlink file under that lease and
+return the owned handle. A later purge can unlink the name without interrupting
+the already authorized stream. An interrupted publication can leave unreferenced
+bytes but cannot commit a version pointing to unpublished content.
 
 Whole-Store backup copies the immutable asset tree under the existing snapshot
-lease. Restore verifies every retained Page File version's managed blob size and
+lease. Restore verifies every retained File version's managed blob size and
 SHA-256 before installation. Blob garbage collection computes reachability from
-live and retained File versions plus unexpired receipts, takes the destructive
+live and retained File versions, queued payloads and their attachments, Thread
+input roots, recovery and structural roots, and unexpired receipts. It takes the destructive
 side of the snapshot lease, and rechecks the Store coordinate before unlinking;
 backup and GC therefore cannot race a reachable blob out of the closure.
 

@@ -24,8 +24,8 @@ import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { ElectronWindowHost } from "../../platform/electron/ElectronWindowHost";
 import { browserElectronPlatform } from "../../platform/electron/BrowserElectronPlatform";
 import { WindowSessionCatalog } from "../../window-runtime/WindowSessionCatalog";
-import { ProfileAssets } from "../../local-store/ProfileAssets";
-import { makeProfileAssets } from "../../local-store/assets";
+import { TemporaryAssets } from "../../local-store/TemporaryAssets";
+import { makeTemporaryAssets } from "../../local-store/assets";
 import { live } from "./BrowserSidebarIpc";
 
 type Handler = (
@@ -112,8 +112,10 @@ it.effect(
               Layer.succeed(BrowserApplication, application),
               Layer.succeed(ElectronIpc, ipc),
               Layer.succeed(
-                ProfileAssets,
-                ProfileAssets.of(makeProfileAssets({ assetsRootPath: "/tmp/nodex-test/assets" })),
+                TemporaryAssets,
+                TemporaryAssets.of(
+                  makeTemporaryAssets({ assetsRootPath: "/tmp/nodex-test/assets" }),
+                ),
               ),
               Layer.succeed(
                 ElectronWindowHost,

@@ -40,6 +40,67 @@
         }
       }
     },
+    "/core/v1/blobs/prepare": {
+      "post": {
+        "tags": [
+          "api"
+        ],
+        "operationId": "prepare_blob",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "store_epoch",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idempotency_slot",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreparedBlobReceipt"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/core/v1/events": {
       "get": {
         "tags": [
@@ -65,6 +126,199 @@
               "text/event-stream": {
                 "schema": {
                   "$ref": "#/components/schemas/EventEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/core/v1/files/blobs/prepare": {
+      "post": {
+        "tags": [
+          "api"
+        ],
+        "operationId": "prepare_file_blob",
+        "parameters": [
+          {
+            "name": "operation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "store_epoch",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idempotency_slot",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreparedBlobReceipt"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/core/v1/files/blobs/{file_id}": {
+      "get": {
+        "tags": [
+          "api"
+        ],
+        "operationId": "read_file_blob",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "direct, page, document_revision, or canvas",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "canvas_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scene_file_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "x-nodex-request-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-nodex-request-class",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/CoreRequestClass"
+                }
+              ]
+            }
+          },
+          {
+            "name": "x-nodex-request-deadline-ms",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
                 }
               }
             }
@@ -1045,197 +1299,6 @@
         }
       }
     },
-    "/core/v1/page-files/blobs/prepare": {
-      "post": {
-        "tags": [
-          "api"
-        ],
-        "operationId": "prepare_page_file_blob",
-        "parameters": [
-          {
-            "name": "operation_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "store_epoch",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "idempotency_slot",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "x-nodex-request-id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-class",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "type": "null"
-                },
-                {
-                  "$ref": "#/components/schemas/CoreRequestClass"
-                }
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-deadline-ms",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/octet-stream": {
-              "schema": {
-                "type": "array",
-                "items": {
-                  "type": "integer",
-                  "format": "int32",
-                  "minimum": 0
-                }
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LibraryPreparedPageFileBlob"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/core/v1/page-files/blobs/{file_id}": {
-      "get": {
-        "tags": [
-          "api"
-        ],
-        "operationId": "read_page_file_blob",
-        "parameters": [
-          {
-            "name": "file_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "page_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "version",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "x-nodex-request-id",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-class",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "type": "null"
-                },
-                {
-                  "$ref": "#/components/schemas/CoreRequestClass"
-                }
-              ]
-            }
-          },
-          {
-            "name": "x-nodex-request-deadline-ms",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/octet-stream": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "integer",
-                    "format": "int32",
-                    "minimum": 0
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/core/v1/requests/cancel": {
       "post": {
         "tags": [
@@ -1259,6 +1322,49 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CoreRequestCancelResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/core/v1/threads/{thread_id}/blobs/{content_hash}": {
+      "get": {
+        "tags": [
+          "api"
+        ],
+        "operationId": "read_thread_asset_blob",
+        "parameters": [
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "content_hash",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
                 }
               }
             }
@@ -2192,6 +2298,7 @@
               "outcome": {
                 "type": "object",
                 "required": [
+                  "page_file_entries",
                   "affected_resource_ids"
                 ],
                 "properties": {
@@ -2271,6 +2378,16 @@
                       }
                     ]
                   },
+                  "file_mutation": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/LibraryFileMutationResult"
+                      }
+                    ]
+                  },
                   "page_copy": {
                     "oneOf": [
                       {
@@ -2291,15 +2408,11 @@
                       }
                     ]
                   },
-                  "page_files": {
-                    "oneOf": [
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "$ref": "#/components/schemas/LibraryPageFileMutationReceipt"
-                      }
-                    ]
+                  "page_file_entries": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/LibraryPageFileEntryReceipt"
+                    }
                   },
                   "page_lifecycle": {
                     "oneOf": [
@@ -2436,6 +2549,7 @@
               "outcome": {
                 "type": "object",
                 "required": [
+                  "page_file_entries",
                   "affected_resource_ids"
                 ],
                 "properties": {
@@ -2515,6 +2629,16 @@
                       }
                     ]
                   },
+                  "file_mutation": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/LibraryFileMutationResult"
+                      }
+                    ]
+                  },
                   "page_copy": {
                     "oneOf": [
                       {
@@ -2535,15 +2659,11 @@
                       }
                     ]
                   },
-                  "page_files": {
-                    "oneOf": [
-                      {
-                        "type": "null"
-                      },
-                      {
-                        "$ref": "#/components/schemas/LibraryPageFileMutationReceipt"
-                      }
-                    ]
+                  "page_file_entries": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/LibraryPageFileEntryReceipt"
+                    }
                   },
                   "page_lifecycle": {
                     "oneOf": [
@@ -7640,7 +7760,8 @@
           "event_frame_bytes",
           "document_json_request_bytes",
           "document_response_bytes",
-          "page_file_blob_bytes",
+          "file_blob_bytes",
+          "managed_blob_bytes",
           "request_deadline_min_ms",
           "request_deadline_max_ms",
           "interactive_request_deadline_ms",
@@ -7668,6 +7789,11 @@
             "format": "int64",
             "minimum": 0
           },
+          "file_blob_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
           "interactive_request_deadline_ms": {
             "type": "integer",
             "format": "int64",
@@ -7678,17 +7804,17 @@
             "format": "int64",
             "minimum": 0
           },
+          "managed_blob_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
           "ordinary_json_request_bytes": {
             "type": "integer",
             "format": "int64",
             "minimum": 0
           },
           "ordinary_json_response_bytes": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "page_file_blob_bytes": {
             "type": "integer",
             "format": "int64",
             "minimum": 0
@@ -14298,8 +14424,7 @@
         "required": [
           "pages",
           "document_commits",
-          "affected_database_ids",
-          "file_ownership_moves"
+          "affected_database_ids"
         ],
         "properties": {
           "affected_database_ids": {
@@ -14312,12 +14437,6 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/LibraryBlockTransferDocumentCommit"
-            }
-          },
-          "file_ownership_moves": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LibraryPageFileOwnershipMove"
             }
           },
           "pages": {
@@ -15672,8 +15791,7 @@
           "page_keys",
           "page_etags",
           "move_etags",
-          "page_view_placements",
-          "file_ownership_moves"
+          "page_view_placements"
         ],
         "properties": {
           "affected_database_ids": {
@@ -15695,12 +15813,6 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/LibraryBlockTransferDocumentCommit"
-            }
-          },
-          "file_ownership_moves": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LibraryPageFileOwnershipMove"
             }
           },
           "final_location_revisions": {
@@ -16048,20 +16160,13 @@
           "transfer_operation_id",
           "restored_source_root_ids",
           "removed_page_ids",
-          "document_commits",
-          "file_ownership_moves"
+          "document_commits"
         ],
         "properties": {
           "document_commits": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/LibraryBlockTransferDocumentCommit"
-            }
-          },
-          "file_ownership_moves": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LibraryPageFileOwnershipMove"
             }
           },
           "removed_page_ids": {
@@ -16386,7 +16491,7 @@
             "format": "int64"
           },
           "target": {
-            "$ref": "#/components/schemas/LibraryResourceTarget"
+            "$ref": "#/components/schemas/LibraryPlacedResourceTarget"
           },
           "title": {
             "type": "string"
@@ -16641,6 +16746,7 @@
       "LibraryEvent": {
         "type": "object",
         "required": [
+          "file_revisions",
           "kind",
           "page_ids",
           "database_ids",
@@ -16654,6 +16760,16 @@
           "database_ids": {
             "type": "array",
             "items": {
+              "type": "string"
+            }
+          },
+          "file_revisions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "propertyNames": {
               "type": "string"
             }
           },
@@ -16713,6 +16829,695 @@
         "enum": [
           "library_changed"
         ]
+      },
+      "LibraryFile": {
+        "type": "object",
+        "required": [
+          "file_id",
+          "library_id",
+          "default_name",
+          "head_version",
+          "revision",
+          "lifecycle",
+          "mime_type",
+          "byte_length",
+          "blob_etag",
+          "created_by_actor_id",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "blob_etag": {
+            "type": "string"
+          },
+          "byte_length": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "created_by_actor_id": {
+            "type": "string"
+          },
+          "created_by_turn_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default_name": {
+            "type": "string"
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "head_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "library_id": {
+            "type": "string"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/LibraryFileLifecycle"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "LibraryFileChange": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "file_id",
+              "default_name",
+              "mime_type",
+              "prepared_blob_receipt_id",
+              "kind"
+            ],
+            "properties": {
+              "default_name": {
+                "type": "string"
+              },
+              "file_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create"
+                ]
+              },
+              "mime_type": {
+                "type": "string"
+              },
+              "prepared_blob_receipt_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "file_id",
+              "expected_revision",
+              "expected_head_version",
+              "mime_type",
+              "prepared_blob_receipt_id",
+              "kind"
+            ],
+            "properties": {
+              "expected_head_version": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "file_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "replace_content"
+                ]
+              },
+              "mime_type": {
+                "type": "string"
+              },
+              "prepared_blob_receipt_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "file_id",
+              "expected_revision",
+              "default_name",
+              "kind"
+            ],
+            "properties": {
+              "default_name": {
+                "type": "string"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "file_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "rename"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "file_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "file_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "trash"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "file_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "file_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "restore"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "file_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "file_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "purge"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "source_file_id",
+              "source_version",
+              "source",
+              "file_id",
+              "default_name",
+              "kind"
+            ],
+            "properties": {
+              "default_name": {
+                "type": "string"
+              },
+              "file_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "fork"
+                ]
+              },
+              "source": {
+                "$ref": "#/components/schemas/LibraryFileReadSource"
+              },
+              "source_file_id": {
+                "type": "string"
+              },
+              "source_version": {
+                "type": "integer",
+                "format": "int64"
+              }
+            }
+          }
+        ]
+      },
+      "LibraryFileLifecycle": {
+        "type": "string",
+        "enum": [
+          "live",
+          "trashed"
+        ]
+      },
+      "LibraryFileMutationResult": {
+        "type": "object",
+        "required": [
+          "file_id",
+          "revision"
+        ],
+        "properties": {
+          "file": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LibraryFile"
+              }
+            ]
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "LibraryFilePage": {
+        "type": "object",
+        "required": [
+          "items",
+          "has_more",
+          "total"
+        ],
+        "properties": {
+          "has_more": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryFile"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "LibraryFilePresentation": {
+        "type": "object",
+        "description": "One authorized content target. Historical names and bytes are independent\nof the shared File's current metadata and head.",
+        "required": [
+          "file_id",
+          "version",
+          "default_name",
+          "mime_type",
+          "byte_length",
+          "blob_etag"
+        ],
+        "properties": {
+          "blob_etag": {
+            "type": "string"
+          },
+          "byte_length": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "default_name": {
+            "type": "string"
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "LibraryFileReadBinding": {
+        "type": "object",
+        "description": "An exact read selected by an owning preview. It conveys no authority beyond its source.",
+        "required": [
+          "file_id",
+          "version",
+          "source"
+        ],
+        "properties": {
+          "file_id": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/LibraryFileReadSource"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "LibraryFileReadSource": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "direct"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page"
+                ]
+              },
+              "page_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "document_id",
+              "revision_id",
+              "kind"
+            ],
+            "properties": {
+              "document_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "document_revision"
+                ]
+              },
+              "revision_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "document_id",
+              "draft_id",
+              "kind"
+            ],
+            "properties": {
+              "document_id": {
+                "type": "string"
+              },
+              "draft_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "recovery_draft"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "canvas_id",
+              "scene_file_id",
+              "kind"
+            ],
+            "properties": {
+              "canvas_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "canvas"
+                ]
+              },
+              "scene_file_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "document_id",
+              "revision_id",
+              "scene_file_id",
+              "kind"
+            ],
+            "properties": {
+              "document_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "canvas_revision"
+                ]
+              },
+              "revision_id": {
+                "type": "string"
+              },
+              "scene_file_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "document_id",
+              "draft_id",
+              "scene_file_id",
+              "kind"
+            ],
+            "properties": {
+              "document_id": {
+                "type": "string"
+              },
+              "draft_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "canvas_recovery"
+                ]
+              },
+              "scene_file_id": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "LibraryFileUsage": {
+        "type": "object",
+        "required": [
+          "title",
+          "lifecycle",
+          "target",
+          "occurrence_count"
+        ],
+        "properties": {
+          "lifecycle": {
+            "$ref": "#/components/schemas/LibraryPageLifecycleState"
+          },
+          "logical_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "occurrence_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "target": {
+            "$ref": "#/components/schemas/LibraryPlacedResourceTarget"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "LibraryFileUsageFilter": {
+        "type": "string",
+        "enum": [
+          "all",
+          "unused"
+        ]
+      },
+      "LibraryFileUsagePage": {
+        "type": "object",
+        "required": [
+          "items",
+          "has_more",
+          "can_write",
+          "can_trash",
+          "can_restore",
+          "can_purge"
+        ],
+        "properties": {
+          "can_purge": {
+            "type": "boolean"
+          },
+          "can_restore": {
+            "type": "boolean"
+          },
+          "can_trash": {
+            "type": "boolean"
+          },
+          "can_write": {
+            "type": "boolean"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryFileUsage"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "LibraryFileVersion": {
+        "type": "object",
+        "required": [
+          "file_id",
+          "version",
+          "mime_type",
+          "byte_length",
+          "blob_etag",
+          "actor_id",
+          "operation_id",
+          "occurred_at"
+        ],
+        "properties": {
+          "actor_id": {
+            "type": "string"
+          },
+          "blob_etag": {
+            "type": "string"
+          },
+          "byte_length": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "occurred_at": {
+            "type": "string"
+          },
+          "operation_id": {
+            "type": "string"
+          },
+          "turn_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "LibraryFileVersionPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "properties": {
+          "has_more": {
+            "type": "boolean"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryFileVersion"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "LibraryHeadingLevel": {
         "type": "string",
@@ -17759,7 +18564,7 @@
             "format": "int64"
           },
           "page_files": {
-            "$ref": "#/components/schemas/LibraryPageFileManifest"
+            "$ref": "#/components/schemas/LibraryPageFileInventory"
           },
           "page_id": {
             "type": "string"
@@ -17777,76 +18582,15 @@
           }
         }
       },
-      "LibraryPageFileBodyUsage": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "not_in_body"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "placement_count",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "placed"
-                ]
-              },
-              "placement_count": {
-                "type": "integer",
-                "format": "int64",
-                "minimum": 0
-              }
-            }
-          }
+      "LibraryPageFileCollisionPolicy": {
+        "type": "string",
+        "enum": [
+          "reject",
+          "suffix"
         ]
       },
-      "LibraryPageFileChange": {
+      "LibraryPageFileEntryChange": {
         "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "file_id",
-              "logical_path",
-              "mime_type",
-              "prepared_blob_receipt_id",
-              "kind"
-            ],
-            "properties": {
-              "file_id": {
-                "type": "string"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "put"
-                ]
-              },
-              "logical_path": {
-                "type": "string"
-              },
-              "mime_type": {
-                "type": "string"
-              },
-              "prepared_blob_receipt_id": {
-                "type": "string"
-              }
-            }
-          },
           {
             "type": "object",
             "required": [
@@ -17867,7 +18611,7 @@
               "kind": {
                 "type": "string",
                 "enum": [
-                  "create"
+                  "import"
                 ]
               },
               "logical_path": {
@@ -17885,15 +18629,14 @@
             "type": "object",
             "required": [
               "file_id",
-              "expected_version",
-              "mime_type",
-              "prepared_blob_receipt_id",
+              "logical_path",
+              "source",
+              "collision_policy",
               "kind"
             ],
             "properties": {
-              "expected_version": {
-                "type": "integer",
-                "format": "int64"
+              "collision_policy": {
+                "$ref": "#/components/schemas/LibraryPageFileCollisionPolicy"
               },
               "file_id": {
                 "type": "string"
@@ -17901,14 +18644,14 @@
               "kind": {
                 "type": "string",
                 "enum": [
-                  "replace_content"
+                  "attach"
                 ]
               },
-              "mime_type": {
+              "logical_path": {
                 "type": "string"
               },
-              "prepared_blob_receipt_id": {
-                "type": "string"
+              "source": {
+                "$ref": "#/components/schemas/LibraryFileReadSource"
               }
             }
           },
@@ -17916,15 +18659,10 @@
             "type": "object",
             "required": [
               "file_id",
-              "expected_version",
               "logical_path",
               "kind"
             ],
             "properties": {
-              "expected_version": {
-                "type": "integer",
-                "format": "int64"
-              },
               "file_id": {
                 "type": "string"
               },
@@ -17943,21 +18681,16 @@
             "type": "object",
             "required": [
               "file_id",
-              "expected_version",
               "kind"
             ],
             "properties": {
-              "expected_version": {
-                "type": "integer",
-                "format": "int64"
-              },
               "file_id": {
                 "type": "string"
               },
               "kind": {
                 "type": "string",
                 "enum": [
-                  "delete"
+                  "remove"
                 ]
               }
             }
@@ -17966,80 +18699,106 @@
             "type": "object",
             "required": [
               "file_id",
-              "expected_version",
-              "source_version",
+              "replacement_file_id",
+              "source",
               "kind"
             ],
             "properties": {
-              "expected_version": {
-                "type": "integer",
-                "format": "int64"
-              },
               "file_id": {
                 "type": "string"
               },
               "kind": {
                 "type": "string",
                 "enum": [
-                  "restore_version"
+                  "retarget"
                 ]
               },
-              "source_version": {
-                "type": "integer",
-                "format": "int64"
+              "replacement_file_id": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/components/schemas/LibraryFileReadSource"
               }
             }
           },
           {
             "type": "object",
             "required": [
-              "source_page_id",
-              "source_file_id",
-              "target_file_id",
-              "logical_path",
+              "file_id",
+              "replacement_file_id",
+              "mime_type",
+              "prepared_blob_receipt_id",
               "kind"
             ],
             "properties": {
+              "file_id": {
+                "type": "string"
+              },
               "kind": {
                 "type": "string",
                 "enum": [
-                  "clone_into_page"
+                  "replace"
                 ]
               },
-              "logical_path": {
+              "mime_type": {
                 "type": "string"
               },
-              "source_file_id": {
+              "prepared_blob_receipt_id": {
                 "type": "string"
               },
-              "source_page_id": {
-                "type": "string"
-              },
-              "target_file_id": {
+              "replacement_file_id": {
                 "type": "string"
               }
             }
           }
         ]
       },
-      "LibraryPageFileChangeKind": {
-        "type": "string",
-        "enum": [
-          "create",
-          "replace",
-          "rename",
-          "delete",
-          "restore",
-          "clone",
-          "rehome"
-        ]
-      },
-      "LibraryPageFileCollisionPolicy": {
-        "type": "string",
-        "enum": [
-          "reject",
-          "suffix"
-        ]
+      "LibraryPageFileEntryReceipt": {
+        "type": "object",
+        "required": [
+          "page_id",
+          "manifest_revision",
+          "changed_file_ids",
+          "created_file_ids",
+          "replacements",
+          "consumed_blob_receipt_ids"
+        ],
+        "properties": {
+          "changed_file_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "consumed_blob_receipt_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "created_file_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "manifest_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "page_id": {
+            "type": "string"
+          },
+          "replacements": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
       },
       "LibraryPageFileInvalidation": {
         "oneOf": [
@@ -18090,43 +18849,35 @@
           }
         ]
       },
-      "LibraryPageFileManifest": {
+      "LibraryPageFileInventory": {
         "type": "object",
         "required": [
+          "can_write",
           "page_id",
           "revision",
           "body_usage_revision",
           "files",
           "has_more",
           "total",
-          "live_total",
           "unplaced_total",
-          "placed_total",
-          "deleted_total"
+          "placed_total"
         ],
         "properties": {
           "body_usage_revision": {
             "type": "integer",
             "format": "int64"
           },
-          "deleted_total": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
+          "can_write": {
+            "type": "boolean"
           },
           "files": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/LibraryPageFileSummary"
+              "$ref": "#/components/schemas/LibraryPageFileItem"
             }
           },
           "has_more": {
             "type": "boolean"
-          },
-          "live_total": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
           },
           "next_cursor": {
             "type": [
@@ -18158,251 +18909,68 @@
           }
         }
       },
-      "LibraryPageFileMutationReceipt": {
+      "LibraryPageFileItem": {
         "type": "object",
         "required": [
-          "page_id",
-          "manifest_revision",
-          "created_file_ids",
-          "updated_file_ids",
-          "deleted_file_ids",
-          "consumed_blob_receipt_ids"
+          "file",
+          "body_count"
         ],
         "properties": {
-          "consumed_blob_receipt_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "created_file_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "deleted_file_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "manifest_revision": {
+          "body_count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "minimum": 0
           },
-          "page_id": {
-            "type": "string"
-          },
-          "updated_file_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "LibraryPageFileOwnershipMove": {
-        "type": "object",
-        "required": [
-          "file_id",
-          "previous_owner_page_id",
-          "owner_page_id",
-          "previous_logical_path",
-          "logical_path",
-          "version"
-        ],
-        "properties": {
-          "file_id": {
-            "type": "string"
+          "file": {
+            "$ref": "#/components/schemas/LibraryFile"
           },
           "logical_path": {
-            "type": "string"
-          },
-          "owner_page_id": {
-            "type": "string"
-          },
-          "previous_logical_path": {
-            "type": "string"
-          },
-          "previous_owner_page_id": {
-            "type": "string"
-          },
-          "version": {
-            "type": "integer",
-            "format": "int64"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
-      "LibraryPageFileState": {
-        "type": "string",
-        "enum": [
-          "live",
-          "deleted"
+      "LibraryPageFileSelector": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "file_id",
+              "kind"
+            ],
+            "properties": {
+              "file_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "file_id"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "logical_path",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "path"
+                ]
+              },
+              "logical_path": {
+                "type": "string"
+              }
+            }
+          }
         ]
-      },
-      "LibraryPageFileSummary": {
-        "type": "object",
-        "required": [
-          "file_id",
-          "owner_page_id",
-          "logical_path",
-          "mime_type",
-          "byte_length",
-          "version",
-          "blob_etag",
-          "state",
-          "created_by_actor_id",
-          "created_at",
-          "updated_at",
-          "body_usage"
-        ],
-        "properties": {
-          "blob_etag": {
-            "type": "string"
-          },
-          "body_usage": {
-            "$ref": "#/components/schemas/LibraryPageFileBodyUsage"
-          },
-          "byte_length": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "created_at": {
-            "type": "string"
-          },
-          "created_by_actor_id": {
-            "type": "string"
-          },
-          "created_by_turn_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "file_id": {
-            "type": "string"
-          },
-          "logical_path": {
-            "type": "string"
-          },
-          "mime_type": {
-            "type": "string"
-          },
-          "owner_page_id": {
-            "type": "string"
-          },
-          "state": {
-            "$ref": "#/components/schemas/LibraryPageFileState"
-          },
-          "updated_at": {
-            "type": "string"
-          },
-          "version": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "LibraryPageFileVersion": {
-        "type": "object",
-        "required": [
-          "file_id",
-          "version",
-          "owner_page_id",
-          "manifest_revision",
-          "change_kind",
-          "logical_path",
-          "mime_type",
-          "byte_length",
-          "actor_id",
-          "operation_id",
-          "occurred_at"
-        ],
-        "properties": {
-          "actor_id": {
-            "type": "string"
-          },
-          "blob_etag": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "byte_length": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "change_kind": {
-            "$ref": "#/components/schemas/LibraryPageFileChangeKind"
-          },
-          "file_id": {
-            "type": "string"
-          },
-          "logical_path": {
-            "type": "string"
-          },
-          "manifest_revision": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "mime_type": {
-            "type": "string"
-          },
-          "occurred_at": {
-            "type": "string"
-          },
-          "operation_id": {
-            "type": "string"
-          },
-          "owner_page_id": {
-            "type": "string"
-          },
-          "turn_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "version": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "LibraryPageFileVersionPage": {
-        "type": "object",
-        "required": [
-          "page_id",
-          "file_id",
-          "versions",
-          "has_more"
-        ],
-        "properties": {
-          "file_id": {
-            "type": "string"
-          },
-          "has_more": {
-            "type": "boolean"
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "page_id": {
-            "type": "string"
-          },
-          "versions": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LibraryPageFileVersion"
-            }
-          }
-        }
       },
       "LibraryPageHistoryCategory": {
         "type": "string",
@@ -21102,6 +21670,65 @@
           }
         ]
       },
+      "LibraryPlacedResourceTarget": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "page_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page"
+                ]
+              },
+              "page_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "database_id",
+              "kind"
+            ],
+            "properties": {
+              "database_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "database"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "canvas_id",
+              "kind"
+            ],
+            "properties": {
+              "canvas_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "canvas"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Resources with a Block placement in Library navigation. Files have independent\nidentity and authorization; Page entries never give them a Block placement."
+      },
       "LibraryPlacementAnchor": {
         "type": "object",
         "required": [
@@ -21115,33 +21742,6 @@
           "expected_location_revision": {
             "type": "integer",
             "format": "int64"
-          }
-        }
-      },
-      "LibraryPreparedPageFileBlob": {
-        "type": "object",
-        "required": [
-          "receipt_id",
-          "blob_etag",
-          "byte_length",
-          "expires_at_unix_ms"
-        ],
-        "properties": {
-          "blob_etag": {
-            "type": "string"
-          },
-          "byte_length": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "expires_at_unix_ms": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "receipt_id": {
-            "type": "string"
           }
         }
       },
@@ -21472,6 +22072,24 @@
                 "type": "string",
                 "enum": [
                   "canvas"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "file_id",
+              "kind"
+            ],
+            "properties": {
+              "file_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "file"
                 ]
               }
             }
@@ -22220,8 +22838,7 @@
           "document_commits",
           "affected_page_ids",
           "affected_database_ids",
-          "superseded_history_recipe_operation_ids",
-          "file_ownership_moves"
+          "superseded_history_recipe_operation_ids"
         ],
         "properties": {
           "affected_database_ids": {
@@ -22268,12 +22885,6 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/LibraryBlockTransferDocumentCommit"
-            }
-          },
-          "file_ownership_moves": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LibraryPageFileOwnershipMove"
             }
           },
           "history": {
@@ -23944,6 +24555,160 @@
             "oneOf": [
               {
                 "type": "object",
+                "description": "Resolve and replace a Page path inside the same idempotent transaction.",
+                "required": [
+                  "page_id",
+                  "expected_manifest_revision",
+                  "file_id",
+                  "logical_path",
+                  "mime_type",
+                  "prepared_blob_receipt_id",
+                  "replace_entry",
+                  "kind"
+                ],
+                "properties": {
+                  "expected_manifest_revision": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "file_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "put_page_file_entry"
+                    ]
+                  },
+                  "logical_path": {
+                    "type": "string"
+                  },
+                  "mime_type": {
+                    "type": "string"
+                  },
+                  "page_id": {
+                    "type": "string"
+                  },
+                  "prepared_blob_receipt_id": {
+                    "type": "string"
+                  },
+                  "replace_entry": {
+                    "type": "boolean"
+                  },
+                  "turn_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_id",
+                  "expected_manifest_revision",
+                  "changes",
+                  "kind"
+                ],
+                "properties": {
+                  "changes": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/LibraryPageFileEntryChange"
+                    }
+                  },
+                  "expected_manifest_revision": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "apply_page_file_entries"
+                    ]
+                  },
+                  "page_id": {
+                    "type": "string"
+                  },
+                  "turn_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "file_id",
+                  "source_page_id",
+                  "source_manifest_revision",
+                  "target_page_id",
+                  "target_manifest_revision",
+                  "target_logical_path",
+                  "copy",
+                  "kind"
+                ],
+                "properties": {
+                  "copy": {
+                    "type": "boolean"
+                  },
+                  "file_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "transfer_page_file_entry"
+                    ]
+                  },
+                  "source_manifest_revision": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "source_page_id": {
+                    "type": "string"
+                  },
+                  "target_logical_path": {
+                    "type": "string"
+                  },
+                  "target_manifest_revision": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "target_page_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "change",
+                  "kind"
+                ],
+                "properties": {
+                  "change": {
+                    "$ref": "#/components/schemas/LibraryFileChange"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "apply_file_change"
+                    ]
+                  },
+                  "turn_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "page_id",
                   "document_id",
@@ -24029,82 +24794,6 @@
                   },
                   "title_markdown": {
                     "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "page_id",
-                  "expected_manifest_revision",
-                  "changes",
-                  "kind"
-                ],
-                "properties": {
-                  "changes": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/LibraryPageFileChange"
-                    }
-                  },
-                  "expected_manifest_revision": {
-                    "type": "integer",
-                    "format": "int64"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "apply_page_file_changes"
-                    ]
-                  },
-                  "page_id": {
-                    "type": "string"
-                  },
-                  "turn_id": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "page_id",
-                  "file_id",
-                  "logical_path",
-                  "mime_type",
-                  "prepared_blob_receipt_id",
-                  "kind"
-                ],
-                "properties": {
-                  "file_id": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "put_page_file"
-                    ]
-                  },
-                  "logical_path": {
-                    "type": "string"
-                  },
-                  "mime_type": {
-                    "type": "string"
-                  },
-                  "page_id": {
-                    "type": "string"
-                  },
-                  "prepared_blob_receipt_id": {
-                    "type": "string"
-                  },
-                  "turn_id": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
                   }
                 }
               },
@@ -24450,7 +25139,7 @@
                     "$ref": "#/components/schemas/LibraryWriteParent"
                   },
                   "target": {
-                    "$ref": "#/components/schemas/LibraryResourceTarget"
+                    "$ref": "#/components/schemas/LibraryPlacedResourceTarget"
                   }
                 }
               },
@@ -24473,7 +25162,7 @@
                     ]
                   },
                   "target": {
-                    "$ref": "#/components/schemas/LibraryResourceTarget"
+                    "$ref": "#/components/schemas/LibraryPlacedResourceTarget"
                   }
                 }
               },
@@ -24496,7 +25185,7 @@
                     ]
                   },
                   "target": {
-                    "$ref": "#/components/schemas/LibraryResourceTarget"
+                    "$ref": "#/components/schemas/LibraryPlacedResourceTarget"
                   }
                 }
               },
@@ -26070,8 +26759,34 @@
                 "type": "object",
                 "required": [
                   "thread_id",
+                  "prepared_blob_receipt_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "retain_thread_assets"
+                    ]
+                  },
+                  "prepared_blob_receipt_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "thread_id",
                   "expected_revision",
                   "entries",
+                  "prepared_blob_receipt_ids",
                   "kind"
                 ],
                 "properties": {
@@ -26090,6 +26805,12 @@
                     "enum": [
                       "commit_queued_follow_up_ledger"
                     ]
+                  },
+                  "prepared_blob_receipt_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   },
                   "thread_id": {
                     "type": "string"
@@ -28714,6 +29435,219 @@
               {
                 "type": "object",
                 "required": [
+                  "lifecycle",
+                  "usage",
+                  "kind"
+                ],
+                "properties": {
+                  "cursor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "files"
+                    ]
+                  },
+                  "lifecycle": {
+                    "$ref": "#/components/schemas/LibraryFileLifecycle"
+                  },
+                  "limit": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int32",
+                    "minimum": 0
+                  },
+                  "query": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "usage": {
+                    "$ref": "#/components/schemas/LibraryFileUsageFilter"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "file_id",
+                  "kind"
+                ],
+                "properties": {
+                  "file_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "file"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "file_id",
+                  "source",
+                  "kind"
+                ],
+                "properties": {
+                  "file_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "file_presentation"
+                    ]
+                  },
+                  "source": {
+                    "$ref": "#/components/schemas/LibraryFileReadSource"
+                  },
+                  "version": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "file_id",
+                  "kind"
+                ],
+                "properties": {
+                  "cursor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "file_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "file_usages"
+                    ]
+                  },
+                  "limit": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "file_id",
+                  "kind"
+                ],
+                "properties": {
+                  "cursor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "file_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "file_versions"
+                    ]
+                  },
+                  "limit": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_id",
+                  "kind"
+                ],
+                "properties": {
+                  "cursor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "page_file_inventory"
+                    ]
+                  },
+                  "limit": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int32",
+                    "minimum": 0
+                  },
+                  "page_id": {
+                    "type": "string"
+                  },
+                  "query": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_id",
+                  "selector",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "resolve_page_file"
+                    ]
+                  },
+                  "page_id": {
+                    "type": "string"
+                  },
+                  "selector": {
+                    "$ref": "#/components/schemas/LibraryPageFileSelector"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "target",
                   "kind"
                 ],
@@ -28811,7 +29745,7 @@
                         "type": "null"
                       },
                       {
-                        "$ref": "#/components/schemas/LibraryResourceTarget"
+                        "$ref": "#/components/schemas/LibraryPlacedResourceTarget"
                       }
                     ]
                   },
@@ -28934,7 +29868,7 @@
                     "$ref": "#/components/schemas/LibraryMoveDestinationScope"
                   },
                   "target": {
-                    "$ref": "#/components/schemas/LibraryResourceTarget"
+                    "$ref": "#/components/schemas/LibraryPlacedResourceTarget"
                   }
                 }
               },
@@ -29022,108 +29956,6 @@
                     "enum": [
                       "page_content"
                     ]
-                  },
-                  "page_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "page_id",
-                  "kind"
-                ],
-                "properties": {
-                  "cursor": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "include_deleted": {
-                    "type": [
-                      "boolean",
-                      "null"
-                    ]
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "page_files"
-                    ]
-                  },
-                  "limit": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "format": "int32",
-                    "minimum": 0
-                  },
-                  "page_id": {
-                    "type": "string"
-                  },
-                  "query": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "page_id",
-                  "file_id",
-                  "kind"
-                ],
-                "properties": {
-                  "file_id": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "page_file_metadata"
-                    ]
-                  },
-                  "page_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "page_id",
-                  "file_id",
-                  "kind"
-                ],
-                "properties": {
-                  "cursor": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "file_id": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "page_file_versions"
-                    ]
-                  },
-                  "limit": {
-                    "type": [
-                      "integer",
-                      "null"
-                    ],
-                    "format": "int32",
-                    "minimum": 0
                   },
                   "page_id": {
                     "type": "string"
@@ -31699,7 +32531,7 @@
           }
         }
       },
-      "PreparePageFileBlobQuery": {
+      "PrepareFileBlobQuery": {
         "type": "object",
         "required": [
           "operation_id",
@@ -31716,6 +32548,33 @@
             "type": "string"
           },
           "store_epoch": {
+            "type": "string"
+          }
+        }
+      },
+      "PreparedBlobReceipt": {
+        "type": "object",
+        "required": [
+          "receipt_id",
+          "blob_etag",
+          "byte_length",
+          "expires_at_unix_ms"
+        ],
+        "properties": {
+          "blob_etag": {
+            "type": "string"
+          },
+          "byte_length": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "expires_at_unix_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "receipt_id": {
             "type": "string"
           }
         }
@@ -34878,23 +35737,24 @@
           }
         }
       },
-      "ReadPageFileBlobQuery": {
-        "type": "object",
-        "required": [
-          "page_id"
-        ],
-        "properties": {
-          "page_id": {
-            "type": "string"
+      "ReadFileBlobQuery": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/LibraryFileReadSource"
           },
-          "version": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
+          {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              }
+            }
           }
-        }
+        ]
       },
       "RecoveryChoice": {
         "oneOf": [
@@ -35295,9 +36155,19 @@
               "title",
               "rich_title",
               "nfm",
+              "files",
               "kind"
             ],
             "properties": {
+              "files": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/LibraryFileReadBinding"
+                },
+                "propertyNames": {
+                  "type": "string"
+                }
+              },
               "kind": {
                 "type": "string",
                 "enum": [
@@ -35317,9 +36187,19 @@
             "type": "object",
             "required": [
               "scene",
+              "files",
               "kind"
             ],
             "properties": {
+              "files": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/LibraryFileReadBinding"
+                },
+                "propertyNames": {
+                  "type": "string"
+                }
+              },
               "kind": {
                 "type": "string",
                 "enum": [
@@ -35720,6 +36600,24 @@
                 "type": "string",
                 "enum": [
                   "canvas"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "file_id",
+              "kind"
+            ],
+            "properties": {
+              "file_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "file"
                 ]
               }
             }
@@ -36426,6 +37324,7 @@
                       "outcome": {
                         "type": "object",
                         "required": [
+                          "page_file_entries",
                           "affected_resource_ids"
                         ],
                         "properties": {
@@ -36505,6 +37404,16 @@
                               }
                             ]
                           },
+                          "file_mutation": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/components/schemas/LibraryFileMutationResult"
+                              }
+                            ]
+                          },
                           "page_copy": {
                             "oneOf": [
                               {
@@ -36525,15 +37434,11 @@
                               }
                             ]
                           },
-                          "page_files": {
-                            "oneOf": [
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "$ref": "#/components/schemas/LibraryPageFileMutationReceipt"
-                              }
-                            ]
+                          "page_file_entries": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/LibraryPageFileEntryReceipt"
+                            }
                           },
                           "page_lifecycle": {
                             "oneOf": [
@@ -36670,6 +37575,7 @@
                       "outcome": {
                         "type": "object",
                         "required": [
+                          "page_file_entries",
                           "affected_resource_ids"
                         ],
                         "properties": {
@@ -36749,6 +37655,16 @@
                               }
                             ]
                           },
+                          "file_mutation": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/components/schemas/LibraryFileMutationResult"
+                              }
+                            ]
+                          },
                           "page_copy": {
                             "oneOf": [
                               {
@@ -36769,15 +37685,11 @@
                               }
                             ]
                           },
-                          "page_files": {
-                            "oneOf": [
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "$ref": "#/components/schemas/LibraryPageFileMutationReceipt"
-                              }
-                            ]
+                          "page_file_entries": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/LibraryPageFileEntryReceipt"
+                            }
                           },
                           "page_lifecycle": {
                             "oneOf": [
@@ -38551,6 +39463,132 @@
                       {
                         "type": "object",
                         "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "page_file_inventory"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/LibraryPageFileInventory"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "resolved_page_file"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/LibraryPageFileItem"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "files"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/LibraryFilePage"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "file"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/LibraryFile"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "file_presentation"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/LibraryFilePresentation"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "file_usages"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/LibraryFileUsagePage"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "file_versions"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/LibraryFileVersionPage"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "profile_id",
                           "library_id",
                           "commit_seq",
@@ -38801,7 +39839,7 @@
                             "$ref": "#/components/schemas/LibraryMoveDestinationScope"
                           },
                           "target": {
-                            "$ref": "#/components/schemas/LibraryResourceTarget"
+                            "$ref": "#/components/schemas/LibraryPlacedResourceTarget"
                           },
                           "total": {
                             "type": "integer",
@@ -38906,60 +39944,6 @@
                           },
                           "value": {
                             "$ref": "#/components/schemas/LibraryPageContent"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "value",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "page_files"
-                            ]
-                          },
-                          "value": {
-                            "$ref": "#/components/schemas/LibraryPageFileManifest"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "value",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "page_file_metadata"
-                            ]
-                          },
-                          "value": {
-                            "$ref": "#/components/schemas/LibraryPageFileSummary"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "value",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "page_file_versions"
-                            ]
-                          },
-                          "value": {
-                            "$ref": "#/components/schemas/LibraryPageFileVersionPage"
                           }
                         }
                       },

@@ -11,7 +11,7 @@ use nodex_core_contracts::library::{
     LibraryPageMentionDestinationHead, LibraryPageOwnershipPath, LibraryPageOwnershipPathAncestor,
     LibraryPageReferencePresentation, LibraryPageRelocationDestinationEntry,
     LibraryPageRelocationDestinationKind, LibraryPageRelocationDestinationScope, LibraryPageTarget,
-    LibraryPageWriteDestination, LibraryRead, LibraryReadValue, LibraryResourceTarget,
+    LibraryPageWriteDestination, LibraryPlacedResourceTarget, LibraryRead, LibraryReadValue,
     LibraryRouteTarget, LibraryViewLocation,
 };
 use nodex_core_contracts::{AdapterKind, BoundModuleContext};
@@ -72,6 +72,83 @@ pub(super) fn read(
         .map(|project| project.0.as_str());
     let requesting_adapter = &context.adapter;
     match request {
+        LibraryRead::PageFileInventory {
+            page_id,
+            query,
+            cursor,
+            limit,
+        } => Ok(LibraryReadValue::PageFileInventory {
+            value: super::page_file_inventory::list(
+                connection,
+                context,
+                &page_id,
+                query.as_deref(),
+                cursor.as_deref(),
+                limit,
+            )?,
+        }),
+        LibraryRead::ResolvePageFile { page_id, selector } => {
+            Ok(LibraryReadValue::ResolvedPageFile {
+                value: super::page_file_inventory::resolve(
+                    connection, context, &page_id, &selector,
+                )?,
+            })
+        }
+        LibraryRead::Files {
+            query,
+            lifecycle,
+            usage,
+            cursor,
+            limit,
+        } => Ok(LibraryReadValue::Files {
+            value: super::file_queries::catalog(
+                connection,
+                context,
+                query.as_deref(),
+                lifecycle,
+                usage,
+                cursor.as_deref(),
+                limit,
+            )?,
+        }),
+        LibraryRead::File { file_id } => Ok(LibraryReadValue::File {
+            value: super::file_queries::metadata(connection, context, &file_id)?,
+        }),
+        LibraryRead::FilePresentation {
+            file_id,
+            source,
+            version,
+        } => Ok(LibraryReadValue::FilePresentation {
+            value: super::file_queries::presentation(
+                connection, context, &file_id, &source, version,
+            )?,
+        }),
+        LibraryRead::FileUsages {
+            file_id,
+            cursor,
+            limit,
+        } => Ok(LibraryReadValue::FileUsages {
+            value: super::file_usages::read(
+                connection,
+                context,
+                &file_id,
+                cursor.as_deref(),
+                limit,
+            )?,
+        }),
+        LibraryRead::FileVersions {
+            file_id,
+            cursor,
+            limit,
+        } => Ok(LibraryReadValue::FileVersions {
+            value: super::file_queries::versions(
+                connection,
+                context,
+                &file_id,
+                cursor.as_deref(),
+                limit,
+            )?,
+        }),
         LibraryRead::Metadata
         | LibraryRead::ResourceProjectAccess { .. }
         | LibraryRead::FilterProjectionImpactForProject { .. } => {
@@ -242,70 +319,6 @@ pub(super) fn read(
                     store_epoch,
                     commit_head,
                     &page_id,
-                )?),
-            })
-        }
-        LibraryRead::PageFiles {
-            page_id,
-            query,
-            cursor,
-            limit,
-            include_deleted,
-        } => {
-            require_bound_page_read_access(
-                connection,
-                library_id,
-                requesting_project_id,
-                requesting_adapter,
-                &page_id,
-            )?;
-            Ok(LibraryReadValue::PageFiles {
-                value: Box::new(super::page_files::list(
-                    connection,
-                    library_id,
-                    &page_id,
-                    query.as_deref(),
-                    cursor.as_deref(),
-                    limit,
-                    include_deleted.unwrap_or(false),
-                )?),
-            })
-        }
-        LibraryRead::PageFileMetadata { page_id, file_id } => {
-            require_bound_page_read_access(
-                connection,
-                library_id,
-                requesting_project_id,
-                requesting_adapter,
-                &page_id,
-            )?;
-            Ok(LibraryReadValue::PageFileMetadata {
-                value: Box::new(super::page_files::metadata(
-                    connection, library_id, &page_id, &file_id,
-                )?),
-            })
-        }
-        LibraryRead::PageFileVersions {
-            page_id,
-            file_id,
-            cursor,
-            limit,
-        } => {
-            require_bound_page_read_access(
-                connection,
-                library_id,
-                requesting_project_id,
-                requesting_adapter,
-                &page_id,
-            )?;
-            Ok(LibraryReadValue::PageFileVersions {
-                value: Box::new(super::page_files::versions(
-                    connection,
-                    library_id,
-                    &page_id,
-                    &file_id,
-                    cursor.as_deref(),
-                    limit,
                 )?),
             })
         }
@@ -1724,7 +1737,7 @@ fn standalone_roots(
     library_id: &str,
     requested_cursor: Option<String>,
     limit: Option<u32>,
-    force_include_target: Option<LibraryResourceTarget>,
+    force_include_target: Option<LibraryPlacedResourceTarget>,
 ) -> Result<LibraryReadValue, StoreError> {
     let subject = vec!["standalone_roots".to_owned()];
     let after = cursor_coordinate(
@@ -1942,12 +1955,12 @@ fn standalone_root_node_window(
 fn standalone_root_is_eligible(
     connection: &Connection,
     library_id: &str,
-    target: &LibraryResourceTarget,
+    target: &LibraryPlacedResourceTarget,
 ) -> Result<bool, StoreError> {
     let (block_type, block_id) = match target {
-        LibraryResourceTarget::Page { page_id } => ("page", page_id),
-        LibraryResourceTarget::Database { database_id } => ("database", database_id),
-        LibraryResourceTarget::Canvas { canvas_id } => ("canvas", canvas_id),
+        LibraryPlacedResourceTarget::Page { page_id } => ("page", page_id),
+        LibraryPlacedResourceTarget::Database { database_id } => ("database", database_id),
+        LibraryPlacedResourceTarget::Canvas { canvas_id } => ("canvas", canvas_id),
     };
     connection
         .query_row(
@@ -1982,15 +1995,15 @@ fn standalone_root_is_eligible(
         .map_err(Into::into)
 }
 
-fn resource_route_target(target: &LibraryResourceTarget) -> LibraryRouteTarget {
+fn resource_route_target(target: &LibraryPlacedResourceTarget) -> LibraryRouteTarget {
     match target {
-        LibraryResourceTarget::Page { page_id } => LibraryRouteTarget::Page {
+        LibraryPlacedResourceTarget::Page { page_id } => LibraryRouteTarget::Page {
             page_id: page_id.clone(),
         },
-        LibraryResourceTarget::Database { database_id } => LibraryRouteTarget::Database {
+        LibraryPlacedResourceTarget::Database { database_id } => LibraryRouteTarget::Database {
             database_id: database_id.clone(),
         },
-        LibraryResourceTarget::Canvas { canvas_id } => LibraryRouteTarget::Canvas {
+        LibraryPlacedResourceTarget::Canvas { canvas_id } => LibraryRouteTarget::Canvas {
             canvas_id: canvas_id.clone(),
         },
     }
@@ -3247,7 +3260,7 @@ struct MoveDestinationRow {
 fn move_destinations(
     connection: &Connection,
     library_id: &str,
-    target: LibraryResourceTarget,
+    target: LibraryPlacedResourceTarget,
     scope: LibraryMoveDestinationScope,
     requested_cursor: Option<String>,
     limit: Option<u32>,
@@ -3263,9 +3276,9 @@ fn move_destinations(
     }
 
     let (target_id, target_is_page) = match &target {
-        LibraryResourceTarget::Page { page_id } => (page_id.as_str(), true),
-        LibraryResourceTarget::Database { database_id } => (database_id.as_str(), false),
-        LibraryResourceTarget::Canvas { canvas_id } => (canvas_id.as_str(), false),
+        LibraryPlacedResourceTarget::Page { page_id } => (page_id.as_str(), true),
+        LibraryPlacedResourceTarget::Database { database_id } => (database_id.as_str(), false),
+        LibraryPlacedResourceTarget::Canvas { canvas_id } => (canvas_id.as_str(), false),
     };
     let current_parent_page_id =
         (authority.parent_kind == "page").then(|| authority.parent_id.clone());
@@ -3745,11 +3758,13 @@ fn catalog(
                     _ => unreachable!("catalog CTE emits fixed kinds"),
                 };
                 let target = match kind {
-                    LibraryCatalogKind::Page => LibraryResourceTarget::Page { page_id: id },
+                    LibraryCatalogKind::Page => LibraryPlacedResourceTarget::Page { page_id: id },
                     LibraryCatalogKind::Database => {
-                        LibraryResourceTarget::Database { database_id: id }
+                        LibraryPlacedResourceTarget::Database { database_id: id }
                     }
-                    LibraryCatalogKind::Canvas => LibraryResourceTarget::Canvas { canvas_id: id },
+                    LibraryCatalogKind::Canvas => {
+                        LibraryPlacedResourceTarget::Canvas { canvas_id: id }
+                    }
                 };
                 Ok(LibraryCatalogEntry {
                     target,
@@ -3881,9 +3896,9 @@ fn navigation_node_id(node: &LibraryNavigationNode) -> &str {
 
 fn catalog_id(entry: &LibraryCatalogEntry) -> &str {
     match &entry.target {
-        LibraryResourceTarget::Page { page_id } => page_id,
-        LibraryResourceTarget::Database { database_id } => database_id,
-        LibraryResourceTarget::Canvas { canvas_id } => canvas_id,
+        LibraryPlacedResourceTarget::Page { page_id } => page_id,
+        LibraryPlacedResourceTarget::Database { database_id } => database_id,
+        LibraryPlacedResourceTarget::Canvas { canvas_id } => canvas_id,
     }
 }
 

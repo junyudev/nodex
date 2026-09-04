@@ -2,7 +2,6 @@ import type { BlockTransferUndoToken } from "../../../shared/block-transfer";
 import { undoBlockTransfer } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 import { createUuidV7 } from "../../../shared/uuid-v7";
-import { summarizePageFileOwnershipMoveCollisions } from "@/lib/page-file-ownership-move-feedback";
 
 export async function undoDatabaseViewBlockTransfer(input: {
   readonly projectId: string;
@@ -25,10 +24,8 @@ export async function undoDatabaseViewBlockTransfer(input: {
     return false;
   }
   await input.onCommitted?.();
-  const fileFeedback = summarizePageFileOwnershipMoveCollisions(result.value.fileOwnershipMoves);
   toast.info("Block promotion undone.", {
     id: `block-transfer-undo:${result.value.operationId}`,
-    ...(fileFeedback ? { description: `${fileFeedback.title}. ${fileFeedback.description}` } : {}),
   });
   return true;
 }

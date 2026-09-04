@@ -1,4 +1,14 @@
 import { requiredNativeExecutable } from "../../../scripts/testing/native-artifacts";
+import { createCoreDocumentSyncAdapter } from "./document-sync-adapter";
+import { createCoreLibraryModuleAdapter } from "./library-module-adapter";
+import {
+  bindLibraryModuleApply,
+  bindLibraryModuleRead,
+  parseLibraryModuleApplyResult,
+  parseLibraryModuleReadResult,
+} from "../../shared/library-module-transport";
+import type { LibraryFileOperation, LibraryFileRead } from "../../shared/library-files";
+import { createUuidV7 } from "../../shared/uuid-v7";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -116,6 +126,295 @@ async function createInitialProject(client: CoreClient, nodexHome: string): Prom
 }
 
 describe("CoreClient over a Unix socket", () => {
+  test("keeps shared File identity across desktop relations and streams exact authorized versions", async () => {
+    const nodexHome = mkdtempSync(path.join(tmpdir(), "nodex-library-file-client-"));
+    const child = spawnCore(nodexHome);
+    try {
+      await readDescriptor(child);
+      const root = await CoreClient.connect({
+        nodexHome,
+        clientKind: "test",
+        buildId: "file-client-test",
+      });
+      await createInitialProject(root, nodexHome);
+      const client = root.forProject("project:default");
+      const adapter = createCoreLibraryModuleAdapter({
+        client,
+        profileId: root.handshake.generation.profile_id,
+        libraryId: root.handshake.library_id,
+        storeEpoch: root.handshake.store_epoch,
+      });
+      const apply = async (operation: LibraryFileOperation, operationId = createUuidV7()) => {
+        const result = parseLibraryModuleApplyResult(
+          await adapter.apply(
+            bindLibraryModuleApply({
+              operationId,
+              storeEpoch: root.handshake.store_epoch,
+              operation,
+            }),
+          ),
+        );
+        if (!result.ok) throw new Error(result.error.message);
+        return result.value;
+      };
+      const read = async (read: LibraryFileRead) => {
+        const result = parseLibraryModuleReadResult(
+          await adapter.read(bindLibraryModuleRead({ read })),
+        );
+        if (!result.ok) throw new Error(result.error.message);
+        return result.value;
+      };
+      const bytes = (text: string) => Buffer.from(text);
+      const createId = createUuidV7();
+      const prepared = await client.prepareFileBlob({
+        operationId: createId,
+        bytes: bytes("alpha"),
+      });
+      const created = await apply(
+        {
+          kind: "apply_file_change",
+          change: {
+            kind: "create",
+            file_id: "file:shared",
+            default_name: "image.png",
+            mime_type: "image/png",
+            prepared_blob_receipt_id: prepared.receipt_id,
+          },
+        },
+        createId,
+      );
+      expect(created.createdTarget).toEqual({ kind: "file", fileId: "file:shared" });
+      expect(created.fileMutation?.file).toMatchObject({
+        file_id: "file:shared",
+        head_version: 1,
+        revision: 1,
+      });
+      expect((await read({ mode: "file", file_id: "file:shared" })).authorization?.subject).toEqual(
+        { kind: "file", file_id: "file:shared" },
+      );
+      const pageIds = ["page:getting-started", "page:second"];
+      await client.libraryApply({
+        operationId: createUuidV7(),
+        intent: {
+          kind: "create_page",
+          page_id: pageIds[1],
+          document_id: "document:second",
+          title: "Second",
+          parent: { kind: "library", before: null },
+        },
+      });
+      for (const pageId of pageIds) {
+        const attached = await apply({
+          kind: "apply_page_file_entries",
+          page_id: pageId,
+          expected_manifest_revision: 0,
+          changes: [
+            {
+              kind: "attach",
+              file_id: "file:shared",
+              logical_path: `${pageId === pageIds[0] ? "design" : "review"}/image.png`,
+              source: { kind: "direct" },
+              collision_policy: "reject",
+            },
+          ],
+        });
+        expect(attached.pageFileEntries).toMatchObject([{ page_id: pageId, manifest_revision: 1 }]);
+      }
+      const resolved = await read({
+        mode: "resolve_page_file",
+        page_id: pageIds[0],
+        selector: { kind: "path", logical_path: "design/image.png" },
+      });
+      expect(resolved.value).toMatchObject({
+        kind: "resolved_page_file",
+        value: {
+          file: { file_id: "file:shared" },
+          logical_path: "design/image.png",
+          body_count: 0,
+        },
+      });
+      expect(resolved.authorization?.subject).toEqual({ kind: "page", page_id: pageIds[0] });
+      const updateId = createUuidV7();
+      const updateBlob = await client.prepareFileBlob({
+        operationId: updateId,
+        bytes: bytes("beta"),
+      });
+      await apply(
+        {
+          kind: "apply_file_change",
+          change: {
+            kind: "replace_content",
+            file_id: "file:shared",
+            expected_revision: 1,
+            expected_head_version: 1,
+            mime_type: "image/png",
+            prepared_blob_receipt_id: updateBlob.receipt_id,
+          },
+        },
+        updateId,
+      );
+      for (const pageId of pageIds)
+        expect(
+          (
+            await client.readFileBlob({
+              fileId: "file:shared",
+              source: { kind: "page", page_id: pageId },
+            })
+          ).bytes,
+        ).toEqual(bytes("beta"));
+      expect(
+        (
+          await client.readFileBlob({
+            fileId: "file:shared",
+            source: { kind: "direct" },
+            version: 1,
+          })
+        ).bytes,
+      ).toEqual(bytes("alpha"));
+      await expect(
+        client.readFileBlob({
+          fileId: "file:shared",
+          source: { kind: "page", page_id: pageIds[0] },
+          version: 1,
+        }),
+      ).rejects.toThrow();
+      const localId = createUuidV7();
+      const localBlob = await client.prepareFileBlob({
+        operationId: localId,
+        bytes: bytes("local"),
+      });
+      await apply(
+        {
+          kind: "apply_page_file_entries",
+          page_id: pageIds[0],
+          expected_manifest_revision: 1,
+          changes: [
+            {
+              kind: "replace",
+              file_id: "file:shared",
+              replacement_file_id: "file:local",
+              mime_type: "image/png",
+              prepared_blob_receipt_id: localBlob.receipt_id,
+            },
+          ],
+        },
+        localId,
+      );
+      expect(
+        (
+          await client.readFileBlob({
+            fileId: "file:local",
+            source: { kind: "page", page_id: pageIds[0] },
+          })
+        ).bytes,
+      ).toEqual(bytes("local"));
+      expect(
+        (
+          await client.readFileBlob({
+            fileId: "file:shared",
+            source: { kind: "page", page_id: pageIds[1] },
+          })
+        ).bytes,
+      ).toEqual(bytes("beta"));
+      await expect(
+        client.readFileBlob({
+          fileId: "file:shared",
+          source: { kind: "page", page_id: pageIds[0] },
+        }),
+      ).rejects.toThrow();
+      const historical = await read({
+        mode: "file_presentation",
+        file_id: "file:shared",
+        source: { kind: "direct" },
+        version: 1,
+      });
+      expect(historical.value).toMatchObject({
+        kind: "file_presentation",
+        value: { version: 1, default_name: "image.png", byte_length: 5 },
+      });
+      // The desktop decoder must consume Core's complete checkpoint contract, not a hand-written subset.
+      const documents = createCoreDocumentSyncAdapter(client);
+      const descriptor = await documents.readDescriptor({
+        ownerBlockId: pageIds[1],
+        clientSessionId: "file-history",
+      });
+      if (!descriptor) throw new Error("History owner is unavailable");
+      const checkpoint = await documents.createCheckpoint({
+        operationId: createUuidV7(),
+        projectId: "project:default",
+        storeEpoch: descriptor.storeEpoch,
+        documentId: descriptor.documentId,
+        expectedGeneration: descriptor.generation,
+        expectedHeadSeq: descriptor.headSeq,
+        cause: "manual",
+        actor: { kind: "user" },
+        revisionKind: "manual",
+      });
+      if (!checkpoint.ok) throw new Error(checkpoint.error.message);
+      expect(checkpoint.value.checkpoint).toMatchObject({
+        checkpointMetadata: { format: "block_tree_snapshot_v3" },
+        fileSnapshotStatus: "exact",
+      });
+      const detail = await documents.getVersion({
+        projectId: "project:default",
+        documentId: descriptor.documentId,
+        versionId: checkpoint.value.checkpoint.versionId,
+      });
+      if (!detail.ok) throw new Error(detail.error.message);
+      expect(detail.value.summary).toEqual(checkpoint.value.checkpoint);
+      // Explicit Page entries do not make an otherwise empty body history a File capability.
+      await expect(
+        client.readFileBlob({
+          fileId: "file:shared",
+          source: {
+            kind: "document_revision",
+            document_id: descriptor.documentId,
+            revision_id: checkpoint.value.checkpoint.versionId,
+          },
+        }),
+      ).rejects.toThrow();
+      // Private Thread input uses the same publication boundary but independent retention.
+      await client.workspaceApply({
+        operationId: createUuidV7(),
+        intent: {
+          kind: "upsert_thread",
+          thread_id: "thread:files",
+          patch: { project_id: "project:default", thread_name: "Files" },
+        },
+      });
+      const inputOperationId = createUuidV7();
+      const inputBlob = await client.prepareBlob({
+        operationId: inputOperationId,
+        bytes: bytes("retained input"),
+      });
+      await expect(
+        client.readThreadAssetBlob({ threadId: "thread:files", contentHash: inputBlob.blob_etag }),
+      ).rejects.toThrow();
+      await client.workspaceApply({
+        operationId: inputOperationId,
+        intent: {
+          kind: "retain_thread_assets",
+          thread_id: "thread:files",
+          prepared_blob_receipt_ids: [inputBlob.receipt_id],
+        },
+      });
+      expect(
+        (
+          await client.readThreadAssetBlob({
+            threadId: "thread:files",
+            contentHash: inputBlob.blob_etag,
+          })
+        ).bytes,
+      ).toEqual(bytes("retained input"));
+      await client.shutdown();
+      await waitForExit(child);
+    } finally {
+      if (child.exitCode === null) child.kill();
+      await waitForExit(child).catch(() => null);
+      rmSync(nodexHome, { recursive: true, force: true });
+    }
+  });
+
   test("closing one Document stream preserves sibling subscriptions on the connection", async () => {
     const nodexHome = mkdtempSync(path.join(tmpdir(), "nodex-core-client-stream-"));
     const child = spawnCore(nodexHome);

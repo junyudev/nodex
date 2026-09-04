@@ -12,9 +12,8 @@ use nodex_core_contracts::library::{
     LibraryBlockTransferTarget, LibraryBlockTransferTransformationEvidence,
     LibraryBlockTransferUndoResult, LibraryBlockTransferUndoToken, LibraryCommitValue,
     LibraryPageCopyDestination, LibraryPageCopyPositionAnchor, LibraryPageCopyValue,
-    LibraryPageCopyViewPlacement, LibraryPageFileOwnershipMove, LibraryPagePromotionPolicy,
-    LibraryPageRelocationUndoResult, LibraryPageViewPlacementResult, LibraryPlacementAnchor,
-    LibraryReceipt,
+    LibraryPageCopyViewPlacement, LibraryPagePromotionPolicy, LibraryPageRelocationUndoResult,
+    LibraryPageViewPlacementResult, LibraryPlacementAnchor, LibraryReceipt,
 };
 use nodex_core_contracts::{BoundModuleContext, ModuleName};
 use rusqlite::{Connection, OptionalExtension, params};
@@ -70,10 +69,6 @@ use super::mutation::{
 };
 use super::page_copy::{
     PageCopyParentDocumentMode, execute_page_copy, page_copy_closure_document_heads,
-};
-use super::page_file_ownership_move::{
-    PageFilePlacementMove, candidate_file_ids, move_exclusively_placed_files,
-    restore_promoted_page_file_ownership,
 };
 
 const MODULE_NAME: &str = "library";
@@ -217,12 +212,12 @@ pub(super) struct PreparedPageParentTransfer {
     task_shorthand_plan: Option<PageTaskShorthandBatchPlan>,
 }
 
-const BLOCK_TRANSFER_UNDO_RECIPE_VERSION: u32 = 2;
+const BLOCK_TRANSFER_UNDO_RECIPE_VERSION: u32 = 3;
 const PAGE_RELOCATION_UNDO_RECIPE_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct BlockTransferUndoRecipeV1 {
+struct BlockTransferUndoRecipeV3 {
     version: u32,
     mode: LibraryBlockTransferMode,
     project_id: String,
@@ -235,7 +230,6 @@ struct BlockTransferUndoRecipeV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     source_placeholder_block_id: Option<String>,
     roots: Vec<BlockTransferUndoRootV1>,
-    file_ownership_moves: Vec<LibraryPageFileOwnershipMove>,
     target_guard_hash: String,
     schema_restore: Option<BlockTransferUndoSchemaRestoreV1>,
 }
@@ -270,7 +264,7 @@ struct BlockTransferUndoSchemaRestoreV1 {
 }
 
 struct PendingBlockTransferUndoRecipe {
-    recipe: BlockTransferUndoRecipeV1,
+    recipe: BlockTransferUndoRecipeV3,
     token: LibraryBlockTransferUndoToken,
 }
 
@@ -1224,20 +1218,6 @@ fn apply_with_authority(
         |scope| {
             let moves_between_documents = intent.mode == LibraryBlockTransferMode::Move
                 && prepared.source_authority.head.id != prepared.target_authority.head.id;
-            let page_file_move = if moves_between_documents {
-                Some(PageFilePlacementMove {
-                    source_page_id: prepared.source_authority.owner_block_id.clone(),
-                    target_page_id: prepared.target_authority.owner_block_id.clone(),
-                    candidate_file_ids: candidate_file_ids(
-                        connection,
-                        library_id,
-                        &prepared.source_authority.head.id,
-                        &prepared.prepared.source_forest.block_ids,
-                    )?,
-                })
-            } else {
-                None
-            };
             let source_update = prepared.prepared.source.take();
             let target_update = prepared.prepared.target.clone();
             let mut document_commits = Vec::new();
@@ -1297,20 +1277,6 @@ fn apply_with_authority(
                 scope.evidence(),
             )?;
             document_commits.push(target_commit);
-            let file_ownership_effects = page_file_move
-                .map(|page_file_move| {
-                    move_exclusively_placed_files(
-                        connection,
-                        library_id,
-                        operation_id,
-                        bound_project_id(context)?,
-                        &now,
-                        &[page_file_move],
-                    )
-                })
-                .transpose()?
-                .unwrap_or_default();
-
             let result_block_ids = prepared.prepared.inserted_forest.block_ids.clone();
             let result_root_block_ids = prepared.prepared.inserted_forest.root_block_ids.clone();
             let copied_block_ids = if intent.mode == LibraryBlockTransferMode::Copy {
@@ -1346,11 +1312,9 @@ fn apply_with_authority(
                 page_etags: BTreeMap::new(),
                 move_etags: BTreeMap::new(),
                 page_view_placements: BTreeMap::new(),
-                file_ownership_moves: file_ownership_effects.moves.clone(),
                 undo_token: None,
             };
             let mut affected_page_ids = affected_page_ids(&prepared);
-            affected_page_ids.extend(file_ownership_effects.affected_page_ids.iter().cloned());
             affected_page_ids.sort();
             affected_page_ids.dedup();
             let is_same_storage_relocation = moves_between_documents
@@ -1361,7 +1325,7 @@ fn apply_with_authority(
             } else {
                 "block_mutation"
             };
-            let mut committed_revisions = final_location_revisions
+            let committed_revisions = final_location_revisions
                 .iter()
                 .map(|(block_id, revision)| (format!("blockLocation:{block_id}"), *revision))
                 .chain(document_commits.iter().map(|commit| {
@@ -1371,23 +1335,20 @@ fn apply_with_authority(
                     )
                 }))
                 .collect::<BTreeMap<_, _>>();
-            committed_revisions
-                .extend(file_ownership_effects.committed_revisions(scope.evidence().commit_seq()));
             seal_mutation_with(
                 scope,
                 context,
                 operation_id,
                 MutationEffects {
+                    page_file_entries: Vec::new(),
+                    file_revisions: BTreeMap::new(),
+                    file_mutation: Default::default(),
                     project_id: bound_project_id(context)?.to_owned(),
                     operation_kind: "transfer_blocks",
                     change_kind,
                     did_mutate: true,
                     created_target: None,
-                    affected_parent_keys: file_ownership_effects
-                        .affected_page_ids
-                        .iter()
-                        .map(|page_id| format!("page:{page_id}"))
-                        .collect(),
+                    affected_parent_keys: Vec::new(),
                     affected_block_ids: result_block_ids.clone(),
                     affected_page_ids,
                     affected_database_ids: Vec::new(),
@@ -1400,7 +1361,6 @@ fn apply_with_authority(
                     committed_revisions,
                     page_create: None,
                     page_copy: None,
-                    page_files: None,
                     canvas_mutation: None,
                     block_transfer: Some(result.clone()),
                     block_transfer_undo: None,
@@ -2872,7 +2832,6 @@ fn apply_page_ownership_transfer(
             page_etags,
             move_etags,
             page_view_placements,
-            file_ownership_moves: Vec::new(),
             undo_token: pending_relocation_undo
                 .as_ref()
                 .map(|pending| pending.token.clone()),
@@ -2928,6 +2887,9 @@ fn apply_page_ownership_transfer(
             context,
             operation_id,
             MutationEffects {
+                page_file_entries: Vec::new(),
+                file_revisions: BTreeMap::new(),
+                file_mutation: Default::default(),
                 project_id: requesting_project_id.to_owned(),
                 operation_kind: if relocation_undo_result.is_some() {
                     "undo_page_relocation"
@@ -2946,7 +2908,6 @@ fn apply_page_ownership_transfer(
                 committed_revisions,
                 page_create: None,
                 page_copy: None,
-                page_files: None,
                 canvas_mutation: None,
                 block_transfer: relocation_undo_result.is_none().then(|| result.clone()),
                 block_transfer_undo: None,
@@ -3137,7 +3098,6 @@ fn apply_page_ownership_copy(
         page_etags: BTreeMap::new(),
         move_etags: BTreeMap::new(),
         page_view_placements: BTreeMap::new(),
-        file_ownership_moves: Vec::new(),
         undo_token: None,
     };
     let actor_project_id =
@@ -3148,6 +3108,9 @@ fn apply_page_ownership_copy(
         context,
         operation_id,
         MutationEffects {
+            page_file_entries: Vec::new(),
+            file_revisions: BTreeMap::new(),
+            file_mutation: Default::default(),
             project_id: actor_project_id.clone(),
             operation_kind: "transfer_blocks",
             change_kind: "block_mutation",
@@ -3162,7 +3125,6 @@ fn apply_page_ownership_copy(
             committed_revisions,
             page_create: None,
             page_copy: None,
-            page_files: None,
             canvas_mutation: None,
             block_transfer: Some(result.clone()),
             block_transfer_undo: None,
@@ -3790,28 +3752,13 @@ fn block_transfer_target_guard_hash(
                 },
             )
             .optional()?;
-        let page_files = connection
-            .prepare(
-                "SELECT file.file_id, file.current_version, file.logical_path, file.path_key, \
-                   file.mime_type, file.byte_length, version.blob_hash, file.state, file.updated_at \
-                 FROM page_files file JOIN page_file_versions version \
-                   ON version.file_id = file.file_id AND version.version = file.current_version \
-                 WHERE file.owner_page_id = ?1 ORDER BY file.file_id",
-            )?
-            .query_map([&root.result_page_id], |row| {
-                Ok(serde_json::json!({
-                    "fileId": row.get::<_, String>(0)?,
-                    "version": row.get::<_, i64>(1)?,
-                    "logicalPath": row.get::<_, String>(2)?,
-                    "pathKey": row.get::<_, String>(3)?,
-                    "mimeType": row.get::<_, String>(4)?,
-                    "byteLength": row.get::<_, i64>(5)?,
-                    "blobHash": row.get::<_, Option<String>>(6)?,
-                    "state": row.get::<_, String>(7)?,
-                    "updatedAt": row.get::<_, String>(8)?,
-                }))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+        let file_entries = connection
+            .prepare("SELECT file_id, logical_path FROM page_file_entries WHERE page_id = ?1 ORDER BY file_id")?
+            .query_map([&root.result_page_id], |row| Ok(serde_json::json!({
+                "fileId": row.get::<_, String>(0)?,
+                "logicalPath": row.get::<_, String>(1)?,
+            })))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         guarded_pages.push(serde_json::json!({
             "pageId": root.result_page_id,
             "authority": authority,
@@ -3820,7 +3767,7 @@ fn block_transfer_target_guard_hash(
             "positions": positions,
             "properties": properties,
             "fileManifest": file_manifest,
-            "pageFiles": page_files,
+            "fileEntries": file_entries,
         }));
     }
     let schema = schema_restore
@@ -3857,7 +3804,6 @@ struct PageParentUndoRecipeInput<'a> {
     intent: &'a LibraryBlockTransferLogicalIntent,
     prepared: &'a PreparedPageParentTransfer,
     document_commits: &'a [PersistedTransferCommit],
-    file_ownership_moves: &'a [LibraryPageFileOwnershipMove],
     schema_restore: Option<BlockTransferUndoSchemaRestoreV1>,
 }
 
@@ -3871,7 +3817,6 @@ fn build_page_parent_undo_recipe(
         intent,
         prepared,
         document_commits,
-        file_ownership_moves,
         schema_restore,
     } = input;
     let source_post_head_seq = if intent.mode == LibraryBlockTransferMode::Move {
@@ -3903,7 +3848,7 @@ fn build_page_parent_undo_recipe(
         .collect::<Vec<_>>();
     let target_guard_hash =
         block_transfer_target_guard_hash(connection, &roots, schema_restore.as_ref())?;
-    let recipe = BlockTransferUndoRecipeV1 {
+    let recipe = BlockTransferUndoRecipeV3 {
         version: BLOCK_TRANSFER_UNDO_RECIPE_VERSION,
         mode: intent.mode,
         project_id: prepared.actor_project_id.clone(),
@@ -3916,7 +3861,6 @@ fn build_page_parent_undo_recipe(
             .then(|| prepared.source_materialization.clone()),
         source_placeholder_block_id: prepared.source_placeholder_block_id.clone(),
         roots,
-        file_ownership_moves: file_ownership_moves.to_vec(),
         target_guard_hash,
         schema_restore,
     };
@@ -4271,26 +4215,6 @@ fn apply_page_parent_transfer(
         },
         |scope| {
             let schema_restore = read_task_shorthand_schema_restore(connection, &prepared)?;
-            let page_file_moves = if intent.mode == LibraryBlockTransferMode::Move {
-                prepared
-                    .roots
-                    .iter()
-                    .map(|root| {
-                        Ok(PageFilePlacementMove {
-                            source_page_id: prepared.source_authority.owner_block_id.clone(),
-                            target_page_id: root.page_id.clone(),
-                            candidate_file_ids: candidate_file_ids(
-                                connection,
-                                library_id,
-                                &prepared.source_authority.head.id,
-                                &root.source_block_ids,
-                            )?,
-                        })
-                    })
-                    .collect::<Result<Vec<_>, StoreError>>()?
-            } else {
-                Vec::new()
-            };
             let mut shorthand_schema_revisions = BTreeMap::new();
             if let Some(plan) = &prepared.task_shorthand_plan
                 && !plan.new_tag_options.is_empty()
@@ -4404,15 +4328,6 @@ fn apply_page_parent_transfer(
                 }
             }
             let target_persistence_elapsed = target_persistence_started_at.elapsed();
-            let file_ownership_effects = move_exclusively_placed_files(
-                connection,
-                library_id,
-                operation_id,
-                bound_project_id(context)?,
-                &now,
-                &page_file_moves,
-            )?;
-
             let result_root_block_ids = prepared
                 .roots
                 .iter()
@@ -4446,7 +4361,6 @@ fn apply_page_parent_transfer(
                     intent,
                     prepared: &prepared,
                     document_commits: &document_commits,
-                    file_ownership_moves: &file_ownership_effects.moves,
                     schema_restore,
                 },
             )?;
@@ -4471,7 +4385,6 @@ fn apply_page_parent_transfer(
                 page_etags: BTreeMap::new(),
                 move_etags: BTreeMap::new(),
                 page_view_placements: BTreeMap::new(),
-                file_ownership_moves: file_ownership_effects.moves.clone(),
                 undo_token: Some(pending_undo.token.clone()),
             };
             let mut committed_revisions = final_location_revisions
@@ -4485,8 +4398,6 @@ fn apply_page_parent_transfer(
                     commit.public.head_seq,
                 );
             }
-            committed_revisions
-                .extend(file_ownership_effects.committed_revisions(scope.evidence().commit_seq()));
             for (page_id, placement) in &data_source_placements {
                 committed_revisions.insert(
                     format!("blockMetadata:{page_id}"),
@@ -4524,12 +4435,6 @@ fn apply_page_parent_transfer(
                     vec![format!("data_source:{}", destination.data_source_id)]
                 }
             };
-            affected_parent_keys.extend(
-                file_ownership_effects
-                    .affected_page_ids
-                    .iter()
-                    .map(|page_id| format!("page:{page_id}")),
-            );
             affected_parent_keys.sort();
             affected_parent_keys.dedup();
             let mut affected_page_ids = prepared
@@ -4537,7 +4442,6 @@ fn apply_page_parent_transfer(
                 .iter()
                 .map(|root| root.page_id.clone())
                 .collect::<Vec<_>>();
-            affected_page_ids.extend(file_ownership_effects.affected_page_ids.iter().cloned());
             affected_page_ids.sort();
             affected_page_ids.dedup();
             let sealing_started_at = Instant::now();
@@ -4546,6 +4450,9 @@ fn apply_page_parent_transfer(
                 context,
                 operation_id,
                 MutationEffects {
+                    page_file_entries: Vec::new(),
+                    file_revisions: BTreeMap::new(),
+                    file_mutation: Default::default(),
                     project_id: prepared.actor_project_id.clone(),
                     operation_kind: "transfer_blocks",
                     change_kind: "block_mutation",
@@ -4563,7 +4470,6 @@ fn apply_page_parent_transfer(
                     committed_revisions,
                     page_create: None,
                     page_copy: None,
-                    page_files: None,
                     canvas_mutation: None,
                     block_transfer: Some(result.clone()),
                     block_transfer_undo: None,
@@ -4992,6 +4898,7 @@ fn persist_page_parent_genesis(
         sha256(format!("{operation_id}\0{request_hash}\0{}", stage.page_id).as_bytes())
     );
     let full_state = stage.prepared.engine.full_state_v1();
+    let authorized_file_ids = stage.prepared.materialization.file_ids();
     let persisted = persist_yjs_genesis_with_local_commit(
         connection,
         PersistYjsGenesis {
@@ -5011,7 +4918,7 @@ fn persist_page_parent_genesis(
             // revisions still advance exactly once here at the new authority.
             placement: DocumentPlacementEvidence::STRUCTURAL
                 .with_advances(&stage.placement_mutation_block_ids)
-                .with_prevalidated_page_file_placements(),
+                .with_authorized_file_ids(&authorized_file_ids),
             emit_event: true,
         },
         attached_commit,
@@ -5279,6 +5186,7 @@ fn persist_prepared_update(
         TransferDocumentPlacement::Preapplied(block_ids) => (&[][..], block_ids, &[][..], &[][..]),
         TransferDocumentPlacement::Genesis(block_ids) => (block_ids, &[][..], &[][..], &[][..]),
     };
+    let authorized_file_ids = update.materialization.file_ids();
     let input = PersistYjsCommit {
         authority,
         actor_project_id,
@@ -5303,7 +5211,7 @@ fn persist_prepared_update(
             .with_preapplied(placement_preapplied_block_ids)
             .with_advances(placement_advance_block_ids)
             .with_exact_moves(exact_moved_block_ids)
-            .with_prevalidated_page_file_placements(),
+            .with_authorized_file_ids(&authorized_file_ids),
     };
     let persisted = persist_yjs_commit_with_local_commit(connection, input, attached_commit)?;
     Ok(PersistedTransferCommit {
@@ -6229,7 +6137,7 @@ fn read_block_transfer_undo_recipe(
     context: &BoundModuleContext,
     library_id: &str,
     token: &LibraryBlockTransferUndoToken,
-) -> Result<BlockTransferUndoRecipeV1, StoreError> {
+) -> Result<BlockTransferUndoRecipeV3, StoreError> {
     let row = connection
         .query_row(
             "SELECT project_id, library_id, store_epoch, recipe_hash, recipe_json, consumed_at \
@@ -6263,7 +6171,7 @@ fn read_block_transfer_undo_recipe(
     if sha256(row.4.as_bytes()) != token.recipe_hash {
         return Err(corrupt("Stored Block transfer Undo recipe hash changed"));
     }
-    let mut recipe = serde_json::from_str::<BlockTransferUndoRecipeV1>(&row.4)
+    let mut recipe = serde_json::from_str::<BlockTransferUndoRecipeV3>(&row.4)
         .map_err(|_| corrupt("Stored Block transfer Undo recipe is invalid"))?;
     if recipe.version != BLOCK_TRANSFER_UNDO_RECIPE_VERSION
         || recipe.project_id != row.0
@@ -6352,7 +6260,7 @@ fn read_page_relocation_undo_recipe(
 
 fn validate_undo_created_tags_are_private(
     connection: &Connection,
-    recipe: &BlockTransferUndoRecipeV1,
+    recipe: &BlockTransferUndoRecipeV3,
 ) -> Result<(), StoreError> {
     let Some(schema) = &recipe.schema_restore else {
         return Ok(());
@@ -6394,7 +6302,7 @@ fn validate_undo_created_tags_are_private(
 
 fn purge_promoted_page(
     connection: &Connection,
-    recipe: &BlockTransferUndoRecipeV1,
+    recipe: &BlockTransferUndoRecipeV3,
     root: &BlockTransferUndoRootV1,
 ) -> Result<(), StoreError> {
     let indexed_block_ids = connection
@@ -6404,16 +6312,6 @@ fn purge_promoted_page(
         )?
         .query_map([&root.result_document_id], |row| row.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
-    let owned_file_count = connection.query_row(
-        "SELECT COUNT(*) FROM page_files WHERE library_id = ?1 AND owner_page_id = ?2",
-        params![recipe.library_id, root.result_page_id],
-        |row| row.get::<_, i64>(0),
-    )?;
-    if owned_file_count != 0 {
-        return Err(conflict(
-            "Promoted Page still owns Files and cannot be removed by Undo",
-        ));
-    }
     connection.execute(
         "DELETE FROM database_view_page_positions WHERE page_block_id = ?1",
         [&root.result_page_id],
@@ -6475,7 +6373,10 @@ fn purge_promoted_page(
         }
         connection.execute("DELETE FROM blocks WHERE id = ?1", [&block_id])?;
     }
-    if recipe.mode == LibraryBlockTransferMode::Move {
+    // Wrapper promotion keeps the original media/code Block inside a fresh
+    // Page. Only identity-preserving promotion changed the root into a Page
+    // and therefore needs its type and intrinsic properties restored.
+    if recipe.mode == LibraryBlockTransferMode::Move && root.source_root_id == root.result_page_id {
         connection.execute(
             "DELETE FROM block_properties WHERE block_id = ?1",
             [&root.source_root_id],
@@ -6517,7 +6418,7 @@ fn purge_promoted_page(
 
 fn restore_undo_schema(
     connection: &Connection,
-    recipe: &BlockTransferUndoRecipeV1,
+    recipe: &BlockTransferUndoRecipeV3,
     now: &str,
 ) -> Result<BTreeMap<String, i64>, StoreError> {
     let Some(schema) = &recipe.schema_restore else {
@@ -6922,36 +6823,6 @@ pub(super) fn undo(
             context,
         },
         |scope| {
-            let reverse_page_file_moves = recipe
-                .file_ownership_moves
-                .iter()
-                .map(|ownership_move| PageFilePlacementMove {
-                    source_page_id: ownership_move.owner_page_id.clone(),
-                    target_page_id: ownership_move.previous_owner_page_id.clone(),
-                    candidate_file_ids: vec![ownership_move.file_id.clone()],
-                })
-                .collect::<Vec<_>>();
-            let file_ownership_effects = restore_promoted_page_file_ownership(
-                connection,
-                library_id,
-                operation_id,
-                &recipe.project_id,
-                &now,
-                &reverse_page_file_moves,
-            )?;
-            let expected_rehomed_file_ids = recipe
-                .file_ownership_moves
-                .iter()
-                .map(|ownership_move| ownership_move.file_id.as_str())
-                .collect::<BTreeSet<_>>();
-            let actual_rehomed_file_ids = file_ownership_effects
-                .moves
-                .iter()
-                .map(|ownership_move| ownership_move.file_id.as_str())
-                .collect::<BTreeSet<_>>();
-            if actual_rehomed_file_ids != expected_rehomed_file_ids {
-                return Err(conflict("Promoted Page File ownership changed before Undo"));
-            }
             for root in &recipe.roots {
                 purge_promoted_page(connection, &recipe, root)?;
             }
@@ -6987,8 +6858,6 @@ pub(super) fn undo(
                     commit.public.head_seq,
                 );
             }
-            committed_revisions
-                .extend(file_ownership_effects.committed_revisions(scope.evidence().commit_seq()));
             let consumed = connection.execute(
                 "UPDATE block_transfer_undo_recipes SET consumed_at = ?1 \
                  WHERE transfer_operation_id = ?2 AND consumed_at IS NULL",
@@ -7017,7 +6886,6 @@ pub(super) fn undo(
                     .iter()
                     .map(|commit| commit.public.clone())
                     .collect(),
-                file_ownership_moves: file_ownership_effects.moves.clone(),
             };
             let affected_database_ids = recipe
                 .schema_restore
@@ -7029,16 +6897,9 @@ pub(super) fn undo(
                 .as_ref()
                 .map(|schema| vec![format!("data_source:{}", schema.data_source_id)])
                 .unwrap_or_else(|| vec![format!("library:{library_id}")]);
-            affected_parent_keys.extend(
-                file_ownership_effects
-                    .affected_page_ids
-                    .iter()
-                    .map(|page_id| format!("page:{page_id}")),
-            );
             affected_parent_keys.sort();
             affected_parent_keys.dedup();
             let mut affected_page_ids = result.removed_page_ids.clone();
-            affected_page_ids.extend(file_ownership_effects.affected_page_ids.iter().cloned());
             affected_page_ids.sort();
             affected_page_ids.dedup();
             seal_mutation_with(
@@ -7046,6 +6907,9 @@ pub(super) fn undo(
                 context,
                 operation_id,
                 MutationEffects {
+                    page_file_entries: Vec::new(),
+                    file_revisions: BTreeMap::new(),
+                    file_mutation: Default::default(),
                     project_id: recipe.project_id.clone(),
                     operation_kind: "undo_block_transfer",
                     change_kind: "block_mutation",
@@ -7064,7 +6928,6 @@ pub(super) fn undo(
                     committed_revisions,
                     page_create: None,
                     page_copy: None,
-                    page_files: None,
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: Some(result),

@@ -31,12 +31,11 @@ describe("resolveManagedBlobPath", () => {
     expect(resolveManagedBlobPath(profileHome, contentHash)).toBe(blobPath);
   });
 
-  test("resolves a retained prefixed blob when the current filename is absent", () => {
+  test("does not interpret legacy prefixed names as current Blob identity", () => {
     const profileHome = createProfileHome();
-    const blobPath = path.join(profileHome, "assets", `page-file-${contentHash}.blob`);
-    fs.writeFileSync(blobPath, "bytes");
+    fs.writeFileSync(path.join(profileHome, "assets", `page-file-${contentHash}.blob`), "bytes");
 
-    expect(resolveManagedBlobPath(profileHome, contentHash)).toBe(blobPath);
+    expect(resolveManagedBlobPath(profileHome, contentHash)).toBeNull();
   });
 
   test("rejects invalid hashes, missing files, and symbolic links", () => {

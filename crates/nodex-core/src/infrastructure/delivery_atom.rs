@@ -89,6 +89,13 @@ pub(crate) fn payload_claims(
             });
             claims.extend(
                 event
+                    .file_revisions
+                    .keys()
+                    .cloned()
+                    .map(|file_id| ResourceKey::File { file_id }),
+            );
+            claims.extend(
+                event
                     .page_ids
                     .iter()
                     .chain(event.page_file_manifest_invalidations.keys())
@@ -244,6 +251,31 @@ fn compile_library(
     event: LibraryEvent,
 ) -> Result<Vec<DeliveryAtomDraft>, StoreError> {
     let mut atoms = Vec::new();
+    for (file_id, revision) in &event.file_revisions {
+        atoms.push(atom(
+            DeliveryAtomKind::LibraryNavigationChanged,
+            [
+                library(library_id),
+                ResourceKey::File {
+                    file_id: file_id.clone(),
+                },
+            ],
+            DeliveryAtomPayload::Library {
+                library_id: library_id.to_owned(),
+                event: LibraryEvent {
+                    file_revisions: BTreeMap::from([(file_id.clone(), *revision)]),
+                    kind: event.kind,
+                    page_ids: Vec::new(),
+                    database_ids: Vec::new(),
+                    view_ids: Vec::new(),
+                    parent_keys: Vec::new(),
+                    page_file_manifest_invalidations: BTreeMap::new(),
+                    page_file_body_usage_revisions: BTreeMap::new(),
+                    page_file_content_invalidations: BTreeMap::new(),
+                },
+            },
+        ));
+    }
     let page_ids = event
         .page_ids
         .iter()
@@ -285,6 +317,7 @@ fn compile_library(
             DeliveryAtomPayload::Library {
                 library_id: library_id.to_owned(),
                 event: LibraryEvent {
+                    file_revisions: Default::default(),
                     kind: event.kind,
                     page_ids,
                     database_ids: Vec::new(),
@@ -309,6 +342,7 @@ fn compile_library(
             DeliveryAtomPayload::Library {
                 library_id: library_id.to_owned(),
                 event: LibraryEvent {
+                    file_revisions: Default::default(),
                     kind: event.kind,
                     page_ids: Vec::new(),
                     database_ids: vec![database_id.clone()],
@@ -333,6 +367,7 @@ fn compile_library(
             DeliveryAtomPayload::Library {
                 library_id: library_id.to_owned(),
                 event: LibraryEvent {
+                    file_revisions: Default::default(),
                     kind: event.kind,
                     page_ids: Vec::new(),
                     database_ids: Vec::new(),
@@ -356,6 +391,7 @@ fn compile_library(
             DeliveryAtomPayload::Library {
                 library_id: library_id.to_owned(),
                 event: LibraryEvent {
+                    file_revisions: Default::default(),
                     kind: event.kind,
                     page_ids: Vec::new(),
                     database_ids: Vec::new(),
@@ -375,6 +411,7 @@ fn compile_library(
             DeliveryAtomPayload::Library {
                 library_id: library_id.to_owned(),
                 event: LibraryEvent {
+                    file_revisions: Default::default(),
                     kind: event.kind,
                     page_ids: Vec::new(),
                     database_ids: Vec::new(),
@@ -732,6 +769,7 @@ fn compile_page_file_body_usage(
     compile_library(
         library_id,
         LibraryEvent {
+            file_revisions: Default::default(),
             kind: LibraryEventKind::LibraryChanged,
             page_ids: Vec::new(),
             database_ids: Vec::new(),
@@ -947,6 +985,58 @@ mod tests {
     use super::*;
 
     #[test]
+    fn library_file_events_require_each_file_without_widening_page_authority() {
+        let atoms = compile_library(
+            "library:test",
+            LibraryEvent {
+                kind: LibraryEventKind::LibraryChanged,
+                file_revisions: BTreeMap::from([
+                    ("file:a".to_owned(), 2),
+                    ("file:b".to_owned(), 3),
+                ]),
+                page_ids: vec!["page:one".to_owned()],
+                database_ids: Vec::new(),
+                view_ids: Vec::new(),
+                parent_keys: Vec::new(),
+                page_file_manifest_invalidations: BTreeMap::new(),
+                page_file_body_usage_revisions: BTreeMap::new(),
+                page_file_content_invalidations: BTreeMap::from([(
+                    "page:one".to_owned(),
+                    LibraryPageFileInvalidation::Exact {
+                        revision: 9,
+                        file_ids: vec!["file:a".to_owned()],
+                    },
+                )]),
+            },
+        )
+        .unwrap();
+        assert_eq!(atoms.len(), 3);
+        for atom in atoms {
+            validate(&atom).unwrap();
+            let DeliveryAtomPayload::Library { event, .. } = &atom.payload else {
+                panic!("Library File event");
+            };
+            if let Some(file_id) = event.file_revisions.keys().next() {
+                assert_eq!(event.file_revisions.len(), 1);
+                assert!(atom.required_resources.contains(&ResourceKey::File {
+                    file_id: file_id.clone()
+                }));
+                assert!(event.page_ids.is_empty());
+                continue;
+            }
+            assert!(atom.required_resources.contains(&ResourceKey::Page {
+                page_id: "page:one".to_owned()
+            }));
+            assert!(
+                !atom
+                    .required_resources
+                    .iter()
+                    .any(|resource| matches!(resource, ResourceKey::File { .. }))
+            );
+        }
+    }
+
+    #[test]
     fn page_file_invalidations_are_redacted_to_each_page_atom() {
         let connection = Connection::open_in_memory().expect("in-memory compiler store");
         let atoms = compile(
@@ -954,6 +1044,7 @@ mod tests {
             "library:test",
             "project:test",
             CoreModuleEventPayload::Library(LibraryEvent {
+                file_revisions: Default::default(),
                 kind: nodex_core_contracts::library::LibraryEventKind::LibraryChanged,
                 page_ids: vec!["page:visible".to_owned(), "page:hidden".to_owned()],
                 database_ids: Vec::new(),

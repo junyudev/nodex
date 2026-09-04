@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 pub(crate) const CANVAS_SCHEMA_KEY: &str = "nodex.canvas";
-pub(crate) const CANVAS_SCHEMA_VERSION: i64 = 1;
+pub(crate) const CANVAS_SCHEMA_VERSION: i64 = 2;
 pub(crate) const CANVAS_OWNER_TYPE: &str = "canvas";
 const MAX_ELEMENTS: usize = 100_000;
 const MAX_FILES: usize = 10_000;
@@ -16,7 +16,6 @@ const MAX_ID_LENGTH: usize = 512;
 const MAX_ORDER_KEY_LENGTH: usize = 256;
 const MAX_SHARED_TEXT_UTF16: usize = 4_000_000;
 const MAX_MUTATION_BYTES: usize = 2 * 1024 * 1024;
-const ASSET_SCHEME: &str = "nodex://assets/";
 pub(crate) const CANVAS_HASH_BUCKET_COUNT: usize = 1_024;
 pub(crate) const CANVAS_SCENE_HASH_VERSION: i64 = 2;
 pub(crate) const MAX_CANVAS_SCENE_BYTES: usize = 16 * 1024 * 1024;
@@ -46,9 +45,20 @@ pub(crate) struct CanvasFile {
     pub(crate) id: String,
     pub(crate) mime_type: String,
     pub(crate) source: String,
-    pub(crate) managed_file_name: String,
+    pub(crate) target_file_id: String,
+    pub(crate) file_version: i64,
+    pub(crate) default_name: String,
     pub(crate) created_ms: Option<i64>,
     pub(crate) value: Value,
+}
+
+impl CanvasFile {
+    pub(crate) fn same_binding(&self, other: &Self) -> bool {
+        self.target_file_id == other.target_file_id
+            && self.file_version == other.file_version
+            && self.default_name == other.default_name
+            && self.mime_type == other.mime_type
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq, Serialize)]
@@ -210,7 +220,7 @@ impl CanvasScene {
             .collect::<Vec<_>>();
         json!({
             "kind": "canvas_scene",
-            "schemaVersion": 1,
+            "schemaVersion": CANVAS_SCHEMA_VERSION,
             "elements": elements,
             "appState": self.app_state,
             "files": files,
@@ -630,7 +640,7 @@ pub(crate) fn parse_canvas_scene(value: &Value) -> Result<CanvasScene, StoreErro
         .as_object()
         .ok_or_else(|| corrupt("Canvas checkpoint must be an object"))?;
     if object.get("kind").and_then(Value::as_str) != Some("canvas_scene")
-        || object.get("schemaVersion").and_then(Value::as_i64) != Some(1)
+        || object.get("schemaVersion").and_then(Value::as_i64) != Some(CANVAS_SCHEMA_VERSION)
     {
         return Err(corrupt("Canvas checkpoint schema identity is invalid"));
     }
@@ -678,6 +688,7 @@ pub(crate) fn prepare_canvas_restore(
     if semantic_fingerprint(current)? == semantic_fingerprint(target)? {
         return Ok(None);
     }
+    let target = restore_file_slots(current, target, restore_identity)?;
     let current_by_id = current
         .elements
         .iter()
@@ -745,6 +756,66 @@ pub(crate) fn prepare_canvas_restore(
     .map(Some)
 }
 
+/// Scene slot identity is immutable while occupied. A forward restore gives
+/// conflicting historical bindings fresh slots and rewrites image references.
+fn restore_file_slots(
+    current: &CanvasScene,
+    target: &CanvasScene,
+    restore_identity: &str,
+) -> Result<CanvasScene, StoreError> {
+    let mut value = target.canonical_value();
+    let mut replacements = BTreeMap::new();
+    for (id, file) in &target.files {
+        let Some(existing) = current.files.get(id) else {
+            continue;
+        };
+        if existing.same_binding(file) {
+            continue;
+        }
+        let mut attempt = 0;
+        let replacement = loop {
+            let candidate = crate::domain::identity::stable_uuid_v7(
+                restore_identity,
+                "restored_canvas_slot",
+                &format!("{id}:{attempt}"),
+            );
+            if !current.files.contains_key(&candidate)
+                && !target.files.contains_key(&candidate)
+                && !replacements.values().any(|id| id == &candidate)
+            {
+                break candidate;
+            }
+            attempt += 1;
+            if attempt > 1000 {
+                return Err(invalid("Canvas restore cannot allocate an image slot"));
+            }
+        };
+        let mut binding = file.value.clone();
+        binding["id"] = json!(replacement);
+        value["files"]
+            .as_object_mut()
+            .ok_or_else(|| invalid("Canvas files are unavailable"))?
+            .remove(id);
+        value["files"][&replacement] = binding;
+        replacements.insert(id.clone(), replacement);
+    }
+    if let Some(elements) = value["elements"].as_array_mut() {
+        for element in elements {
+            if element.get("type").and_then(Value::as_str) != Some("image") {
+                continue;
+            }
+            if let Some(replacement) = element
+                .get("fileId")
+                .and_then(Value::as_str)
+                .and_then(|id| replacements.get(id))
+            {
+                element["fileId"] = json!(replacement);
+            }
+        }
+    }
+    parse_canvas_scene(&value)
+}
+
 pub(crate) fn apply_canvas_mutation(
     current: &CanvasScene,
     mutation: &CanvasMutation,
@@ -806,12 +877,13 @@ pub(crate) fn apply_canvas_mutation(
 
     let mut combined_files = current.files.clone();
     for (id, file) in &mutation.file_additions {
-        if let Some(current) = combined_files.get(id)
-            && current.value != file.value
-        {
-            return Err(invalid(format!(
-                "Canvas managed file {id} cannot be redefined"
-            )));
+        if let Some(current) = combined_files.get(id) {
+            if !current.same_binding(file) {
+                return Err(invalid(format!(
+                    "Canvas image slot {id} cannot be redefined"
+                )));
+            }
+            continue;
         }
         combined_files.insert(id.clone(), file.clone());
     }
@@ -1018,10 +1090,17 @@ fn parse_element(
 }
 
 fn parse_file(value: &Value, expected_id: &str) -> Result<CanvasFile, StoreError> {
-    let object = exact_object(value, "Canvas file", &["id", "mimeType", "source"])?;
-    let unsupported = object
-        .keys()
-        .find(|key| !matches!(key.as_str(), "id" | "mimeType" | "source" | "created"));
+    let object = exact_object(
+        value,
+        "Canvas file",
+        &["id", "mimeType", "source", "fileVersion", "defaultName"],
+    )?;
+    let unsupported = object.keys().find(|key| {
+        !matches!(
+            key.as_str(),
+            "id" | "mimeType" | "source" | "fileVersion" | "defaultName" | "created"
+        )
+    });
     if let Some(key) = unsupported {
         return Err(invalid(format!(
             "Canvas file contains unsupported field {key}"
@@ -1042,8 +1121,17 @@ fn parse_file(value: &Value, expected_id: &str) -> Result<CanvasFile, StoreError
         .and_then(Value::as_str)
         .map(str::to_owned)
         .ok_or_else(|| invalid("Canvas file.source must be a managed asset URI"))?;
-    let managed_file_name = managed_file_name(&source)
-        .ok_or_else(|| invalid("Canvas file.source must be a canonical managed asset URI"))?;
+    let target_file_id = crate::domain::derived_records::parse_page_file_source(&source)
+        .ok_or_else(|| invalid("Canvas file.source must be a canonical Library File URI"))?;
+    let file_version = require_integer(object.get("fileVersion"), "Canvas file.fileVersion", 1)?;
+    let default_name = object
+        .get("defaultName")
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid("Canvas file.defaultName is required"))?;
+    let normalized_name = crate::domain::file_path::normalize_file_name(default_name)?;
+    if normalized_name != default_name {
+        return Err(invalid("Canvas file.defaultName must be canonical"));
+    }
     let created_ms = object
         .get("created")
         .map(|value| require_integer(Some(value), "Canvas file.created", 0))
@@ -1052,7 +1140,9 @@ fn parse_file(value: &Value, expected_id: &str) -> Result<CanvasFile, StoreError
         id,
         mime_type,
         source,
-        managed_file_name,
+        target_file_id,
+        file_version,
+        default_name: normalized_name,
         created_ms,
         value: Value::Object(object.clone()),
     })
@@ -1322,19 +1412,6 @@ fn require_integer(value: Option<&Value>, field: &str, minimum: i64) -> Result<i
         .ok_or_else(|| invalid(format!("{field} must be an integer >= {minimum}")))
 }
 
-fn managed_file_name(source: &str) -> Option<String> {
-    let file_name = source.strip_prefix(ASSET_SCHEME)?;
-    if file_name.is_empty()
-        || file_name.len() > 512
-        || !file_name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
-    {
-        return None;
-    }
-    (source == format!("{ASSET_SCHEME}{file_name}")).then(|| file_name.to_owned())
-}
-
 pub(crate) fn legacy_order_key(ordinal: usize) -> String {
     format!("legacy:{ordinal:016x}")
 }
@@ -1525,6 +1602,39 @@ mod tests {
         assert_eq!(
             ordered_metadata.hash_buckets,
             reversed_metadata.hash_buckets
+        );
+    }
+}
+
+#[cfg(test)]
+mod restore_file_tests {
+    use super::*;
+
+    #[test]
+    fn forward_restore_allocates_a_slot_for_a_different_historical_file_binding() {
+        let scene = |file: &str| {
+            parse_canvas_scene(&json!({
+            "kind":"canvas_scene", "schemaVersion":2, "plainText":"", "preview":"", "pageReferences":[],
+            "elements":[{"id":"image","type":"image","version":1,"versionNonce":1,"isDeleted":false,"fileId":"slot"}],
+            "appState":{},"files":{"slot":{"id":"slot","mimeType":"image/png","source":format!("nodex://files/{file}"),"fileVersion":1,"defaultName":"image.png"}}
+        })).unwrap()
+        };
+        let current = scene("current-file");
+        let historical = scene("historical-file");
+        let mutation = prepare_canvas_restore(&current, &historical, "restore")
+            .unwrap()
+            .unwrap();
+        let restored = apply_canvas_mutation(&current, &mutation).unwrap().scene;
+        let slot = restored.elements[0].value["fileId"].as_str().unwrap();
+        assert_ne!(slot, "slot");
+        assert_eq!(restored.files[slot].target_file_id, "historical-file");
+        assert_eq!(restored.elements[0].id, "image");
+        assert!(restored.elements[0].value["version"].as_i64().unwrap() > 1);
+        assert_eq!(
+            mutation,
+            prepare_canvas_restore(&current, &historical, "restore")
+                .unwrap()
+                .unwrap()
         );
     }
 }

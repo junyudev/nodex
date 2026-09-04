@@ -66,9 +66,9 @@ copy, relocation, or migration may reuse it.
 ### Page
 
 A Page is a document-bearing Block. Page has no separate storage identity: Page
-ID is Block ID. Every Page owns exactly one Document containing its
-collaborative rich title and body, and may directly own Files whose exact bytes
-must survive independently of body placement.
+ID is Block ID. Every Page owns exactly one Document containing its collaborative rich title
+and body. It may relate to Library Files through optional Page-local paths and
+body occurrences, but it never owns those Files.
 
 A Page key such as `LAB-13` is a human- and Agent-readable secondary locator,
 not Page identity. An enabled Database owns the prefix, monotonic counter, and
@@ -120,33 +120,35 @@ never moves it or creates/reactivates membership.
 `Card` is not a domain alias. It may be used only for a visual presentation
 such as `BoardCard` or a generic request-card component.
 
-### Page File
+### File
 
-A Page File is an exact-format durable resource directly owned by one current
-Page. It has stable File identity and one Page-relative logical path; rename,
-content replacement, and an exclusive semantic ownership move preserve
-identity, while Page copy creates new File identity. Ownership follows a Block
-move only when the current owner is the source host and every live placement of
-that File moves to the same target host; ambiguous and copy-like operations
-leave ownership unchanged.
-_Avoid_: Artifact, attachment as ownership, Data Source Files Property.
+A File is a durable Library resource with stable identity, a nonunique default
+name, metadata revision, lifecycle, and a current immutable content version.
+It has no owner Page. File versions refer to immutable Profile Blob bytes;
+sharing bytes does not merge identities. Direct Project File grants authorize
+global reads and writes; creation provenance is not authority.
+_Avoid_: Page-owned File, attachment as ownership, Data Source Files Property.
 
-A child Page owns its own Files. Parent Page Files never flatten descendant
-Files; recursive ownership is composed through the existing Page parent tree.
+### Page File entry
+
+A Page File entry relates a Page to a File and assigns its Page-local portable
+logical path. Each Page/File pair has at most one entry. Changing or moving an
+entry does not rename, replace, or transfer the File. Page Files presents the
+union of explicit entries and current body occurrences, deduplicated by File ID.
+A child's entries are not flattened into its parent.
 
 ### File placement
 
-A File placement is an image or attachment occurrence in any Page Document in
-the File's Library. It references stable File identity and never becomes
-ownership; removing a placement leaves the File intact. A placement exposes
-only the File's current presentation metadata and bytes through its containing
-Page. It does not grant access to the owner Page, Files manifest, version
-history, or File mutations.
-_Avoid_: Asset URI as File identity.
+A File placement is an image or attachment occurrence in a Page Document in
+the File's Library. It references stable File identity and does not require a
+Page File entry. Removing or moving a placement leaves the File intact; Page
+copy likewise shares its File IDs. The containing Page authorizes only current
+presentation metadata and bytes, without granting File history or global writes.
+_Avoid_: Asset URI as an access capability.
 
 ### Logical folder
 
-A Logical folder is a presentation derived from Page File path prefixes. It has
+A Logical folder is a presentation derived from Page File entry path prefixes. It has
 no durable identity, Properties, history, lifecycle, or access policy.
 _Avoid_: Folder Page, Subpage as folder.
 
@@ -191,9 +193,11 @@ Blocks share the nearest owning Document. Content size never changes ownership
 automatically; long-form content is modeled as Page.
 
 A Canvas Document stores normalized Excalidraw elements, bounded durable app
-state, order, and managed-file metadata. Application Page references retain
-only `targetBlockId` plus a disposable title hint. Asset data is uploaded first
-and scene authority stores a `nodex://assets/*` URI.
+state, order, and exact Library File bindings. Each scene slot stores a stable
+`nodex://files/*` identity, immutable FileVersion, MIME type, and frozen default
+name. Application Page references retain only `targetBlockId` plus a disposable
+title hint. Image data is published as an independent File before the slot is
+committed.
 
 Page Documents derive Page Mention, Page Reference Block, and Page Link
 occurrences into one normalized Page-reference projection in the same durable
@@ -459,17 +463,18 @@ recency.
 ### Project resource grant
 
 A Project resource grant authorizes `read` or `read_write` access to one Page,
-Database, or Library-parented Canvas root and its ownership closure. Active
+Database, or Library-parented Canvas root and its ownership closure, or directly
+to one Library File without recursive expansion. Active
 Project binding supplies an implicit recursive read-write grant to the primary
 Database. All foreign resources require either an explicit grant or a bounded
 Agent consent overlay.
 
 Database closure includes owned Data Sources, hosted Views, Source-parented
-Pages, nested Pages, owned Documents, direct Files, canonically placed Files'
-current presentation surfaces, and assets. Page closure includes nested Pages,
-physically nested Databases, Documents, direct Files, canonically placed Files'
-current presentation surfaces, and assets. A File placement does not add its
-owner Page or owner-only File surfaces to closure. Closure never follows
+Pages, nested Pages, owned Documents, and the current presentation of Files
+used by those Pages. Page closure includes nested Pages, physically nested
+Databases, Documents, and Files used by explicit entries or canonical body
+occurrences. These relationships grant current presentation access only; they
+do not include global File operations, other Pages, or arbitrary File history. Closure never follows
 `pageRef`, relation, linked View, mention, backlink, or ordinary link edges.
 Canvas closure includes its owned scene Document and managed assets. A
 Page-parented Canvas inherits the host Page grant and has no independent grant.
@@ -617,7 +622,8 @@ state is rejected rather than replayed.
 | Profile → Library                                                          | `profiles` and `libraries`                                               |
 | Block identity, type, lifecycle, Library, and parent                       | `blocks` plus typed placement detail                                     |
 | Page title and body                                                        | Page Document (`yjs`)                                                    |
-| Page File identity, logical path, versions, and provenance                 | Page Files manifest and immutable managed blobs                          |
+| File identity, name, versions, and provenance                              | Library Files and immutable Profile Blobs                                |
+| Page-local File paths                                                      | Page File entries and their manifest revision                            |
 | Ordinary Block hierarchy/order/content                                     | nearest owning Document                                                  |
 | Canvas metadata and Library/Page placement                                 | `blocks`, `canvas_owners`, and the exact host shell or Library placement |
 | Canvas scene and managed-file metadata                                     | normalized Canvas scene rows                                             |
@@ -681,8 +687,8 @@ state is rejected rather than replayed.
     while historical assignments and retired-prefix ranges remain resolvable.
 25. A Linked chat never changes Page ownership, Database membership, Project
     resource grants, Agent authority, Session ownership, or Thread attachment.
-26. Every Page has one direct Files manifest. A live File has exactly one owner
-    Page and one portable logical path; logical folders have no identity.
+26. The Library owns File identity. Each Page has an independent entry manifest;
+    its File paths are optional relationships, and logical folders have no identity.
 27. A Page File placement references stable File identity, remains non-owning,
     and may occur in any Page Document in the same Library. The containing Page
     may resolve only the File's current presentation metadata and bytes.
@@ -724,8 +730,13 @@ are pinned; unpinned retention is deterministic recent/hourly/daily.
 
 Page History combines content revisions with property, Data Source, lifecycle,
 relocation, and Page File version activity. Reading recreates the registered
-semantic Document and derives NFM preview. Document and File restores both
-append new forward semantic states rather than rewinding history.
+semantic Document and derives NFM preview. Each new revision freezes the exact
+File versions and default names used by its body, including when File updates
+leave the Document head unchanged. Restoring reuses matching live Files and
+forks changed or trashed Files once per source identity, in the same forward
+commit as the Document. It leaves shared Files and current Page paths intact.
+Historical bytes are available only through exact retained bindings; older
+revisions without such evidence remain visibly unresolved.
 
 ### Move and copy
 
@@ -735,9 +746,8 @@ placements in the target Page. Moving Page changes shell/parent only and
 preserves its owned Document and File identities.
 Moving into/out of a Source changes active membership atomically and leaves old
 Source values dormant. Block copy preserves placed File identities. Whole-Page
-copy allocates a fresh ownership closure, including new identities for directly
-owned Files whose immutable bytes may be deduplicated; foreign placements in
-the copied Document remain references to their existing Files.
+copy allocates a fresh Block/Document ownership closure and copies explicit
+File paths while preserving every referenced File identity.
 Changing Source or View within one Database preserves the Page-key assignment.
 Cross-Database movement allocates or reuses the target assignment while
 retaining the source key as a historical locator; copy receives a fresh Page

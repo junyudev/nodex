@@ -3340,7 +3340,7 @@ mod tests {
         let DatabaseReadValue::View { value } = durable.value else {
             panic!("durable View record");
         };
-        assert!(matches!(value.definition.rules.advanced_filter, None));
+        assert!(value.definition.rules.advanced_filter.is_none());
     }
 
     #[test]

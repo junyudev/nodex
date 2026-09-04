@@ -63,7 +63,7 @@ export function useLibraryCreateCommands({
         title: "Untitled",
         parent,
       });
-      if (receipt.createdTarget) onCreated(receipt.createdTarget);
+      if (receipt.createdTarget?.kind === "page") onCreated(receipt.createdTarget);
     } catch (error) {
       toast.danger(error instanceof Error ? error.message : "Could not create Page");
     }
@@ -79,7 +79,7 @@ export function useLibraryCreateCommands({
         name: "Untitled",
         parent,
       });
-      if (receipt.createdTarget) onCreated(receipt.createdTarget);
+      if (receipt.createdTarget?.kind === "database") onCreated(receipt.createdTarget);
     } catch (error) {
       toast.danger(error instanceof Error ? error.message : "Could not create Database");
     }

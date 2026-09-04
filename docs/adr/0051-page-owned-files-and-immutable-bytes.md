@@ -1,6 +1,6 @@
 # ADR 0051: Page owns File identity; immutable bytes remain separate
 
-- Status: Accepted; placement semantics amended by ADR 0052
+- Status: Superseded for File ownership, lifecycle composition, and copy behavior by [ADR 0057](0057-library-files-and-page-relations.md); immutable-byte principles remain valid
 - Date: 2026-08-28
 
 ## Context

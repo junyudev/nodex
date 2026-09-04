@@ -25,8 +25,8 @@ use crate::{
     DatabaseApplyRequest, DatabaseApplyResponse, DatabaseReadRequest, DatabaseReadResponse,
     HandshakeRequest, HandshakeResponse, HealthResponse, LibraryApplyRequest, LibraryApplyResponse,
     LibraryReadRequest, LibraryReadResponse, MAX_DOCUMENT_JSON_REQUEST_BYTES,
-    MAX_DOCUMENT_RESPONSE_BYTES, MAX_ORDINARY_JSON_REQUEST_BYTES, MAX_ORDINARY_JSON_RESPONSE_BYTES,
-    MAX_PAGE_FILE_BLOB_BYTES, OwnedDocumentApplyRequest, OwnedDocumentApplyResponse,
+    MAX_DOCUMENT_RESPONSE_BYTES, MAX_FILE_BLOB_BYTES, MAX_ORDINARY_JSON_REQUEST_BYTES,
+    MAX_ORDINARY_JSON_RESPONSE_BYTES, OwnedDocumentApplyRequest, OwnedDocumentApplyResponse,
     OwnedDocumentReadRequest, OwnedDocumentReadResponse, ProjectWorkspaceApplyRequest,
     ProjectWorkspaceApplyResponse, ProjectWorkspaceReadRequest, ProjectWorkspaceReadResponse,
     RuntimeDescriptor, RuntimeGenerationIdentity, ShutdownRequest, ShutdownResponse,
@@ -93,7 +93,7 @@ pub struct CoreClient {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PageFileBlobResponse {
+pub struct FileBlobResponse {
     pub bytes: Vec<u8>,
     pub mime_type: String,
     pub etag: String,
@@ -167,9 +167,9 @@ impl CoreClient {
         )
     }
 
-    /// Streams exact bytes to Core and receives an opaque receipt that can be
-    /// consumed only by the matching Page File mutation.
-    pub fn prepare_page_file_blob(
+    /// Streams exact File bytes to Core and receives an opaque receipt that can
+    /// only be consumed by the matching durable File mutation.
+    pub fn prepare_file_blob(
         &self,
         project_id: Option<&str>,
         operation_id: &str,
@@ -177,10 +177,10 @@ impl CoreClient {
         idempotency_slot: Option<&str>,
         source: &mut impl Read,
         byte_length: u64,
-    ) -> Result<nodex_core_contracts::library::LibraryPreparedPageFileBlob, ClientError> {
-        if byte_length > MAX_PAGE_FILE_BLOB_BYTES as u64 {
+    ) -> Result<nodex_core_contracts::library::PreparedBlobReceipt, ClientError> {
+        if byte_length > MAX_FILE_BLOB_BYTES as u64 {
             return Err(ClientError::RequestTooLarge {
-                maximum: MAX_PAGE_FILE_BLOB_BYTES,
+                maximum: MAX_FILE_BLOB_BYTES,
                 actual: usize::try_from(byte_length).unwrap_or(usize::MAX),
             });
         }
@@ -188,7 +188,45 @@ impl CoreClient {
             .map(|slot| format!("&idempotency_slot={}", percent_encode(slot)))
             .unwrap_or_default();
         let path = format!(
-            "/core/v1/page-files/blobs/prepare?operation_id={}&store_epoch={}{}",
+            "/core/v1/files/blobs/prepare?operation_id={}&store_epoch={}{}",
+            percent_encode(operation_id),
+            percent_encode(store_epoch),
+            idempotency_slot,
+        );
+        let body = connected_stream_request(
+            self,
+            "POST",
+            &path,
+            source,
+            byte_length,
+            ScopeHeaders::project(project_id),
+            MAX_ORDINARY_JSON_RESPONSE_BYTES,
+        )?;
+        serde_json::from_slice(&body.bytes).map_err(ClientError::from)
+    }
+
+    /// Streams exact bytes to Core and receives an opaque receipt that can be
+    /// consumed only by the matching durable content mutation.
+    pub fn prepare_blob(
+        &self,
+        project_id: Option<&str>,
+        operation_id: &str,
+        store_epoch: &str,
+        idempotency_slot: Option<&str>,
+        source: &mut impl Read,
+        byte_length: u64,
+    ) -> Result<nodex_core_contracts::library::PreparedBlobReceipt, ClientError> {
+        if byte_length > crate::MAX_MANAGED_BLOB_BYTES as u64 {
+            return Err(ClientError::RequestTooLarge {
+                maximum: crate::MAX_MANAGED_BLOB_BYTES,
+                actual: usize::try_from(byte_length).unwrap_or(usize::MAX),
+            });
+        }
+        let idempotency_slot = idempotency_slot
+            .map(|slot| format!("&idempotency_slot={}", percent_encode(slot)))
+            .unwrap_or_default();
+        let path = format!(
+            "/core/v1/blobs/prepare?operation_id={}&store_epoch={}{}",
             percent_encode(operation_id),
             percent_encode(store_epoch),
             idempotency_slot,
@@ -207,31 +245,111 @@ impl CoreClient {
 
     /// Reads one authorized File version by semantic identity. Blob hashes and
     /// Profile filesystem locations never cross this boundary.
-    pub fn read_page_file_blob(
+    pub fn read_file_blob(
         &self,
         project_id: Option<&str>,
-        page_id: &str,
         file_id: &str,
+        source: &nodex_core_contracts::library::LibraryFileReadSource,
         version: Option<i64>,
-    ) -> Result<PageFileBlobResponse, ClientError> {
+    ) -> Result<FileBlobResponse, ClientError> {
+        use nodex_core_contracts::library::LibraryFileReadSource;
+        let fields = match source {
+            LibraryFileReadSource::Direct => vec![("kind", "direct")],
+            LibraryFileReadSource::Page { page_id } => {
+                vec![("kind", "page"), ("page_id", page_id.as_str())]
+            }
+            LibraryFileReadSource::DocumentRevision {
+                document_id,
+                revision_id,
+            } => vec![
+                ("kind", "document_revision"),
+                ("document_id", document_id.as_str()),
+                ("revision_id", revision_id.as_str()),
+            ],
+            LibraryFileReadSource::Canvas {
+                canvas_id,
+                scene_file_id,
+            } => vec![
+                ("kind", "canvas"),
+                ("canvas_id", canvas_id.as_str()),
+                ("scene_file_id", scene_file_id.as_str()),
+            ],
+            LibraryFileReadSource::CanvasRevision {
+                document_id,
+                revision_id,
+                scene_file_id,
+            } => vec![
+                ("kind", "canvas_revision"),
+                ("document_id", document_id.as_str()),
+                ("revision_id", revision_id.as_str()),
+                ("scene_file_id", scene_file_id.as_str()),
+            ],
+            LibraryFileReadSource::CanvasRecovery {
+                document_id,
+                draft_id,
+                scene_file_id,
+            } => vec![
+                ("kind", "canvas_recovery"),
+                ("document_id", document_id.as_str()),
+                ("draft_id", draft_id.as_str()),
+                ("scene_file_id", scene_file_id.as_str()),
+            ],
+            LibraryFileReadSource::RecoveryDraft {
+                document_id,
+                draft_id,
+            } => vec![
+                ("kind", "recovery_draft"),
+                ("document_id", document_id.as_str()),
+                ("draft_id", draft_id.as_str()),
+            ],
+        };
+        let query = fields
+            .into_iter()
+            .map(|(key, value)| format!("{key}={}", percent_encode(value)))
+            .collect::<Vec<_>>()
+            .join("&");
         let version = version
             .map(|version| format!("&version={version}"))
             .unwrap_or_default();
         let path = format!(
-            "/core/v1/page-files/blobs/{}?page_id={}{}",
-            percent_encode(file_id),
-            percent_encode(page_id),
-            version,
+            "/core/v1/files/blobs/{}?{query}{version}",
+            percent_encode(file_id)
         );
+        self.read_file_blob_path(project_id, &path, MAX_FILE_BLOB_BYTES)
+    }
+
+    pub fn read_thread_asset_blob(
+        &self,
+        project_id: Option<&str>,
+        thread_id: &str,
+        content_hash: &str,
+    ) -> Result<FileBlobResponse, ClientError> {
+        self.read_file_blob_path(
+            project_id,
+            &format!(
+                "/core/v1/threads/{}/blobs/{}",
+                percent_encode(thread_id),
+                percent_encode(content_hash)
+            ),
+            crate::MAX_MANAGED_BLOB_BYTES,
+        )
+    }
+
+    fn read_file_blob_path(
+        &self,
+        project_id: Option<&str>,
+        path: &str,
+        maximum_bytes: usize,
+    ) -> Result<FileBlobResponse, ClientError> {
         let mut empty = io::empty();
         let response = connected_stream_request(
             self,
             "GET",
-            &path,
+            path,
             &mut empty,
             0,
             ScopeHeaders::project(project_id),
-            MAX_PAGE_FILE_BLOB_BYTES,
+            maximum_bytes,
         )?;
         let mime_type = response
             .header("content-type")
@@ -242,7 +360,7 @@ impl CoreClient {
             .unwrap_or_default()
             .trim_matches('"')
             .to_owned();
-        Ok(PageFileBlobResponse {
+        Ok(FileBlobResponse {
             bytes: response.bytes,
             mime_type,
             etag,
@@ -462,7 +580,7 @@ fn connected_stream_request(
     if copied != byte_length {
         return Err(ClientError::Io(io::Error::new(
             io::ErrorKind::UnexpectedEof,
-            format!("Page File source ended after {copied} of {byte_length} bytes"),
+            format!("File source ended after {copied} of {byte_length} bytes"),
         )));
     }
 

@@ -6,8 +6,8 @@ import {
   MAX_MANAGED_PREVIEW_BYTES,
   type ManagedFolderManifest,
 } from "../../../../shared/managed-assets";
-import { parsePageFileSource } from "../../../../shared/page-files";
-import { usePageFileReadSnapshot, type PageFilePlacementRuntime } from "./page-file-runtime";
+import { parseFileSource } from "../../../../shared/file-resources";
+import { useFileReadSnapshot, type FilePlacementRuntime } from "./file-runtime";
 
 export interface AttachmentPreviewInput {
   readonly kind: "text" | "file" | "folder";
@@ -50,11 +50,11 @@ export function isTextLikeMimeType(mimeType: string): boolean {
 
 const canPreviewAttachment = (
   input: AttachmentPreviewInput,
-  pageFileRuntime: PageFilePlacementRuntime | null,
+  fileRuntime: FilePlacementRuntime | null,
 ): boolean => {
   if (input.mode !== "materialized") return false;
-  const isOwnedFile = parsePageFileSource(input.source) !== null;
-  if (!input.source.startsWith("nodex://assets/") && !(isOwnedFile && pageFileRuntime)) {
+  const isOwnedFile = parseFileSource(input.source) !== null;
+  if (!input.source.startsWith("nodex://assets/") && !(isOwnedFile && fileRuntime)) {
     return false;
   }
   if (input.kind === "folder" || input.kind === "text") return true;
@@ -63,10 +63,10 @@ const canPreviewAttachment = (
 
 const attachmentPreviewKey = (
   input: AttachmentPreviewInput,
-  pageFileRuntime: PageFilePlacementRuntime | null,
+  fileRuntime: FilePlacementRuntime | null,
 ): string | null => {
-  if (!canPreviewAttachment(input, pageFileRuntime)) return null;
-  if (parsePageFileSource(input.source)) return null;
+  if (!canPreviewAttachment(input, fileRuntime)) return null;
+  if (parseFileSource(input.source)) return null;
   return JSON.stringify(["managed-asset", input.source, input.kind, input.mimeType ?? ""]);
 };
 
@@ -89,7 +89,7 @@ const loadAttachmentPreview = async (
       };
 };
 
-const previewFromPageFileBytes = (
+const previewFromFileBytes = (
   bytes: Uint8Array,
 ): Extract<AttachmentPreviewData, { readonly type: "text" }> => {
   const previewBytes = bytes.subarray(0, MAX_MANAGED_PREVIEW_BYTES);
@@ -111,19 +111,19 @@ const previewFromPageFileBytes = (
  */
 export function useAttachmentPreview(
   input: AttachmentPreviewInput,
-  pageFileRuntime: PageFilePlacementRuntime | null,
+  fileRuntime: FilePlacementRuntime | null,
   active: boolean,
 ): { readonly state: AttachmentPreviewState; readonly preload: () => void } {
-  const pageFileId = parsePageFileSource(input.source);
-  const previewable = canPreviewAttachment(input, pageFileRuntime);
-  const pageFileSnapshot = usePageFileReadSnapshot(pageFileRuntime, input.source, {
+  const pageFileId = parseFileSource(input.source);
+  const previewable = canPreviewAttachment(input, fileRuntime);
+  const fileSnapshot = useFileReadSnapshot(fileRuntime, input.source, {
     content: Boolean(pageFileId && previewable && active),
   });
   const pageFilePreview = useMemo(
-    () => (pageFileSnapshot.bytes ? previewFromPageFileBytes(pageFileSnapshot.bytes.bytes) : null),
-    [pageFileSnapshot.bytes],
+    () => (fileSnapshot.bytes ? previewFromFileBytes(fileSnapshot.bytes.bytes) : null),
+    [fileSnapshot.bytes],
   );
-  const previewKey = attachmentPreviewKey(input, pageFileRuntime);
+  const previewKey = attachmentPreviewKey(input, fileRuntime);
   const [entry, setEntry] = useState<AttachmentPreviewEntry | null>(null);
   const entryRef = useRef<AttachmentPreviewEntry | null>(null);
   const currentKeyRef = useRef(previewKey);
@@ -139,7 +139,7 @@ export function useAttachmentPreview(
 
   const preload = useCallback(() => {
     if (pageFileId) {
-      if (previewable) pageFileRuntime?.preload(input.source, { content: true });
+      if (previewable) fileRuntime?.preload(input.source, { content: true });
       return;
     }
     if (!previewKey) return;
@@ -186,7 +186,7 @@ export function useAttachmentPreview(
     input.mode,
     input.source,
     pageFileId,
-    pageFileRuntime,
+    fileRuntime,
     previewable,
     previewKey,
   ]);
@@ -202,7 +202,7 @@ export function useAttachmentPreview(
       return { state: { status: "ready", preview: pageFilePreview }, preload };
     }
     return {
-      state: pageFileSnapshot.contentError ? { status: "failed" } : LOADING_PREVIEW_STATE,
+      state: fileSnapshot.contentError ? { status: "failed" } : LOADING_PREVIEW_STATE,
       preload,
     };
   }

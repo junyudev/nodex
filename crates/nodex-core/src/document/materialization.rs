@@ -87,6 +87,17 @@ pub struct DocumentMaterialization {
     pub search_units: Vec<DocumentBlockSearchUnit>,
 }
 
+impl DocumentMaterialization {
+    pub(crate) fn file_ids(&self) -> Vec<String> {
+        self.asset_refs
+            .iter()
+            .filter_map(|reference| reference.file_id.clone())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
+    }
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct DocumentPlacementDelta {
     pub(crate) parent_changed_block_ids: BTreeSet<String>,

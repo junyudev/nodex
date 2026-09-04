@@ -5,7 +5,7 @@ import type {
   WorkbenchSceneSnapshotV3,
   WorkbenchSceneSnapshotV4,
 } from "./workbench-scene";
-import type { LibraryResourceTarget, LibraryRouteTarget } from "./library-module";
+import type { LibraryPlacedResourceTarget, LibraryRouteTarget } from "./library-module";
 
 export type WorkbenchLayoutView = "board" | "list" | "toggle-list" | "calendar";
 export type WorkbenchLayoutStageId = "db" | "pages" | "threads" | "files";
@@ -172,7 +172,7 @@ export type WorkbenchSceneLocationV6 =
   | WorkbenchSceneLocationV5
   | {
       readonly kind: "resource";
-      readonly root: LibraryResourceTarget;
+      readonly root: LibraryPlacedResourceTarget;
     };
 
 export type WorkbenchLocationV6 =

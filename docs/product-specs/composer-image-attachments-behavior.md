@@ -35,9 +35,11 @@ Browser `Send to chat` publishes one canonical managed-asset source. The Compose
 
 Draft transfer, queued follow-up, completed-draft, image-edit follow-up, and thread-goal paths capture immutable attachment values. Image bytes are session-scoped and are not written to localStorage.
 
-Queue capture adds a durable portability boundary. Main rejects renderer-only object URLs and relative file sources, preserves HTTP sources, and copies data-image, absolute-file, and file-URL bytes into content-addressed managed assets before committing the row. It writes the complete prepared prompt input to a content-addressed queue manifest with hash and byte-length evidence for every managed locator. Hydration verifies the manifest and all referenced bytes before exposing the row; unreadable evidence produces an explicit queue load error rather than an empty queue.
+Queue capture adds a durable portability boundary. Main rejects renderer-only object URLs and relative file sources, preserves HTTP sources, and freezes data-image, absolute-file, and file-URL bytes in a private temporary cache. The complete prompt input and captured attachment evidence form an immutable manifest. Core publishes the manifest and attachments as shared Blobs; the queue commit consumes matching prepared receipts and retains the complete closure in one transaction. Capturing or publishing an attachment does not create a Library File.
 
-Core retains manifest references with the ordered Thread ledger across restart, backup, and restore. Removing or replacing the final ledger reference schedules only the private `queued-follow-up-v1-*` manifest for collection. The image/file assets referenced by that manifest remain ordinary managed assets and are not deleted merely because a queue row was removed.
+Core retains those references with the ordered Thread ledger across restart, backup, and restore. Removing or replacing a queue row releases its references. Shared Blob collection preserves bytes still retained by another queue, a Thread input, a File, or recovery content. Submitted Thread inputs remain retained independently of the queue. Updating or deleting the source File cannot change captured input bytes.
+
+Hydration reads through the owning Thread's authority and verifies the manifest and all referenced bytes before exposing the row, even when a temporary cache already exists. Cache loss is recoverable; missing or corrupt Core evidence produces an explicit queue load error. Each attachment is bounded to 256 MiB, each manifest to 64 MiB, and one ledger publication to 512 MiB and 1,024 prepared Blobs. Image MIME hints are captured with the payload so content-addressed storage names do not determine image presentation.
 
 ## Attachment row and thumbnail
 
@@ -55,7 +57,9 @@ Composer thumbnails always open the right-panel image editor directly, regardles
 
 ## Submission and execution host
 
-One pure source selector compiles every attachment-bearing Composer action. If a ready local materialization belongs to the current execution host, the prompt image source is its absolute local path or canonical managed-asset URI; Main resolves either local form and emits app-server `localImage`. If execution is remote, materialization is pending/failed, or host identity differs, only a portable data/HTTP `src` may be used and Main emits app-server `image`.
+One pure source selector compiles every attachment-bearing Composer action. A ready materialization belonging to the current execution host may supply its local path or managed-asset URI. Otherwise the source must be portable data or HTTP content. Main freezes images from the current machine and inline media, retains their exact bytes for the Thread through Core, and sends portable app-server media input. Media detail settings remain unchanged. A remote host's local image or audio path remains remote; Main never opens that path on the current machine.
+
+Ordinary sends and steers complete Thread retention before transport. Captured managed file attachments point to immutable materialized bytes, while ordinary workspace file attachments keep their filesystem semantics. Repeating the same submission uses the same retention identity, and failure leaves captured bytes available for retry. Thread input retention creates no Library Files.
 
 Ordinary send, new-thread start, Side chat, queue, steer, image-edit follow-up, and thread-goal materialization must not independently choose between a path and data URL. A missing or invalid source is rejected before transport rather than producing an empty image input.
 

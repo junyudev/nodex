@@ -3,7 +3,7 @@
 ## Status
 
 - Active
-- Last updated: 2026-08-29
+- Last updated: 2026-09-05
 
 ## Scope
 
@@ -145,12 +145,10 @@ This post-removal contract must stay identical across:
 - Native block drag from Card Stage and independently mounted owning/reference editors into Board or List targets the Database parent, not a serialized row snapshot. The custom side-menu starts one window-local drag session only after BlockNote has established the exact root Block selection. The default operation is move; holding Alt/Option at drop time copies instead.
 - Move submits one logical `BlockTransfer`: text-like roots promote to Cards in place, while non-convertible roots receive deterministic wrapper Cards. Copy recursively clones ownership with fresh IDs and leaves the source unchanged. Neither path serializes NFM nor mutates a Card description projection.
 - If Move detaches every root Block from the source Document, Core inserts one stable-ID empty paragraph in the same atomic transfer. The source Page therefore becomes semantically blank but remains immediately editable; the placeholder is not promoted, and Undo removes it while restoring the exact original roots.
-- Images and attachments retain their stable File IDs. On Move, any File
-  exclusively placed by the transferred forest and currently owned by the
-  source host is rehomed to the promoted target Page in the same Core
-  transaction. Copy never rehomes the source File. A target path collision uses
-  a deterministic suffix and is folded into the existing success feedback;
-  ownership-only consequences add no extra toast.
+- Images and attachments retain their stable Library File IDs. Move changes
+  only the source and target body occurrences; Copy adds another occurrence of
+  the same File. Neither operation changes File content, global metadata, or
+  Page paths, so File path collisions are outside the drag transaction.
 - Multi-block order follows the selected top-level document order. Nested selected blocks are represented only once through their selected ancestor.
 - Board and List interpret pointer geometry into their own raw placement intent, while one shared renderer command owns session validation, source fencing, transfer, receipt feedback, and Undo registration. Core resolves the final placement and Property adoption atomically.
 - A completed drop emits one concise Move/Copy confirmation with Undo when available. Task-shorthand preservation and File collision details are folded into that same feedback; rejected transfers show a safe product message rather than a Core implementation error.
@@ -173,7 +171,7 @@ This post-removal contract must stay identical across:
 ### NFM editor -> NFM editor
 
 - An explicit side-menu drag between different Card Documents carries stable root Block IDs and logical Document coordinates through the same window-local session. The destination renders the horizontal block insertion line and suppresses ProseMirror's vertical text caret.
-- The target does not insert a serialized ProseMirror/HTML slice, and the source does not later delete its selection. One `BlockTransfer` commits both Document updates and Block locations or leaves both unchanged. That same transaction may rehome an exclusively moved Page File; a partial or foreign placement remains owned by its existing Page without blocking the Block transfer.
+- The target does not insert a serialized ProseMirror/HTML slice, and the source does not later delete its selection. One `BlockTransfer` commits both Document updates and Block locations or leaves both unchanged. File identities remain Library-owned and unchanged while their Page body relationships move with the selected Blocks.
 - Moving the final root out of the source uses the same stable empty-paragraph remainder as Database promotion, so every persisted source stays editable without changing Copy semantics.
 - Both mounted editors settle transient drag/focus state and supply causal
   Document heads before the transfer. A missing source or target participant
@@ -246,10 +244,11 @@ This post-removal contract must stay identical across:
 - Group IDs are globally unique and grouped history lookup is global rather than project-local, so undo/redo of a cross-project move restores every affected project atomically and publishes change notifications for each project.
 - Cross-surface Move/Copy carries stable IDs and logical parents only and commits through one idempotent `BlockTransfer`; source and target authority are never separate renderer mutations.
 - A cross-surface Move relocates the complete selected subtree. Existing Blocks detached from one Document and attached to another remain active and advance their placement revision exactly once at the destination; source detachment must never degrade into deletion or partial child promotion.
-- A promotion Undo guards the generated Page's current File heads and namespace,
-  while one transaction reverses required File ownership moves, restores source
-  placements, and removes the generated Page. Any conflicting target File or
-  placement change leaves both sides unchanged.
+- A promotion Undo guards the generated Page, retained structural snapshot, and
+  affected Document heads. One transaction restores the source occurrences and
+  removes the generated Page without modifying shared File heads or unrelated
+  Page entries. Any conflicting relationship or placement change leaves both
+  sides unchanged.
 - Every causal Document head is a freshness fence resolved through current Library ownership and the bound Project's effective read access. A Project is an access context, never the physical owner encoded by the causal-head check.
 - The side-menu selection that starts the gesture is authoritative. Container-level `dragstart` listeners may manage visual cleanup but must never infer or replace the selected Block IDs.
 

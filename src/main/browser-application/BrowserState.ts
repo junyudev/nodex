@@ -59,7 +59,7 @@ import {
   type BrowserContextMenuParams,
 } from "../browser/browser-context-menu";
 import { fetchBrowserImage } from "../browser/browser-image-attachment";
-import type { ProfileAssetsService } from "../local-store/assets";
+import type { TemporaryAssetsService } from "../local-store/assets";
 import type { BrowserSidebarEventPublisher } from "../browser/BrowserSidebarEventHub";
 import type { SiteStatusPolicyRuntime } from "../browser-use/site-status-policy-service";
 import type {
@@ -97,7 +97,7 @@ interface BrowserStateDeps {
   pageEmulation: BrowserPageEmulationRuntime;
   fork: (effect: Effect.Effect<void>) => void;
   siteStatus: Pick<SiteStatusPolicyRuntime, "cachedCommentModeBlocked">;
-  saveBrowserImage: ProfileAssetsService["saveUploadedImage"];
+  saveBrowserImage: TemporaryAssetsService["saveUploadedImage"];
 }
 
 export type BrowserLocalServerThumbnailAdmission =
@@ -319,7 +319,7 @@ export class BrowserState {
   private readonly pageEmulation: BrowserPageEmulationRuntime;
   private readonly runtimeRegistry: BrowserRuntimeRegistry;
   private readonly webContentsListeners: BrowserWebContentsListenerRuntime;
-  private readonly saveBrowserImage: ProfileAssetsService["saveUploadedImage"];
+  private readonly saveBrowserImage: TemporaryAssetsService["saveUploadedImage"];
   private readonly siteStatus: Pick<SiteStatusPolicyRuntime, "cachedCommentModeBlocked">;
   private pageStore: BrowserPageRuntime | null;
   private historyStore: Pick<BrowserHistoryRuntime, "clear" | "record"> | null;

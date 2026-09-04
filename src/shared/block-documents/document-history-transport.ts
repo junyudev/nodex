@@ -302,6 +302,7 @@ export const parseDocumentVersionSummary = (value: unknown): DocumentVersionSumm
     "blockCount",
     "createdAt",
     "checkpointMetadata",
+    "fileSnapshotStatus",
   ]);
   const revisionKind = summary.revisionKind;
   if (
@@ -355,14 +356,36 @@ export const parseDocumentVersionSummary = (value: unknown): DocumentVersionSumm
       format: "yjs_update_v1",
       stateVectorHash: checkpointMetadata.stateVectorHash,
     };
-  } else if (checkpointMetadata.format === "block_tree_snapshot_v2") {
+  } else if (
+    checkpointMetadata.format === "block_tree_snapshot_v2" ||
+    checkpointMetadata.format === "block_tree_snapshot_v3"
+  ) {
     assertExactKeys(checkpointMetadata, `${label}.checkpointMetadata`, ["format"]);
-    parsedCheckpointMetadata = { format: "block_tree_snapshot_v2" };
-  } else if (checkpointMetadata.format === "canvas_scene_json_v1") {
+    parsedCheckpointMetadata = { format: checkpointMetadata.format };
+  } else if (
+    checkpointMetadata.format === "canvas_scene_json_v1" ||
+    checkpointMetadata.format === "canvas_scene_json_v2"
+  ) {
     assertExactKeys(checkpointMetadata, `${label}.checkpointMetadata`, ["format"]);
-    parsedCheckpointMetadata = { format: "canvas_scene_json_v1" };
+    parsedCheckpointMetadata = { format: checkpointMetadata.format };
   } else {
     throw new DocumentHistoryContractError(`${label}.checkpointMetadata.format is not supported`);
+  }
+  const fileSnapshotStatus = summary.fileSnapshotStatus;
+  if (
+    fileSnapshotStatus !== "exact" &&
+    fileSnapshotStatus !== "unresolved_legacy" &&
+    fileSnapshotStatus !== "not_applicable"
+  ) {
+    throw new DocumentHistoryContractError(`${label}.fileSnapshotStatus is not supported`);
+  }
+  if (
+    ["block_tree_snapshot_v3", "canvas_scene_json_v2"].includes(parsedCheckpointMetadata.format) &&
+    fileSnapshotStatus !== "exact"
+  ) {
+    throw new DocumentHistoryContractError(
+      `${label}.checkpointMetadata requires an exact File snapshot`,
+    );
   }
   const sourceMutationId = readNullableString(summary, "sourceMutationId", label);
   const sourceChangeSeq = readNullableInteger(summary, "sourceChangeSeq", label);
@@ -383,7 +406,7 @@ export const parseDocumentVersionSummary = (value: unknown): DocumentVersionSumm
   }
   if (
     (materializationKind === "canvas_scene") !==
-    (parsedCheckpointMetadata.format === "canvas_scene_json_v1")
+    ["canvas_scene_json_v1", "canvas_scene_json_v2"].includes(parsedCheckpointMetadata.format)
   ) {
     throw new DocumentHistoryContractError(
       `${label}.checkpointMetadata does not agree with materializationKind`,
@@ -424,6 +447,7 @@ export const parseDocumentVersionSummary = (value: unknown): DocumentVersionSumm
     blockCount: readInteger(summary, "blockCount", label, 0),
     createdAt,
     checkpointMetadata: parsedCheckpointMetadata,
+    fileSnapshotStatus,
   };
 };
 

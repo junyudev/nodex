@@ -30,6 +30,7 @@ import {
   type DocumentVersionDetail,
   type PrepareDocumentVersionRestore,
 } from "../../../shared/block-documents/document-history";
+import { CanvasFilePreview } from "../canvas/canvas-file-preview";
 import { ReadonlyNfmBlockNotePreview } from "./editor/readonly-nfm-blocknote-preview";
 import { mergePageHistoryEntries } from "./page-history-view-model";
 import {
@@ -38,6 +39,8 @@ import {
   listPageHistory,
   restoreDocumentVersion,
 } from "./history-panel-deps";
+
+import type { LibraryFileAuthority } from "@/lib/library-file-resources";
 
 type HistoryFilter = "revisions" | "activity";
 
@@ -49,7 +52,8 @@ const HISTORY_FILTERS: ReadonlyArray<{
   { value: "activity", label: "Activity" },
 ];
 
-interface HistoryPanelProps {
+export interface HistoryPanelProps {
+  fileAuthority: LibraryFileAuthority | null;
   projectId: string;
   pageId: string | null;
   pageTitle?: string;
@@ -66,6 +70,7 @@ const matchesFilter = (entry: PageHistoryEntry, filter: HistoryFilter): boolean 
 };
 
 export function HistoryPanel({
+  fileAuthority,
   projectId,
   pageId,
   pageTitle,
@@ -415,6 +420,7 @@ export function HistoryPanel({
             ) : selectedIsCurrent ? (
               <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
                 <HistoryCurrentRevisionPreview
+                  fileAuthority={fileAuthority}
                   projectId={projectId}
                   pageId={pageId}
                   title={pageTitle}
@@ -428,6 +434,7 @@ export function HistoryPanel({
               <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
                 {selectedEntry.kind === "document_version" ? (
                   <HistoryRevisionPreview
+                    fileAuthority={fileAuthority}
                     projectId={projectId}
                     entry={selectedEntry}
                     detail={selectedPreview}
@@ -560,12 +567,14 @@ export function HistoryPanel({
 }
 
 export function HistoryCurrentRevisionPreview({
+  fileAuthority,
   projectId,
   pageId,
   title,
   nfm = "",
   projectWorkspacePath,
 }: {
+  fileAuthority?: LibraryFileAuthority | null;
   projectId: string;
   pageId: string | null;
   title?: string;
@@ -581,6 +590,11 @@ export function HistoryCurrentRevisionPreview({
       <div className="mt-5 min-h-32">
         {pageId && nfm.trim() ? (
           <ReadonlyNfmBlockNotePreview
+            fileAuthority={
+              fileAuthority && pageId
+                ? { ...fileAuthority, readSource: { kind: "page", page_id: pageId } }
+                : null
+            }
             content={nfm}
             projectId={projectId}
             pageId={pageId}
@@ -601,6 +615,7 @@ export function HistoryCurrentRevisionPreview({
 }
 
 export function HistoryRevisionPreview({
+  fileAuthority,
   projectId,
   entry,
   detail,
@@ -609,6 +624,7 @@ export function HistoryRevisionPreview({
   fallbackTitle,
   projectWorkspacePath,
 }: {
+  fileAuthority?: LibraryFileAuthority | null;
   projectId: string;
   entry: Extract<PageHistoryEntry, { kind: "document_version" }>;
   detail: DocumentVersionDetail | null;
@@ -626,9 +642,19 @@ export function HistoryRevisionPreview({
   const materialization = detail.materialization;
   if (materialization.kind === "canvas_scene") {
     return (
-      <HistoryTimelineDetails entry={entry}>
-        Scene revision · {materialization.elements.length} elements
-      </HistoryTimelineDetails>
+      <CanvasFilePreview
+        scene={materialization}
+        label="Historical Canvas scene"
+        authority={
+          fileAuthority && fileAuthority.libraryId === entry.libraryId
+            ? {
+                ...fileAuthority,
+                documentId: entry.documentId,
+                revisionId: entry.versionMetadata.versionId,
+              }
+            : null
+        }
+      />
     );
   }
 
@@ -652,9 +678,26 @@ export function HistoryRevisionPreview({
       <h2 className="wrap-break-word text-xl/snug-plus font-semibold tracking-normal text-token-text-primary">
         {title || "Untitled Page"}
       </h2>
+      {detail.summary.fileSnapshotStatus === "unresolved_legacy" ? (
+        <p role="status" className="mt-4 text-sm text-token-description-foreground">
+          Exact files are unavailable for this revision. Current files will not be substituted.
+        </p>
+      ) : null}
       <div className="mt-5 min-h-32">
         {materialization.nfm.trim() ? (
           <ReadonlyNfmBlockNotePreview
+            fileAuthority={
+              fileAuthority && fileAuthority.libraryId === entry.libraryId
+                ? {
+                    ...fileAuthority,
+                    readSource: {
+                      kind: "document_revision",
+                      document_id: entry.documentId,
+                      revision_id: entry.versionMetadata.versionId,
+                    },
+                  }
+                : null
+            }
             content={materialization.nfm}
             projectId={projectId}
             pageId={entry.pageId}

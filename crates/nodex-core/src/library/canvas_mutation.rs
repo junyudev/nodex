@@ -1178,11 +1178,11 @@ fn create_canvas_records(
             library_id,
             canvas_id,
             resolved.library_before.as_ref(),
-            &now,
+            now,
         )?;
         if let Some(project_id) = resolved.parent.creator_project_id.as_deref() {
             insert_creator_resource_grant(
-                connection, project_id, library_id, "canvas", canvas_id, &now,
+                connection, project_id, library_id, "canvas", canvas_id, now,
             )?;
         }
     }
@@ -1234,6 +1234,9 @@ fn canvas_mutation_effects(
         document_commits,
     };
     MutationEffects {
+        page_file_entries: Vec::new(),
+        file_revisions: BTreeMap::new(),
+        file_mutation: Default::default(),
         project_id: resolved.parent.actor_project_id.clone(),
         operation_kind,
         change_kind: "library.changed",
@@ -1256,7 +1259,6 @@ fn canvas_mutation_effects(
         ]),
         page_create: None,
         page_copy: None,
-        page_files: None,
         canvas_mutation: Some(canvas_mutation),
         block_transfer: None,
         block_transfer_undo: None,
@@ -1279,6 +1281,7 @@ pub(super) fn create_recovery_canvas(
     document_id: &str,
     scene: crate::document::CanvasScene,
     assets_root: &Path,
+    restored_files: &super::RestoredFiles,
 ) -> Result<(), StoreError> {
     let resolved = resolve_destination(
         scope.connection(),
@@ -1298,7 +1301,7 @@ pub(super) fn create_recovery_canvas(
         assets_root,
         scope.committed_at(),
     )?;
-    let effects = canvas_mutation_effects(
+    let mut effects = canvas_mutation_effects(
         "create_canvas",
         canvas_id,
         document_id,
@@ -1310,5 +1313,6 @@ pub(super) fn create_recovery_canvas(
         Vec::new(),
         scope.committed_at().to_owned(),
     );
+    restored_files.add_to(&mut effects);
     super::mutation::record_recovery_creation(scope, context, effects)
 }

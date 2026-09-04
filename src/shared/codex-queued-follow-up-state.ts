@@ -6,7 +6,7 @@ import { normalizeCodexServiceTier } from "./codex-service-tier";
 
 export const CODEX_INTERRUPTED_STEER_REASON = "Interrupted before the steer was accepted." as const;
 export const CODEX_ENDED_STEER_REASON = "Run ended before the steer was accepted." as const;
-export const CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION = 1 as const;
+export const CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION = 2 as const;
 
 export type CodexQueuedFollowUpPause =
   | {
@@ -19,7 +19,7 @@ export type CodexQueuedFollowUpPause =
     };
 
 export interface CodexQueuedFollowUpPayloadRef {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: typeof CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION;
   readonly assetUri: string;
   readonly sha256: string;
   readonly byteLength: number;

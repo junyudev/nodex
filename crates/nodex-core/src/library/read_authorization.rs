@@ -17,7 +17,20 @@ pub(super) fn issue(
     read: &LibraryRead,
     value: &LibraryReadValue,
 ) -> Result<Option<AuthorizedReadStamp>, StoreError> {
-    let Some(subject) = read_subject(&context.library_id.0, read, value) else {
+    let subject = if context.project_id.is_none()
+        && matches!(
+            read,
+            LibraryRead::FilePresentation {
+                source: nodex_core_contracts::library::LibraryFileReadSource::RecoveryDraft { .. }
+                    | nodex_core_contracts::library::LibraryFileReadSource::CanvasRecovery { .. },
+                ..
+            }
+        ) {
+        Some(library_resource(&context.library_id.0))
+    } else {
+        read_subject(&context.library_id.0, read, value)
+    };
+    let Some(subject) = subject else {
         return Ok(None);
     };
     let mut authorization_dependencies = vec![subject.clone()];
@@ -40,6 +53,47 @@ fn read_subject(
     value: &LibraryReadValue,
 ) -> Option<ResourceKey> {
     match read {
+        LibraryRead::Files { .. } => Some(library_resource(library_id)),
+        LibraryRead::FileUsages { file_id, .. }
+        | LibraryRead::FileVersions { file_id, .. }
+        | LibraryRead::File { file_id } => Some(ResourceKey::File {
+            file_id: file_id.clone(),
+        }),
+        LibraryRead::FilePresentation {
+            file_id, source, ..
+        } => Some(match source {
+            nodex_core_contracts::library::LibraryFileReadSource::Direct => ResourceKey::File {
+                file_id: file_id.clone(),
+            },
+            nodex_core_contracts::library::LibraryFileReadSource::Page { page_id } => {
+                ResourceKey::Page {
+                    page_id: page_id.clone(),
+                }
+            }
+            nodex_core_contracts::library::LibraryFileReadSource::DocumentRevision {
+                document_id,
+                ..
+            }
+            | nodex_core_contracts::library::LibraryFileReadSource::RecoveryDraft {
+                document_id,
+                ..
+            }
+            | nodex_core_contracts::library::LibraryFileReadSource::CanvasRevision {
+                document_id,
+                ..
+            }
+            | nodex_core_contracts::library::LibraryFileReadSource::CanvasRecovery {
+                document_id,
+                ..
+            } => ResourceKey::Document {
+                document_id: document_id.clone(),
+            },
+            nodex_core_contracts::library::LibraryFileReadSource::Canvas { canvas_id, .. } => {
+                ResourceKey::Canvas {
+                    canvas_id: canvas_id.clone(),
+                }
+            }
+        }),
         LibraryRead::Metadata
         | LibraryRead::StandaloneRoots { .. }
         | LibraryRead::Catalog { .. } => Some(library_resource(library_id)),
@@ -47,10 +101,9 @@ fn read_subject(
         LibraryRead::Children { parent, .. } => Some(navigation_parent(library_id, parent)),
         LibraryRead::Path { target } => Some(route_target(target)),
         LibraryRead::PageDetail { page_id }
+        | LibraryRead::PageFileInventory { page_id, .. }
+        | LibraryRead::ResolvePageFile { page_id, .. }
         | LibraryRead::PageContent { page_id }
-        | LibraryRead::PageFiles { page_id, .. }
-        | LibraryRead::PageFileMetadata { page_id, .. }
-        | LibraryRead::PageFileVersions { page_id, .. }
         | LibraryRead::PageProjectionFile { page_id, .. }
         | LibraryRead::PageDraftProjection { page_id } => Some(ResourceKey::Page {
             page_id: page_id.clone(),
@@ -115,6 +168,9 @@ fn route_target(target: &LibraryRouteTarget) -> ResourceKey {
 
 fn resource_target(target: &LibraryResourceTarget) -> ResourceKey {
     match target {
+        LibraryResourceTarget::File { file_id } => ResourceKey::File {
+            file_id: file_id.clone(),
+        },
         LibraryResourceTarget::Page { page_id } => ResourceKey::Page {
             page_id: page_id.clone(),
         },
@@ -153,6 +209,19 @@ fn existing_view_subject(value: &LibraryReadValue, view_id: &str) -> Option<Reso
 
 fn append_value_dependencies(value: &LibraryReadValue, output: &mut Vec<ResourceKey>) {
     match value {
+        LibraryReadValue::FileUsages { value } => {
+            output.extend(
+                value
+                    .items
+                    .iter()
+                    .map(|item| resource_target(&item.target.clone().into())),
+            );
+        }
+        LibraryReadValue::Files { value } => {
+            output.extend(value.items.iter().map(|file| ResourceKey::File {
+                file_id: file.file_id.clone(),
+            }))
+        }
         LibraryReadValue::Children { items, .. }
         | LibraryReadValue::StandaloneRoots { items, .. }
         | LibraryReadValue::Path { nodes: items, .. } => {
@@ -191,7 +260,7 @@ fn append_value_dependencies(value: &LibraryReadValue, output: &mut Vec<Resource
 }
 
 fn append_catalog_entry(entry: &LibraryCatalogEntry, output: &mut Vec<ResourceKey>) {
-    output.push(resource_target(&entry.target));
+    output.push(resource_target(&entry.target.clone().into()));
 }
 
 fn append_navigation_node(node: &LibraryNavigationNode, output: &mut Vec<ResourceKey>) {

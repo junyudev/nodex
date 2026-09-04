@@ -59,7 +59,9 @@ export const revocationsFromVisibilityDelta = (
                 ? root.view_id
                 : root.kind === "canvas"
                   ? root.canvas_id
-                  : null;
+                  : root.kind === "file"
+                    ? root.file_id
+                    : null;
     if (identity === null || root.kind === "library" || root.kind === "project") {
       return [];
     }

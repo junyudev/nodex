@@ -159,6 +159,7 @@ it.effect("persists one canonical Project grant batch through the final capabili
   const client = new FakeCoreClient();
   client.enqueueApply({
     value: {
+      page_file_entries: [],
       affected_resource_ids: ["page:one"],
       page_copy: null,
       block_transfer: null,

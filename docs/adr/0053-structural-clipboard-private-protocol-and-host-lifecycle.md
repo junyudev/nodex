@@ -1,12 +1,12 @@
 # ADR 0053: Structural clipboard uses a private protocol and host-owned lifecycle
 
-Status: Accepted
+Status: Accepted; File ownership and Page relation rules amended by [ADR 0057](0057-library-files-and-page-relations.md)
 
 ## Context
 
 Copying complete Block roots is not equivalent to serializing editor HTML. The
 selection may contain stable Block identities, owning Pages, Canvases,
-Databases, history, and Page File placements. Core therefore captures an
+Databases, history, and Library File references. Core therefore captures an
 immutable ownership closure and issues a capability for later paste. Capture,
 native clipboard publication, source deletion for Cut, and target paste cross
 the renderer, Electron Main, and Core runtimes.
@@ -18,12 +18,12 @@ pending state cannot coordinate that case, and using `text/html` simultaneously
 as portable content, internal routing, and native-slot ownership makes fallback
 and authority ambiguous.
 
-Page File placements add a related coherence requirement. A placement may read
-the current content of a File owned by another Page without acquiring owner
-authority. Structural movement can preserve that File identity and may rehome it
-only through Core's exclusive-placement rule. Page-wide cache invalidation loses
-the affected File identity, reloads unrelated media, and makes authorization
-changes difficult to reason about.
+Library File references add a related coherence requirement. A Page occurrence
+may read the current content of a File without receiving direct File authority.
+Structural movement preserves that Library-owned File identity and changes only
+the source and target Page relationships. Page-wide cache invalidation loses the
+affected File identity, reloads unrelated media, and makes authorization changes
+difficult to reason about.
 
 ## Decision
 
@@ -54,7 +54,7 @@ restarted host, or malformed private data therefore receives useful portable
 content. A ready structural locator may also be recoverable from the standard
 rich presentation after the ephemeral Main runtime is gone, but it remains
 subject to the same Core validation. Portable fallback cannot create owning
-Blocks and sanitizes foreign-Profile Page File references instead of creating
+Blocks and sanitizes foreign-Profile Library File references instead of creating
 dead `nodex://files/...` placements.
 
 Every asynchronous clipboard publication compares an exact write claim with the
@@ -130,8 +130,7 @@ content.
 
 Core alone owns the immutable clipboard bundle, capability hash, lease,
 single-use cut claim, source deletion, target materialization, identity
-allocation, history recipe, authorization, retention, and File ownership
-consequences.
+allocation, history recipe, authorization, and exact File retention evidence.
 
 Copy becomes ready after the exact native publication has been verified. Cut
 remains preparing until the source deletion and durable cut claim commit and the
@@ -165,26 +164,26 @@ Paste and native context-menu Paste use the same planner.
 Waiting may project a quiet, non-persistent affordance at the target. That
 projection never enters the Document, collaboration state, Undo history, Files
 inventory, or focus authority. The renderer performs no optimistic structural
-insertion and predicts no File rehome.
+insertion or File relationship change.
 
-### Page File coherence preserves exact identity
+### File read coherence preserves exact identity
 
 Core delivery retains the File identities already known by the committing
 Module:
 
-- File metadata, content, lifecycle, and ownership effects identify every
+- File metadata, content, and lifecycle effects identify every
   affected File ID;
 - Page Document effects identify the File IDs added to and removed from the
   canonical reference set;
-- owner manifest revision and owner-body usage revision remain independent
+- Page entry manifest revision and body-usage revision remain independent
   inventory authorities.
 
 A placement-count change that leaves reference-set membership unchanged does
 not invalidate File bytes. Ordinary Document typing and an unrelated File
 mutation carry no invalidation for the current File.
 
-The renderer owns one shared `PageFileReadCache` keyed by Store epoch, access
-context, containing Page ID, and File ID. The Module hides in-flight metadata
+The renderer owns one shared `FileReadCache` keyed by Store epoch, access
+context, authorized read source, File ID, and optional exact version. The Module hides in-flight metadata
 and byte deduplication, negative authorization results, exact listener fan-out,
 stale-while-revalidate, bounded retention, image object URL ownership, and
 cleanup. Replace keeps the last authorized preview visible until the new bytes
@@ -192,22 +191,16 @@ are ready, refreshes only placements of that File, and releases the retired URL.
 A Store-epoch or authorization-context change revokes the matching cache scope.
 
 This cache is a presentation projection. It never grants access, supplies a
-fallback File authority, mutates ownership, or turns a File ID into a bearer
-capability.
+fallback File authority, changes a Page relationship, or turns a File ID into a
+bearer capability.
 
-### Foreign placement ownership is disclosed progressively
+### Presentation follows the authorized source
 
-A placement owned by its containing Page needs no source label. A foreign
-attachment popover or image File-details surface shows `From <Page title>` and
-an open action only when the current access context can read the owner Page. If
-the owner is unavailable or unreadable, it shows `From another Page` without a
-raw Page ID or navigation action.
-
-The body receives no persistent ownership badge, and the containing Page's Files
-inventory remains a direct-owner inventory. Disclosure does not grant owner
-manifest, history, mutation, or lifecycle authority. Ownership changes only as
-a Core-derived consequence of an identity-preserving semantic move whose
-complete post-state placements are exclusive to one target Page.
+A body occurrence resolves through its containing Page and needs no ownership
+badge. Page Files includes both explicit entries and body occurrences for that
+Page, deduplicated by File ID. Direct, Page, Canvas, history, and recovery reads
+carry distinct sources; metadata, bytes, saves, and native materialization use
+the same source and never fall back to a broader grant.
 
 ## Consequences
 
@@ -222,16 +215,16 @@ complete post-state placements are exclusive to one target Page.
   change.
 - File replace, rename, authorization, and placement changes refresh only the
   affected File; unrelated images and attachments remain mounted and readable.
-- Foreign placements stay useful and understandable without duplicating Files
-  into the containing Page or leaking an inaccessible owner identity.
+- Shared File occurrences stay useful across Pages without duplicating File
+  identity or leaking inaccessible usage locations.
 
 The user-visible clipboard contracts are defined in
 [NFM Editor Copy Behavior](../product-specs/nfm-editor-copy-behavior.md) and
 [NFM Editor Structural Editing Behavior](../product-specs/nfm-editor-structural-editing-behavior.md).
-File ownership, placement, and presentation are defined in
-[Page Files Behavior](../product-specs/page-files-behavior.md),
-[ADR 0051](0051-page-owned-files-and-immutable-bytes.md), and
-[ADR 0052](0052-file-placement-is-independent-of-ownership.md).
+File identity, Page relationships, and presentation are defined in
+[Library Files](../product-specs/library-files-behavior.md),
+[Page Files Behavior](../product-specs/page-files-behavior.md), and
+[ADR 0057](0057-library-files-and-page-relations.md).
 
 ## Rejected alternatives
 
@@ -265,9 +258,9 @@ Page-wide epochs discard exact File identity, reload unrelated bytes, amplify
 rendering work, and make stale authorization results difficult to repair
 precisely.
 
-### Expose every foreign owner or duplicate the File locally
+### Reveal every related Page or duplicate the File locally
 
-Always showing owner identity can leak a Page the current access context cannot
-read. Cloning on placement changes stable identity and gives move unexpected
-copy semantics. Progressive disclosure and Core-derived exclusive rehome keep
-ownership explicit without adding either behavior.
+An unfiltered usage list can leak a Page the current access context cannot read.
+Cloning whenever an occurrence moves changes stable identity and gives Move
+unexpected Copy semantics. Source-scoped reads and Library-owned identity keep
+relationships private without either behavior.

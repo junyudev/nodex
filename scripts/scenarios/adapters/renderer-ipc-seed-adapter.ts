@@ -12,8 +12,11 @@ import type {
 } from "../../../src/shared/types";
 import type {
   ScenarioBoardObservation,
+  ScenarioDocumentCheckpointSeed,
   ScenarioDocumentReplacement,
+  ScenarioLibraryFileSeed,
   ScenarioPageObservation,
+  ScenarioPageFileEntrySeed,
   ScenarioPageSeed,
   ScenarioRelatedChatSeed,
   ScenarioRelatedChatSeedResult,
@@ -238,6 +241,118 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       `Replace ${input.pageId}`,
     );
     return { commitSeq: mutation.commitSeq, createdBlockIds: mutation.createdBlockIds };
+  }
+
+  async createLibraryFile(input: ScenarioLibraryFileSeed) {
+    const access = { kind: "project" as const, projectId: input.projectId };
+    const prepared = await this.#invoke("files:prepare", access, {
+      operationId: input.operationId,
+      source: {
+        kind: "bytes",
+        logicalPath: input.defaultName,
+        mimeType: input.mimeType,
+        bytes: input.bytes,
+      },
+    });
+    const metadata = requireSuccess(
+      await this.#invoke("library-module:read", access, { read: { mode: "metadata" } }),
+      "Read Library metadata",
+    );
+    const result = requireSuccess(
+      await this.#invoke("library-module:apply", access, {
+        operationId: input.operationId,
+        storeEpoch: metadata.storeEpoch,
+        operation: {
+          kind: "apply_file_change",
+          change: {
+            kind: "create",
+            file_id: input.fileId,
+            default_name: input.defaultName,
+            mime_type: input.mimeType,
+            prepared_blob_receipt_id: prepared.receiptId,
+          },
+        },
+      }),
+      `Create File ${input.defaultName}`,
+    );
+    const file = result.fileMutation?.file;
+    if (!file || file.file_id !== input.fileId) {
+      throw new Error(`Create File ${input.defaultName} omitted its committed File`);
+    }
+    return file;
+  }
+
+  async addPageFileEntry(input: ScenarioPageFileEntrySeed) {
+    const access = { kind: "project" as const, projectId: input.projectId };
+    const metadata = requireSuccess(
+      await this.#invoke("library-module:read", access, { read: { mode: "metadata" } }),
+      "Read Library metadata",
+    );
+    const result = requireSuccess(
+      await this.#invoke("library-module:apply", access, {
+        operationId: input.operationId,
+        storeEpoch: metadata.storeEpoch,
+        operation: {
+          kind: "apply_page_file_entries",
+          page_id: input.pageId,
+          expected_manifest_revision: input.expectedManifestRevision,
+          changes: [
+            {
+              kind: "attach",
+              file_id: input.fileId,
+              logical_path: input.logicalPath,
+              source: { kind: "direct" },
+              collision_policy: "reject",
+            },
+          ],
+        },
+      }),
+      `Add ${input.logicalPath} to Page`,
+    );
+    const receipt = result.pageFileEntries?.find((item) => item.page_id === input.pageId);
+    if (!receipt) throw new Error(`Add ${input.logicalPath} omitted its Page receipt`);
+    return receipt;
+  }
+
+  async readPageFileInventory(projectId: string, pageId: string) {
+    const result = requireSuccess(
+      await this.#invoke(
+        "library-module:read",
+        { kind: "project", projectId },
+        { read: { mode: "page_file_inventory", page_id: pageId, limit: 100 } },
+      ),
+      `Read Page Files for ${pageId}`,
+    );
+    if (result.value.kind !== "page_file_inventory") {
+      throw new Error(`Read Page Files for ${pageId} returned an unexpected value`);
+    }
+    return result.value.value;
+  }
+
+  async createDocumentCheckpoint(input: ScenarioDocumentCheckpointSeed): Promise<string> {
+    const descriptor = requireSuccess(
+      await this.#invoke("block-document:owned:prepare", input.projectId, input.pageId),
+      `Prepare checkpoint ${input.label}`,
+    );
+    if (descriptor.documentId !== input.documentId) {
+      throw new Error(`Checkpoint ${input.label} resolved a different Document`);
+    }
+    const checkpoint = requireSuccess(
+      await this.#invoke("block-documents:history:checkpoint", input.projectId, input.documentId, {
+        operationId: input.operationId,
+        projectId: input.projectId,
+        storeEpoch: descriptor.storeEpoch,
+        documentId: input.documentId,
+        expectedGeneration: descriptor.generation,
+        expectedHeadSeq: descriptor.headSeq,
+        cause: "scenario_seed",
+        label: input.label,
+        actor: { kind: "scenario_seed" },
+        revisionKind: "manual",
+      }),
+      `Create checkpoint ${input.label}`,
+    );
+    return checkpoint.checkpoint.versionId;
   }
 
   async readPage(

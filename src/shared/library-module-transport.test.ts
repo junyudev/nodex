@@ -31,6 +31,40 @@ const readResult = (value: unknown) => ({
 });
 
 describe("Library Module transport", () => {
+  test("authorizes File resources without accepting them as navigation or move targets", () => {
+    const target = { kind: "file", fileId: "file-1" };
+    expect(bindLibraryModuleRead({ read: { mode: "resource_project_access", target } })).toEqual({
+      read: { mode: "resource_project_access", target },
+    });
+    const operation = {
+      kind: "grant_project_access",
+      projectId: "project-1",
+      target,
+      access: "read",
+    };
+    expect(
+      bindLibraryModuleApply({ operationId: uuidV7(1), storeEpoch: "epoch-1", operation })
+        .operation,
+    ).toEqual(operation);
+    for (const read of [
+      { mode: "path", target },
+      { mode: "standalone_roots", forceIncludeTarget: target },
+      { mode: "move_destinations", target, scope: { kind: "suggested" } },
+    ])
+      expect(() => bindLibraryModuleRead({ read })).toThrow();
+    expect(() =>
+      bindLibraryModuleApply({
+        operationId: uuidV7(1),
+        storeEpoch: "epoch-1",
+        operation: {
+          kind: "move_block",
+          target: { ...target, expectedLocationRevision: 1 },
+          parent: { kind: "library" },
+        },
+      }),
+    ).toThrow();
+  });
+
   test("binds canonical atomic Page mention creation and rejects widened destinations", () => {
     const existingDocumentId = `document:${uuidV7(5)}`;
     const request = {
@@ -1079,36 +1113,35 @@ describe("Library Module transport", () => {
     });
   });
 
-  test("parses Page File body usage and rejects impossible placement counts", () => {
+  test("parses Page File inventory body counts and rejects negative counts", () => {
     const file = {
-      fileId: "file-1",
-      ownerPageId: "page-1",
-      logicalPath: "images/diagram.png",
-      mimeType: "image/png",
-      byteLength: 12,
-      version: 1,
-      blobEtag: "etag-1",
-      state: "live",
-      createdByActorId: "actor-1",
-      createdByTurnId: null,
-      createdAt: "2026-08-28T00:00:00.000Z",
-      updatedAt: "2026-08-28T00:00:00.000Z",
-      bodyUsage: { kind: "placed", placementCount: 2 },
+      file_id: "file-1",
+      library_id: "library-1",
+      default_name: "diagram.png",
+      mime_type: "image/png",
+      byte_length: 12,
+      head_version: 1,
+      revision: 1,
+      blob_etag: "a".repeat(64),
+      lifecycle: "live",
+      created_by_actor_id: "actor-1",
+      created_by_turn_id: null,
+      created_at: "2026-08-28T00:00:00.000Z",
+      updated_at: "2026-08-28T00:00:00.000Z",
     };
     const manifest = {
-      kind: "page_files",
+      kind: "page_file_inventory",
       value: {
-        pageId: "page-1",
+        page_id: "page-1",
         revision: 3,
-        bodyUsageRevision: 4,
-        files: [file],
-        nextCursor: null,
-        hasMore: false,
+        body_usage_revision: 4,
+        can_write: true,
+        files: [{ file, logical_path: "images/diagram.png", body_count: 2 }],
+        next_cursor: null,
+        has_more: false,
         total: 1,
-        liveTotal: 1,
-        unplacedTotal: 0,
-        placedTotal: 1,
-        deletedTotal: 0,
+        unplaced_total: 0,
+        placed_total: 1,
       },
     };
 
@@ -1116,8 +1149,9 @@ describe("Library Module transport", () => {
       value: {
         value: {
           value: {
-            bodyUsageRevision: 4,
-            files: [{ bodyUsage: { kind: "placed", placementCount: 2 } }],
+            body_usage_revision: 4,
+            can_write: true,
+            files: [{ body_count: 2 }],
           },
         },
       },
@@ -1128,11 +1162,11 @@ describe("Library Module transport", () => {
           ...manifest,
           value: {
             ...manifest.value,
-            files: [{ ...file, bodyUsage: { kind: "placed", placementCount: 0 } }],
+            files: [{ file, logical_path: "images/diagram.png", body_count: -1 }],
           },
         }),
       ),
-    ).toThrow("placementCount must be positive");
+    ).toThrow();
   });
 
   test("parses primary Canvas mutation receipts without weakening new IDs", () => {
@@ -1445,7 +1479,6 @@ describe("Library Module transport", () => {
             documentCommits: [],
             affectedPageIds: ["page:one"],
             affectedDatabaseIds: [],
-            fileOwnershipMoves: [],
             clipboard: null,
             history: {
               recipeOperationId: "recipe:one",

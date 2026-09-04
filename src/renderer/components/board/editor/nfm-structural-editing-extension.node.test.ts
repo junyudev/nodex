@@ -89,7 +89,6 @@ const structuralEdit = (input: {
   readonly clipboard?: typeof clipboard | null;
   readonly resultRootBlockIds?: readonly string[];
   readonly resumeBlockId?: string;
-  readonly fileOwnershipMoves?: LibraryStructuralEditResult["fileOwnershipMoves"];
 }) => ({
   operationKind: input.operationKind,
   sourceRootBlockIds: ["text", "page"],
@@ -99,7 +98,6 @@ const structuralEdit = (input: {
   documentCommits: [],
   affectedPageIds: ["page"],
   affectedDatabaseIds: [],
-  fileOwnershipMoves: input.fileOwnershipMoves ?? [],
   clipboard: input.clipboard ?? null,
   history:
     input.operationKind === "capture_clipboard"
@@ -215,16 +213,6 @@ describe("NFM structural editing session", () => {
           structuralEdit({
             operationKind: command.kind,
             resumeBlockId: "after",
-            fileOwnershipMoves: [
-              {
-                fileId: "file:image",
-                previousOwnerPageId: "page:source",
-                ownerPageId: "page:target",
-                previousLogicalPath: "image.png",
-                logicalPath: "image (2).png",
-                version: 2,
-              },
-            ],
           }),
         );
       }
@@ -267,7 +255,6 @@ describe("NFM structural editing session", () => {
         },
       };
     };
-    const ownershipMoves: LibraryStructuralEditResult["fileOwnershipMoves"][] = [];
     const session = new NfmStructuralEditingSession({
       editor,
       runtime: {
@@ -287,7 +274,6 @@ describe("NFM structural editing session", () => {
         },
         getContainer: () => null,
         resolveClipboardText: async (portableText) => `local:${portableText}`,
-        onFileOwnershipMoves: (moves) => ownershipMoves.push(moves),
       },
       apply,
       beginClipboard,
@@ -573,14 +559,6 @@ describe("NFM structural editing session", () => {
           },
         },
       });
-      expect(ownershipMoves).toEqual([
-        [
-          expect.objectContaining({
-            fileId: "file:image",
-            logicalPath: "image (2).png",
-          }),
-        ],
-      ]);
 
       session.adoptStructuralResult(
         structuralEdit({ operationKind: "move_selection", resultRootBlockIds: ["pasted"] }),

@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -20,7 +19,7 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::ProjectWorkspaceApplyOutcome;
 use super::mutation::{
-    WorkspaceMutationEffects, finish_mutation, finish_no_op_with_queued_follow_up,
+    WorkspaceMutationEffects, finish_no_op_with_queued_follow_up, run_mutation,
     workspace_event_anchor,
 };
 use super::session_mutation::sqlite_now;
@@ -34,9 +33,8 @@ const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_MANIFEST_ASSET_REFERENCES: usize = 512;
 const MAX_REFERENCED_ASSET_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_TOTAL_ASSET_EVIDENCE_BYTES: u64 = 512 * 1024 * 1024;
-const MANIFEST_SCHEMA_VERSION: u32 = 1;
+const MANIFEST_SCHEMA_VERSION: u32 = 2;
 const ASSET_URI_PREFIX: &str = "nodex://assets/";
-const MANIFEST_FILE_PREFIX: &str = "queued-follow-up-v1-";
 const INTERRUPTED_REASON: &str = "Interrupted before the steer was accepted.";
 
 #[derive(Debug, Deserialize)]
@@ -54,6 +52,7 @@ struct PayloadAssetReference {
     asset_uri: String,
     sha256: String,
     byte_length: u64,
+    mime_type: String,
 }
 
 #[derive(Clone, Copy)]
@@ -226,6 +225,21 @@ pub(crate) fn validate_all_stored_ledgers(
     if !table_exists {
         return Ok(BTreeSet::new());
     }
+    let inconsistent_blob: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM codex_queued_follow_up_payload_manifests payload
+           LEFT JOIN managed_blobs blob ON blob.content_hash = payload.payload_sha256
+           WHERE blob.content_hash IS NULL OR blob.byte_length != payload.byte_length)
+         OR EXISTS(SELECT 1 FROM codex_queued_follow_up_payload_asset_refs reference
+           LEFT JOIN managed_blobs blob ON blob.content_hash = reference.sha256
+           WHERE blob.content_hash IS NULL OR blob.byte_length != reference.byte_length)",
+        [],
+        |row| row.get(0),
+    )?;
+    if inconsistent_blob {
+        return Err(corrupt(
+            "Queued follow-up Blob metadata disagrees with its retained bytes",
+        ));
+    }
     let thread_ids = connection
         .prepare("SELECT thread_id FROM codex_queued_follow_up_ledgers ORDER BY thread_id")?
         .query_map([], |row| row.get::<_, String>(0))?
@@ -274,9 +288,10 @@ pub(super) fn commit_ledger(
     thread_id: &str,
     expected_revision: i64,
     entries: &[ProjectWorkspaceQueuedFollowUpEntry],
+    receipt_ids: &[String],
     assets_root: &Path,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_thread(connection, library_id, thread_id)?;
+    super::thread_assets::require_access(connection, context, thread_id, true)?;
     if expected_revision < 0 {
         return Err(invalid(
             "Queued follow-up expected_revision cannot be negative",
@@ -316,150 +331,183 @@ pub(super) fn commit_ledger(
         );
     }
 
-    let prior_payloads = connection
-        .prepare(
-            "SELECT DISTINCT payload_sha256 FROM codex_queued_follow_up_entries \
+    let prepared = authorize_publication(
+        connection,
+        context,
+        store_epoch,
+        operation_id,
+        thread_id,
+        &validated,
+        receipt_ids,
+    )?;
+    run_mutation(
+        connection,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        &now,
+        |scope| {
+            for receipt in &prepared {
+                crate::infrastructure::prepared_blobs::consume(
+                    connection,
+                    &receipt.receipt_id,
+                    scope.evidence().commit_seq(),
+                    &now,
+                )?;
+            }
+            let prior_payloads = connection
+                .prepare(
+                    "SELECT DISTINCT payload_sha256 FROM codex_queued_follow_up_entries \
              WHERE thread_id = ?1",
-        )?
-        .query_map([thread_id], |row| row.get::<_, String>(0))?
-        .collect::<rusqlite::Result<BTreeSet<_>>>()?;
-    let next_revision = current
-        .revision
-        .checked_add(1)
-        .ok_or_else(|| resource_exhausted("Queued follow-up ledger revision is exhausted"))?;
-    connection.execute(
+                )?
+                .query_map([thread_id], |row| row.get::<_, String>(0))?
+                .collect::<rusqlite::Result<BTreeSet<_>>>()?;
+            let next_revision = current.revision.checked_add(1).ok_or_else(|| {
+                resource_exhausted("Queued follow-up ledger revision is exhausted")
+            })?;
+            connection.execute(
         "INSERT INTO codex_queued_follow_up_ledgers(thread_id, revision, ledger_hash, updated_at) \
          VALUES (?1, ?2, ?3, ?4) ON CONFLICT(thread_id) DO UPDATE SET \
            revision = excluded.revision, ledger_hash = excluded.ledger_hash, \
            updated_at = excluded.updated_at",
         params![thread_id, next_revision, ledger_hash, now],
     )?;
-    connection.execute(
-        "DELETE FROM codex_queued_follow_up_entries WHERE thread_id = ?1",
-        [thread_id],
-    )?;
-    for (position, entry) in entries.iter().enumerate() {
-        let (_, manifest) = validated
-            .get(&entry.payload.sha256)
-            .expect("validated manifest is keyed by payload hash");
-        insert_manifest(connection, &entry.payload, manifest)?;
-        connection.execute(
-            "DELETE FROM codex_queued_follow_up_manifest_gc WHERE asset_uri = ?1",
-            [&entry.payload.asset_uri],
-        )?;
-        let (pause_kind, pause_reason) = pause_storage(entry.pause.as_ref());
-        connection.execute(
-            "INSERT INTO codex_queued_follow_up_entries( \
+            connection.execute(
+                "DELETE FROM codex_queued_follow_up_entries WHERE thread_id = ?1",
+                [thread_id],
+            )?;
+            for (position, entry) in entries.iter().enumerate() {
+                let (_, manifest) = validated
+                    .get(&entry.payload.sha256)
+                    .expect("validated manifest is keyed by payload hash");
+                insert_manifest(connection, &entry.payload, manifest)?;
+                let (pause_kind, pause_reason) = pause_storage(entry.pause.as_ref());
+                connection.execute(
+                    "INSERT INTO codex_queued_follow_up_entries( \
                thread_id, follow_up_id, position, client_user_message_id, created_at_ms, \
                pause_kind, pause_reason, payload_sha256 \
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                thread_id,
-                entry.follow_up_id,
-                i64::try_from(position).expect("queue bound fits SQLite integer"),
-                entry.client_user_message_id,
-                entry.created_at_ms,
-                pause_kind,
-                pause_reason,
-                entry.payload.sha256,
-            ],
-        )?;
-    }
-    enqueue_orphaned_manifests(connection, &prior_payloads, &now)?;
-    let change_project_id = workspace_event_anchor(connection, library_id)?;
-    finish_mutation(
-        connection,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        WorkspaceMutationEffects {
-            operation_kind: "commit_queued_follow_up_ledger",
-            project_catalog_change: None,
-            change_project_id,
-            project_ids: Vec::new(),
-            session_ids: Vec::new(),
-            thread_ids: vec![thread_id.to_owned()],
-            session_summary_scopes: Vec::new(),
-            session_detail_ids: Vec::new(),
-            block_ids: Vec::new(),
-            document_ids: Vec::new(),
-            database_ids: Vec::new(),
-            page_ids: Vec::new(),
-            data_source_ids: Vec::new(),
-            view_ids: Vec::new(),
-            document_heads: Vec::new(),
-            committed_at: now,
-            queued_follow_up_ledger: Some(ProjectWorkspaceQueuedFollowUpLedgerCommit {
-                thread_id: thread_id.to_owned(),
-                revision: next_revision,
-                ledger_hash,
-                changed: true,
-            }),
+                    params![
+                        thread_id,
+                        entry.follow_up_id,
+                        i64::try_from(position).expect("queue bound fits SQLite integer"),
+                        entry.client_user_message_id,
+                        entry.created_at_ms,
+                        pause_kind,
+                        pause_reason,
+                        entry.payload.sha256,
+                    ],
+                )?;
+            }
+            release_orphaned_manifests(connection, &prior_payloads)?;
+            let change_project_id = workspace_event_anchor(connection, library_id)?;
+            Ok(WorkspaceMutationEffects {
+                operation_kind: "commit_queued_follow_up_ledger",
+                project_catalog_change: None,
+                change_project_id,
+                project_ids: Vec::new(),
+                session_ids: Vec::new(),
+                thread_ids: vec![thread_id.to_owned()],
+                session_summary_scopes: Vec::new(),
+                session_detail_ids: Vec::new(),
+                block_ids: Vec::new(),
+                document_ids: Vec::new(),
+                database_ids: Vec::new(),
+                page_ids: Vec::new(),
+                data_source_ids: Vec::new(),
+                view_ids: Vec::new(),
+                document_heads: Vec::new(),
+                committed_at: now.clone(),
+                queued_follow_up_ledger: Some(ProjectWorkspaceQueuedFollowUpLedgerCommit {
+                    thread_id: thread_id.to_owned(),
+                    revision: next_revision,
+                    ledger_hash,
+                    changed: true,
+                }),
+            })
         },
     )
 }
 
-pub(super) fn sweep_manifest_gc(
+/// New bytes require receipts for this exact commit; existing bytes may be reused
+/// only from this Thread's retained queue, never from an arbitrary known hash.
+#[allow(clippy::too_many_arguments)]
+fn authorize_publication(
     connection: &Connection,
-    assets_root: &Path,
-) -> Result<(), StoreError> {
-    let Some(_gc_lease) = crate::infrastructure::managed_asset_snapshot::try_acquire_gc_lease()?
-    else {
-        return Ok(());
-    };
-    let tombstones = connection
-        .prepare(
-            "SELECT asset_uri, sha256 FROM codex_queued_follow_up_manifest_gc \
-             ORDER BY enqueued_at, asset_uri LIMIT 512",
-        )?
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    for (asset_uri, expected_hash) in tombstones {
-        match sweep_one_manifest(assets_root, &asset_uri, &expected_hash) {
-            Ok(()) => {
-                connection.execute(
-                    "DELETE FROM codex_queued_follow_up_manifest_gc \
-                     WHERE asset_uri = ?1 AND sha256 = ?2",
-                    params![asset_uri, expected_hash],
-                )?;
-            }
-            Err(error) => {
-                let attempted_at = sqlite_now(connection)?;
-                let error_message = error.message.chars().take(4096).collect::<String>();
-                connection.execute(
-                    "UPDATE codex_queued_follow_up_manifest_gc SET \
-                       attempt_count = attempt_count + 1, last_attempt_at = ?3, last_error = ?4 \
-                     WHERE asset_uri = ?1 AND sha256 = ?2",
-                    params![asset_uri, expected_hash, attempted_at, error_message],
-                )?;
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    thread_id: &str,
+    manifests: &BTreeMap<String, (ProjectWorkspaceQueuedFollowUpPayloadRef, PayloadManifest)>,
+    receipt_ids: &[String],
+) -> Result<Vec<crate::infrastructure::prepared_blobs::PreparedBlob>, StoreError> {
+    if receipt_ids.len() > 1024 {
+        return Err(resource_exhausted(
+            "Queue publication exceeds 1024 prepared Blobs",
+        ));
+    }
+    let actor = context
+        .project_id
+        .as_ref()
+        .map(|project| Ok(project.0.clone()))
+        .unwrap_or_else(|| {
+            crate::library::resolve_library_actor_project_id(connection, &context.library_id.0)
+        })?;
+    let mut needed = BTreeMap::new();
+    for (payload, manifest) in manifests.values() {
+        needed.insert(payload.sha256.clone(), payload.byte_length);
+        for reference in &manifest.asset_references {
+            if needed
+                .insert(reference.sha256.clone(), reference.byte_length)
+                .is_some_and(|length| length != reference.byte_length)
+            {
+                return Err(invalid("Queue Blob metadata is inconsistent"));
             }
         }
     }
-    Ok(())
-}
-
-fn sweep_one_manifest(
-    assets_root: &Path,
-    asset_uri: &str,
-    expected_hash: &str,
-) -> Result<(), StoreError> {
-    let file_name = queue_manifest_file_name(asset_uri, expected_hash)?;
-    let path = assets_root.join(file_name);
-    match fs::symlink_metadata(&path) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-            Err(corrupt("Queued follow-up GC target is not a regular file"))
+    let mut seen = BTreeSet::new();
+    let mut prepared_hashes = BTreeSet::new();
+    let mut prepared = Vec::new();
+    for id in receipt_ids {
+        if !seen.insert(id) {
+            return Err(invalid("Queue publication receipts must be unique"));
         }
-        Ok(_) => fs::remove_file(&path)
-            .map_err(|error| io_error("Queued follow-up manifest could not be deleted", error)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(io_error(
-            "Queued follow-up manifest metadata could not be read",
-            error,
-        )),
+        let receipt = crate::infrastructure::prepared_blobs::read_receipt(
+            connection,
+            store_epoch,
+            &context.library_id.0,
+            &actor,
+            operation_id,
+            id,
+        )?;
+        if needed.get(&receipt.content_hash) != Some(&receipt.byte_length)
+            || !prepared_hashes.insert(receipt.content_hash.clone())
+        {
+            return Err(invalid(
+                "Queue publication receipt does not match its payload closure",
+            ));
+        }
+        prepared.push(receipt);
     }
+    let retained = connection.prepare(
+        "SELECT payload_sha256 FROM codex_queued_follow_up_entries WHERE thread_id = ?1
+         UNION SELECT reference.sha256 FROM codex_queued_follow_up_payload_asset_refs reference
+         JOIN codex_queued_follow_up_entries entry ON entry.payload_sha256 = reference.payload_sha256
+         WHERE entry.thread_id = ?1",
+    )?.query_map([thread_id], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<BTreeSet<_>>>()?;
+    if needed
+        .keys()
+        .any(|hash| !prepared_hashes.contains(hash) && !retained.contains(hash))
+    {
+        return Err(StoreError::new(
+            StoreErrorCode::Unauthorized,
+            "Queue bytes require prepared publication or an existing Thread queue reference",
+            false,
+        ));
+    }
+    Ok(prepared)
 }
 
 pub(super) fn thread_payloads(
@@ -479,9 +527,9 @@ pub(super) fn thread_payloads(
 pub(super) fn release_thread_payloads(
     connection: &Connection,
     payloads: &BTreeSet<String>,
-    now: &str,
+    _now: &str,
 ) -> Result<(), StoreError> {
-    enqueue_orphaned_manifests(connection, payloads, now)
+    release_orphaned_manifests(connection, payloads)
 }
 
 fn require_thread(
@@ -768,7 +816,13 @@ fn validate_reference_metadata(references: &[PayloadAssetReference]) -> Result<(
                 "Queued follow-up referenced asset exceeds its byte bound",
             ));
         }
-        managed_asset_file_name(&reference.asset_uri)?;
+        queue_manifest_file_name(&reference.asset_uri, &reference.sha256)?;
+        if reference.mime_type.trim().is_empty()
+            || reference.mime_type.len() > 255
+            || reference.mime_type.chars().any(char::is_control)
+        {
+            return Err(invalid("Queued attachment MIME type is invalid"));
+        }
         if !listed.insert(reference.asset_uri.as_str()) {
             return Err(invalid(
                 "Queued follow-up payload asset references must be unique",
@@ -886,8 +940,8 @@ fn insert_manifest(
     for (ordinal, reference) in manifest.asset_references.iter().enumerate() {
         connection.execute(
             "INSERT INTO codex_queued_follow_up_payload_asset_refs( \
-               payload_sha256, ordinal, asset_uri, sha256, byte_length \
-             ) VALUES (?1, ?2, ?3, ?4, ?5)",
+               payload_sha256, ordinal, asset_uri, sha256, byte_length, mime_type \
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 payload.sha256,
                 i64::try_from(ordinal).expect("manifest asset count fits SQLite integer"),
@@ -896,6 +950,7 @@ fn insert_manifest(
                 i64::try_from(reference.byte_length).map_err(|_| {
                     resource_exhausted("Queued follow-up referenced asset is too large")
                 })?,
+                reference.mime_type,
             ],
         )?;
     }
@@ -908,7 +963,7 @@ fn read_stored_asset_references(
 ) -> Result<Vec<PayloadAssetReference>, StoreError> {
     let rows = connection
         .prepare(
-            "SELECT ordinal, asset_uri, sha256, byte_length \
+            "SELECT ordinal, asset_uri, sha256, byte_length, mime_type \
              FROM codex_queued_follow_up_payload_asset_refs \
              WHERE payload_sha256 = ?1 ORDER BY ordinal",
         )?
@@ -918,6 +973,7 @@ fn read_stored_asset_references(
                 PayloadAssetReference {
                     asset_uri: row.get(1)?,
                     sha256: row.get(2)?,
+                    mime_type: row.get(4)?,
                     byte_length: u64::try_from(row.get::<_, i64>(3)?).map_err(|error| {
                         rusqlite::Error::FromSqlConversionFailure(
                             3,
@@ -939,44 +995,16 @@ fn read_stored_asset_references(
     Ok(rows.into_iter().map(|(_, reference)| reference).collect())
 }
 
-fn enqueue_orphaned_manifests(
+fn release_orphaned_manifests(
     connection: &Connection,
     candidates: &BTreeSet<String>,
-    now: &str,
 ) -> Result<(), StoreError> {
     for sha in candidates {
-        let still_referenced = connection
-            .query_row(
-                "SELECT 1 FROM codex_queued_follow_up_entries WHERE payload_sha256 = ?1 LIMIT 1",
-                [sha],
-                |_| Ok(()),
-            )
-            .optional()?
-            .is_some();
-        if still_referenced {
-            continue;
-        }
-        let asset_uri = connection
-            .query_row(
-                "SELECT asset_uri FROM codex_queued_follow_up_payload_manifests \
-                 WHERE payload_sha256 = ?1",
-                [sha],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        if let Some(asset_uri) = asset_uri {
-            connection.execute(
-                "INSERT INTO codex_queued_follow_up_manifest_gc(asset_uri, sha256, enqueued_at) \
-                 VALUES (?1, ?2, ?3) ON CONFLICT(asset_uri) DO UPDATE SET \
-                   sha256 = excluded.sha256, enqueued_at = excluded.enqueued_at, \
-                   attempt_count = 0, last_attempt_at = NULL, last_error = NULL",
-                params![asset_uri, sha, now],
-            )?;
-            connection.execute(
-                "DELETE FROM codex_queued_follow_up_payload_manifests WHERE payload_sha256 = ?1",
-                [sha],
-            )?;
-        }
+        connection.execute(
+            "DELETE FROM codex_queued_follow_up_payload_manifests WHERE payload_sha256 = ?1
+             AND NOT EXISTS (SELECT 1 FROM codex_queued_follow_up_entries WHERE payload_sha256 = ?1)",
+            [sha],
+        )?;
     }
     Ok(())
 }
@@ -985,6 +1013,80 @@ fn ledger_hash(entries: &[ProjectWorkspaceQueuedFollowUpEntry]) -> Result<String
     serde_json::to_vec(entries)
         .map(|encoded| sha256(&encoded))
         .map_err(|_| corrupt("Queued follow-up ledger cannot be encoded"))
+}
+
+/// Rebinds ledger identities after v151 payload manifests are rewritten to the
+/// content-addressed schema. Entry order and user payloads stay unchanged.
+pub(crate) fn refresh_migrated_queued_follow_up_ledgers(
+    connection: &Connection,
+) -> Result<(), StoreError> {
+    let thread_ids = connection
+        .prepare("SELECT thread_id FROM codex_queued_follow_up_ledgers ORDER BY thread_id")?
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for thread_id in thread_ids {
+        let rows = connection
+            .prepare(
+                "SELECT entry.position, entry.follow_up_id, entry.client_user_message_id, \
+                        entry.created_at_ms, entry.pause_kind, entry.pause_reason, \
+                        manifest.schema_version, manifest.asset_uri, manifest.payload_sha256, \
+                        manifest.byte_length \
+                 FROM codex_queued_follow_up_entries entry \
+                 JOIN codex_queued_follow_up_payload_manifests manifest \
+                   ON manifest.payload_sha256 = entry.payload_sha256 \
+                 WHERE entry.thread_id = ?1 ORDER BY entry.position",
+            )?
+            .query_map([&thread_id], |row| {
+                let pause = match (
+                    row.get::<_, Option<String>>(4)?.as_deref(),
+                    row.get::<_, Option<String>>(5)?,
+                ) {
+                    (None, None) => None,
+                    (Some("interrupted"), Some(reason)) => {
+                        Some(ProjectWorkspaceQueuedFollowUpPause::Interrupted { reason })
+                    }
+                    (Some("failed"), Some(reason)) => {
+                        Some(ProjectWorkspaceQueuedFollowUpPause::Failed { reason })
+                    }
+                    _ => return Err(rusqlite::Error::InvalidQuery),
+                };
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    ProjectWorkspaceQueuedFollowUpEntry {
+                        follow_up_id: row.get(1)?,
+                        client_user_message_id: row.get(2)?,
+                        created_at_ms: row.get(3)?,
+                        pause,
+                        payload: ProjectWorkspaceQueuedFollowUpPayloadRef {
+                            schema_version: row.get::<_, u32>(6)?,
+                            asset_uri: row.get(7)?,
+                            sha256: row.get(8)?,
+                            byte_length: u64::try_from(row.get::<_, i64>(9)?).map_err(|error| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    9,
+                                    rusqlite::types::Type::Integer,
+                                    Box::new(error),
+                                )
+                            })?,
+                        },
+                    },
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        for (expected, (position, _)) in rows.iter().enumerate() {
+            if i64::try_from(expected).ok() != Some(*position) {
+                return Err(corrupt(
+                    "Migrated queued follow-up positions are not contiguous",
+                ));
+            }
+        }
+        let entries = rows.into_iter().map(|(_, entry)| entry).collect::<Vec<_>>();
+        connection.execute(
+            "UPDATE codex_queued_follow_up_ledgers SET ledger_hash = ?1 WHERE thread_id = ?2",
+            params![ledger_hash(&entries)?, thread_id],
+        )?;
+    }
+    Ok(())
 }
 
 fn pause_storage(
@@ -1003,7 +1105,7 @@ fn pause_storage(
 
 fn queue_manifest_file_name(asset_uri: &str, sha: &str) -> Result<String, StoreError> {
     let file_name = managed_asset_file_name(asset_uri)?;
-    if file_name != format!("{MANIFEST_FILE_PREFIX}{sha}.json") {
+    if file_name != format!("{sha}.blob") {
         return Err(invalid(
             "Queued follow-up payload manifest URI is not content-addressed",
         ));
@@ -1052,8 +1154,8 @@ fn read_manifest_evidence(
         ));
     }
     budget.reserve(metadata.len())?;
-    let mut file = File::open(&path)
-        .map_err(|error| io_error("Queued follow-up manifest could not be opened", error))?;
+    let mut file =
+        crate::infrastructure::managed_blobs::open(assets_root, file_name, expected_length)?;
     let capacity = usize::try_from(metadata.len())
         .map_err(|_| resource_exhausted("Queued follow-up manifest is too large"))?;
     let mut bytes = Vec::with_capacity(capacity);
@@ -1087,8 +1189,8 @@ fn hash_asset_evidence(
         ));
     }
     budget.reserve(metadata.len())?;
-    let mut file = File::open(&path)
-        .map_err(|error| io_error("Queued follow-up managed asset could not be opened", error))?;
+    let mut file =
+        crate::infrastructure::managed_blobs::open(assets_root, file_name, metadata.len())?;
     let mut digest = Sha256::new();
     let mut total = 0_u64;
     let mut chunk = [0_u8; 64 * 1024];
@@ -1218,10 +1320,95 @@ mod tests {
     };
     use serde_json::json;
 
-    use super::super::test_support::{
-        apply, context, create_session_thread, read, request, seeded_workspace,
-    };
+    use super::super::test_support::{context, create_session_thread, read, seeded_workspace};
     use super::*;
+
+    fn prepare_blob(
+        workspace: &super::super::test_support::TestWorkspace,
+        operation: &str,
+        source: &Path,
+    ) -> Option<String> {
+        let bytes = fs::read(source).ok()?;
+        let root = workspace._directory.path().join("assets");
+        let mut writer = crate::infrastructure::managed_blobs::BlobWriter::new(
+            &root,
+            MAX_REFERENCED_ASSET_BYTES,
+        )
+        .unwrap();
+        writer.write_chunk(&bytes).unwrap();
+        let blob = writer.finish().unwrap();
+        let library =
+            crate::library::LibraryModule::new("profile-1", "library-1", &workspace.kernel);
+        let expiry = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 60_000;
+        Some(
+            library
+                .register_prepared_file_blob(
+                    &context(),
+                    "epoch-1",
+                    operation,
+                    &format!("receipt:{operation}:{}", blob.content_hash),
+                    &blob.content_hash,
+                    &blob.physical_asset_name,
+                    blob.byte_length,
+                    expiry,
+                )
+                .unwrap()
+                .receipt_id,
+        )
+    }
+
+    fn request(
+        workspace: &super::super::test_support::TestWorkspace,
+        operation: &str,
+        mut intent: ProjectWorkspaceIntent,
+    ) -> nodex_core_contracts::ModuleApplyRequest<ProjectWorkspaceIntent> {
+        if let ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+            entries,
+            prepared_blob_receipt_ids,
+            ..
+        } = &mut intent
+        {
+            let root = workspace._directory.path().join("assets");
+            let mut names = BTreeSet::new();
+            for entry in entries {
+                let Some(name) = entry.payload.asset_uri.strip_prefix(ASSET_URI_PREFIX) else {
+                    continue;
+                };
+                names.insert(name.to_owned());
+                let Ok(bytes) = fs::read(root.join(name)) else {
+                    continue;
+                };
+                let Ok(manifest) = serde_json::from_slice::<PayloadManifest>(&bytes) else {
+                    continue;
+                };
+                for reference in manifest.asset_references {
+                    if let Ok(name) = managed_asset_file_name(&reference.asset_uri) {
+                        names.insert(name);
+                    }
+                }
+            }
+            *prepared_blob_receipt_ids = names
+                .iter()
+                .filter_map(|name| prepare_blob(workspace, operation, &root.join(name)))
+                .collect();
+        }
+        super::super::test_support::request(operation, intent)
+    }
+
+    fn apply(
+        workspace: &super::super::test_support::TestWorkspace,
+        operation: &str,
+        intent: ProjectWorkspaceIntent,
+    ) {
+        workspace
+            .module
+            .apply(&context(), request(workspace, operation, intent))
+            .unwrap();
+    }
 
     fn payload(
         workspace: &super::super::test_support::TestWorkspace,
@@ -1231,14 +1418,15 @@ mod tests {
         let assets = workspace._directory.path().join("assets");
         let mut asset_references = Vec::new();
         let prompt_input = if include_attachment {
-            let file_name = format!("{label}-attachment.bin");
             let bytes = format!("attachment:{label}").into_bytes();
-            fs::write(assets.join(&file_name), &bytes).expect("attachment asset");
             let digest = sha256(&bytes);
+            let file_name = format!("{digest}.blob");
+            fs::write(assets.join(&file_name), &bytes).expect("attachment asset");
             asset_references.push(json!({
                 "asset_uri": format!("nodex://assets/{file_name}"),
                 "sha256": digest,
                 "byte_length": bytes.len(),
+                "mime_type": "application/octet-stream",
             }));
             json!({ "items": [{ "source": format!("nodex://assets/{file_name}") }] })
         } else {
@@ -1247,7 +1435,7 @@ mod tests {
         payload_from_manifest(
             workspace,
             json!({
-                "schema_version": 1,
+                "schema_version": 2,
                 "payload": {
                     "prompt": label,
                     "prompt_input": prompt_input,
@@ -1263,14 +1451,14 @@ mod tests {
     ) -> ProjectWorkspaceQueuedFollowUpPayloadRef {
         let manifest = serde_json::to_vec(&value).expect("manifest JSON");
         let digest = sha256(&manifest);
-        let file_name = format!("queued-follow-up-v1-{digest}.json");
+        let file_name = format!("{digest}.blob");
         fs::write(
             workspace._directory.path().join("assets").join(&file_name),
             &manifest,
         )
         .expect("payload manifest");
         ProjectWorkspaceQueuedFollowUpPayloadRef {
-            schema_version: 1,
+            schema_version: 2,
             asset_uri: format!("nodex://assets/{file_name}"),
             sha256: digest,
             byte_length: manifest.len() as u64,
@@ -1329,13 +1517,17 @@ mod tests {
         assert_eq!(ledger(&workspace).revision, 0);
 
         let intent = ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+            prepared_blob_receipt_ids: Vec::new(),
             thread_id: "thread:queue".to_owned(),
             expected_revision: 0,
             entries: vec![second.clone(), first.clone()],
         };
         let committed = workspace
             .module
-            .apply(&context(), request("queue-commit", intent.clone()))
+            .apply(
+                &context(),
+                request(&workspace, "queue-commit", intent.clone()),
+            )
             .expect("queue commit");
         let queue_commit = committed
             .committed
@@ -1352,7 +1544,7 @@ mod tests {
 
         let replay = workspace
             .module
-            .apply(&context(), request("queue-commit", intent))
+            .apply(&context(), request(&workspace, "queue-commit", intent))
             .expect("exact replay");
         assert!(replay.committed.receipt.mutation.duplicate);
         assert_eq!(replay.committed.value, committed.committed.value);
@@ -1362,8 +1554,10 @@ mod tests {
             .apply(
                 &context(),
                 request(
+                    &workspace,
                     "queue-no-op",
                     ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                        prepared_blob_receipt_ids: Vec::new(),
                         thread_id: "thread:queue".to_owned(),
                         expected_revision: 1,
                         entries: vec![second, first],
@@ -1382,13 +1576,104 @@ mod tests {
     }
 
     #[test]
+    fn queued_follow_up_publication_requires_matching_receipts_and_thread_authority() {
+        let workspace = seeded_thread();
+        let row = entry(&workspace, "authorized", true);
+        let prepared = request(
+            &workspace,
+            "queue-publication",
+            ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                thread_id: "thread:queue".to_owned(),
+                expected_revision: 0,
+                entries: vec![row],
+                prepared_blob_receipt_ids: Vec::new(),
+            },
+        );
+        let mut wrong_operation = prepared.clone();
+        wrong_operation.operation_id = "queue-wrong-operation".to_owned();
+        assert_eq!(
+            workspace
+                .module
+                .apply(&context(), wrong_operation)
+                .unwrap_err()
+                .code,
+            CoreErrorCode::NotFound
+        );
+        let mut no_receipts = prepared.clone();
+        if let ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+            prepared_blob_receipt_ids,
+            ..
+        } = &mut no_receipts.intent
+        {
+            prepared_blob_receipt_ids.clear();
+        }
+        assert_eq!(
+            workspace
+                .module
+                .apply(&context(), no_receipts)
+                .unwrap_err()
+                .code,
+            CoreErrorCode::Unauthorized
+        );
+        let mut outsider = context();
+        outsider.project_id = Some(nodex_core_contracts::ProjectId("other-project".to_owned()));
+        assert_eq!(
+            workspace
+                .module
+                .apply(&outsider, prepared.clone())
+                .unwrap_err()
+                .code,
+            CoreErrorCode::Unauthorized
+        );
+        assert_eq!(ledger(&workspace).revision, 0);
+        workspace.module.apply(&context(), prepared).unwrap();
+        let read = ModuleReadRequest {
+            contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+            read: ProjectWorkspaceRead::QueuedFollowUpLedger {
+                thread_id: "thread:queue".to_owned(),
+            },
+        };
+        assert_eq!(
+            workspace.module.read(&outsider, read).unwrap_err().code,
+            CoreErrorCode::Unauthorized
+        );
+        let retained = ledger(&workspace);
+        workspace
+            .module
+            .apply(
+                &context(),
+                super::super::test_support::request(
+                    "queue-retained-reorder",
+                    ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                        thread_id: "thread:queue".to_owned(),
+                        expected_revision: 1,
+                        entries: retained
+                            .entries
+                            .into_iter()
+                            .map(|mut entry| {
+                                entry.pause = Some(ProjectWorkspaceQueuedFollowUpPause::Failed {
+                                    reason: "Retry later".to_owned(),
+                                });
+                                entry
+                            })
+                            .collect(),
+                        prepared_blob_receipt_ids: Vec::new(),
+                    },
+                ),
+            )
+            .unwrap();
+        assert_eq!(ledger(&workspace).revision, 2);
+    }
+
+    #[test]
     fn queued_follow_up_ledger_rejects_stale_revision_and_invalid_bounds() {
         let workspace = seeded_thread();
         let row = entry(&workspace, "row", false);
         apply(
-            &workspace.module,
+            &workspace,
             "queue-initial",
             ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                prepared_blob_receipt_ids: Vec::new(),
                 thread_id: "thread:queue".to_owned(),
                 expected_revision: 0,
                 entries: vec![row.clone()],
@@ -1399,8 +1684,10 @@ mod tests {
             .apply(
                 &context(),
                 request(
+                    &workspace,
                     "queue-stale",
                     ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                        prepared_blob_receipt_ids: Vec::new(),
                         thread_id: "thread:queue".to_owned(),
                         expected_revision: 0,
                         entries: Vec::new(),
@@ -1415,8 +1702,10 @@ mod tests {
             .apply(
                 &context(),
                 request(
+                    &workspace,
                     "queue-too-many",
                     ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                        prepared_blob_receipt_ids: Vec::new(),
                         thread_id: "thread:queue".to_owned(),
                         expected_revision: 1,
                         entries: (0..=MAX_QUEUED_FOLLOW_UP_ENTRIES)
@@ -1453,8 +1742,10 @@ mod tests {
             .apply(
                 &context(),
                 request(
+                    &workspace,
                     "queue-metadata-too-large",
                     ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                        prepared_blob_receipt_ids: Vec::new(),
                         thread_id: "thread:queue".to_owned(),
                         expected_revision: 1,
                         entries: std::mem::take(&mut oversized),
@@ -1466,7 +1757,7 @@ mod tests {
     }
 
     #[test]
-    fn queued_follow_up_manifest_validation_and_private_gc_preserve_shared_assets() {
+    fn queued_follow_up_release_preserves_thread_owned_bytes() {
         let workspace = seeded_thread();
         let row = entry(&workspace, "asset", true);
         let manifest_name = row
@@ -1478,20 +1769,37 @@ mod tests {
         let attachment = workspace
             ._directory
             .path()
-            .join("assets/asset-attachment.bin");
+            .join("assets")
+            .join(format!("{}.blob", sha256(b"attachment:asset")));
         apply(
-            &workspace.module,
+            &workspace,
             "queue-with-asset",
             ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                prepared_blob_receipt_ids: Vec::new(),
                 thread_id: "thread:queue".to_owned(),
                 expected_revision: 0,
                 entries: vec![row],
             },
         );
+        let receipt = prepare_blob(&workspace, "retain-queued-input", &attachment).unwrap();
         apply(
-            &workspace.module,
+            &workspace,
+            "retain-queued-input",
+            ProjectWorkspaceIntent::RetainThreadAssets {
+                thread_id: "thread:queue".to_owned(),
+                prepared_blob_receipt_ids: vec![receipt],
+            },
+        );
+        let retained = workspace
+            .module
+            .resolve_thread_asset_blob(&context(), "thread:queue", &sha256(b"attachment:asset"))
+            .unwrap();
+        assert_eq!(retained.byte_length, b"attachment:asset".len() as u64);
+        apply(
+            &workspace,
             "queue-clear",
             ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                prepared_blob_receipt_ids: Vec::new(),
                 thread_id: "thread:queue".to_owned(),
                 expected_revision: 1,
                 entries: Vec::new(),
@@ -1505,12 +1813,20 @@ mod tests {
                 .join(manifest_name)
                 .exists()
         );
-        assert!(
-            attachment.exists(),
-            "ordinary referenced assets may be shared"
-        );
+        assert!(attachment.exists(), "Thread input survives queue removal");
         assert_eq!(ledger(&workspace).revision, 2);
         assert!(ledger(&workspace).entries.is_empty());
+        apply(
+            &workspace,
+            "release-input",
+            ProjectWorkspaceIntent::DeleteThread {
+                thread_id: "thread:queue".to_owned(),
+            },
+        );
+        assert!(
+            !attachment.exists(),
+            "last owner release allows shared Blob collection"
+        );
     }
 
     #[test]
@@ -1518,17 +1834,16 @@ mod tests {
         let workspace = seeded_thread();
         let mut row = entry(&workspace, "tampered", false);
         row.payload.sha256 = "0".repeat(64);
-        row.payload.asset_uri = format!(
-            "nodex://assets/queued-follow-up-v1-{}.json",
-            row.payload.sha256
-        );
+        row.payload.asset_uri = format!("nodex://assets/{}.blob", row.payload.sha256);
         let error = workspace
             .module
             .apply(
                 &context(),
                 request(
+                    &workspace,
                     "queue-tampered-manifest",
                     ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                        prepared_blob_receipt_ids: Vec::new(),
                         thread_id: "thread:queue".to_owned(),
                         expected_revision: 0,
                         entries: vec![row],
@@ -1556,7 +1871,7 @@ mod tests {
             let payload = payload_from_manifest(
                 &workspace,
                 json!({
-                    "schema_version": 1,
+                    "schema_version": 2,
                     "payload": {
                         "prompt": "portable",
                         "prompt_input": {"items": [{"source": locator}]},
@@ -1569,8 +1884,10 @@ mod tests {
                 .apply(
                     &context(),
                     request(
+                        &workspace,
                         &format!("queue-nonportable-{index}"),
                         ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                            prepared_blob_receipt_ids: Vec::new(),
                             thread_id: "thread:queue".to_owned(),
                             expected_revision: 0,
                             entries: vec![ProjectWorkspaceQueuedFollowUpEntry {
@@ -1600,6 +1917,7 @@ mod tests {
                     "asset_uri": format!("nodex://assets/oversized-{index}.bin"),
                     "sha256": "0".repeat(64),
                     "byte_length": byte_length,
+                    "mime_type": "application/octet-stream",
                 })
             })
             .collect::<Vec<_>>();
@@ -1609,7 +1927,7 @@ mod tests {
         let payload = payload_from_manifest(
             &workspace,
             json!({
-                "schema_version": 1,
+                "schema_version": 2,
                 "payload": {"prompt": "bounded", "prompt_input": {"items": sources}},
                 "asset_references": references,
             }),
@@ -1619,8 +1937,10 @@ mod tests {
             .apply(
                 &context(),
                 request(
+                    &workspace,
                     "queue-total-reference-budget",
                     ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                        prepared_blob_receipt_ids: Vec::new(),
                         thread_id: "thread:queue".to_owned(),
                         expected_revision: 0,
                         entries: vec![ProjectWorkspaceQueuedFollowUpEntry {
@@ -1641,9 +1961,10 @@ mod tests {
     fn queued_follow_up_reads_revalidate_stored_nested_reference_semantics() {
         let workspace = seeded_thread();
         apply(
-            &workspace.module,
+            &workspace,
             "queue-deep-validation",
             ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                prepared_blob_receipt_ids: Vec::new(),
                 thread_id: "thread:queue".to_owned(),
                 expected_revision: 0,
                 entries: vec![entry(&workspace, "deep", true)],
@@ -1654,8 +1975,8 @@ mod tests {
             .writer()
             .call(|connection| {
                 connection.execute(
-                    "UPDATE codex_queued_follow_up_payload_asset_refs SET sha256 = ?1",
-                    ["g".repeat(64)],
+                    "UPDATE codex_queued_follow_up_payload_asset_refs SET byte_length = byte_length + 1",
+                    [],
                 )?;
                 Ok(())
             })
@@ -1684,53 +2005,6 @@ mod tests {
     }
 
     #[test]
-    fn queued_follow_up_gc_continues_after_a_bad_tombstone() {
-        let workspace = seeded_thread();
-        let assets_root = workspace._directory.path().join("assets");
-        let valid_hash = "f".repeat(64);
-        let valid_uri = format!("nodex://assets/queued-follow-up-v1-{valid_hash}.json");
-        let valid_file = assets_root.join(format!("queued-follow-up-v1-{valid_hash}.json"));
-        fs::write(&valid_file, b"private manifest").expect("GC target");
-        let bad_hash = "b".repeat(64);
-        let bad_uri = format!("nodex://assets/queued-follow-up-v1-{}.json", "a".repeat(64));
-        workspace
-            .kernel
-            .writer()
-            .call({
-                let assets_root = assets_root.clone();
-                move |connection| {
-                    connection.execute(
-                        "INSERT INTO codex_queued_follow_up_manifest_gc( \
-                           asset_uri, sha256, enqueued_at \
-                         ) VALUES (?1, ?2, '2020-01-01T00:00:00Z'), \
-                                  (?3, ?4, '2020-01-01T00:00:01Z')",
-                        params![bad_uri, bad_hash, valid_uri, valid_hash],
-                    )?;
-                    sweep_manifest_gc(connection, &assets_root)?;
-                    let bad = connection.query_row(
-                        "SELECT attempt_count, last_error IS NOT NULL \
-                         FROM codex_queued_follow_up_manifest_gc WHERE asset_uri = ?1",
-                        [&bad_uri],
-                        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, bool>(1)?)),
-                    )?;
-                    let valid_count = connection.query_row(
-                        "SELECT count(*) FROM codex_queued_follow_up_manifest_gc \
-                         WHERE asset_uri = ?1",
-                        [&valid_uri],
-                        |row| row.get::<_, i64>(0),
-                    )?;
-                    Ok((bad, valid_count))
-                }
-            })
-            .map(|(bad, valid_count)| {
-                assert_eq!(bad, (1, true));
-                assert_eq!(valid_count, 0);
-            })
-            .expect("isolated GC sweep");
-        assert!(!valid_file.exists());
-    }
-
-    #[test]
     fn queued_follow_up_ledger_cascades_with_thread_deletion() {
         let workspace = seeded_thread();
         let row = entry(&workspace, "delete", false);
@@ -1741,16 +2015,17 @@ mod tests {
             .expect("manifest URI")
             .to_owned();
         apply(
-            &workspace.module,
+            &workspace,
             "queue-before-delete",
             ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+                prepared_blob_receipt_ids: Vec::new(),
                 thread_id: "thread:queue".to_owned(),
                 expected_revision: 0,
                 entries: vec![row],
             },
         );
         apply(
-            &workspace.module,
+            &workspace,
             "delete-queue-thread",
             ProjectWorkspaceIntent::DeleteThread {
                 thread_id: "thread:queue".to_owned(),
@@ -1775,14 +2050,24 @@ mod tests {
             })
             .expect("queue rows after Thread delete");
         assert_eq!(counts, (0, 0));
-        assert!(
-            !workspace
-                ._directory
-                .path()
-                .join("assets")
-                .join(manifest_name)
-                .exists(),
-            "Thread deletion releases the queue-private manifest"
-        );
+        let root = workspace._directory.path().join("assets");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while root.join(&manifest_name).exists() {
+            workspace
+                .kernel
+                .writer()
+                .call({
+                    let root = root.clone();
+                    move |connection| {
+                        crate::infrastructure::managed_blob_gc::collect(connection, &root, 100)
+                    }
+                })
+                .unwrap();
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Thread deletion releases its manifest Blob"
+            );
+            std::thread::yield_now();
+        }
     }
 }

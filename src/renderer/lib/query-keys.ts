@@ -133,6 +133,17 @@ export const queryKeys = {
     pageFilesWindow: (accessContext: unknown, pageId: string, query: string) =>
       ["libraryPages", "files", accessContext, pageId, query] as const,
   },
+  libraryFiles: {
+    file: (accessContext: unknown, fileId: string) =>
+      ["libraryFiles", "file", accessContext, fileId] as const,
+    all: () => ["libraryFiles"] as const,
+    catalog: (accessContext: unknown, lifecycle: string, usage: string, query: string) =>
+      ["libraryFiles", "catalog", accessContext, lifecycle, usage, query] as const,
+    usages: (accessContext: unknown, fileId: string) =>
+      ["libraryFiles", "usages", accessContext, fileId] as const,
+    versions: (accessContext: unknown, fileId: string) =>
+      ["libraryFiles", "versions", accessContext, fileId] as const,
+  },
   projectSessions: {
     all: () => ["projectSessions"] as const,
     summaries: (projectId: string | null) =>

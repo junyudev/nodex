@@ -760,6 +760,7 @@ describe("Core Library Module Adapter", () => {
     const client = new FakeCoreClient();
     client.enqueueApply({
       value: {
+        page_file_entries: [],
         affected_resource_ids: ["page:one", "database:test"],
         page_copy: null,
         block_transfer: null,
@@ -860,6 +861,7 @@ describe("Core Library Module Adapter", () => {
     const client = new FakeCoreClient();
     client.enqueueApply({
       value: {
+        page_file_entries: [],
         affected_resource_ids: ["page:one"],
         page_copy: null,
         block_transfer: null,
@@ -974,6 +976,7 @@ describe("Core Library Module Adapter", () => {
     const optionId = parseDataSourceOptionId({ propertyId, value: "p1-high" });
     client.enqueueApply({
       value: {
+        page_file_entries: [],
         affected_resource_ids: ["page:one", dataSourceId],
         page_copy: null,
         block_transfer: null,
@@ -1114,6 +1117,7 @@ describe("Core Library Module Adapter", () => {
     });
     client.enqueueApply({
       value: {
+        page_file_entries: [],
         affected_resource_ids: [pageId, "database:test"],
         page_copy: null,
         block_transfer: null,
@@ -1785,6 +1789,7 @@ describe("Core Library Module Adapter", () => {
     });
     client.enqueueApply({
       value: {
+        page_file_entries: [],
         affected_resource_ids: ["page:one"],
         page_copy: null,
         block_transfer: null,
@@ -1912,6 +1917,7 @@ describe("Core Library Module Adapter", () => {
     });
     client.enqueueApply({
       value: {
+        page_file_entries: [],
         affected_resource_ids: [canvasId],
         canvas_mutation: {
           operation_kind: "create_canvas",
@@ -2054,6 +2060,7 @@ describe("Core Library Module Adapter", () => {
     const canvasDocumentId = "019f7399-7676-70ae-b2aa-168692b64d32";
     projectClient.enqueueApply({
       value: {
+        page_file_entries: [],
         affected_resource_ids: [canvasId],
         canvas_mutation: {
           operation_kind: "create_canvas",
@@ -2127,6 +2134,7 @@ describe("Core Library Module Adapter", () => {
     const client = new FakeCoreClient();
     client.enqueueApply({
       value: {
+        page_file_entries: [],
         affected_resource_ids: ["page:one"],
         page_copy: null,
         block_transfer: null,
@@ -2210,6 +2218,7 @@ describe("Core Library Module Adapter", () => {
     });
     client.enqueueApply({
       value: {
+        page_file_entries: [],
         affected_resource_ids: ["page:new", "page:host", "page:destination"],
         structural_edit: {
           operation_kind: "create_page_mention",
@@ -2239,7 +2248,6 @@ describe("Core Library Module Adapter", () => {
           ],
           affected_page_ids: ["page:host", "page:destination", "page:new"],
           affected_database_ids: [],
-          file_ownership_moves: [],
           clipboard: null,
           history: {
             recipe_operation_id: "recipe:create-page-mention",
@@ -2374,6 +2382,7 @@ describe("Core Library Module Adapter", () => {
     const client = new FakeCoreClient();
     client.enqueueApply({
       value: {
+        page_file_entries: [],
         affected_resource_ids: ["page:one"],
         structural_edit: {
           operation_kind: "delete_selection",
@@ -2384,7 +2393,6 @@ describe("Core Library Module Adapter", () => {
           document_commits: [],
           affected_page_ids: ["page:one"],
           affected_database_ids: [],
-          file_ownership_moves: [],
           clipboard: null,
           history: {
             recipe_operation_id: "recipe:delete",
@@ -2492,6 +2500,7 @@ describe("Core Library Module Adapter", () => {
     const client = new FakeCoreClient();
     client.enqueueApply({
       value: {
+        page_file_entries: [],
         affected_resource_ids: ["page:one"],
         structural_edit: {
           operation_kind: "turn_structural_selection_into",
@@ -2502,7 +2511,6 @@ describe("Core Library Module Adapter", () => {
           document_commits: [],
           affected_page_ids: ["page:host", "page:one"],
           affected_database_ids: [],
-          file_ownership_moves: [],
           clipboard: null,
           history: null,
           superseded_history_recipe_operation_ids: [],
@@ -2573,6 +2581,7 @@ describe("Core Library Module Adapter", () => {
     const client = new FakeCoreClient();
     client.enqueueApply({
       value: {
+        page_file_entries: [],
         affected_resource_ids: ["block:source", "block:target"],
         structural_edit: {
           operation_kind: "merge_block_backward",
@@ -2583,7 +2592,6 @@ describe("Core Library Module Adapter", () => {
           document_commits: [],
           affected_page_ids: ["page:host"],
           affected_database_ids: [],
-          file_ownership_moves: [],
           clipboard: null,
           history: null,
           superseded_history_recipe_operation_ids: [],
@@ -2654,6 +2662,7 @@ describe("Core Library Module Adapter", () => {
     const rootClient = new FakeCoreClient();
     rootClient.enqueueApply({
       value: {
+        page_file_entries: [],
         affected_resource_ids: ["page:trusted"],
         page_copy: null,
         block_transfer: null,
@@ -2712,6 +2721,7 @@ describe("Core Library Module Adapter", () => {
           library_id: "library:test",
           event: {
             kind: "library_changed",
+            file_revisions: {},
             page_file_manifest_invalidations: {},
             page_file_body_usage_revisions: {},
             page_file_content_invalidations: {},

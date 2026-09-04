@@ -144,38 +144,43 @@ describe("Document history transport contracts", () => {
         preview: "Canvas",
         blockCount: 1,
         createdAt: "2026-07-19T21:20:00.000Z",
+        fileSnapshotStatus: "exact",
         checkpointMetadata: { format: "block_tree_snapshot_v2" },
       }),
     ).toThrow(DocumentHistoryContractError);
   });
 
-  test("accepts an empty Page checkpoint as a valid immutable projection", () => {
-    expect(
-      parseDocumentVersionSummary({
-        versionId: `document-version:${"d".repeat(64)}`,
-        documentId: "document-1",
-        projectId: "project-1",
-        generation: 1,
-        baseHeadSeq: 0,
-        schemaKey: "nodex.page",
-        schemaVersion: 3,
-        cause: "manual",
-        label: null,
-        actor: {},
-        revisionKind: "manual",
-        sourceMutationId: null,
-        sourceChangeSeq: null,
-        pinned: true,
-        checkpointHash: "e".repeat(64),
-        materializationHash: "f".repeat(64),
-        byteLength: 16,
-        materializationKind: "page",
-        title: "",
-        preview: "",
-        blockCount: 0,
-        createdAt: "2026-07-19T21:30:00.000Z",
-        checkpointMetadata: { format: "block_tree_snapshot_v2" },
-      }),
-    ).toMatchObject({ title: "", preview: "", blockCount: 0 });
-  });
+  test.each(["block_tree_snapshot_v2", "block_tree_snapshot_v3"])(
+    "accepts an empty Page checkpoint in %s",
+    (format) => {
+      expect(
+        parseDocumentVersionSummary({
+          versionId: `document-version:${"d".repeat(64)}`,
+          documentId: "document-1",
+          projectId: "project-1",
+          generation: 1,
+          baseHeadSeq: 0,
+          schemaKey: "nodex.page",
+          schemaVersion: 3,
+          cause: "manual",
+          label: null,
+          actor: {},
+          revisionKind: "manual",
+          sourceMutationId: null,
+          sourceChangeSeq: null,
+          pinned: true,
+          checkpointHash: "e".repeat(64),
+          materializationHash: "f".repeat(64),
+          byteLength: 16,
+          materializationKind: "page",
+          title: "",
+          preview: "",
+          blockCount: 0,
+          createdAt: "2026-07-19T21:30:00.000Z",
+          fileSnapshotStatus: "exact",
+          checkpointMetadata: { format },
+        }),
+      ).toMatchObject({ title: "", preview: "", blockCount: 0 });
+    },
+  );
 });

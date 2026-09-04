@@ -21,10 +21,24 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 use crate::infrastructure::store::SqliteStoreKernel;
 use crate::infrastructure::writer::{StoreReaders, StoreWriter};
 
-mod page_file_blobs;
-mod page_file_ownership_move;
-mod page_file_path;
-mod page_files;
+mod file_access;
+mod file_mutation;
+mod file_queries;
+mod file_restore;
+mod file_retention;
+mod file_usages;
+pub(crate) use file_restore::capture_recovery_target as capture_recovery_file_target;
+pub(crate) use file_restore::{
+    FileRestorePlan, RestoredFiles, apply as apply_file_restore, plan as plan_file_restore,
+    publish as publish_file_restore,
+};
+mod files;
+pub(crate) use file_access::file_grant_authorization_proof;
+pub(crate) use files::capture_snapshot as capture_file_snapshot;
+mod file_blobs;
+mod page_file_entries;
+mod page_file_entry_mutation;
+mod page_file_inventory;
 mod page_projection;
 mod page_search;
 mod projection_authorization;
@@ -754,7 +768,9 @@ impl LibraryModule {
             LibraryResourceTarget::Database { database_id } => {
                 (Vec::new(), vec![database_id.clone()])
             }
-            LibraryResourceTarget::Canvas { .. } => (Vec::new(), Vec::new()),
+            LibraryResourceTarget::Canvas { .. } | LibraryResourceTarget::File { .. } => {
+                (Vec::new(), Vec::new())
+            }
         };
         let committed_at = unix_timestamp_millis();
         let receipt = LibraryReceipt {
@@ -776,10 +792,11 @@ impl LibraryModule {
         let commit_seq = event_sequence;
         let committed = crate::ModuleWriterResult {
             value: LibraryCommitValue {
+                page_file_entries: Vec::new(),
+                file_mutation: Default::default(),
                 affected_resource_ids: vec![resource_id],
                 page_create: None,
                 page_copy: None,
-                page_files: None,
                 canvas_mutation: None,
                 block_transfer: None,
                 block_transfer_undo: None,
@@ -797,6 +814,7 @@ impl LibraryModule {
             store_epoch: self.store_epoch.clone(),
         };
         let event_payload = CoreModuleEventPayload::Library(LibraryEvent {
+            file_revisions: Default::default(),
             kind: LibraryEventKind::LibraryChanged,
             page_ids: affected_page_ids,
             database_ids: affected_database_ids,
@@ -814,7 +832,9 @@ impl LibraryModule {
             // which to enumerate the complete projection closure. Broad invalidation
             // is the only truthful impact for this test authority.
             LibraryResourceTarget::Database { .. } => ProjectionImpact::All,
-            LibraryResourceTarget::Canvas { .. } => ProjectionImpact::All,
+            LibraryResourceTarget::Canvas { .. } | LibraryResourceTarget::File { .. } => {
+                ProjectionImpact::All
+            }
         };
         let event = CommittedCoreModuleEvent {
             event_version: CORE_EVENT_VERSION,
@@ -940,6 +960,7 @@ fn resource_id(target: &LibraryResourceTarget) -> String {
         LibraryResourceTarget::Page { page_id } => page_id.clone(),
         LibraryResourceTarget::Database { database_id } => database_id.clone(),
         LibraryResourceTarget::Canvas { canvas_id } => canvas_id.clone(),
+        LibraryResourceTarget::File { file_id } => file_id.clone(),
     }
 }
 
@@ -2485,7 +2506,7 @@ mod tests {
                         "INSERT INTO documents( \
                            id, library_id, generation, head_seq, schema_key, schema_version, \
                            state_vector, state_hash, readiness, authority, created_at, updated_at, sync_engine \
-                         ) VALUES (?1, 'library-1', 1, 0, 'nodex.canvas', 1, X'', \
+                         ) VALUES (?1, 'library-1', 1, 0, 'nodex.canvas', 2, X'', \
                            '0000000000000000000000000000000000000000000000000000000000000000', \
                            'ready', 'ydoc_primary', ?2, ?2, 'canvas_scene')",
                         params![CANVAS_DOCUMENT, NOW],
@@ -2728,9 +2749,11 @@ mod tests {
         } = read(LibraryRead::StandaloneRoots {
             cursor: None,
             limit: None,
-            force_include_target: Some(LibraryResourceTarget::Database {
-                database_id: DATABASE.to_owned(),
-            }),
+            force_include_target: Some(
+                nodex_core_contracts::library::LibraryPlacedResourceTarget::Database {
+                    database_id: DATABASE.to_owned(),
+                },
+            ),
         })
         else {
             panic!("standalone roots");
@@ -4120,7 +4143,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::MoveDestinations {
-                        target: LibraryResourceTarget::Page {
+                        target: nodex_core_contracts::library::LibraryPlacedResourceTarget::Page {
                             page_id: MOVE_SOURCE_PAGE.to_owned(),
                         },
                         scope: LibraryMoveDestinationScope::Suggested,
@@ -4186,7 +4209,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: LIBRARY_CONTRACT_VERSION,
                     read: LibraryRead::MoveDestinations {
-                        target: LibraryResourceTarget::Page {
+                        target: nodex_core_contracts::library::LibraryPlacedResourceTarget::Page {
                             page_id: MOVE_DESCENDANT_PAGE.to_owned(),
                         },
                         scope: LibraryMoveDestinationScope::Suggested,
@@ -6011,7 +6034,6 @@ mod tests {
                                                         ),
                                                         ..Default::default()
                                                     },
-                                                ..Default::default()
                                             },
                                         group_key: Some("p2-medium".to_owned()),
                                         before_page_id: None,
@@ -8935,12 +8957,21 @@ pub(crate) fn create_recovery_copy(
     document_id: &str,
     preview: &nodex_core_contracts::document::RecoveryPreview,
     assets_root: &std::path::Path,
+    restored_files: &RestoredFiles,
 ) -> Result<(), crate::infrastructure::sqlite::StoreError> {
     match preview {
         nodex_core_contracts::document::RecoveryPreview::Document {
             rich_title, nfm, ..
-        } => mutation::create_recovery_page(scope, context, owner_id, document_id, rich_title, nfm),
-        nodex_core_contracts::document::RecoveryPreview::Canvas { scene } => {
+        } => mutation::create_recovery_page(
+            scope,
+            context,
+            owner_id,
+            document_id,
+            rich_title,
+            nfm,
+            restored_files,
+        ),
+        nodex_core_contracts::document::RecoveryPreview::Canvas { scene, .. } => {
             canvas_mutation::create_recovery_canvas(
                 scope,
                 context,
@@ -8948,6 +8979,7 @@ pub(crate) fn create_recovery_copy(
                 document_id,
                 crate::document::parse_recovery_canvas(scene)?,
                 assets_root,
+                restored_files,
             )
         }
     }

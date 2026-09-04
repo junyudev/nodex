@@ -1,7 +1,6 @@
 #[cfg(test)]
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::fs;
 use std::path::Path;
 
 use nodex_core_contracts::{
@@ -31,7 +30,6 @@ use super::canvas_scene::{
 };
 use super::persistence::{DocumentAuthorityRow, read_event_head, sha256};
 
-const MAX_CANVAS_ASSET_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_CANVAS_ELEMENTS: i64 = 100_000;
 const MAX_CANVAS_FILES: i64 = 10_000;
 const PROJECTION_VERSION: i64 = 2;
@@ -134,6 +132,10 @@ pub(crate) struct PreparedCanvasMutation {
 }
 
 impl PreparedCanvasMutation {
+    pub(crate) fn added_files(&self) -> impl Iterator<Item = &CanvasFile> {
+        self.file_additions.iter().map(|record| &record.file)
+    }
+
     pub(crate) fn changed(&self) -> bool {
         !self.element_changes.is_empty()
             || !self.file_additions.is_empty()
@@ -207,7 +209,6 @@ pub(crate) fn prepare_incremental_canvas_mutation(
     connection: &Connection,
     authority: &DocumentAuthorityRow,
     mutation: &CanvasMutation,
-    assets_root: &Path,
 ) -> Result<PreparedCanvasMutation, StoreError> {
     validate_canvas_authority(authority)?;
     let metadata = read_canvas_authority_metadata(connection, authority)?;
@@ -321,13 +322,7 @@ pub(crate) fn prepare_incremental_canvas_mutation(
         let addition = mutation.file_additions.get(file_id);
         if let (Some(existing), Some(addition)) = (existing_file, addition)
             && existing.file.value != addition.value
-            && !same_canvas_file_content(
-                connection,
-                &authority.head.id,
-                &existing.file,
-                addition,
-                assets_root,
-            )?
+            && !existing.file.same_binding(addition)
         {
             return Err(invalid(format!(
                 "Canvas managed file {file_id} cannot be redefined"
@@ -1335,7 +1330,7 @@ pub(crate) fn persist_canvas_mutation(
         ));
     }
     validate_page_references(connection, authority, &applied.scene)?;
-    validate_file_additions(assets_root, &mutation.file_additions)?;
+    validate_file_additions(connection, authority, &mutation.file_additions)?;
     let intent_json = canonical_json(&mutation.canonical_value)?;
     if connection
         .query_row(
@@ -1507,7 +1502,8 @@ pub(crate) fn persist_prepared_canvas_mutation(
         ));
     }
     validate_file_additions(
-        assets_root,
+        connection,
+        authority,
         &prepared
             .file_additions
             .iter()
@@ -2001,9 +1997,9 @@ fn apply_canvas_projection_delta(
         connection.execute(
             "INSERT INTO canvas_scene_file_refs (\
                document_id, file_id, owner_block_id, library_id, document_generation, \
-               projected_seq, mime_type, asset_uri, managed_file_name, asset_hash, \
+               projected_seq, mime_type, asset_uri, target_file_id, file_version, default_name, asset_hash, \
                byte_length, updated_at\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 authority.head.id,
                 file.file.id,
@@ -2013,7 +2009,9 @@ fn apply_canvas_projection_delta(
                 head_seq,
                 file.file.mime_type,
                 file.file.source,
-                file.file.managed_file_name,
+                file.file.target_file_id,
+                file.file.file_version,
+                file.file.default_name,
                 evidence.0,
                 evidence.1,
                 now,
@@ -2184,6 +2182,104 @@ fn persist_changed_scene(
     replace_canvas_projections(connection, &next_authority, scene, now, assets_root)
 }
 
+/// Recomputes every derived Canvas coordinate after the v151 asset slots have
+/// been rewritten to exact Library File versions. Migration keeps generation
+/// and head sequence stable; only the schema identity and canonical state hash
+/// change.
+pub(crate) fn rebuild_migrated_canvas_scene(
+    connection: &Connection,
+    document_id: &str,
+    assets_root: &Path,
+    now: &str,
+) -> Result<(), StoreError> {
+    let mut authority = super::read_document_authority(connection, document_id)?
+        .ok_or_else(|| corrupt("Migrated Canvas lost its Document authority"))?;
+    let app_state_json: String = connection.query_row(
+        "SELECT app_state_json FROM canvas_scenes WHERE document_id = ?1",
+        [document_id],
+        |row| row.get(0),
+    )?;
+    let element_rows = connection
+        .prepare(
+            "SELECT element_id, order_key, element_json FROM canvas_scene_elements \
+             WHERE document_id = ?1 ORDER BY order_key, element_id",
+        )?
+        .query_map([document_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut elements = Vec::with_capacity(element_rows.len());
+    for (id, order_key, encoded) in element_rows {
+        let value = serde_json::from_str::<Value>(&encoded)
+            .map_err(|_| corrupt("Migrated Canvas element JSON is invalid"))?;
+        elements.push(parse_stored_element(&value, &id, order_key)?);
+    }
+    let file_rows = connection
+        .prepare(
+            "SELECT file_id, file_json FROM canvas_scene_files \
+             WHERE document_id = ?1 ORDER BY file_id",
+        )?
+        .query_map([document_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut files = BTreeMap::new();
+    for (id, encoded) in file_rows {
+        let value = serde_json::from_str::<Value>(&encoded)
+            .map_err(|_| corrupt("Migrated Canvas File JSON is invalid"))?;
+        files.insert(id.clone(), parse_stored_file(&value, &id)?);
+    }
+    let app_state = serde_json::from_str::<Value>(&app_state_json)
+        .map_err(|_| corrupt("Migrated Canvas appState is invalid"))?;
+    let scene = materialize_loaded_scene(elements, &app_state, files)?;
+    let metadata = compute_canvas_scene_incremental_metadata(&scene)?;
+
+    connection.execute(
+        "UPDATE documents SET schema_version = ?1, state_hash = ?2, updated_at = ?3 \
+         WHERE id = ?4 AND sync_engine = 'canvas_scene'",
+        params![CANVAS_SCHEMA_VERSION, metadata.scene_hash, now, document_id],
+    )?;
+    connection.execute(
+        "UPDATE canvas_scenes SET schema_version = ?1, app_state_json = ?2, app_state_hash = ?3, \
+           scene_hash = ?4, element_count = ?5, tombstone_count = ?6, file_count = ?7, \
+           element_json_bytes = ?8, tombstone_json_bytes = ?9, file_json_bytes = ?10, \
+           scene_byte_length = ?11, updated_at = ?12 WHERE document_id = ?13",
+        params![
+            CANVAS_SCHEMA_VERSION,
+            metadata.app_state_json,
+            metadata.app_state_hash,
+            metadata.scene_hash,
+            metadata.counters.element_count,
+            metadata.counters.tombstone_count,
+            metadata.counters.file_count,
+            metadata.counters.element_json_bytes,
+            metadata.counters.tombstone_json_bytes,
+            metadata.counters.file_json_bytes,
+            metadata.counters.scene_byte_length,
+            now,
+            document_id,
+        ],
+    )?;
+    connection.execute(
+        "DELETE FROM canvas_scene_hash_buckets WHERE document_id = ?1",
+        [document_id],
+    )?;
+    for (bucket_index, bucket) in &metadata.hash_buckets {
+        connection.execute(
+            "INSERT INTO canvas_scene_hash_buckets(document_id, bucket_index, item_count, bucket_hash) \
+             VALUES (?1, ?2, ?3, ?4)",
+            params![document_id, i64::from(*bucket_index), bucket.item_count, bucket.bucket_hash],
+        )?;
+    }
+    authority.head.schema_version = CANVAS_SCHEMA_VERSION;
+    authority.head.state_hash = metadata.scene_hash;
+    replace_canvas_projections(connection, &authority, &scene, now, assets_root)
+}
+
 fn persist_file(
     connection: &Connection,
     document_id: &str,
@@ -2296,9 +2392,9 @@ pub(super) fn replace_canvas_projections(
         connection.execute(
             "INSERT INTO canvas_scene_file_refs (\
                document_id, file_id, owner_block_id, library_id, document_generation, \
-               projected_seq, mime_type, asset_uri, managed_file_name, asset_hash, \
+               projected_seq, mime_type, asset_uri, target_file_id, file_version, default_name, asset_hash, \
                byte_length, updated_at\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 authority.head.id,
                 file.id,
@@ -2308,7 +2404,9 @@ pub(super) fn replace_canvas_projections(
                 authority.head.head_seq,
                 file.mime_type,
                 file.source,
-                file.managed_file_name,
+                file.target_file_id,
+                file.file_version,
+                file.default_name,
                 evidence.0,
                 evidence.1,
                 now,
@@ -2337,75 +2435,18 @@ fn asset_evidence(
     connection: &Connection,
     document_id: &str,
     file: &CanvasFile,
-    assets_root: &Path,
+    _assets_root: &Path,
 ) -> Result<(String, i64), StoreError> {
-    let previous = connection
-        .query_row(
-            "SELECT asset_uri, asset_hash, byte_length FROM canvas_scene_file_refs \
-             WHERE document_id = ?1 AND file_id = ?2",
-            params![document_id, file.id],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
-                ))
-            },
-        )
-        .optional()?;
-    let path = assets_root.join(&file.managed_file_name);
-    let metadata =
-        fs::symlink_metadata(&path).map_err(|_| invalid("Canvas managed asset is missing"))?;
-    if !metadata.is_file()
-        || metadata.file_type().is_symlink()
-        || metadata.len() > MAX_CANVAS_ASSET_BYTES
-    {
-        return Err(invalid(
-            "Canvas managed asset is not a bounded regular file",
-        ));
-    }
-    let length = i64::try_from(metadata.len()).map_err(|_| internal("Canvas asset length"))?;
-    if let Some((source, hash, previous_length)) = previous
-        && source == file.source
-        && previous_length == length
-    {
-        return Ok((hash, length));
-    }
-    let bytes = fs::read(path).map_err(|_| invalid("Canvas managed asset could not be read"))?;
-    Ok((sha256(&bytes), length))
-}
-
-fn same_canvas_file_content(
-    connection: &Connection,
-    document_id: &str,
-    existing: &CanvasFile,
-    candidate: &CanvasFile,
-    assets_root: &Path,
-) -> Result<bool, StoreError> {
-    if existing.mime_type != candidate.mime_type {
-        return Ok(false);
-    }
-    let existing_evidence = asset_evidence(connection, document_id, existing, assets_root)?;
-    let candidate_evidence = asset_evidence(connection, document_id, candidate, assets_root)?;
-    Ok(existing_evidence == candidate_evidence)
+    super::canvas_files::content_evidence(connection, document_id, file)
 }
 
 fn validate_file_additions(
-    assets_root: &Path,
+    connection: &Connection,
+    authority: &DocumentAuthorityRow,
     files: &BTreeMap<String, CanvasFile>,
 ) -> Result<(), StoreError> {
     for file in files.values() {
-        let path = assets_root.join(&file.managed_file_name);
-        let metadata = fs::symlink_metadata(path)
-            .map_err(|_| invalid("Canvas file addition references a missing managed asset"))?;
-        if !metadata.is_file()
-            || metadata.file_type().is_symlink()
-            || metadata.len() > MAX_CANVAS_ASSET_BYTES
-        {
-            return Err(invalid(
-                "Canvas file addition must reference a bounded regular managed asset",
-            ));
-        }
+        super::canvas_files::content_evidence(connection, &authority.head.id, file)?;
     }
     Ok(())
 }

@@ -89,7 +89,6 @@ describe("Database View Block drop command", () => {
           recipeHash: "recipe:promotion",
           storeEpoch: "epoch-1",
         },
-        fileOwnershipMoves: [],
         transformationEvidence: [{ promotion: { kind: "no_match" } }],
       },
       localCommit: {

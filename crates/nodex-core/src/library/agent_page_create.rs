@@ -400,6 +400,9 @@ pub(super) fn execute_create_pages(
                     &agent_context,
                     &operation_id,
                     MutationEffects {
+                        page_file_entries: Vec::new(),
+                        file_revisions: BTreeMap::new(),
+                        file_mutation: Default::default(),
                         project_id: preflight.actor_project_id,
                         operation_kind: "agent_create_pages",
                         change_kind: "library.changed",
@@ -417,7 +420,6 @@ pub(super) fn execute_create_pages(
                         committed_revisions: execution.committed_revisions,
                         page_create: None,
                         page_copy: None,
-                        page_files: None,
                         canvas_mutation: None,
                         block_transfer: None,
                         block_transfer_undo: None,

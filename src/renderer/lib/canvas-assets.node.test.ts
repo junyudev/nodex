@@ -1,13 +1,68 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import {
   CanvasBinaryFileResolver,
   collectCanvasReferencedFileIds,
+  createCanvasFileBridge,
   materializeDurableCanvasFiles,
   resolveCanvasBinaryFiles,
 } from "./canvas-assets";
 import { CanvasSceneStagedFileCatalog } from "./canvas-scene-binding";
 
+const resources = vi.hoisted(() => ({ importFile: vi.fn(), readFile: vi.fn() }));
+vi.mock("./library-file-resources", async (original) => ({
+  ...(await original<typeof import("./library-file-resources")>()),
+  importLibraryFile: resources.importFile,
+  readAuthorizedFile: resources.readFile,
+}));
+
 describe("Canvas managed asset bridge", () => {
+  test("publishes a File and reads the exact authorized Canvas slot", async () => {
+    resources.importFile.mockResolvedValue({
+      file: { file_id: "file", head_version: 3, default_name: "Image.png", mime_type: "image/png" },
+      source: "nodex://files/file",
+    });
+    resources.readFile.mockResolvedValue({
+      bytes: new Uint8Array([98, 121, 116, 101, 115]),
+      mimeType: "image/png",
+      etag: "hash",
+    });
+    const authority = {
+      libraryId: "library",
+      storeEpoch: "epoch",
+      contentAccessContext: { kind: "project", projectId: "project" },
+    } as const;
+    const bridge = createCanvasFileBridge(authority, (file) => ({
+      kind: "canvas",
+      canvas_id: "canvas",
+      scene_file_id: file.id,
+    }));
+    await expect(
+      bridge.materializeImage?.(new File(["bytes"], "source.png", { type: "image/png" })),
+    ).resolves.toEqual({
+      source: "nodex://files/file",
+      fileVersion: 3,
+      defaultName: "Image.png",
+      mimeType: "image/png",
+    });
+    await expect(
+      bridge.readFileDataUrl?.({
+        id: "slot",
+        source: "nodex://files/file",
+        fileVersion: 3,
+        defaultName: "Image.png",
+        mimeType: "image/png",
+      }),
+    ).resolves.toBe("data:image/png;base64,Ynl0ZXM=");
+    expect(resources.readFile).toHaveBeenCalledWith(
+      {
+        ...authority,
+        readSource: { kind: "canvas", canvas_id: "canvas", scene_file_id: "slot" },
+        version: 3,
+      },
+      "nodex://files/file",
+    );
+  });
+
   test("keeps only active image files and uploads new payloads before return", async () => {
     const uploadOrder: string[] = [];
     const durable = await materializeDurableCanvasFiles({
@@ -28,18 +83,17 @@ describe("Canvas managed asset bridge", () => {
         materializeImage: async () => {
           uploadOrder.push("uploaded");
           return {
-            source: "nodex://assets/new.png",
-            fileName: "new.png",
+            source: "nodex://files/new.png",
+            fileVersion: 1,
+            defaultName: "image.png",
             mimeType: "image/png",
-            contentHash: "a".repeat(64),
-            byteLength: 1,
           };
         },
       },
     });
     expect(uploadOrder.join(",")).toBe("uploaded");
     expect(Object.keys(durable).join(",")).toBe("new");
-    expect(durable.new?.source).toBe("nodex://assets/new.png");
+    expect(durable.new?.source).toBe("nodex://files/new.png");
     expect([...collectCanvasReferencedFileIds([{ type: "image", fileId: "new" }])].join(",")).toBe(
       "new",
     );
@@ -66,11 +120,10 @@ describe("Canvas managed asset bridge", () => {
         materializeImage: async () => {
           materializationCount += 1;
           return {
-            source: "nodex://assets/shared.png",
-            fileName: "shared.png",
+            source: "nodex://files/shared.png",
+            fileVersion: 1,
+            defaultName: "image.png",
             mimeType: "image/png",
-            contentHash: "a".repeat(64),
-            byteLength: 1,
           };
         },
       },
@@ -91,12 +144,14 @@ describe("Canvas managed asset bridge", () => {
         image: {
           id: "image",
           mimeType: "image/png",
-          source: "nodex://assets/image.png",
+          source: "nodex://files/image.png",
+          fileVersion: 1,
+          defaultName: "image.png",
           created: 5,
         },
       },
       {
-        readAssetDataUrl: async () => "data:image/png;base64,Ynl0ZXM=",
+        readFileDataUrl: async () => "data:image/png;base64,Ynl0ZXM=",
         now: () => 20,
       },
     );
@@ -108,7 +163,7 @@ describe("Canvas managed asset bridge", () => {
   test("incrementally resolves unchanged files and prunes unreferenced cache entries", async () => {
     const fetched: string[] = [];
     const resolver = new CanvasBinaryFileResolver({
-      readAssetDataUrl: async (source) => {
+      readFileDataUrl: async ({ source }) => {
         fetched.push(source);
         return `data:${source}`;
       },
@@ -118,13 +173,17 @@ describe("Canvas managed asset bridge", () => {
       first: {
         id: "first",
         mimeType: "image/png",
-        source: "nodex://assets/first.png",
+        source: "nodex://files/first.png",
+        fileVersion: 1,
+        defaultName: "image.png",
         created: 1,
       },
       second: {
         id: "second",
         mimeType: "image/png",
-        source: "nodex://assets/second.png",
+        source: "nodex://files/second.png",
+        fileVersion: 1,
+        defaultName: "image.png",
         created: 2,
       },
     });
@@ -135,7 +194,9 @@ describe("Canvas managed asset bridge", () => {
       first: {
         id: "first",
         mimeType: "image/png",
-        source: "nodex://assets/first.png",
+        source: "nodex://files/first.png",
+        fileVersion: 1,
+        defaultName: "image.png",
         created: 9,
       },
     });
@@ -146,12 +207,16 @@ describe("Canvas managed asset bridge", () => {
       first: {
         id: "first",
         mimeType: "image/webp",
-        source: "nodex://assets/first-v2.webp",
+        source: "nodex://files/first-v2.webp",
+        fileVersion: 1,
+        defaultName: "image.png",
       },
       second: {
         id: "second",
         mimeType: "image/png",
-        source: "nodex://assets/second.png",
+        source: "nodex://files/second.png",
+        fileVersion: 1,
+        defaultName: "image.png",
       },
     });
     expect(fetched.length).toBe(4);
@@ -160,7 +225,9 @@ describe("Canvas managed asset bridge", () => {
       first: {
         id: "first",
         mimeType: "image/webp",
-        source: "nodex://assets/first-v2.webp",
+        source: "nodex://files/first-v2.webp",
+        fileVersion: 1,
+        defaultName: "image.png",
       },
     });
     expect(fetched.length).toBe(5);
@@ -171,7 +238,7 @@ describe("Canvas managed asset bridge", () => {
     let fetchCount = 0;
     let fail = true;
     const resolver = new CanvasBinaryFileResolver({
-      readAssetDataUrl: async () => {
+      readFileDataUrl: async () => {
         fetchCount += 1;
         if (fail) throw new Error("unavailable");
         return "data:image/png;base64,b2s=";
@@ -181,7 +248,9 @@ describe("Canvas managed asset bridge", () => {
       image: {
         id: "image",
         mimeType: "image/png",
-        source: "nodex://assets/image.png",
+        source: "nodex://files/image.png",
+        fileVersion: 1,
+        defaultName: "image.png",
       },
     } as const;
     const first = resolver.resolve(files);
@@ -214,5 +283,25 @@ describe("Canvas managed asset bridge", () => {
       destroyedError = error;
     }
     expect(destroyedError instanceof Error).toBe(true);
+  });
+  test("rejects an in-flight read after the resolver is cleared", async () => {
+    let finish: (value: string) => void = () => undefined;
+    const pending = new Promise<string>((resolve) => {
+      finish = resolve;
+    });
+    const resolver = new CanvasBinaryFileResolver({ readFileDataUrl: () => pending });
+    const reading = resolver.resolve({
+      image: {
+        id: "image",
+        mimeType: "image/png",
+        source: "nodex://files/file",
+        fileVersion: 1,
+        defaultName: "Image.png",
+      },
+    });
+    resolver.clear();
+    finish("data:image/png;base64,Ynl0ZXM=");
+    await expect(reading).rejects.toThrow("invalidated");
+    resolver.destroy();
   });
 });

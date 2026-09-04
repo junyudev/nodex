@@ -5,7 +5,7 @@ import { createSecureRuntimeId } from "./secure-runtime-id";
 import { contentAccessContextKey, type ContentAccessContext } from "./content-access-context";
 import type { DatabaseId } from "./database-identities";
 import type { WorkbenchImageEditorSurfaceConfig } from "./workbench-image-editor";
-import type { LibraryResourceTarget } from "./library-module";
+import type { LibraryPlacedResourceTarget } from "./library-module";
 import type { WorkbenchReviewConfig } from "./workbench-review";
 import {
   activateWorkbenchSessionViewTab,
@@ -65,7 +65,7 @@ export type WorkbenchSceneOwnerV4 =
   | Exclude<WorkbenchSceneOwner, { readonly kind: "pages" }>
   | {
       readonly kind: "resource";
-      readonly root: LibraryResourceTarget;
+      readonly root: LibraryPlacedResourceTarget;
     };
 
 export type WorkbenchSceneKey = string;

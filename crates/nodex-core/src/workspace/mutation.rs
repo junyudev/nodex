@@ -690,10 +690,14 @@ pub(super) fn apply(
                     &request_hash,
                     thread_id,
                 ),
+                ProjectWorkspaceIntent::RetainThreadAssets { thread_id, prepared_blob_receipt_ids } => super::thread_assets::retain(
+                    transaction, &context, &store_epoch, &request.operation_id, &request_hash, thread_id, prepared_blob_receipt_ids,
+                ),
                 ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
                     thread_id,
                     expected_revision,
                     entries,
+                    prepared_blob_receipt_ids,
                 } => queued_follow_up::commit_ledger(
                     transaction,
                     &library_id,
@@ -704,6 +708,7 @@ pub(super) fn apply(
                     thread_id,
                     *expected_revision,
                     entries,
+                    prepared_blob_receipt_ids,
                     &assets_root,
                 ),
                 ProjectWorkspaceIntent::ObserveAppServerThreadWindow {

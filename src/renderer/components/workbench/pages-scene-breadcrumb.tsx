@@ -10,7 +10,7 @@ import { AppShellHeaderContentRegistrar } from "@/lib/workbench-ui-scopes";
 import { listWorkbenchPanelLeaves } from "../../../shared/workbench-panel-layout";
 import type {
   LibraryNavigationNode,
-  LibraryResourceTarget,
+  LibraryPlacedResourceTarget,
   LibraryRouteTarget,
 } from "../../../shared/library-module";
 import type {
@@ -77,7 +77,7 @@ export function libraryTargetForPagesSurface(
 
 export function usePagesSceneNavigation(scene: WorkbenchSceneSnapshot | null): {
   readonly activeSurface: WorkbenchSurfaceDescriptor | null;
-  readonly activeRoot: LibraryResourceTarget | null;
+  readonly activeRoot: LibraryPlacedResourceTarget | null;
   readonly activeRootNode: LibraryNavigationNode | null;
   readonly activeTargetNode: LibraryNavigationNode | null;
 } {

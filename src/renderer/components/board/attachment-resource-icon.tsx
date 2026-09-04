@@ -7,7 +7,7 @@ interface AttachmentResourceIconProps {
   readonly className?: string;
 }
 
-/** Keeps attachment identity on the same path/MIME projection as every Page File surface. */
+/** Keeps attachment identity on the same path/MIME projection as every File surface. */
 export function AttachmentResourceIcon({
   kind,
   name,

@@ -13,7 +13,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, type MotionValue } from "motion/react";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { codexSidebarProjectThreadContainerId } from "../../../shared/codex-sidebar-thread-move";
-import type { LibraryResourceTarget } from "../../../shared/library-module";
+import type { LibraryPlacedResourceTarget } from "../../../shared/library-module";
 import type { LibraryResourceTarget as ActionableLibraryResourceTarget } from "../library/library-resource-actions";
 import {
   CodexProjectRow,
@@ -825,13 +825,13 @@ function SidebarThreadOrganizerSections({
   ) => Promise<void>;
   onReorderPinnedThreads: (orderedThreadIds: readonly string[]) => Promise<unknown>;
   sidebarArchivePendingKeys: ReadonlySet<string>;
-  onOpenResourceTarget: (target: LibraryResourceTarget) => void;
+  onOpenResourceTarget: (target: LibraryPlacedResourceTarget) => void;
   onOpenResourceTargetInProject?: (
     projectId: string,
     target: ActionableLibraryResourceTarget,
     title: string,
   ) => void | Promise<void>;
-  activeResourceTarget: LibraryResourceTarget | null;
+  activeResourceTarget: LibraryPlacedResourceTarget | null;
   hasMoreProjects: boolean;
   loadingMoreProjects: boolean;
   onLoadMoreProjects?: () => Promise<void>;
@@ -1881,13 +1881,13 @@ export interface ProjectSessionSidebarProps {
   onOpenCommandPalette: () => void;
   onShowUnavailableProduct: (label: string) => void;
   onOpenAutomations: () => void;
-  onOpenResourceTarget: (target: LibraryResourceTarget) => void;
+  onOpenResourceTarget: (target: LibraryPlacedResourceTarget) => void;
   onOpenResourceTargetInProject?: (
     projectId: string,
     target: ActionableLibraryResourceTarget,
     title: string,
   ) => void | Promise<void>;
-  activeResourceTarget: LibraryResourceTarget | null;
+  activeResourceTarget: LibraryPlacedResourceTarget | null;
   automationsActive: boolean;
   projectPickerOpenTick?: number;
   onCreateProject: (input: ProjectCreateInput) => Promise<Project | null>;

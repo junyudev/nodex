@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use nodex_core_contracts::database::DatabaseGroupScope;
@@ -163,6 +164,9 @@ fn create_page_in_data_source(
                 context,
                 operation_id,
                 MutationEffects {
+                    page_file_entries: Vec::new(),
+                    file_revisions: BTreeMap::new(),
+                    file_mutation: Default::default(),
                     project_id: requesting_project_id.to_owned(),
                     operation_kind: "create_page",
                     change_kind: "library.changed",
@@ -179,7 +183,6 @@ fn create_page_in_data_source(
                     committed_revisions: created.committed_revisions,
                     page_create: Some(created.page_create),
                     page_copy: None,
-                    page_files: None,
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,

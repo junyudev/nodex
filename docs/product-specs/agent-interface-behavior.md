@@ -87,18 +87,22 @@ ownership, or content validation.
 The native CLI selects one Profile and, where required, one Project before
 calling Core. It provides bounded context/tree/history reads, canonical Page
 content, saved View queries, immutable snapshot search, explicit local drafts,
-semantic Page/Block mutations, lazy Page File manifests and exact byte
+semantic Page/Block mutations, lazy Page File relation inventories, independent
+Library File catalogs and exact byte
 operations, backup/doctor operations, deep links, and optional Core prewarming.
 
-Page Files are generic Agent outputs, not Artifacts or a Plan-specific channel.
+Library Files are generic Agent outputs, not Artifacts or a Plan-specific channel.
 Agents create Nodex-native plans and notes as ordinary child Pages; exact-format
-images, scripts, PDFs, datasets, and references are direct Files of the nearest
-semantic owner Page. File writes bind the exact Project, owner Page, Store
-epoch, operation identity, manifest revision, and optional source Turn. Agents
+images, scripts, PDFs, datasets, and references are independent Library Files.
+An Agent adds a Page path only when the output should appear in that Page's
+organized File list. File writes bind the exact Project, File identity and
+revision, Store epoch, operation identity, and optional source Turn; Page entry
+writes separately bind the Page manifest revision. Agents
 never receive physical blob paths or read-by-hash access, and executable Files
 must be materialized into the ordinary approved workspace before execution.
-The Page draft projection eagerly exposes only direct File metadata; bytes are
-read explicitly and remain bounded. These capabilities do not alter Plan Mode.
+The Page draft projection eagerly exposes only that Page's authorized relation
+inventory; bytes are read explicitly and remain bounded. These capabilities do
+not alter Plan Mode.
 
 `profile clone` is the global offline provisioning operation for local
 production-shape testing. It accepts a source Profile home only to select a

@@ -67,7 +67,7 @@ function makeRuntime(
         ownerType: "page",
         ownerLifecycle: "active",
         schemaKey: "nodex.page",
-        schemaVersion: 1,
+        schemaVersion: 2,
         storeEpoch,
         generation,
         headSeq: flushed ? headSeq + 1 : headSeq,

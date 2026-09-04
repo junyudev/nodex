@@ -483,6 +483,7 @@ describe("UDS Core event replay boundaries", () => {
           event: {
             kind: "library_changed",
             database_ids: [],
+            file_revisions: {},
             page_file_manifest_invalidations: {},
             page_file_body_usage_revisions: {},
             page_file_content_invalidations: {},
@@ -639,6 +640,7 @@ describe("UDS Core event replay boundaries", () => {
           event: {
             kind: "library_changed",
             database_ids: [],
+            file_revisions: {},
             page_file_manifest_invalidations: {},
             page_file_body_usage_revisions: {},
             page_file_content_invalidations: {},

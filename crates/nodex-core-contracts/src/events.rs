@@ -281,6 +281,7 @@ pub enum ResourceKey {
     DataSource { data_source_id: String },
     View { view_id: String },
     Canvas { canvas_id: String },
+    File { file_id: String },
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize, ToSchema)]
@@ -405,6 +406,7 @@ pub enum RevokedResourceKind {
     DataSource,
     View,
     Canvas,
+    File,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

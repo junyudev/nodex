@@ -1,10 +1,18 @@
 mod block_document;
 mod canvas;
+mod canvas_files;
 mod canvas_scene;
+pub(crate) use canvas_files::{
+    content_evidence as canvas_file_content_evidence,
+    resolve_current_target as resolve_canvas_file_target,
+    resolve_revision_target as resolve_canvas_revision_file_target,
+};
 mod compaction;
 pub(crate) mod event_log;
+mod file_snapshots;
 mod genesis;
 mod history;
+pub(crate) use history::prepare_file_content_revisions;
 pub(crate) mod integrity;
 mod maintenance;
 mod materialization;
@@ -16,6 +24,7 @@ mod persistence;
 mod primary_canvas;
 mod realtime;
 mod recovery;
+mod recovery_files;
 mod retention;
 mod runtime;
 mod schema_compatibility;
@@ -49,6 +58,7 @@ pub(crate) use module::require_owned_document_read_access;
 pub use module::{
     CanvasSceneSyncSnapshot, DocumentCacheMetrics, OwnedDocumentApplyOutcome, OwnedDocumentModule,
 };
+pub(crate) use module::{resolve_recovery_canvas_file_target, resolve_recovery_file_target};
 pub use operations::{
     DocumentBlockOperation, DocumentBlockUpdatePatch, DocumentOperationError,
     DocumentOperationErrorCode, ExactNfmPatch, MAX_DOCUMENT_OPERATION_BATCH_SIZE,
@@ -77,15 +87,23 @@ pub use yrs_engine::{
 
 pub(crate) use canvas::{
     clone_canvas_genesis, clone_canvas_scene_genesis, ensure_canvas_scene, load_canvas_scene,
+    rebuild_migrated_canvas_scene,
 };
 pub(crate) use canvas_scene::{
     CANVAS_OWNER_TYPE, CANVAS_SCHEMA_KEY, CANVAS_SCHEMA_VERSION, CanvasScene,
+    canonical_json as canonical_canvas_json,
+    parse_canvas_scene as parse_migrated_canvas_checkpoint,
 };
+pub(crate) use file_snapshots::resolve_target as resolve_document_file_target;
 pub(crate) use genesis::{
     PreparedYjsGenesis, prepare_page_yjs_genesis, prepare_page_yjs_genesis_with_content,
     prepare_yjs_clone_genesis,
 };
-pub(crate) use history::{NewDocumentCheckpoint, insert_document_checkpoint};
+pub(crate) use history::{
+    NewDocumentCheckpoint, backfill_migrated_document_history,
+    canonical_json_bytes as canonical_document_checkpoint, insert_document_checkpoint,
+    insert_migrated_file_baselines,
+};
 #[cfg(test)]
 pub(crate) use persistence::persist_yjs_genesis;
 pub(crate) use persistence::{

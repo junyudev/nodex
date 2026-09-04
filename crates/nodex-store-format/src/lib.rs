@@ -98,6 +98,10 @@ pub const PUBLISHED_STORE_FORMATS: &[PublishedStoreFormat] = &[
         151,
         "d32046ad5c4925f75d322ff2c3678202876dd4ee68d9618240aeab64695660db",
     ),
+    format(
+        152,
+        "3b73eede1826e640113d7e25e4ec2eee0fa0a616fb3c5451c3f6a5bdcf356289",
+    ),
 ];
 
 pub const CURRENT_STORE_FORMAT: PublishedStoreFormat =

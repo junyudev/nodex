@@ -166,7 +166,7 @@ describe("settings identity icons", () => {
 describe("shared action icon geometry", () => {
   test.each([
     ["edit", EditIcon, "0 0 21 21", "M11.7313 4.20472", "fill"],
-    ["replace", ReplaceIcon, "0 0 14 14", "M10.5 4.667", "stroke"],
+    ["replace", ReplaceIcon, "0 0 24 24", "m16 3", "stroke"],
     ["download", DownloadIcon, "0 0 20 20", "M2.66831 12.6664", "fill"],
     ["delete", DeleteIcon, "0 0 20 20", "M10.6299 1.33496", "fill"],
   ])("renders the app-owned %s glyph", (_label, Icon, viewBox, pathPrefix, paintAttribute) => {

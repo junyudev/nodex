@@ -2,307 +2,222 @@
 
 Status: Active
 
-Last Updated: 2026-08-29
+Last Updated: 2026-09-05
 
-Page Files are exact-format resources owned directly by a Page. They are the
-durable home for images, PDFs, scripts, datasets, reference material, and other
-content whose bytes and filename matter. Nodex does not introduce a separate
-Artifact type: Agent-created outputs and user uploads use the same File model.
+Page Files is the Page-local view of Library Files related to one Page. It lets a
+person organize a File under a portable path, see Files used in the Page body,
+and change either relationship explicitly. The Page does not own the File, its
+content versions, global name, lifecycle, or Project grants.
 
-## Product model
+The Library-wide identity, content, permission, history, and deletion rules live
+in [Library Files](library-files-behavior.md). This specification owns Page paths,
+body occurrences, Page inventory, and the Page Stage surface.
 
-Every Page has Files, whether or not the Page belongs to a Data Source. Files
-are intrinsic Page content, not a Data Source Property. A File has:
+## Relationship model
 
-- stable identity and exactly one current owner Page;
-- a portable Page-relative logical path;
-- exact MIME, byte length, immutable current bytes, and retained versions;
-- creation and update provenance, including an Agent Turn when applicable.
+A Page can relate to a File in two independent ways:
 
-Renaming, replacing content, or moving ownership preserves File identity.
-Deleting a body placement does not delete the File. Copying a Page creates
-fresh File identities for the copy while reusing identical immutable bytes.
-New immutable bytes are published at
-`<profile-home>/assets/<sha256>.blob`. This physical content-addressed path is
-neither File identity nor logical path and does not change when another File
-version reuses the same bytes.
+- A Page File entry assigns one optional logical path to that File in this Page.
+- An image or attachment occurrence in the canonical Page Document references
+  `nodex://files/<file-id>` directly.
 
-Logical folder rows are derived from slash-separated path prefixes. They have no
-identity, metadata, permissions, empty state, or lifecycle. A child Page owns
-its own direct Files; the parent Files surface never flattens descendants.
+A Page/File pair has at most one explicit entry, while the body may contain any
+number of occurrences. An entry does not have to appear in the body, and a body
+occurrence does not automatically create an entry. A child Page keeps its own
+relationships; its parent never flattens them into one namespace.
+
+Page Files is the deduplicated union of explicit entries and current body
+occurrences. Each inventory row contains stable File identity, its authorized
+current presentation, an optional Page path, and the body occurrence count. A
+File present in both relationships appears once. Removing one relationship does
+not remove the other or delete the Library File.
+
+Page paths are slash-separated portable relative paths. Their prefixes render as
+logical folders but have no identity, metadata, permission, history, or empty
+state. The same File can have different paths in different Pages. Renaming a path
+changes only that Page entry; renaming the File default name changes no Page
+path.
 
 ## Page Stage
 
-Every Page Stage can expose one compact `Files` row through its shared
-Properties disclosure. A Page with no live Files, or with every live File
-already represented in its body, starts with Files behind `N more properties`.
-Expanding that disclosure shows the truthful `Empty` or `N in page` value and
-retains the add and complete-inventory entry points. A Page with any unplaced
-File shows Files directly. The row then avoids repeating Files already visible
-as placements in the Page body: it shows up to two unplaced File chips and a
-compact summary when more inventory exists. Mixed overflow uses one combined
-`+N` summary whose tooltip distinguishes additional unplaced Files from Files
-shown in the body. Each File chip uses the same path/MIME-derived format icon as
-other exact-format File surfaces and opens that File directly. The summary and
-add controls open the Page Files surface. Opening the Page or rendering the
-closed row never loads File bytes. The Page Files list, deleted rows, and
-preview header use the same File icon projection.
+Every Page Stage can expose one compact `Files` Property row. Opening the Page or
+rendering the closed row reads metadata only and never loads File bytes. The row
+summarizes Files related to the current Page and opens the complete Page Files
+surface.
 
-The open Files surface remains the complete direct-ownership inventory. Files
-not placed in their owner Page appear first. Direct Files placed in that Page
-live in a default-collapsed `In page · N` disclosure; opening from an `N in
-page` summary expands it immediately. Foreign Files placed in the body remain
-visible at their placement and do not enter the containing Page's Files
-inventory. Path filtering searches the complete inventory through bounded Core
-pages and reveals matching placed Files without creating a persistent view mode.
-Placement is presentation, not a File type or visibility state.
+A File with an explicit path and no body occurrence is an unplaced entry. These
+entries are the most useful compact-row preview because they are otherwise not
+visible in the editor. Files already visible in the body are summarized without
+repeating every attachment or image. When the quiet Properties disclosure owns
+the row, body-only changes do not make the surrounding Property layout jump
+while the Page remains mounted.
 
-The Files surface supports:
+The open surface provides a bounded, searchable inventory. It distinguishes the
+optional Page path from body usage and exposes actions appropriate to each
+relationship:
 
-- adding one or more regular files;
-- dropping files, directories, or a mixed selection from the operating system
-  anywhere on the open surface;
-- bounded recursive directory import, preserving logical paths;
-- editing an existing exact-format text File;
-- filtering by logical path;
-- previewing bounded text and images;
-- renaming paths, replacing bytes, downloading, deleting, and restoring;
-- viewing deleted entries without treating them as part of the live namespace.
+- import a new Library File and add a Page entry in one operation;
+- add an already readable Library File under a path;
+- set or rename an entry path;
+- remove an entry while leaving body occurrences and the File intact;
+- replace one entry with a newly imported File while leaving body occurrences of
+  the previous File intact;
+- preview or save the authorized current File;
+- open Library File details for global rename, shared content update, versions,
+  usage, grants, Trash, restore, or permanent deletion.
 
-Each File is at most 64 MiB. One desktop import accepts at most 100 regular
-files and 256 MiB total. Symlinks and special files are rejected. Text preview
-and editing are bounded to 2 MiB; larger text-like Files remain downloadable.
-Unsupported formats receive a truthful no-preview state.
+An entry replacement changes only the selected Page/File relation. Updating the
+shared File is a separate Library action with explicit wording because all
+head-following Page body occurrences and entries will see the new content.
 
-The empty state presents a persistent file-drop affordance. While a supported
-system drag is over the Files surface, the surface presents one stable,
-unmistakable drop indicator even as the pointer crosses nested controls. A
-dropped batch uses the same byte, count, path-allocation, and atomic manifest
-mutation rules as the file picker. Dropped directories expand automatically and
-retain their root name and relative paths. `Add folder` remains an explicit
-picker entry, not a recovery path for unsupported drag behavior. A symlink,
-special file, or violated batch bound rejects the whole selection before the
-manifest changes.
+## Import and path conflicts
 
-Core owns upload path allocation. When an added File collides under the portable
-path key, Core appends the first available ` (N)` suffix before the extension in
-the same atomic mutation. The native CLI's exact-path `put` continues to replace
-the live File already at that path instead of allocating a sibling. CLI `put`
-is one semantic Core operation: its prepared bytes occupy a stable slot under
-the operation identity, so an exact idempotent retry returns the original
-receipt without reinterpreting the now-current manifest.
+Desktop import accepts regular files only. One File is bounded to 64 MiB; one
+selection is bounded to 100 Files and 256 MiB total. Directory import is bounded,
+preserves relative paths, and rejects symlinks and special files. Text preview is
+bounded separately to 2 MiB. Unsupported formats remain downloadable and show a
+truthful no-preview state.
 
-All metadata mutations compare the Page's current Files manifest revision. A
-stale operation makes no partial changes and asks the caller to reload. A batch
-validates its final namespace, so path swaps are legal while Unicode/case
-collisions, traversal, reserved names, excessive depth, and excessive length
-are rejected.
+Import first publishes immutable bytes under an operation-bound receipt. The Page
+entry command consumes its selected receipts, creates independent Library Files,
+grants the creating Project direct read/write access, and creates all entries in
+one transaction. If any path or authority check fails, it commits none of those
+Files, grants, or entries. Published but unconsumed bytes remain unreachable and
+are later collectible.
 
-The closed row and an open Files surface refresh only when Core announces a new
-manifest revision or owner-local body-usage revision for that exact Page. One
-application-scoped inventory listener invalidates matching retained queries
-even when their Page tabs are currently unmounted, so a later remount cannot
-present a pre-move Files inventory as fresh. Manifest and body-usage revisions
-are independent: File mutations advance only the manifest, while an owner-local
-placement-count change advances only body usage.
+Core owns path normalization and allocation. Paths reject absolute forms,
+traversal, empty segments, reserved Windows names, controls, Unicode/case
+collisions, and excessive component, depth, or total length. A multi-entry batch
+validates its final namespace, so exchanging two existing paths does not require
+a temporary name. A normal import may allocate the first available ` (N)` suffix;
+an exact-path command or explicit replace-entry policy either replaces the
+relation or rejects the collision as requested.
 
-Placement reads use a separate exact-File coherence contract. Every File
-content or presentation mutation identifies the affected File IDs, and every
-Page Document commit reports the File IDs added to or removed from its canonical
-reference set. Changing placement count without changing set membership does
-not invalidate bytes. Ordinary text, Property, focus, selection, another File,
-or owner-local Files-row usage changes do not reload the current File.
+Every entry mutation compares the Page manifest revision. A stale command makes
+no partial change and asks the caller to review the new inventory. One committed
+batch advances that Page manifest once. The body-use revision advances only when
+the canonical set or count of body File occurrences changes; it is independent
+from the entry manifest and each File revision.
 
-Reference additions and removals have deliberately different cache semantics.
-Adding a canonical placement clears only that File's negative read result and
-revalidates it. Removing the last placement from a containing Page immediately
-releases that Page/File metadata, bytes, and object URL before revalidation;
-stale-while-revalidate never keeps presentation visible after placement read
-authority has ended. A bounded reset applies the same fail-closed revocation to
-the complete containing-Page cache scope.
+## Body occurrences
 
-The renderer shares authorized File reads under the complete identity
-`(Store epoch, access context, containing Page, File)`. That cache deduplicates
-in-flight metadata and byte reads, preserves negative authorization results
-until an exact reference or authority change, bounds retained entries, and owns
-the lifetime of image object URLs. Replace uses stale-while-revalidate: the last
-authorized preview remains visible while the new version loads, then the target
-File's placements swap atomically and the retired object URL is released. Exact File
-invalidation notifies only placements of that identity; it never remounts every
-image or attachment in the Page. A Store-epoch or authorization-context change
-revokes the matching cache scope rather than reusing data under a new authority.
+Images and attachments store stable File identity rather than a Page path or
+Blob hash. Upload, paste, and oversized-text materialization create a Library
+File, then insert its File URI in the body. They do not reserve a Page path. If
+File creation succeeds but editor insertion later fails, the independent File
+remains visible in Library Files and can be reused or cleaned up.
 
-Background inventory refresh retains the last rendered manifest instead of
-replacing it with an empty or loading state. Automatic
-Property visibility is stable for the mounted Page session: a new unplaced File
-may promote Files from the disclosure, while a body-placement-only change never
-reorders the Properties section. Once promoted, Files stays visible until the
-Page surface remounts. A quiet row shown only because the shared disclosure is
-open hides again when the user closes that disclosure.
+The containing Page authorizes the current presentation metadata and current
+bytes only while its canonical entry or body projection contains the File. This
+access does not expose arbitrary File versions, global usages, other Page paths,
+or File mutation. Core rejects missing, retired, cross-Library, trashed, or
+unauthorized File references before committing a Document change.
 
-## Placements
+Body labels may carry a local explicit name or caption. When no local value is
+present, they display the File presentation name. Historical and recovery
+surfaces use the frozen name from their exact File binding rather than the
+current global default name.
 
-An image or attachment in a Page body may reference any live File in the same
-Library using:
+Removing an image or attachment changes only the Document occurrence. Removing
+the last occurrence makes a body-only File disappear from Page Files unless an
+explicit entry remains. The Library File stays live even with zero Page usage.
+Trashing a File is refused while any current Page entry, body occurrence, Canvas
+slot, or recoverable current relation still uses it.
 
-```text
-nodex://files/<file-id>
-```
+## Move, copy, paste, and Undo
 
-The URI stores stable identity, not a path or blob hash. Presentation resolves
-the current logical basename and bytes through the containing Page's canonical
-placement, so rename and replace do not rewrite the body. The File keeps its
-single owner Page. A placement does not grant access to the owner Page, direct
-Files manifest, version history, rename, replace, delete, or restore authority.
-A Page Document cannot persist a reference to a deleted, missing, cross-Library,
-or otherwise unauthorized File.
+Ordinary Block move, copy, cut, paste, drag, Page promotion, and whole-Page copy
+preserve File IDs. They never transfer File ownership, append a File content
+version, rename a File, or allocate a path as a side effect.
 
-Image placements also persist positive intrinsic width and height as Document
-layout metadata when those dimensions are known. Upload and paste derive the
-geometry before the new placement is committed; imported and legacy images
-self-heal after their first successful decode. Loading, unavailable, failed,
-and loaded presentations share that reserved aspect-ratio frame, while the
-File's bytes and identity remain owned by the File authority. A replacement
-that changes intrinsic geometry refreshes the placement after decode without
-rewriting its stable File URI.
+Moving a Block occurrence between Pages removes and adds body relationships as
+part of the two Document updates. Existing Page entries stay where they are.
+Copying a Block adds another occurrence of the same File. Whole-Page copy also
+copies the source Page's explicit entries and paths while keeping the same File
+IDs. An explicit `Create independent copy` action is the only general operation
+that forks File identity.
 
-The body keeps ownership disclosure quiet and contextual. A File owned by the
-containing Page shows no redundant source label. For a foreign placement, the
-attachment popover and image File-details surface show `From <Page title>` with
-an open action only when the current access context can read the owner Page. If
-the owner Page is unavailable or not readable, they show `From another Page`
-without a raw Page ID or navigation action. The body itself receives no owner
-badge, and the foreign File never appears in the containing Page's Files
-inventory.
+Explicit entry move or copy is a relationship command. Move compares source and
+target manifest revisions, removes the source entry, and adds the target entry in
+one transaction. Copy leaves the source entry. A target collision rejects the
+whole command; it never mutates the shared File or chooses an unreviewed path.
 
-Removing a placement leaves the File intact. Deleting a File that still has
-placements is refused; the user removes those placements explicitly before
-deleting it. This keeps placement editing and File ownership understandable
-without a hidden cascade.
+Structural Undo restores the relationships changed by the original action. A
+shared File update elsewhere does not invalidate Undo for a Block move because
+that Undo does not modify the File head. Undo for a local occurrence replacement
+restores the original File ID and follows its current head. Exact historical
+restoration uses the separate snapshot rules below.
 
-Placement usage is derived by Core from canonical
-`block_asset_refs.page_file_id` rows. Each direct File summary reports either
-`not_in_body` or its positive placement count in the owner Page body; foreign
-placements do not make the owner inventory appear embedded locally. Nodex does
-not persist an embedded, hidden, or Artifact classification on the File itself.
+## History and recovery
 
-Block move and copy preserve placed File IDs both within and across Pages. A
-typed Core structural transfer carries the placement with the subtree and never
-creates a hidden File clone. Copy, duplicate, ordinary paste, deletion,
-same-Page movement, and moving a whole Page shell do not change File ownership.
+Every current Page history checkpoint freezes the exact FileVersion and default
+name for each body File. The snapshot identity includes these bindings, so a
+shared File update can create meaningful history even when the Document head did
+not change. Preview reads only the selected revision's exact targets.
 
-For an identity-preserving semantic move, ownership follows the placement only
-when the move is exclusive. Core derives that consequence after persisting the
-complete post-move placement projection: the File's current owner must be the
-source host Page, the moved forest must contain one or more placements of the
-File, and every live placement of that File must now be in the same target host
-Page. If the source, a third Page, or any other Page still has a placement, or
-the moved placement was already foreign to its source, ownership remains
-unchanged and the body move still succeeds.
+Restoring Page title/body is a new forward transaction. An unchanged live File
+may be reused; a changed or trashed target is forked once and restored body
+occurrences are remapped to that new identity. The operation never rewinds a
+shared File used elsewhere. Title/body history does not restore independent Page
+entries, so paths added after the checkpoint remain untouched.
 
-An exclusive ownership move preserves File ID, current bytes, Blob hash,
-creation provenance, body URI, and complete version history. It appends one
-immutable `rehome` version and advances both owner manifests in the same Core
-transaction as the source and target Documents, projections, receipt, and
-LocalCommit. The logical path is preserved when possible; a collision in the
-target namespace receives the same deterministic ` (N)` suffix used by upload.
-Only the initiating surface reports a collision-driven path change, using one
-bounded success message; ownership changes without a rename are silent.
+A whole-Page structural snapshot includes both body bindings and explicit Page
+entries. Its restore or copy applies one mapping to both sets, preserving their
+agreement. Legacy snapshots without complete File evidence remain explicitly
+unresolved and cannot fall back to a current head.
 
-Copy and Cut of complete Block roots use the Structural Clipboard, including
-ordinary image, attachment, and parent subtrees. The first valid paste of a cut
-capability is an identity-preserving move and follows the same rule whether it
-inserts at a caret or replaces selected content. Later pastes and every Copy
-paste are copies and do not rehome the original File. Move Undo and Redo are
-fresh semantic moves evaluated against their new canonical post-state;
-replacement Undo and Redo also restore or reapply the replaced target closure in
-the same transaction. Promotion Undo first proves that the generated Page's
-File heads, namespace, placements, and target state still match its guarded
-recipe; one atomic transaction reverses every required ownership move, restores
-placements, and removes the generated Page. A conflict changes nothing and
-keeps the history entry available.
+## Authorization and cache coherence
 
-Copying a Page closure creates new IDs for every copied Page's direct live
-Files, while placements of Files owned outside that closure keep their existing
-identities.
+Page read access permits the Page inventory and current File presentations
+visible through that Page. Page write plus a current proof that the source File
+is readable permits adding an entry or body occurrence. A File ID, hash, URI,
+clipboard payload, or creation provenance is not such proof. Cross-Library
+references are rejected; an authorized import creates a new destination File.
 
-Legacy `nodex://assets/*` references remain compatibility locators for content
-created by non-Page surfaces. New Page uploads, pasted materialized resources,
-and Page images use Page Files. Canvas, queued payload, Composer, and other
-non-Page asset authorities remain separate.
+Renderer File reads are keyed by Store epoch, access context, read source, File
+identity, and optional exact version. Entry and body-reference changes refresh or
+revoke only affected Files. Removing the last authorized relationship releases
+metadata, bytes, and object URLs before revalidation. Direct File grants, Page or
+Document revocation, Project lifecycle, and Store epoch replacement clear their
+matching scopes. A cache hit never substitutes for a fresh Core authorization.
 
-Pasting clipboard images into a Page publishes the image bytes first and adds
-the body image Block only after publication succeeds. A failed upload therefore
-leaves the body unchanged instead of creating an empty image Block. Clipboard
-adapters accept both standard `DataTransfer.files` and image-only
-`DataTransferItem.getAsFile()` exposure.
+## Management feedback
 
-## Versions and deletion
+Page Files exposes Core-authorized Page write capability. Read-only Pages permit
+preview and save while disabling entry creation and path editing and omitting
+replacement/removal actions. Direct File access is separate: opening a Library
+File by identity may report that direct access is required without invalidating
+the Page's own preview authority.
 
-Create, replace, rename, rehome, delete, restore, and clone each append a File
-version with the owner at that point, actor, optional Turn, operation identity,
-and time. Restore is a forward mutation from a retained version. Authorization
-to inspect history follows the current owner, while historical owner IDs remain
-immutable audit facts even if an earlier owner Page is deleted. Deleted Files
-leave the live path namespace but remain visible and restorable while their
-history is retained.
+Replacing an entry selects the new File and explains that existing body
+occurrences remain unchanged. Hand-entered paths use exact collision semantics.
+A revision conflict refreshes the inventory for review and never automatically
+replays the user's write with a new precondition. Background refresh preserves
+unfinished path edits.
 
-Page archive/delete/restore keeps direct Files and versions. If another Page
-still places one of those Files, the deleted owner closure remains retained and
-the placement continues to resolve. Physical collection becomes eligible only
-after no external placement or other retention root remains. Whole-Page copy
-copies only each live current state into version 1 of a fresh identity; it does
-not fork source history.
+Browsing existing Files replaces the Page manager with a focused picker; the
+picker does not expose shared updates, lifecycle changes, or grant editing.
 
-## Agent and package access
+Page and Library File details share the same preview action bar: icon actions
+with accessible names and tooltips, followed by a right-aligned information
+entry. Page path replacement/removal rules live in that tooltip; the path,
+read-only state and action failures remain visible. Content usage is available
+in the information tooltip.
+Browse Library and Add folder use labeled icon controls beside the primary
+Add files action. Path editing keeps its explicit Save action.
 
-Agents use ordinary child Pages for Nodex-native plans, notes, and design
-documents. Exact-format output goes into the Files of the nearest semantic owner
-Page. No Plan Mode behavior or prompt is specialized for Files.
+Both managers use the same File metadata line: MIME type, byte size, displayed
+version, and File update time. The timestamp describes the shared File, not when
+a Page path was attached or edited. Historical previews use the selected
+version's MIME type and size while the update time remains File metadata.
 
-The native Agent interface exposes bounded semantic commands to list, read,
-put/replace, rename, delete, inspect versions, and restore Files. Page draft
-projection includes the direct File manifest eagerly; bytes stay lazy and are
-read through explicit File commands. Deleted Files can be included explicitly
-when listing and remain selectable by identity or exact path for versions and
-restore. The owner manifest remains complete for Agents and reports owner-body
-placement counts; row-level de-duplication is solely renderer presentation.
-Reading Page content may resolve current bytes for that Page's canonical foreign
-placements, but does not reveal the foreign owner manifest or history. Agents
-receive neither a Profile path nor a read-by-hash capability. The trusted app
-renderer receives a current physical path only for the explicit user action of
-copying plain text while `Copy file references as local paths` is enabled; the
-setting is off by default and never changes stored NFM or Agent output.
-
-## Reliability and authorization
-
-Core owns File metadata, authorization, immutable blob publication, reads,
-ownership-move derivation, deduplication, and garbage collection. Upload first
-publishes verified bytes
-and returns a Project/store/operation-bound receipt; a semantic mutation then
-consumes that receipt. A failed semantic commit may leave an unreachable blob,
-but it cannot leave committed metadata pointing to missing bytes.
-
-Page read/write access covers its direct Files and follows the existing Page
-ownership closure for descendants. Page read access also covers the current
-presentation metadata and bytes of Files canonically placed in that exact Page;
-the opaque File ID alone grants nothing. Generic collaborative persistence may
-introduce a foreign placement only when its Project can already read the owner
-Page or another canonical placement. Typed Core structural compilers may carry
-an already-authorized placement even when moving its source projection in the
-same transaction. An ownership move is never a caller-provided flag: only the
-Library Module derives it from a typed semantic move, current ownership, and
-canonical post-state placements. Owner-only manifest, mutation,
-version-history, and lifecycle operations still require owner Page authority.
-Backups include every retained
-reachable File blob and restore validates size and SHA-256 before switching
-Profiles. Garbage collection is serialized against backup snapshots and never
-removes bytes protected by a live prepared receipt or retained File version.
-
-The architecture decision is recorded in
-[ADR 0051](../adr/0051-page-owned-files-and-immutable-bytes.md) and
-[ADR 0052](../adr/0052-file-placement-is-independent-of-ownership.md). Exact
-placement-read coherence and foreign-owner disclosure are recorded in
-[ADR 0053](../adr/0053-structural-clipboard-private-protocol-and-host-lifecycle.md).
-Attachment authoring details are owned by
-[NFM Editor Attachment Chip Behavior](nfm-editor-attachment-chip-behavior.md).
+File lists prioritize name/path, byte size, and update date. The Page sidebar
+groups files into Attachments (no current body references) and In page
+(one or more body references), omitting empty groups. Group headings align with
+the search field's left edge and show a quiet inline count, replacing the
+standalone File total. Counts use Core's full filtered group totals, independent
+of loaded pagination.
+A File with both a path and body references appears once, in In page. Groups
+classify the loaded search results; pagination continues across the inventory.
+Content-reference counts remain details, not list subtitles. Library browsing and the existing-File picker use the same
+metadata rows.

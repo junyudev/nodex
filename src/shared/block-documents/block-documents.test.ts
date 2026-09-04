@@ -2,6 +2,9 @@ import { describe, expect, test } from "vite-plus/test";
 import * as Y from "yjs";
 import {
   BlockDocumentValidationError,
+  CANVAS_BLOCK_TYPE,
+  CANVAS_DOCUMENT_SCHEMA_KEY,
+  CANVAS_DOCUMENT_SCHEMA_VERSION,
   PageDocumentRootValidationError,
   UnsupportedXmlNodeError,
   assertValidBlockDocument,
@@ -221,9 +224,9 @@ describe("registered document-bearing Block envelopes", () => {
 
   test("separates Canvas registration metadata from Yjs inspection", () => {
     const input = {
-      ownerType: "canvas",
-      schemaKey: "nodex.canvas",
-      schemaVersion: 1,
+      ownerType: CANVAS_BLOCK_TYPE,
+      schemaKey: CANVAS_DOCUMENT_SCHEMA_KEY,
+      schemaVersion: CANVAS_DOCUMENT_SCHEMA_VERSION,
     } as const;
     expect(getOwnedDocumentSchemaRegistration(input)).toEqual({
       kind: "scene_graph",

@@ -5,9 +5,9 @@ import * as path from "path";
 
 const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-assets-"));
 
-import { makeProfileAssets } from "./assets";
+import { makeTemporaryAssets } from "./assets";
 
-const assetService = makeProfileAssets({ assetsRootPath: path.join(fixtureRoot, "assets") });
+const assetService = makeTemporaryAssets({ assetsRootPath: path.join(fixtureRoot, "assets") });
 
 function resetFixture(): void {
   fs.rmSync(fixtureRoot, { recursive: true, force: true });

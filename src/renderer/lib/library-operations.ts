@@ -1,12 +1,16 @@
 import type {
   GrantLibraryResourceToProjectOperation,
   LibraryResourceTarget as AnyLibraryResourceTarget,
+  LibraryPlacedResourceTarget,
   LibraryWriteParent,
   MoveLibraryBlockOperation,
   SetLibraryProjectAccessOperation,
 } from "../../shared/library-module";
 
-type LibraryMoveableResourceTarget = Exclude<AnyLibraryResourceTarget, { readonly kind: "canvas" }>;
+type LibraryMoveableResourceTarget = Exclude<
+  LibraryPlacedResourceTarget,
+  { readonly kind: "canvas" }
+>;
 
 type LibraryAccessResourceTarget = AnyLibraryResourceTarget;
 

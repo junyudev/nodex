@@ -94,7 +94,7 @@ pub(crate) struct DocumentPlacementEvidence<'a> {
     reorder_attribution: DocumentReorderAttribution<'a>,
     allow_last_document_reactivation: bool,
     tombstone_reactivation: Option<DocumentTombstoneReactivation<'a>>,
-    page_file_placements_prevalidated: bool,
+    authorized_file_ids: &'a [String],
 }
 
 impl<'a> DocumentPlacementEvidence<'a> {
@@ -108,7 +108,7 @@ impl<'a> DocumentPlacementEvidence<'a> {
         reorder_attribution: DocumentReorderAttribution::Conservative,
         allow_last_document_reactivation: true,
         tombstone_reactivation: None,
-        page_file_placements_prevalidated: false,
+        authorized_file_ids: &[],
     };
 
     /// Typed structural updates name their exact move and authority evidence.
@@ -120,7 +120,7 @@ impl<'a> DocumentPlacementEvidence<'a> {
         reorder_attribution: DocumentReorderAttribution::Exact(&[]),
         allow_last_document_reactivation: false,
         tombstone_reactivation: None,
-        page_file_placements_prevalidated: false,
+        authorized_file_ids: &[],
     };
 
     /// Blocks intentionally detached by the surrounding structural mutation.
@@ -156,11 +156,11 @@ impl<'a> DocumentPlacementEvidence<'a> {
         self
     }
 
-    /// The typed compiler derived every new File placement from an authorized
-    /// source Document. This is narrower than generic structural persistence:
-    /// callers that accept fresh content must still prove File read access.
-    pub(crate) const fn with_prevalidated_page_file_placements(mut self) -> Self {
-        self.page_file_placements_prevalidated = true;
+    /// Exact File identities derived from an authorized source Document or
+    /// authenticated structural snapshot, including a source detached by this
+    /// transaction. Fresh content must still prove current File read access.
+    pub(crate) const fn with_authorized_file_ids(mut self, file_ids: &'a [String]) -> Self {
+        self.authorized_file_ids = file_ids;
         self
     }
 
@@ -400,10 +400,8 @@ fn persist_yjs_commit_inner(
         if input.authority.owner_type == "page" {
             let base_reference_counts = page_file_reference_counts(input.base_materialization);
             let reference_counts = page_file_reference_counts(input.materialization);
-            let owned_file_ids = owned_page_file_ids(connection, input.authority)?;
             (
-                page_file_body_usage_counts(&base_reference_counts, &owned_file_ids)
-                    != page_file_body_usage_counts(&reference_counts, &owned_file_ids),
+                base_reference_counts != reference_counts,
                 page_file_reference_change(&base_reference_counts, &reference_counts)?,
             )
         } else {
@@ -430,7 +428,7 @@ fn persist_yjs_commit_inner(
         input.actor_project_id,
         Some(input.base_materialization),
         input.materialization,
-        input.placement.page_file_placements_prevalidated,
+        input.placement.authorized_file_ids,
     )?;
     let reconciled_blocks = reconcile_document_blocks(
         connection,
@@ -707,9 +705,8 @@ fn persist_yjs_genesis_inner(
     let (page_file_body_usage_changed, page_file_reference_change) =
         if input.authority.owner_type == "page" {
             let reference_counts = page_file_reference_counts(input.materialization);
-            let owned_file_ids = owned_page_file_ids(connection, input.authority)?;
             (
-                !page_file_body_usage_counts(&reference_counts, &owned_file_ids).is_empty(),
+                !reference_counts.is_empty(),
                 page_file_reference_change(&BTreeMap::new(), &reference_counts)?,
             )
         } else {
@@ -728,7 +725,7 @@ fn persist_yjs_genesis_inner(
         input.actor_project_id,
         None,
         input.materialization,
-        input.placement.page_file_placements_prevalidated,
+        input.placement.authorized_file_ids,
     )?;
     reconcile_document_blocks(
         connection,
@@ -1816,23 +1813,6 @@ fn page_reference_target_impact(reference_sets: &[&[BlockDocumentReference]]) ->
     }
 }
 
-fn owned_page_file_ids(
-    connection: &Connection,
-    authority: &DocumentAuthorityRow,
-) -> Result<BTreeSet<String>, StoreError> {
-    connection
-        .prepare(
-            "SELECT file_id FROM page_files \
-             WHERE library_id = ?1 AND owner_page_id = ?2",
-        )?
-        .query_map(
-            params![authority.head.library_id, authority.owner_block_id],
-            |row| row.get::<_, String>(0),
-        )?
-        .collect::<rusqlite::Result<BTreeSet<_>>>()
-        .map_err(Into::into)
-}
-
 fn page_file_reference_counts(
     materialization: &DocumentMaterialization,
 ) -> BTreeMap<String, usize> {
@@ -1876,24 +1856,13 @@ fn page_file_reference_change(
     Ok(Some(exact))
 }
 
-fn page_file_body_usage_counts(
-    reference_counts: &BTreeMap<String, usize>,
-    owned_file_ids: &BTreeSet<String>,
-) -> BTreeMap<String, usize> {
-    reference_counts
-        .iter()
-        .filter(|(file_id, _)| owned_file_ids.contains(*file_id))
-        .map(|(file_id, count)| (file_id.clone(), *count))
-        .collect()
-}
-
 fn validate_page_file_placements(
     connection: &Connection,
     authority: &DocumentAuthorityRow,
     actor_project_id: &str,
     base_materialization: Option<&DocumentMaterialization>,
     materialization: &DocumentMaterialization,
-    prevalidated: bool,
+    authorized_file_ids: &[String],
 ) -> Result<(), StoreError> {
     let existing_file_ids = base_materialization
         .into_iter()
@@ -1914,24 +1883,29 @@ fn validate_page_file_placements(
             "Page File placements require a containing Page Document".to_owned(),
         ));
     }
+    let authorized = authorized_file_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
     for file_id in file_ids {
-        let owner_page_id = connection
-            .query_row(
-                "SELECT owner_page_id FROM page_files \
-                 WHERE file_id = ?1 AND library_id = ?2 AND state = 'live'",
-                params![file_id, authority.head.library_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?
-            .ok_or_else(|| invalid("Page Document references an unavailable File".to_owned()))?;
-        if owner_page_id == authority.owner_block_id
-            || prevalidated
-            || project_can_read_page(
+        let available = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM library_files WHERE file_id = ?1 AND library_id = ?2 AND lifecycle = 'live')",
+            params![file_id, authority.head.library_id], |row| row.get::<_, bool>(0),
+        )?;
+        if !available {
+            return Err(invalid(
+                "Page Document references an unavailable File".to_owned(),
+            ));
+        }
+        if authorized.contains(file_id)
+            || crate::library::file_grant_authorization_proof(
                 connection,
                 &authority.head.library_id,
                 actor_project_id,
-                &owner_page_id,
+                file_id,
+                false,
             )?
+            .is_some()
             || project_can_read_existing_file_placement(
                 connection,
                 &authority.head.library_id,
@@ -1968,9 +1942,8 @@ fn project_can_read_existing_file_placement(
 ) -> Result<bool, StoreError> {
     let placement_page_ids = connection
         .prepare(
-            "SELECT DISTINCT owner_block_id FROM block_asset_refs \
-             WHERE library_id = ?1 AND page_file_id = ?2 \
-             ORDER BY owner_block_id",
+            "SELECT owner_block_id FROM block_asset_refs WHERE library_id = ?1 AND file_id = ?2 \
+             UNION SELECT page_id FROM page_file_entries WHERE library_id = ?1 AND file_id = ?2",
         )?
         .query_map(params![library_id, file_id], |row| row.get::<_, String>(0))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -2076,12 +2049,10 @@ pub(super) fn replace_secondary_projections(
             .map(|file_id| {
                 connection
                     .query_row(
-                        "SELECT version.blob_hash FROM page_files file \
-                         JOIN page_file_versions version ON version.file_id = file.file_id \
-                           AND version.version = file.current_version \
-                         WHERE file.file_id = ?1 AND file.library_id = ?2 \
-                           AND file.state = 'live' \
-                           AND version.blob_hash IS NOT NULL",
+                        "SELECT version.blob_hash FROM library_files file \
+                         JOIN file_versions version ON version.file_id = file.file_id \
+                           AND version.version = file.head_version \
+                         WHERE file.file_id = ?1 AND file.library_id = ?2 AND file.lifecycle = 'live'",
                         params![file_id, authority.head.library_id],
                         |row| row.get::<_, String>(0),
                     )
@@ -2099,7 +2070,7 @@ pub(super) fn replace_secondary_projections(
             "INSERT INTO block_asset_refs( \
                document_id, block_id, owner_block_id, library_id, document_generation, \
                projected_seq, projection_version, role, ordinal, asset_uri, asset_hash, \
-               page_file_id, updated_at \
+               file_id, updated_at \
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 authority.head.id,

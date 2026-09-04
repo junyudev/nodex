@@ -1,11 +1,11 @@
-import { getAssetSource, parseAssetSource } from "../assets";
+import { fileSource, parseFileSource } from "../file-resources";
 import {
   stableStringifyBlockPropertyJson,
   type BlockPropertyJsonValue,
 } from "../block-property-mutations";
 
 export const CANVAS_SCENE_KIND = "canvas_scene" as const;
-export const CANVAS_SCENE_SCHEMA_VERSION = 1 as const;
+export const CANVAS_SCENE_SCHEMA_VERSION = 2 as const;
 
 export const MAX_CANVAS_SCENE_ELEMENTS = 100_000;
 export const MAX_CANVAS_SCENE_FILES = 10_000;
@@ -35,6 +35,8 @@ export interface CanvasSceneFile {
   readonly id: string;
   readonly mimeType: string;
   readonly source: string;
+  readonly fileVersion: number;
+  readonly defaultName: string;
   readonly created?: number;
 }
 
@@ -321,7 +323,14 @@ export const canonicalizeCanvasSceneFile = (
   expectedId: string,
 ): CanvasSceneFile => {
   const record = canonicalJsonRecord(value, `Canvas file ${expectedId}`);
-  const allowedKeys = new Set(["id", "mimeType", "source", "created"]);
+  const allowedKeys = new Set([
+    "id",
+    "mimeType",
+    "source",
+    "fileVersion",
+    "defaultName",
+    "created",
+  ]);
   const unsupportedKey = Object.keys(record).find((key) => !allowedKeys.has(key));
   if (unsupportedKey) {
     throw new CanvasSceneContractError(
@@ -343,10 +352,29 @@ export const canonicalizeCanvasSceneFile = (
       `Canvas file ${expectedId}.mimeType must be a bounded string`,
     );
   }
-  const parsedSource = typeof record.source === "string" ? parseAssetSource(record.source) : null;
-  if (!parsedSource || record.source !== getAssetSource(parsedSource.fileName)) {
+  const parsedSource = typeof record.source === "string" ? parseFileSource(record.source) : null;
+  if (!parsedSource || record.source !== fileSource(parsedSource)) {
     throw new CanvasSceneContractError(
-      `Canvas file ${expectedId}.source must be a managed asset URI`,
+      `Canvas file ${expectedId}.source must be a canonical Library File URI`,
+    );
+  }
+  const fileVersion = requireSafeInteger(
+    record.fileVersion,
+    `Canvas file ${expectedId}.fileVersion`,
+    1,
+  );
+  const defaultName = record.defaultName;
+  if (
+    typeof defaultName !== "string" ||
+    !defaultName ||
+    defaultName !== defaultName.normalize("NFC") ||
+    new TextEncoder().encode(defaultName).length > 255 ||
+    /[\/\\<>:"|?*\u0000-\u001f\u007f]/u.test(defaultName) ||
+    /[. ]$/u.test(defaultName) ||
+    /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/iu.test(defaultName)
+  ) {
+    throw new CanvasSceneContractError(
+      `Canvas file ${expectedId}.defaultName must be a portable canonical name`,
     );
   }
   if (
@@ -363,6 +391,8 @@ export const canonicalizeCanvasSceneFile = (
     id,
     mimeType: record.mimeType,
     source: record.source,
+    fileVersion,
+    defaultName,
     ...(record.created === undefined ? {} : { created: record.created }),
   };
 };

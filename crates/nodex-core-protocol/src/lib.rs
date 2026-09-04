@@ -21,8 +21,8 @@ use nodex_core_contracts::{
         OwnedDocumentReadValue, OwnedDocumentReceipt,
     },
     library::{
-        LibraryCommitValue, LibraryIntent, LibraryPreparedPageFileBlob, LibraryRead,
-        LibraryReadValue, LibraryReceipt,
+        LibraryCommitValue, LibraryIntent, LibraryRead, LibraryReadValue, LibraryReceipt,
+        PreparedBlobReceipt,
     },
     workspace::{
         ProjectWorkspaceCommitValue, ProjectWorkspaceIntent, ProjectWorkspaceRead,
@@ -41,7 +41,8 @@ pub use nodex_store_format::{
 
 pub const TRANSPORT_PROTOCOL_MIN: u32 = 12;
 pub const TRANSPORT_PROTOCOL_MAX: u32 = 12;
-pub const MAX_PAGE_FILE_BLOB_BYTES: usize = 64 * 1024 * 1024;
+pub const MAX_FILE_BLOB_BYTES: usize = 64 * 1024 * 1024;
+pub const MAX_MANAGED_BLOB_BYTES: usize = nodex_core_contracts::MAX_MANAGED_BLOB_BYTES as usize;
 pub const COMPATIBILITY_MANIFEST_VERSION: u32 = 1;
 pub const MAX_ORDINARY_JSON_REQUEST_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_ORDINARY_JSON_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
@@ -63,7 +64,7 @@ pub const MAINTENANCE_REQUEST_DEADLINE_MS: u64 = 120_000;
 
 #[derive(Clone, Debug, Deserialize, Eq, IntoParams, PartialEq, Serialize, ToSchema)]
 #[into_params(parameter_in = Query)]
-pub struct PreparePageFileBlobQuery {
+pub struct PrepareFileBlobQuery {
     pub operation_id: String,
     pub store_epoch: String,
     pub idempotency_slot: Option<String>,
@@ -71,8 +72,9 @@ pub struct PreparePageFileBlobQuery {
 
 #[derive(Clone, Debug, Deserialize, Eq, IntoParams, PartialEq, Serialize, ToSchema)]
 #[into_params(parameter_in = Query)]
-pub struct ReadPageFileBlobQuery {
-    pub page_id: String,
+pub struct ReadFileBlobQuery {
+    #[serde(flatten)]
+    pub source: nodex_core_contracts::library::LibraryFileReadSource,
     pub version: Option<i64>,
 }
 
@@ -83,7 +85,8 @@ pub struct CoreTransportBudgets {
     pub event_frame_bytes: u64,
     pub document_json_request_bytes: u64,
     pub document_response_bytes: u64,
-    pub page_file_blob_bytes: u64,
+    pub file_blob_bytes: u64,
+    pub managed_blob_bytes: u64,
     pub request_deadline_min_ms: u64,
     pub request_deadline_max_ms: u64,
     pub interactive_request_deadline_ms: u64,
@@ -97,7 +100,8 @@ pub const CORE_TRANSPORT_BUDGETS: CoreTransportBudgets = CoreTransportBudgets {
     event_frame_bytes: MAX_EVENT_FRAME_BYTES as u64,
     document_json_request_bytes: MAX_DOCUMENT_JSON_REQUEST_BYTES as u64,
     document_response_bytes: MAX_DOCUMENT_RESPONSE_BYTES as u64,
-    page_file_blob_bytes: MAX_PAGE_FILE_BLOB_BYTES as u64,
+    file_blob_bytes: MAX_FILE_BLOB_BYTES as u64,
+    managed_blob_bytes: MAX_MANAGED_BLOB_BYTES as u64,
     request_deadline_min_ms: MIN_REQUEST_DEADLINE_MS,
     request_deadline_max_ms: MAX_REQUEST_DEADLINE_MS,
     interactive_request_deadline_ms: INTERACTIVE_REQUEST_DEADLINE_MS,
@@ -999,31 +1003,49 @@ mod api {
 
     #[utoipa::path(
         post,
-        path = "/core/v1/page-files/blobs/prepare",
-        params(
-            PreparePageFileBlobQuery,
-            ("x-nodex-request-id" = Option<String>, Header),
-            ("x-nodex-request-class" = Option<CoreRequestClass>, Header),
-            ("x-nodex-request-deadline-ms" = Option<u64>, Header)
-        ),
+        path = "/core/v1/blobs/prepare",
+        params(PrepareFileBlobQuery),
         request_body(content = Vec<u8>, content_type = "application/octet-stream"),
-        responses((status = 200, body = LibraryPreparedPageFileBlob))
+        responses((status = 200, body = PreparedBlobReceipt))
     )]
-    pub(super) fn prepare_page_file_blob() {}
+    pub(super) fn prepare_blob() {}
 
     #[utoipa::path(
         get,
-        path = "/core/v1/page-files/blobs/{file_id}",
+        path = "/core/v1/threads/{thread_id}/blobs/{content_hash}",
+        params(("thread_id" = String, Path), ("content_hash" = String, Path)),
+        responses((status = 200, body = Vec<u8>, content_type = "application/octet-stream"))
+    )]
+    pub(super) fn read_thread_asset_blob() {}
+
+    #[utoipa::path(
+        get,
+        path = "/core/v1/files/blobs/{file_id}",
         params(
             ("file_id" = String, Path),
-            ReadPageFileBlobQuery,
+            ("kind" = String, Query, description = "direct, page, document_revision, or canvas"),
+            ("page_id" = Option<String>, Query),
+            ("document_id" = Option<String>, Query),
+            ("revision_id" = Option<String>, Query),
+            ("canvas_id" = Option<String>, Query),
+            ("scene_file_id" = Option<String>, Query),
+            ("version" = Option<i64>, Query),
             ("x-nodex-request-id" = Option<String>, Header),
             ("x-nodex-request-class" = Option<CoreRequestClass>, Header),
             ("x-nodex-request-deadline-ms" = Option<u64>, Header)
         ),
         responses((status = 200, body = Vec<u8>, content_type = "application/octet-stream"))
     )]
-    pub(super) fn read_page_file_blob() {}
+    pub(super) fn read_file_blob() {}
+
+    #[utoipa::path(
+        post,
+        path = "/core/v1/files/blobs/prepare",
+        params(PrepareFileBlobQuery),
+        request_body(content = Vec<u8>, content_type = "application/octet-stream"),
+        responses((status = 200, body = PreparedBlobReceipt))
+    )]
+    pub(super) fn prepare_file_blob() {}
 
     macro_rules! module_paths {
         ($read_fn:ident, $apply_fn:ident, $path:literal, $read:ty, $read_response:ty, $apply:ty, $apply_response:ty) => {
@@ -1121,8 +1143,10 @@ mod api {
         api::resolve_local_mutation,
         api::cancel_request,
         api::shutdown,
-        api::prepare_page_file_blob,
-        api::read_page_file_blob,
+        api::prepare_blob,
+        api::read_thread_asset_blob,
+        api::read_file_blob,
+        api::prepare_file_blob,
         api::library_read,
         api::library_apply,
         api::database_read,
@@ -1159,9 +1183,9 @@ mod api {
         CoreRequestClass,
         CoreRequestCancelRequest,
         CoreRequestCancelResponse,
-        PreparePageFileBlobQuery,
-        ReadPageFileBlobQuery,
-        LibraryPreparedPageFileBlob,
+        PrepareFileBlobQuery,
+        ReadFileBlobQuery,
+        PreparedBlobReceipt,
         ShutdownRequest,
         ShutdownResponse,
         RuntimeGenerationIdentity,
@@ -1242,8 +1266,10 @@ mod tests {
             "/core/v1/modules/library/read",
             "/core/v1/modules/workspace/apply",
             "/core/v1/modules/workspace/read",
-            "/core/v1/page-files/blobs/prepare",
-            "/core/v1/page-files/blobs/{file_id}",
+            "/core/v1/files/blobs/prepare",
+            "/core/v1/files/blobs/{file_id}",
+            "/core/v1/blobs/prepare",
+            "/core/v1/threads/{thread_id}/blobs/{content_hash}",
         ]
         .into_iter()
         .map(str::to_owned)

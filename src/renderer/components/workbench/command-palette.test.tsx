@@ -174,12 +174,12 @@ describe("buildCommandPaletteCommands", () => {
         showMockCommands: true,
       }),
     );
-    const searchFiles = commands.find((command) => command.id === "searchFiles");
+    const libraryFiles = commands.find((command) => command.id === "openLibraryFiles");
     const gitCommit = commands.find((command) => command.id === "git.commit");
     const ids = commands.map((command) => command.id).join(",");
 
-    expect(searchFiles?.disabled).toBe(true);
-    expect(Boolean(searchFiles?.mockReason)).toBe(true);
+    expect(libraryFiles?.disabled).not.toBe(true);
+    expect(libraryFiles?.mockReason).toBeUndefined();
     expect(gitCommit?.disabled).toBe(true);
     expect(Boolean(gitCommit?.mockReason)).toBe(true);
     expect(ids.includes("toggleBrowserPanel")).toBe(false);

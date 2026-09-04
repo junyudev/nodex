@@ -60,7 +60,7 @@ const inspection = (): RecoveryDraftInspection => {
     can_copy: true,
     current_generation: 1,
     current_head_seq: 1,
-    retained: { kind: "document", title: "Retained", rich_title: [], nfm: "" },
+    retained: { kind: "document", title: "Retained", rich_title: [], nfm: "", files: {} },
   };
 };
 const port = (drafts: RecoveryDraftSummary[] = []): DocumentRecoveryPort => ({

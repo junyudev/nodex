@@ -44,6 +44,7 @@ interface DocumentVersionSummaryBase {
   readonly sourceMutationId: string | null;
   readonly sourceChangeSeq: number | null;
   readonly pinned: boolean;
+  readonly fileSnapshotStatus: "exact" | "unresolved_legacy" | "not_applicable";
   readonly checkpointHash: string;
   readonly materializationHash: string;
   readonly byteLength: number;
@@ -60,10 +61,10 @@ export type DocumentVersionCheckpointMetadata =
       readonly stateVectorHash: string;
     }
   | {
-      readonly format: "block_tree_snapshot_v2";
+      readonly format: "block_tree_snapshot_v2" | "block_tree_snapshot_v3";
     }
   | {
-      readonly format: "canvas_scene_json_v1";
+      readonly format: "canvas_scene_json_v1" | "canvas_scene_json_v2";
     };
 
 export type DocumentVersionSummary = DocumentVersionSummaryBase & {
@@ -83,7 +84,7 @@ export type DocumentVersionCheckpoint =
   | (DocumentVersionSummaryBase & {
       readonly checkpointMetadata: Extract<
         DocumentVersionCheckpointMetadata,
-        { readonly format: "block_tree_snapshot_v2" }
+        { readonly format: "block_tree_snapshot_v2" | "block_tree_snapshot_v3" }
       >;
       readonly snapshotJson: Uint8Array;
       readonly materialization: Exclude<
@@ -94,7 +95,7 @@ export type DocumentVersionCheckpoint =
   | (DocumentVersionSummaryBase & {
       readonly checkpointMetadata: Extract<
         DocumentVersionCheckpointMetadata,
-        { readonly format: "canvas_scene_json_v1" }
+        { readonly format: "canvas_scene_json_v1" | "canvas_scene_json_v2" }
       >;
       readonly sceneJson: Uint8Array;
       readonly materialization: Extract<

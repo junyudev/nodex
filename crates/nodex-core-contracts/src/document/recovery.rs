@@ -70,9 +70,11 @@ pub enum RecoveryPreview {
         title: String,
         rich_title: Value,
         nfm: String,
+        files: std::collections::BTreeMap<String, crate::library::LibraryFileReadBinding>,
     },
     Canvas {
         scene: Value,
+        files: std::collections::BTreeMap<String, crate::library::LibraryFileReadBinding>,
     },
 }
 

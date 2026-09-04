@@ -49,7 +49,7 @@ import type {
   WorkbenchSessionViewTab,
 } from "../workbench-session-view";
 import { parseDatabaseId, parseDatabaseViewId } from "../database-identities";
-import type { LibraryResourceTarget } from "../library-module";
+import type { LibraryPlacedResourceTarget } from "../library-module";
 
 const UnknownRecordSchema = z.record(z.string(), z.unknown());
 
@@ -610,7 +610,7 @@ const WorkbenchResourceTargetSchema = z.discriminatedUnion("kind", [
       canvasId: z.string().min(1),
     })
     .strict(),
-]) satisfies z.ZodType<LibraryResourceTarget>;
+]) satisfies z.ZodType<LibraryPlacedResourceTarget>;
 
 export const WorkbenchSceneLocationV6Schema = z.discriminatedUnion("kind", [
   ...WorkbenchSceneLocationV5Schema.options,
@@ -789,13 +789,15 @@ const PersistedWorkbenchLocationV7Schema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
-function resourceSceneKey(root: LibraryResourceTarget): string {
+function resourceSceneKey(root: LibraryPlacedResourceTarget): string {
   if (root.kind === "page") return `resource:page:${root.pageId}`;
   if (root.kind === "database") return `resource:database:${root.databaseId}`;
   return `resource:canvas:${root.canvasId}`;
 }
 
-function resourceRootFromLocation(location: WorkbenchLocationV6): LibraryResourceTarget | null {
+function resourceRootFromLocation(
+  location: WorkbenchLocationV6,
+): LibraryPlacedResourceTarget | null {
   const sceneLocation =
     location.kind === "settings" ||
     location.kind === "automations" ||
@@ -823,7 +825,7 @@ function migrateLocationV6ToV7(
 
 const MIGRATED_PAGES_TOUCHED_AT = "1970-01-01T00:00:00.000Z";
 
-function libraryResourceIdentity(root: LibraryResourceTarget): string {
+function libraryResourceIdentity(root: LibraryPlacedResourceTarget): string {
   if (root.kind === "page") return `page:${root.pageId}`;
   if (root.kind === "database") return `database:${root.databaseId}`;
   return `canvas:${root.canvasId}`;
@@ -838,7 +840,7 @@ function stableMigrationHash(value: string): string {
   return (hash >>> 0).toString(36);
 }
 
-function rootSurface(root: LibraryResourceTarget): WorkbenchSurfaceDescriptor {
+function rootSurface(root: LibraryPlacedResourceTarget): WorkbenchSurfaceDescriptor {
   const common = {
     id: `migrated:pages:surface:${stableMigrationHash(libraryResourceIdentity(root))}`,
     stateKey: 0,
@@ -875,7 +877,7 @@ function rootSurface(root: LibraryResourceTarget): WorkbenchSurfaceDescriptor {
 }
 
 function materializeMigratedPagesScene(
-  root: LibraryResourceTarget,
+  root: LibraryPlacedResourceTarget,
   legacy: WorkbenchSceneSnapshotV4 | undefined,
 ) {
   if (legacy) return migrateWorkbenchSceneV4ToV5(legacy);

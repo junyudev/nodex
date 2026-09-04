@@ -33,7 +33,7 @@ import * as ManagedMediaIpc from "../ipc/handlers/ManagedMediaIpc";
 import * as StructuralClipboardIpc from "../ipc/handlers/StructuralClipboardIpc";
 import * as NativeShellIpc from "../ipc/handlers/NativeShellIpc";
 import * as PageSearchIpc from "../ipc/handlers/PageSearchIpc";
-import * as PageFilesIpc from "../ipc/handlers/PageFilesIpc";
+import * as FilesIpc from "../ipc/handlers/FilesIpc";
 import * as ProjectWorkspaceIpc from "../ipc/handlers/ProjectWorkspaceIpc";
 import * as ProjectionDeliveryIpc from "../ipc/handlers/ProjectionDeliveryIpc";
 import * as StoreAdministrationIpc from "../ipc/handlers/StoreAdministrationIpc";
@@ -87,7 +87,7 @@ export const live = Layer.mergeAll(
   StructuralClipboardIpc.live,
   NativeShellIpc.live,
   PageSearchIpc.live({}),
-  PageFilesIpc.live,
+  FilesIpc.live,
   ProjectWorkspaceIpc.live,
   ProjectionDeliveryIpc.live,
   StoreAdministrationIpc.live,

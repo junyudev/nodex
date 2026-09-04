@@ -9,8 +9,8 @@ import { ElectronClipboard } from "../../platform/electron/ElectronClipboard";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
-import { ProfileAssets } from "../../local-store/ProfileAssets";
-import { makeProfileAssets } from "../../local-store/assets";
+import { TemporaryAssets } from "../../local-store/TemporaryAssets";
+import { makeTemporaryAssets } from "../../local-store/assets";
 import { live } from "./ManagedMediaIpc";
 
 it.effect("owns managed asset, clipboard, and composer ingress with the Main Scope", () =>
@@ -35,8 +35,8 @@ it.effect("owns managed asset, clipboard, and composer ingress with the Main Sco
             Layer.succeed(ElectronClipboard, {} as ElectronClipboard["Service"]),
             mainConfigLayer(),
             Layer.succeed(
-              ProfileAssets,
-              ProfileAssets.of(makeProfileAssets({ assetsRootPath: "/tmp/nodex-test/assets" })),
+              TemporaryAssets,
+              TemporaryAssets.of(makeTemporaryAssets({ assetsRootPath: "/tmp/nodex-test/assets" })),
             ),
             Layer.succeed(ElectronDesktop, {} as ElectronDesktop["Service"]),
             Layer.succeed(WindowRuntime, {

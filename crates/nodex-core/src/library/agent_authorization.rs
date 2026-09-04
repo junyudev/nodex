@@ -619,6 +619,9 @@ pub(super) fn persist_project_grants(
                 context,
                 operation_id,
                 MutationEffects {
+                    page_file_entries: Vec::new(),
+                    file_revisions: BTreeMap::new(),
+                    file_mutation: Default::default(),
                     project_id: project_id.to_owned(),
                     operation_kind: "persist_agent_project_resource_grants",
                     change_kind: "library.changed",
@@ -633,7 +636,6 @@ pub(super) fn persist_project_grants(
                     committed_revisions,
                     page_create: None,
                     page_copy: None,
-                    page_files: None,
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,

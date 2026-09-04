@@ -74,34 +74,42 @@ Blocks, Documents, owner registries, search/asset projections, and top-level pla
 
 Every active Page has exactly one `library | page | data_source` parent. Page ownership forms an acyclic forest. References, mentions, backlinks, relations, and Views are non-owning and do not expand authorization. Page ID is Block ID; Document identity remains independent.
 
-Each Page also directly owns an independent Files manifest. A File's stable
-identity and logical path belong to the Library Module; exact bytes are
-immutable Core-managed blobs shared by content hash. Body attachments and
-images are non-owning placements that may preserve the same File identity
-across Page Documents in one Library. A containing Page can resolve only the
-current presentation metadata and bytes of its canonical placements; owner
-manifest, version history, mutation, and lifecycle authority do not travel with
-the placement. A typed identity-preserving Block move may rehome a File only
-when its current owner is the source host and its complete post-state placement
-set is exclusively in one target host. The Library Module derives and commits
-that consequence together with both Documents, immutable File history,
-manifests, receipt, and LocalCommit; callers cannot request it independently.
-File mutations publish exact affected File identities, while Document commits
-publish exact added and removed Page File reference identities; neither signal
-couples foreign Pages to the owner manifest revision. Renderer File reads share
-one authorization-sensitive cache keyed by Store epoch, access context,
-containing Page, and File identity, so invalidation remains exact and cached
-bytes never cross an authority change. Child Page Files compose through the
-existing Page ownership forest instead of flattening into their parent. Core is
-the only publication, authorization, metadata-mutation, copy/transfer, backup,
-restore, and garbage-collection authority. Electron and CLI may stream or save
-explicit user-selected bytes. Electron may resolve one authorized current File version
-to its physical blob locator only for the opt-in local-path clipboard
-presentation; the locator is never stored as File identity or returned through
-the general renderer/Agent File interfaces. See
-[Page Files Behavior](product-specs/page-files-behavior.md),
-[ADR 0051](adr/0051-page-owned-files-and-immutable-bytes.md), and
-[ADR 0052](adr/0052-file-placement-is-independent-of-ownership.md).
+The Library Module owns stable File identity, global metadata, immutable content
+versions, lifecycle, and direct Project grants. The Profile owns physical Blob
+storage; equal content hashes may share bytes without merging File identities.
+A Page owns only its explicit File entries and their portable logical paths.
+Canonical Document occurrences reference File IDs independently of entries.
+Page Files is the deduplicated union of both relationships; descendant Pages
+retain their own relationships.
+
+Library navigation and placement use a closed Page/Database/Canvas target type.
+The authorization resource type additionally includes File; granting access
+does not make a File a navigable or movable Block.
+
+A Page relationship authorizes current presentation metadata and bytes. Direct
+File grants separately authorize global reads and writes; provenance does not
+grant access. File changes publish File-scoped events and independently
+invalidate current Page presentations. Entry revisions, body-use revisions, and
+File revisions remain distinct concurrency boundaries. Cached bytes never
+substitute for current authorization.
+
+Document history owns exact File content bindings and frozen default names in
+its canonical snapshot. Its retention index is derived evidence, never a second
+authority. Restoring content creates any required File forks and remaps the
+Document in one LocalCommit, without rewinding shared Files or Page paths.
+Shared File changes participate in Document history even when the Document head
+does not advance. Page collection removes Page relationships and leaves Library
+File identities intact.
+
+Block move/copy, cut/paste, promotion, and Page copy preserve File IDs. Typed
+structural operations carry exact File identities proven by their source or
+authenticated snapshot, including after source detachment. They do not transfer
+File ownership or change File versions and Page paths. Explicit entry transfer
+compares both Page manifests and changes only their relationships. Core owns
+the durable mutation and LocalCommit evidence; Electron and CLI transport
+explicitly selected bytes. Physical locators are never File identity or general
+renderer/Agent read capabilities. See [Page Files Behavior](product-specs/page-files-behavior.md)
+and [ADR 0057](adr/0057-library-files-and-page-relations.md).
 
 A top-level Canvas is authorized by an explicit generic Canvas resource grant. An embedded Canvas inherits the host Page authorization path and has no active direct Canvas grant. Moving between Library and Page placement changes that grant state atomically with the host shell and never rehomes content.
 
@@ -113,7 +121,7 @@ The decisions behind this model are recorded in [ADR 0017](docs/adr/0017-library
 
 | State or capability                                                                           | Authoritative owner                                                          | Adapters and projections                                                                                                                                              |
 | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Blocks, Pages, Page Files, Databases, Documents, search, schedules, history                   | Rust Core Library/Database/Document Modules                                  | Core protocol, authenticated blob streams, Electron adapters, CLI, renderer read models                                                                               |
+| Blocks, Pages, Library Files, Databases, Documents, search, schedules, history                | Rust Core Library/Database/Document Modules                                  | Core protocol, authenticated blob streams, Electron adapters, CLI, renderer read models                                                                               |
 | Page-key namespaces, prefix history, counters, assignments                                    | Rust Core Database Module                                                    | Contextual Core projections; CLI/Agent resolve to canonical Page IDs                                                                                                  |
 | Projects, Sessions, durable Thread metadata and queued follow-up ledgers, execution context   | Rust Core Workspace Module                                                   | Electron Codex/Workspace services and renderer queries                                                                                                                |
 | Explicit Thread backend binding and ACP protocol-session recovery identity                    | Rust Core Workspace Module                                                   | Main backend registry and scoped ACP session manager; renderer sees typed canonical projections only                                                                  |
@@ -131,7 +139,8 @@ The decisions behind this model are recorded in [ADR 0017](docs/adr/0017-library
 | Browser guests, Browser Use, MCP App guests, Terminal processes                               | Electron Main runtime aggregates                                             | Renderer holds presentation descriptors and host bindings only                                                                                                        |
 | Git repository live-read state                                                                | Main-owned Git worker process                                                | Typed Main/preload bus and renderer query projections                                                                                                                 |
 | Structural clipboard preparing/ready/superseded lifecycle and native slot ownership           | Electron Main Structural Clipboard Runtime                                   | Private MIME routes trusted windows; standard HTML/text stays portable; Core retains durable bundle and cut authority                                                 |
-| Preferences, non-Page managed assets, logs, OS notifications                                  | Electron Main local/OS adapters                                              | Typed renderer IPC; Page File blobs remain Core-owned, while Canvas/queue and other host assets retain their narrow existing adapters                                 |
+| Durable File, Canvas, queue, and submitted-input bytes                                        | Rust Core Blob infrastructure and concrete domain retention roots            | Authenticated streams and transaction-bound publication receipts; each domain authorizes its own references                                                           |
+| Preferences, temporary media, logs, OS notifications                                          | Electron Main local/OS adapters                                              | Typed renderer IPC and private media caches; persistent content is published through Core                                                                             |
 
 Retained document edits and their resolution belong to Core's Owned Document Module.
 Renderer IndexedDB stages unacknowledged packages, while the semantic DocumentRecovery
@@ -176,7 +185,7 @@ Store formats and migration sequences are implementation/recovery contracts, not
 
 - Core transport selection, authenticated connection, and compatibility checks through [`src/main/core-client`](../src/main/core-client); process-lifetime supervision and recovery through Effect [`CoreAuthority`](../src/main/core-runtime/CoreAuthority.ts).
 - Trusted identity binding and strict mapping between renderer/Host contracts and Core Module contracts.
-- BrowserWindow, preload, IPC, application menus, deep links, clipboard, notifications, assets, logs, and platform integration.
+- BrowserWindow, preload, IPC, application menus, deep links, clipboard, notifications, temporary media capture, logs, and platform integration.
 - Codex app-server lifecycle and native request routing; capability-negotiated ACP Agent process,
   session, and callback lifecycles remain a separate backend family.
 - Browser, MCP App, Computer Use, Terminal, Git, worktree, and filesystem runtime aggregates.
@@ -193,7 +202,7 @@ waiters, native claim-fenced presentation enhancement, sender lifetime, timeout,
 shutdown settlement. A bounded private MIME descriptor routes trusted windows
 to that runtime while standard HTML and text remain the portable fallback. Core
 alone owns the durable snapshot, capability validation, source deletion, cut
-claim, paste identity, history, and File-rehome consequences. The decision is
+claim, paste identity, history, and exact File-reference authority. The decision is
 recorded in [ADR 0053](adr/0053-structural-clipboard-private-protocol-and-host-lifecycle.md).
 
 Native filesystem watching is one scoped Stream Adapter around synchronous `fs.watch`; readiness,
@@ -911,7 +920,7 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 19. An active Codex renderer owner is the sole visible conversation writer. Main may validate, relay, and recover its accepted document but cannot emit a competing visible state at the same revision.
 20. Browser and MCP App guests are sandboxed Main-owned runtimes. Renderer-authored preferences, DOM attributes, or URLs cannot create or broaden guest authority.
 21. There is no catch-all persistence or generic mutation boundary. New durable semantics enter an owning deep Module and its typed Interface.
-22. File placement is non-owning. Only a Core-authored exclusive semantic move may rehome a Page File, and it preserves File identity and history in the same transaction as the affected Documents and LocalCommit.
+22. The Library owns File identity. Pages own relationships and paths; structural moves and copies preserve File IDs without changing shared content or global metadata. File grants and Page presentation authority remain separate.
 23. Native clipboard descriptors and Main lifecycle state are routing evidence only. Core's durable bundle and cut claim are the sole structural copy and move authority; every non-authoritative path remains portable content.
 
 ## Codemap
@@ -938,7 +947,7 @@ This map names stable regions and responsibilities rather than enumerating indiv
 | [`src/main/mcp-app`](src/main/mcp-app)                                                    | Sandboxed MCP App guest attachment and MessagePort host                                                                                                |
 | [`src/main/git-worker`](src/main/git-worker)                                              | Generation-bound repository read worker                                                                                                                |
 | [`src/main/worktree-worker`](src/main/worktree-worker)                                    | Main-internal execution-host adapter for cancellable managed-worktree creation, snapshot/removal/restore, setup/cleanup streaming, and handoff effects |
-| [`src/main/local-store`](src/main/local-store)                                            | Host-only preferences, assets, notification and persistence support; never semantic DB authority                                                       |
+| [`src/main/local-store`](src/main/local-store)                                            | Host-only preferences, temporary media caches, notification and persistence support; never semantic DB or durable Blob authority                       |
 | [`src/preload`](src/preload)                                                              | Context-isolated typed bridge                                                                                                                          |
 | [`src/renderer/features`](src/renderer/features)                                          | Feature-owned application state and workflows                                                                                                          |
 | [`src/renderer/components`](src/renderer/components)                                      | Reusable and surface-level React presentation                                                                                                          |

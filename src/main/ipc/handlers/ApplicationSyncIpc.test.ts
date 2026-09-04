@@ -6,8 +6,8 @@ import { assert, it } from "@effect/vitest";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ElectronSyncIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
-import { ProfileAssets } from "../../local-store/ProfileAssets";
-import { makeProfileAssets } from "../../local-store/assets";
+import { TemporaryAssets } from "../../local-store/TemporaryAssets";
+import { makeTemporaryAssets } from "../../local-store/assets";
 import { live } from "./ApplicationSyncIpc";
 
 it.effect("owns synchronous preload ingress with the Main Scope", () =>
@@ -30,8 +30,8 @@ it.effect("owns synchronous preload ingress with the Main Scope", () =>
             Layer.succeed(ElectronSyncIpc, ipc),
             mainConfigLayer(),
             Layer.succeed(
-              ProfileAssets,
-              ProfileAssets.of(makeProfileAssets({ assetsRootPath: "/tmp/nodex-test/assets" })),
+              TemporaryAssets,
+              TemporaryAssets.of(makeTemporaryAssets({ assetsRootPath: "/tmp/nodex-test/assets" })),
             ),
             Layer.succeed(WindowRuntime, {
               has: () => true,

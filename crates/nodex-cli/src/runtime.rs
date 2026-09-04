@@ -15,8 +15,8 @@ use nodex_core_contracts::database::{
 use nodex_core_contracts::library::{
     LibraryCatalogKind, LibraryLifecycle, LibraryNavigationNode, LibraryNavigationParent,
     LibraryPageHistoryCursor, LibraryPageKeyTarget, LibraryPageOwnershipPath,
-    LibraryPagePrepareKind, LibraryPageProjectionFileKind, LibraryRead, LibraryReadValue,
-    LibraryResourceTarget, LibrarySearchSnapshotScope,
+    LibraryPagePrepareKind, LibraryPageProjectionFileKind, LibraryPlacedResourceTarget,
+    LibraryRead, LibraryReadValue, LibrarySearchSnapshotScope,
 };
 use nodex_core_contracts::workspace::{
     ProjectLifecycle, ProjectWorkspaceProject, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
@@ -34,9 +34,9 @@ use serde_json::{Value, json};
 
 use crate::cli::{
     BackupCommand, BlockArgs, BlockCommand, Cli, Command, DraftArgs, DraftCommand, HistoryArgs,
-    OpenArgs, OpenCommand, PageArgs, PageCommand, PageFileCommand, PageTitleArgs, PageTitleCommand,
-    PrepareKind, ProfileArgs, ProfileCloneArgs, ProfileCommand, ReadArgs, RgArgs, SedArgs,
-    ServiceArgs, ViewArgs, ViewCommand,
+    OpenArgs, OpenCommand, PageArgs, PageCommand, PageTitleArgs, PageTitleCommand, PrepareKind,
+    ProfileArgs, ProfileCloneArgs, ProfileCommand, ReadArgs, RgArgs, SedArgs, ServiceArgs,
+    ViewArgs, ViewCommand,
 };
 use crate::error::{CliError, CliErrorCode};
 
@@ -237,41 +237,20 @@ pub fn execute(cli: Cli) -> Result<CommandOutput, CliError> {
         ),
         Command::Page(PageArgs {
             command: PageCommand::File(arguments),
-        }) => match arguments.command {
-            PageFileCommand::List(arguments) => {
-                crate::page_files::list(&client, cli.project.as_deref(), &cwd, arguments)
-            }
-            PageFileCommand::Read(arguments) => {
-                crate::page_files::read(&client, cli.project.as_deref(), &cwd, arguments)
-            }
-            PageFileCommand::Put(arguments) => {
-                crate::page_files::put(&client, cli.project.as_deref(), &cwd, arguments, cli.json)
-            }
-            PageFileCommand::Rename(arguments) => crate::page_files::rename(
-                &client,
-                cli.project.as_deref(),
-                &cwd,
-                arguments,
-                cli.json,
-            ),
-            PageFileCommand::Delete(arguments) => crate::page_files::delete(
-                &client,
-                cli.project.as_deref(),
-                &cwd,
-                arguments,
-                cli.json,
-            ),
-            PageFileCommand::Versions(arguments) => {
-                crate::page_files::versions(&client, cli.project.as_deref(), &cwd, arguments)
-            }
-            PageFileCommand::Restore(arguments) => crate::page_files::restore(
-                &client,
-                cli.project.as_deref(),
-                &cwd,
-                arguments,
-                cli.json,
-            ),
-        },
+        }) => crate::page_files::execute(
+            &client,
+            cli.project.as_deref(),
+            &cwd,
+            arguments.command,
+            cli.json,
+        ),
+        Command::File(arguments) => crate::files::execute(
+            &client,
+            cli.project.as_deref(),
+            &cwd,
+            arguments.command,
+            cli.json,
+        ),
         Command::Page(PageArgs {
             command: PageCommand::Insert(arguments),
         }) => crate::page_mutation::insert_page_content(
@@ -705,7 +684,7 @@ fn resolve_database_selector(
             if item.title != selector {
                 continue;
             }
-            let LibraryResourceTarget::Database { database_id } = item.target else {
+            let LibraryPlacedResourceTarget::Database { database_id } = item.target else {
                 return Err(internal(
                     "Core Database catalog contained a non-Database target",
                 ));
@@ -1152,7 +1131,7 @@ fn resolve_page_title_selector(
             if item.title != *query {
                 continue;
             }
-            let LibraryResourceTarget::Page { page_id } = item.target else {
+            let LibraryPlacedResourceTarget::Page { page_id } = item.target else {
                 return Err(internal("Core Page catalog contained a non-Page target"));
             };
             candidates.push(page_id);

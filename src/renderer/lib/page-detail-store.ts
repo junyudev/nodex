@@ -400,6 +400,8 @@ const revokedResource = (
       return { kind: "view", view_id: revocation.resource_id };
     case "canvas":
       return { kind: "canvas", canvas_id: revocation.resource_id };
+    case "file":
+      return { kind: "file", file_id: revocation.resource_id };
   }
 };
 

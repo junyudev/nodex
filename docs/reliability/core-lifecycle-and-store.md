@@ -195,7 +195,9 @@ that transaction, repairs scheduled-Page lifecycle and metadata coordinates
 through the ordinary Database projection writer, then performs the exact current
 projection checks afterward.
 Retained unowned Documents keep restore-grade materialization and index state
-without leaking through owner-scoped projections. The
+without leaking through owner-scoped projections. Migration checkpoints cover
+only Documents with current Block ownership; retained unowned Documents preserve
+their recovery data without acquiring new current-content checkpoints. The
 materialization derivation version is independent from the Document schema
 version so future derived-record changes can add an explicit rebuild step.
 

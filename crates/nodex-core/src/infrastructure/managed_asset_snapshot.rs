@@ -1,40 +1,84 @@
-use std::sync::{OnceLock, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError};
+use std::sync::{Condvar, Mutex, OnceLock};
 
 use super::sqlite::{StoreError, StoreErrorCode};
 
-static MANAGED_ASSET_LEASE: OnceLock<RwLock<()>> = OnceLock::new();
+#[derive(Default)]
+struct LeaseState {
+    readers: usize,
+    collecting: bool,
+}
 
-/// Pins the process-owned managed asset namespace while a staged database's
-/// asset closure is copied. New assets may still be published; destructive GC
-/// uses a non-blocking writer lease and yields instead of stalling a Store
-/// writer behind a long snapshot.
+#[derive(Default)]
+struct LeaseRegistry {
+    state: Mutex<LeaseState>,
+    released: Condvar,
+}
+
+fn registry() -> &'static LeaseRegistry {
+    static REGISTRY: OnceLock<LeaseRegistry> = OnceLock::new();
+    REGISTRY.get_or_init(LeaseRegistry::default)
+}
+
+/// Owned, Send lease: a publication can cross the transport's async boundary
+/// and remain pinned until its owner commits durable roots. Snapshots use the
+/// same boundary. GC never waits behind either activity on the Store writer.
+#[derive(Debug)]
 pub(crate) struct ManagedAssetSnapshotLease {
-    _guard: RwLockReadGuard<'static, ()>,
+    _private: (),
+}
+
+impl Drop for ManagedAssetSnapshotLease {
+    fn drop(&mut self) {
+        let registry = registry();
+        let mut state = registry
+            .state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        state.readers -= 1;
+        registry.released.notify_all();
+    }
+}
+
+pub(crate) struct ManagedAssetGcLease {
+    _private: (),
+}
+
+impl Drop for ManagedAssetGcLease {
+    fn drop(&mut self) {
+        let registry = registry();
+        let mut state = registry
+            .state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        state.collecting = false;
+        registry.released.notify_all();
+    }
 }
 
 pub(crate) fn acquire_snapshot_lease() -> Result<ManagedAssetSnapshotLease, StoreError> {
-    let guard = MANAGED_ASSET_LEASE
-        .get_or_init(|| RwLock::new(()))
-        .read()
+    let registry = registry();
+    let state = registry.state.lock().map_err(|_| unavailable())?;
+    let mut state = registry
+        .released
+        .wait_while(state, |state| state.collecting)
         .map_err(|_| unavailable())?;
-    Ok(ManagedAssetSnapshotLease { _guard: guard })
+    state.readers += 1;
+    Ok(ManagedAssetSnapshotLease { _private: () })
 }
 
-pub(crate) fn try_acquire_gc_lease() -> Result<Option<RwLockWriteGuard<'static, ()>>, StoreError> {
-    match MANAGED_ASSET_LEASE
-        .get_or_init(|| RwLock::new(()))
-        .try_write()
-    {
-        Ok(guard) => Ok(Some(guard)),
-        Err(TryLockError::WouldBlock) => Ok(None),
-        Err(TryLockError::Poisoned(_)) => Err(unavailable()),
+pub(crate) fn try_acquire_gc_lease() -> Result<Option<ManagedAssetGcLease>, StoreError> {
+    let mut state = registry().state.lock().map_err(|_| unavailable())?;
+    if state.collecting || state.readers != 0 {
+        return Ok(None);
     }
+    state.collecting = true;
+    Ok(Some(ManagedAssetGcLease { _private: () }))
 }
 
 fn unavailable() -> StoreError {
     StoreError::new(
         StoreErrorCode::Internal,
-        "Managed asset snapshot lease is unavailable",
+        "Managed asset lease is unavailable",
         false,
     )
 }

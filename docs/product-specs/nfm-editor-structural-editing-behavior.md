@@ -1,7 +1,7 @@
 # NFM Editor Structural Editing Behavior
 
 Status: Active
-Last updated: 2026-09-03
+Last updated: 2026-09-05
 
 Structural preparation has one absolute 10-second deadline, including native
 drag/IME cleanup and durable fencing. After 700 ms the document status offers
@@ -53,9 +53,9 @@ Copying complete Block roots captures an immutable, bounded ownership-closure sn
 
 The native clipboard carries two complementary presentations. Standard HTML and plain text are the portable fallback. Nodex also writes a bounded descriptor using `application/x-nodex-structural-clipboard+json`; the destination renderer reads that descriptor from its native Paste event and uses its exact write claim to await the application-scoped session. Neither presentation contains the ownership closure or File bytes. A private descriptor, action hint, or ready locator grants no authority by itself: Core verifies Profile and Library scope, Store epoch, manifest hash, capability, current access, destination head, and any available cut claim before paste.
 
-Electron Main owns one application-scoped, ephemeral Structural Clipboard runtime shared by every Nodex window. It coordinates preparing, ready, failed, and superseded sessions; compares every asynchronous publication with the exact native clipboard slot; supports a target waiter arriving before the source begins; and settles pending work from phase-safe timeout, explicit source outcome, renderer loss, Profile replacement, or host shutdown. Timeout may reject registration or capture before deletion starts, but it never infers that a published in-flight Cut preserved its source. It persists no clipboard session and cannot create a structural bundle, cut claim, history entry, or File ownership change. Those remain durable Core authority.
+Electron Main owns one application-scoped, ephemeral Structural Clipboard runtime shared by every Nodex window. It coordinates preparing, ready, failed, and superseded sessions; compares every asynchronous publication with the exact native clipboard slot; supports a target waiter arriving before the source begins; and settles pending work from phase-safe timeout, explicit source outcome, renderer loss, Profile replacement, or host shutdown. Timeout may reject registration or capture before deletion starts, but it never infers that a published in-flight Cut preserved its source. It persists no clipboard session and cannot create a structural bundle, cut claim, history entry, or File relationship change. Those remain durable Core authority.
 
-Copy claims the native clipboard synchronously with the portable presentation and private preparing descriptor while Core captures the snapshot. An immediate paste in the same or another window waits for that exact claim. Session registration does not synchronously read the native slot because the browser may still be committing its clipboard event. The later final publication compares the exact claim carried by standard HTML before replacing the native presentation, so a newer copy inside or outside Nodex always wins. If the host runtime is unavailable or has restarted, a valid ready capability carried by the standard rich presentation may still be revalidated by Core; otherwise paste uses the portable fallback. Missing, foreign, malformed, expired, superseded, or unauthorized private data cannot create an owning Block or a live foreign-Profile Page File placement.
+Copy claims the native clipboard synchronously with the portable presentation and private preparing descriptor while Core captures the snapshot. An immediate paste in the same or another window waits for that exact claim. Session registration does not synchronously read the native slot because the browser may still be committing its clipboard event. The later final publication compares the exact claim carried by standard HTML before replacing the native presentation, so a newer copy inside or outside Nodex always wins. If the host runtime is unavailable or has restarted, a valid ready capability carried by the standard rich presentation may still be revalidated by Core; otherwise paste uses the portable fallback. Missing, foreign, malformed, expired, superseded, or unauthorized private data cannot create an owning Block or a live foreign-Profile Library File reference.
 
 The structural command queue and history lane have the same lifetime as their BlockNote editor. Page Stage may detach and remount a tab's React view while retaining that editor; each active view rebinds its current Document participant to the retained structural controller before input is accepted. Consecutive copy or cut commands therefore remain ordered while a prior commit updates the surface or the user switches tabs. Every pending capture reaches a terminal result; an unavailable or stalled session leaves the source unchanged and never silently degrades an owner to title-only clipboard content.
 
@@ -69,15 +69,13 @@ A cloned root title advances one canonical trailing positive-number suffix, or a
 
 Duplicate and drag/copy use the same closure planner without changing the system clipboard. A same-Document drag moves the normalized root forest—including every child subtree—as one operation and keeps root order stable. Dropping at its current location or inside the moved subtree is a no-op. Drag/move otherwise preserves identities and is rejected when the destination is inside the moved ownership closure. Mixed structural selections may move between Page Documents; destinations that would require converting ordinary Blocks into Database rows remain separate typed product actions.
 
-Images and attachments keep their stable Page File IDs through every structural
-operation. After an identity-preserving cross-Page move, Core also moves File
-ownership when the source host is the current owner and the moved forest leaves
-all live placements of that File exclusively in the target host. Partial moves,
-foreign placements, copy, duplicate, ordinary paste, and deletion leave the
-owner unchanged. A target path collision never blocks the Block move: Core
-allocates a deterministic suffix and the initiating editor reports only that
-necessary rename. Undo and Redo repeat the same rule against current canonical
-placements rather than restoring a renderer snapshot.
+Images and attachments keep their stable Library File IDs through every
+structural operation. A cross-Page move changes only the source and target body
+occurrences. Copy, duplicate, ordinary paste, and whole-Page copy share the same
+File identities; whole-Page copy additionally reproduces explicit Page paths.
+No Block operation transfers File ownership, appends a File version, or allocates
+a target path. Undo and Redo restore only the relationships changed by their
+structural transaction and do not rewind a shared File head.
 
 The center of a collapsed Toggle list or toggle Heading is an append-to-children target. It presents one quiet blue highlight across the toggle header, moves or copies the complete selected root forest to the end of that toggle's children, and keeps the toggle collapsed. The narrow top and bottom edge bands remain before/after targets and present the ordinary insertion line instead. These feedback states are mutually exclusive and come from the same semantic target that is committed, so one gesture produces one fenced structural transaction and one Undo entry. After an append-to-children drop, focus remains on the visible toggle header rather than moving into a hidden child. In nested editors, only the deepest eligible editor owns the feedback and commit.
 
@@ -123,7 +121,7 @@ Each mounted editor surface owns one chronological history lane. Local Yjs Stack
 
 The lane follows the editor surface rather than an individual runtime binding. Embedded Page Documents therefore keep structural undo across provider updates and session rebinding just like top-level Page editors, even when no local Yjs UndoManager is available at the instant the surface mounts.
 
-Undoing a structural edit executes a new Core transaction from its single-use inverse token. Core returns a fresh inverse token for redo; it never rewinds SQLite or replays the original command. Deleting and restoring an owner therefore preserves the same owner and Document identities while leaving unrelated collaborator changes intact. Replacement history swaps the currently active closure with the retained opposite closure, so paste and direct typing do not create a separate delete entry. File ownership consequences are part of that same forward transaction and LocalCommit; they are never patched optimistically by the renderer. A conflict keeps the entry at the top of history instead of skipping to an earlier action.
+Undoing a structural edit executes a new Core transaction from its single-use inverse token. Core returns a fresh inverse token for redo; it never rewinds SQLite or replays the original command. Deleting and restoring an owner therefore preserves the same owner and Document identities while leaving unrelated collaborator changes intact. Replacement history swaps the currently active closure with the retained opposite closure, so paste and direct typing do not create a separate delete entry. Exact File identities and any Page-entry relationships are part of that same forward transaction and LocalCommit; they are never patched optimistically by the renderer. A conflict keeps the entry at the top of history instead of skipping to an earlier action.
 
 A new local branch clears both kinds of redo entry together. Structural tokens that leave the reachable lane are explicitly released, including when the editor surface ends, so retention does not keep deleted closure state indefinitely. Releasing a cut history token also gives up its move claim; the immutable clipboard snapshot may still be pasted as a copy.
 

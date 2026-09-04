@@ -1,3 +1,4 @@
+import type { ReadFileBytesInput } from "../../shared/library-files";
 import type { components } from "@nodex/core-protocol";
 import type { LocalCommitApply } from "../../shared/local-commit-delivery";
 import type { ProjectionImpact, ProjectionScope } from "../../shared/projection-stream";
@@ -87,9 +88,9 @@ type SuccessfulPayload<Response> = Response extends {
 
 export type LibraryReadSnapshot = SuccessfulPayload<LibraryReadResponse>;
 export type LibraryApplyResult = SuccessfulPayload<LibraryApplyResponse>;
-export type PreparedPageFileBlob = components["schemas"]["LibraryPreparedPageFileBlob"];
+export type PreparedBlobReceipt = components["schemas"]["PreparedBlobReceipt"];
 
-export interface PageFileBlobBytes {
+export interface ManagedBlobBytes {
   readonly bytes: Uint8Array;
   readonly mimeType: string;
   readonly etag: string;
@@ -237,27 +238,32 @@ export interface CoreRequestOptions {
 }
 
 export interface CoreClientPort {
-  resolveLocalMutation(
-    input: CoreLocalMutationResolveRequest,
-  ): Promise<CoreLocalMutationResolveResponse>;
-  libraryRead(read: LibraryRead, options?: CoreRequestOptions): Promise<LibraryReadSnapshot>;
-  libraryApply(input: LibraryApplyInput, options?: CoreRequestOptions): Promise<LibraryApplyResult>;
-  preparePageFileBlob(
+  readFileBlob(input: ReadFileBytesInput, options?: CoreRequestOptions): Promise<ManagedBlobBytes>;
+  prepareBlob(
     input: {
       readonly operationId: string;
       readonly idempotencySlot?: string;
       readonly bytes: Uint8Array;
     },
     options?: CoreRequestOptions,
-  ): Promise<PreparedPageFileBlob>;
-  readPageFileBlob(
+  ): Promise<PreparedBlobReceipt>;
+  readThreadAssetBlob(
+    input: { readonly threadId: string; readonly contentHash: string },
+    options?: CoreRequestOptions,
+  ): Promise<ManagedBlobBytes>;
+  resolveLocalMutation(
+    input: CoreLocalMutationResolveRequest,
+  ): Promise<CoreLocalMutationResolveResponse>;
+  libraryRead(read: LibraryRead, options?: CoreRequestOptions): Promise<LibraryReadSnapshot>;
+  libraryApply(input: LibraryApplyInput, options?: CoreRequestOptions): Promise<LibraryApplyResult>;
+  prepareFileBlob(
     input: {
-      readonly pageId: string;
-      readonly fileId: string;
-      readonly version?: number;
+      readonly operationId: string;
+      readonly idempotencySlot?: string;
+      readonly bytes: Uint8Array;
     },
     options?: CoreRequestOptions,
-  ): Promise<PageFileBlobBytes>;
+  ): Promise<PreparedBlobReceipt>;
   filterProjectionImpactForProject(
     projectId: string,
     impact: ProjectionImpact,

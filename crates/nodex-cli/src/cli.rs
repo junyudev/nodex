@@ -46,6 +46,7 @@ pub enum Command {
     Open(OpenArgs),
     View(ViewArgs),
     Page(PageArgs),
+    File(FileArgs),
     Block(BlockArgs),
     History(HistoryArgs),
     Backup(BackupArgs),
@@ -197,6 +198,147 @@ pub enum PageCommand {
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
+pub struct FileArgs {
+    #[command(subcommand)]
+    pub command: FileCommand,
+}
+
+#[derive(Clone, Debug, PartialEq, Subcommand)]
+pub enum FileCommand {
+    /// List independently authorized Library Files.
+    List(FileListArgs),
+    /// Inspect metadata and write fences for one independently authorized File.
+    Info(FileIdentityArgs),
+    /// Import bytes as an independent Library File.
+    Import(FileImportArgs),
+    /// Read exact File bytes through direct File access.
+    Read(FileReadArgs),
+    /// Rename the default File name; Page paths are unchanged.
+    Rename(FileRenameArgs),
+    /// Replace shared content for every current use of this File.
+    Replace(FileReplaceArgs),
+    /// Create a separate File from an exact retained version.
+    Fork(FileForkArgs),
+    Versions(FileWindowArgs),
+    /// Publish a retained version as a new content head.
+    Restore(FileRestoreArgs),
+    /// Trash an unused File, retaining its versions.
+    Trash(FileWriteArgs),
+    Untrash(FileWriteArgs),
+    /// Permanently remove a trashed File with no retention roots.
+    Purge(FileWriteArgs),
+    Usages(FileWindowArgs),
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct FilePaginationArgs {
+    #[arg(long, value_name = "OPAQUE_CURSOR")]
+    pub after: Option<String>,
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=200))]
+    pub limit: Option<u32>,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct FileListArgs {
+    #[arg(long)]
+    pub query: Option<String>,
+    #[arg(long)]
+    pub trashed: bool,
+    #[command(flatten)]
+    pub pagination: FilePaginationArgs,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct FileImportArgs {
+    #[arg(long = "from", value_name = "PATH_OR_DASH")]
+    pub source: PathBuf,
+    #[arg(long)]
+    pub name: Option<String>,
+    #[arg(long)]
+    pub mime: Option<String>,
+    #[arg(long)]
+    pub turn_id: Option<String>,
+    #[command(flatten)]
+    pub mutation: MutationArgs,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct FileIdentityArgs {
+    pub file_id: String,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct FileReadArgs {
+    pub file_id: String,
+    #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
+    pub version: Option<i64>,
+    #[arg(long, default_value = "-", value_name = "PATH_OR_DASH")]
+    pub output: PathBuf,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct FileWriteArgs {
+    pub file_id: String,
+    #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
+    pub if_revision: i64,
+    #[arg(long)]
+    pub turn_id: Option<String>,
+    #[command(flatten)]
+    pub mutation: MutationArgs,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct FileRenameArgs {
+    #[command(flatten)]
+    pub write: FileWriteArgs,
+    #[arg(long)]
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct FileReplaceArgs {
+    #[command(flatten)]
+    pub write: FileWriteArgs,
+    #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
+    pub if_head: i64,
+    #[arg(long = "from", value_name = "PATH_OR_DASH")]
+    pub source: PathBuf,
+    /// Required for stdin; inferred from the source filename otherwise.
+    #[arg(long)]
+    pub mime: Option<String>,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct FileForkArgs {
+    pub file_id: String,
+    #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
+    pub version: i64,
+    #[arg(long)]
+    pub name: String,
+    #[arg(long)]
+    pub turn_id: Option<String>,
+    #[command(flatten)]
+    pub mutation: MutationArgs,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct FileWindowArgs {
+    pub file_id: String,
+    #[command(flatten)]
+    pub pagination: FilePaginationArgs,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct FileRestoreArgs {
+    #[command(flatten)]
+    pub write: FileWriteArgs,
+    #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
+    pub if_head: i64,
+    #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
+    pub version: i64,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageFileArgs {
     #[command(subcommand)]
     pub command: PageFileCommand,
@@ -204,40 +346,41 @@ pub struct PageFileArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum PageFileCommand {
-    /// List Files directly owned by one Page.
+    /// List Page entries and body uses, deduplicated by File ID.
     List(PageFileListArgs),
-    /// Read current or historical exact bytes.
+    /// Read current bytes by an explicit File ID or Page path.
     Read(PageFileReadArgs),
-    /// Create a File, or replace the File currently at the same logical path.
+    /// Import at a path; --replace-entry replaces only this Page relation.
     Put(PageFilePutArgs),
-    /// Change a File's Page-relative logical path without changing its identity.
-    Rename(PageFileRenameArgs),
-    /// Delete an unreferenced File while retaining its version history.
-    Delete(PageFileDeleteArgs),
-    /// List immutable versions of one File.
-    Versions(PageFileVersionsArgs),
-    /// Restore a retained version as a new current version.
-    Restore(PageFileRestoreArgs),
+    /// Add a path for an existing independently authorized File.
+    Add(PageFilePathArgs),
+    /// Rename this Page's virtual path.
+    RenamePath(PageFilePathArgs),
+    /// Remove this Page relation, retaining the File and body uses.
+    Remove(PageFileWriteArgs),
+    /// Import a new File and retarget only this Page relation.
+    ReplaceEntry(PageFileReplaceArgs),
+    /// Move a Page relation without changing File ownership or content.
+    Move(PageFileTransferArgs),
+    Copy(PageFileTransferArgs),
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageFileListArgs {
     pub page: String,
     #[arg(long)]
-    pub include_deleted: bool,
-    #[arg(long, value_name = "OPAQUE_CURSOR")]
-    pub after: Option<String>,
-    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100))]
-    pub limit: Option<u32>,
+    pub query: Option<String>,
+    #[command(flatten)]
+    pub pagination: FilePaginationArgs,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageFileReadArgs {
     pub page: String,
-    #[arg(long, value_name = "FILE_ID_OR_LOGICAL_PATH")]
-    pub file: String,
-    #[arg(long)]
-    pub version: Option<i64>,
+    #[arg(long, required_unless_present = "path", conflicts_with = "path")]
+    pub file_id: Option<String>,
+    #[arg(long, required_unless_present = "file_id", conflicts_with = "file_id")]
+    pub path: Option<String>,
     #[arg(long, default_value = "-", value_name = "PATH_OR_DASH")]
     pub output: PathBuf,
 }
@@ -245,62 +388,66 @@ pub struct PageFileReadArgs {
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageFilePutArgs {
     pub page: String,
-    #[arg(long, value_name = "PAGE_RELATIVE_PATH")]
+    #[arg(long)]
     pub path: String,
     #[arg(long = "from", value_name = "PATH_OR_DASH")]
     pub source: PathBuf,
-    #[arg(long, value_name = "MIME_TYPE")]
-    pub mime: Option<String>,
-    #[arg(long, value_name = "TURN_ID")]
-    pub turn_id: Option<String>,
-    #[command(flatten)]
-    pub mutation: MutationArgs,
-}
-
-#[derive(Clone, Debug, Args, PartialEq)]
-pub struct PageFileRenameArgs {
-    pub page: String,
-    #[arg(long, value_name = "FILE_ID_OR_LOGICAL_PATH")]
-    pub file: String,
-    #[arg(long = "to", value_name = "PAGE_RELATIVE_PATH")]
-    pub path: String,
-    #[arg(long, value_name = "TURN_ID")]
-    pub turn_id: Option<String>,
-    #[command(flatten)]
-    pub mutation: MutationArgs,
-}
-
-#[derive(Clone, Debug, Args, PartialEq)]
-pub struct PageFileDeleteArgs {
-    pub page: String,
-    #[arg(long, value_name = "FILE_ID_OR_LOGICAL_PATH")]
-    pub file: String,
-    #[arg(long, value_name = "TURN_ID")]
-    pub turn_id: Option<String>,
-    #[command(flatten)]
-    pub mutation: MutationArgs,
-}
-
-#[derive(Clone, Debug, Args, PartialEq)]
-pub struct PageFileVersionsArgs {
-    pub page: String,
-    #[arg(long, value_name = "FILE_ID_OR_LOGICAL_PATH")]
-    pub file: String,
-    #[arg(long, value_name = "OPAQUE_CURSOR")]
-    pub after: Option<String>,
-    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100))]
-    pub limit: Option<u32>,
-}
-
-#[derive(Clone, Debug, Args, PartialEq)]
-pub struct PageFileRestoreArgs {
-    pub page: String,
-    #[arg(long, value_name = "FILE_ID_OR_LOGICAL_PATH")]
-    pub file: String,
     #[arg(long)]
-    pub version: i64,
-    #[arg(long, value_name = "TURN_ID")]
+    pub mime: Option<String>,
+    #[arg(long)]
+    pub replace_entry: bool,
+    #[arg(long, value_parser = clap::value_parser!(i64).range(0..))]
+    pub if_manifest: i64,
+    #[arg(long)]
     pub turn_id: Option<String>,
+    #[command(flatten)]
+    pub mutation: MutationArgs,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct PageFileWriteArgs {
+    pub page: String,
+    #[arg(long)]
+    pub file_id: String,
+    #[arg(long, value_parser = clap::value_parser!(i64).range(0..))]
+    pub if_manifest: i64,
+    #[arg(long)]
+    pub turn_id: Option<String>,
+    #[command(flatten)]
+    pub mutation: MutationArgs,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct PageFilePathArgs {
+    #[command(flatten)]
+    pub write: PageFileWriteArgs,
+    #[arg(long)]
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct PageFileReplaceArgs {
+    #[command(flatten)]
+    pub write: PageFileWriteArgs,
+    #[arg(long = "from", value_name = "PATH_OR_DASH")]
+    pub source: PathBuf,
+    #[arg(long)]
+    pub mime: Option<String>,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct PageFileTransferArgs {
+    pub page: String,
+    #[arg(long)]
+    pub file_id: String,
+    #[arg(long)]
+    pub to: String,
+    #[arg(long)]
+    pub path: String,
+    #[arg(long, value_parser = clap::value_parser!(i64).range(0..))]
+    pub if_source_manifest: i64,
+    #[arg(long, value_parser = clap::value_parser!(i64).range(0..))]
+    pub if_target_manifest: i64,
     #[command(flatten)]
     pub mutation: MutationArgs,
 }
@@ -863,10 +1010,9 @@ mod tests {
     }
 
     #[test]
-    fn page_file_commands_keep_owner_and_exact_file_coordinates_explicit() {
+    fn file_commands_require_explicit_write_fences_and_unambiguous_selectors() {
         let put = Cli::try_parse_from([
             "nodex",
-            "--json",
             "page",
             "file",
             "put",
@@ -875,77 +1021,77 @@ mod tests {
             "references/api.md",
             "--from",
             "./api.md",
-            "--turn-id",
-            "turn-42",
-            "--idempotency-key",
-            "page-file-put-1",
+            "--if-manifest",
+            "0",
         ])
-        .expect("Page File put");
+        .expect("Page import");
         let Command::Page(PageArgs {
             command:
                 PageCommand::File(PageFileArgs {
-                    command: PageFileCommand::Put(arguments),
+                    command: PageFileCommand::Put(args),
                 }),
         }) = put.command
         else {
-            panic!("expected Page File put command")
+            panic!("Page put")
         };
-        assert_eq!(arguments.page, "@page-1");
-        assert_eq!(arguments.path, "references/api.md");
-        assert_eq!(arguments.source, PathBuf::from("./api.md"));
-        assert_eq!(arguments.turn_id.as_deref(), Some("turn-42"));
-        assert_eq!(
-            arguments.mutation.idempotency_key.as_deref(),
-            Some("page-file-put-1")
+        assert!(!args.replace_entry);
+        assert_eq!(args.if_manifest, 0);
+        for argv in [
+            vec!["nodex", "file", "rename", "file-id", "--name", "next.txt"],
+            vec![
+                "nodex",
+                "file",
+                "replace",
+                "file-id",
+                "--from",
+                "next.txt",
+                "--if-revision",
+                "1",
+            ],
+            vec![
+                "nodex",
+                "page",
+                "file",
+                "remove",
+                "@page-1",
+                "--file-id",
+                "file-id",
+            ],
+            vec!["nodex", "page", "file", "read", "@page-1"],
+            vec![
+                "nodex",
+                "page",
+                "file",
+                "read",
+                "@page-1",
+                "--path",
+                "x",
+                "--file-id",
+                "x",
+            ],
+            vec![
+                "nodex",
+                "page",
+                "file",
+                "read",
+                "@page-1",
+                "--path",
+                "x",
+                "--version",
+                "1",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(argv).is_err());
+        }
+        assert!(
+            Cli::try_parse_from(["nodex", "file", "read", "file-id", "--version", "1"]).is_ok()
         );
-
-        let rename = Cli::try_parse_from([
-            "nodex",
-            "page",
-            "file",
-            "rename",
-            "@page-1",
-            "--file",
-            "references/api.md",
-            "--to",
-            "references/v2.md",
-        ])
-        .expect("Page File rename");
-        let Command::Page(PageArgs {
-            command:
-                PageCommand::File(PageFileArgs {
-                    command: PageFileCommand::Rename(arguments),
-                }),
-        }) = rename.command
-        else {
-            panic!("expected Page File rename command")
-        };
-        assert_eq!(arguments.file, "references/api.md");
-        assert_eq!(arguments.path, "references/v2.md");
-
-        let list = Cli::try_parse_from([
-            "nodex",
-            "page",
-            "file",
-            "list",
-            "@page-1",
-            "--include-deleted",
-        ])
-        .expect("Page File list including deleted Files");
-        let Command::Page(PageArgs {
-            command:
-                PageCommand::File(PageFileArgs {
-                    command: PageFileCommand::List(arguments),
-                }),
-        }) = list.command
-        else {
-            panic!("expected Page File list command")
-        };
-        assert!(arguments.include_deleted);
-
+        assert!(
+            Cli::try_parse_from(["nodex", "page", "file", "read", "@page-1", "--path", "x"])
+                .is_ok()
+        );
         let unbounded =
-            Cli::try_parse_from(["nodex", "page", "file", "list", "@page-1", "--limit", "101"])
-                .expect_err("Page File list windows are bounded");
+            Cli::try_parse_from(["nodex", "file", "list", "--limit", "201"]).unwrap_err();
         assert_eq!(unbounded.kind(), clap::error::ErrorKind::ValueValidation);
     }
 

@@ -6640,6 +6640,14 @@ fn validate_view_property_capabilities(
     property_semantics: &BTreeMap<String, ViewPropertySemantics>,
     library_scope: bool,
 ) -> Result<(), StoreError> {
+    let filter_context = FilterCapabilityContext {
+        connection,
+        library_id,
+        project_id,
+        data_source_id,
+        property_semantics,
+        library_scope,
+    };
     if [
         view_group_property(definition),
         view_subgroup_property(definition),
@@ -6680,55 +6688,36 @@ fn validate_view_property_capabilities(
             ));
         }
         validate_filter_capabilities(
-            connection,
-            library_id,
-            project_id,
-            data_source_id,
+            &filter_context,
             &DatabaseViewFilter::Clause {
                 property_id: rule.property_id.clone(),
                 operator,
                 value: rule.value.clone().map(Some),
             },
-            property_semantics,
-            library_scope,
             false,
         )?;
     }
     for filter in &definition.rules.property_filters {
-        validate_filter_capabilities(
-            connection,
-            library_id,
-            project_id,
-            data_source_id,
-            &filter.clause,
-            property_semantics,
-            library_scope,
-            true,
-        )?;
+        validate_filter_capabilities(&filter_context, &filter.clause, true)?;
     }
     if let Some(filter) = &definition.rules.advanced_filter {
-        validate_filter_capabilities(
-            connection,
-            library_id,
-            project_id,
-            data_source_id,
-            filter,
-            property_semantics,
-            library_scope,
-            true,
-        )?;
+        validate_filter_capabilities(&filter_context, filter, true)?;
     }
     Ok(())
 }
 
-fn validate_filter_capabilities(
-    connection: &Connection,
-    library_id: &str,
-    project_id: &str,
-    data_source_id: &str,
-    filter: &DatabaseViewFilter,
-    property_semantics: &BTreeMap<String, ViewPropertySemantics>,
+struct FilterCapabilityContext<'a> {
+    connection: &'a Connection,
+    library_id: &'a str,
+    project_id: &'a str,
+    data_source_id: &'a str,
+    property_semantics: &'a BTreeMap<String, ViewPropertySemantics>,
     library_scope: bool,
+}
+
+fn validate_filter_capabilities(
+    context: &FilterCapabilityContext<'_>,
+    filter: &DatabaseViewFilter,
     allow_empty_value: bool,
 ) -> Result<(), StoreError> {
     let DatabaseViewFilter::Clause {
@@ -6741,20 +6730,12 @@ fn validate_filter_capabilities(
             unreachable!("Database View filter variants are exhaustive")
         };
         for child in children {
-            validate_filter_capabilities(
-                connection,
-                library_id,
-                project_id,
-                data_source_id,
-                child,
-                property_semantics,
-                library_scope,
-                allow_empty_value,
-            )?;
+            validate_filter_capabilities(context, child, allow_empty_value)?;
         }
         return Ok(());
     };
-    let property = property_semantics
+    let property = context
+        .property_semantics
         .get(property_id)
         .ok_or_else(|| invalid("Database View filter references a missing Property"))?;
     if !property.capabilities.filter_operators.contains(operator) {
@@ -6785,23 +6766,33 @@ fn validate_filter_capabilities(
         )
     {
         let page_ids = filter_identity_values(value)?;
-        let target_data_source_id =
-            super::relation::target_data_source_id(connection, data_source_id, property_id)?;
-        authorize_relation_target_read(
-            connection,
-            library_id,
-            project_id,
-            &target_data_source_id,
-            library_scope,
+        let target_data_source_id = super::relation::target_data_source_id(
+            context.connection,
+            context.data_source_id,
+            property_id,
         )?;
-        if !library_scope {
+        authorize_relation_target_read(
+            context.connection,
+            context.library_id,
+            context.project_id,
+            &target_data_source_id,
+            context.library_scope,
+        )?;
+        if !context.library_scope {
             for page_id in &page_ids {
                 crate::library::require_page_read_access(
-                    connection, library_id, project_id, page_id,
+                    context.connection,
+                    context.library_id,
+                    context.project_id,
+                    page_id,
                 )?;
             }
         }
-        super::relation::validate_active_targets(connection, &target_data_source_id, &page_ids)?;
+        super::relation::validate_active_targets(
+            context.connection,
+            &target_data_source_id,
+            &page_ids,
+        )?;
     }
     Ok(())
 }

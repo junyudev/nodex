@@ -1,3 +1,4 @@
+import { useRegisterFileLocationNavigator } from "@/lib/file-location-navigation";
 import {
   useCallback,
   useEffect,
@@ -52,9 +53,13 @@ import {
   type CodexHooksSettingsTarget,
 } from "@/lib/codex-hooks-route";
 import { buildAutomationsPath } from "./workbench-automations-routes";
-import type { LibraryResourceTarget, LibraryRouteTarget } from "../../../shared/library-module";
+import type {
+  LibraryPlacedResourceTarget,
+  LibraryRouteTarget,
+} from "../../../shared/library-module";
 import type { LibraryResourceTarget as ActionableLibraryResourceTarget } from "../library/library-resource-actions";
 import { WorkbenchProcessManagerDialog } from "./workbench-process-manager-dialog";
+import { LibraryFilesDialog } from "../library/library-files-dialog";
 import {
   ProjectAgentDockLeadingRow,
   ProjectAgentDockUnavailableOverlay,
@@ -64,6 +69,7 @@ import { NodexTooltip, NodexTooltipProvider } from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/toast";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
+import { libraryContentAccess, projectContentAccess } from "../../../shared/content-access-context";
 import { requestPageCreateFromContext } from "@/lib/page-create-workflow";
 import { useProjectPageCreateTarget } from "@/lib/use-project-page-create-target";
 import { useMutationAuditSessionId } from "@/lib/mutation-audit-session";
@@ -1906,11 +1912,13 @@ export function WorkbenchRuntime({
     [sceneNavigator],
   );
   const openResourceTarget = useCallback(
-    async (target: LibraryResourceTarget) => {
+    async (target: LibraryPlacedResourceTarget) => {
       await presentLibraryTarget(target);
     },
     [presentLibraryTarget],
   );
+
+  useRegisterFileLocationNavigator(presentLibraryTarget);
 
   const sidebarController = useWorkbenchSidebarController({
     projects,
@@ -3167,6 +3175,12 @@ export function WorkbenchRuntime({
       toggleSidebar={toggleSidebarCollapsed}
       toggleSidePanel={toggleActiveSidePanel}
       openAutomations={openAutomations}
+      openLibraryFiles={() => {
+        const projectId = activeProject?.id ?? activeProjectId;
+        openModal(appHandle, LibraryFilesDialog, {
+          accessContext: projectId ? projectContentAccess(projectId) : libraryContentAccess,
+        });
+      }}
       openProcessManager={() => setProcessManagerOpen(true)}
       openSettings={openSettings}
       openKeyboardShortcuts={openKeyboardShortcutHelp}

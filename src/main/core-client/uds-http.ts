@@ -34,7 +34,9 @@ const MAX_EVENT_FRAME_BYTES = CORE_TRANSPORT_BUDGETS.event_frame_bytes;
 const TRANSPORT_LIVENESS_TIMEOUT_MS = 5_000;
 const MAX_CONFIGURED_REQUEST_TIMEOUT_MS = 120_000;
 const DOCUMENT_ROUTE_PREFIX = "/core/v1/modules/document/";
-const PAGE_FILE_BLOB_ROUTE_PREFIX = "/core/v1/page-files/blobs/";
+const FILE_BLOB_ROUTE_PREFIX = "/core/v1/files/blobs/";
+const MANAGED_BLOB_PREPARE_ROUTE = "/core/v1/blobs/prepare";
+const THREAD_BLOB_ROUTE = /^\/core\/v1\/threads\/[^/]+\/blobs\/[^/]+$/u;
 const MODULE_ROUTE_PREFIX = "/core/v1/modules/";
 const LOCAL_MUTATION_ROUTE = "/core/v1/local-mutations/resolve";
 const DEFAULT_REQUEST_DEADLINES_MS: Readonly<Record<CoreRequestClass, number>> = {
@@ -58,9 +60,12 @@ const requestExecution = (
   requestPath: string,
   options: CoreRequestOptions,
 ): RequestExecutionHeaders | null => {
+  const route = requestPath.split("?", 1)[0]!;
   if (
     !requestPath.startsWith(MODULE_ROUTE_PREFIX) &&
-    !requestPath.startsWith(PAGE_FILE_BLOB_ROUTE_PREFIX) &&
+    !requestPath.startsWith(FILE_BLOB_ROUTE_PREFIX) &&
+    route !== MANAGED_BLOB_PREPARE_ROUTE &&
+    !THREAD_BLOB_ROUTE.test(route) &&
     requestPath !== LOCAL_MUTATION_ROUTE
   ) {
     return null;
@@ -459,7 +464,7 @@ export class UdsHttpTransport {
   ): Promise<BoundedBytesResponse> {
     const execution = requestExecution(requestPath, options);
     if (!execution) {
-      return Promise.reject(new Error("Page File Blob requests require Core execution metadata"));
+      return Promise.reject(new Error("Blob requests require Core execution metadata"));
     }
     const transportTimeoutMs = execution.deadlineMs + this.#transportLivenessTimeoutMs;
     return new Promise((resolve, reject) => {
@@ -503,7 +508,7 @@ export class UdsHttpTransport {
                 const value = decodeBoundedJson<unknown>(
                   bytes,
                   Math.min(maximumResponseBytes, MAX_JSON_RESPONSE_BYTES),
-                  "Core Page File Blob error response",
+                  "Core File Blob error response",
                 );
                 settle(() => reject(new CoreHttpError(status, errorMessage(value))));
                 return;

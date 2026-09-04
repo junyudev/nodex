@@ -1,13 +1,13 @@
 import type {
   LibraryNavigationNode,
-  LibraryResourceTarget,
+  LibraryPlacedResourceTarget,
   LibraryRouteTarget,
 } from "../../shared/library-module";
 
 export function resolveLibraryPathRoot(
   target: LibraryRouteTarget,
   nodes: readonly LibraryNavigationNode[],
-): LibraryResourceTarget | null {
+): LibraryPlacedResourceTarget | null {
   const root = nodes[0];
   if (!root) return null;
   if (root.kind === "page") {
@@ -24,8 +24,8 @@ export function resolveLibraryPathRoot(
 }
 
 export function areLibraryResourceTargetsEqual(
-  left: LibraryResourceTarget,
-  right: LibraryResourceTarget,
+  left: LibraryPlacedResourceTarget,
+  right: LibraryPlacedResourceTarget,
 ): boolean {
   if (left.kind !== right.kind) return false;
   if (left.kind === "page" && right.kind === "page") {

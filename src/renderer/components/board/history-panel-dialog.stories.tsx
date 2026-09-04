@@ -92,6 +92,7 @@ const meta = {
   decorators: [withHistoryApi],
   parameters: { layout: "fullscreen" },
   args: {
+    fileAuthority: null,
     projectId: "project-story",
     pageId: "page-story",
     pageTitle: "Design a coherent resource model",

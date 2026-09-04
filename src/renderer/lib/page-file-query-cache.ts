@@ -2,7 +2,7 @@ import type { QueryClient, QueryKey } from "@tanstack/react-query";
 
 import { subscribeAllPageFileChanges } from "./page-library-changes";
 
-const isPageFileQueryForPage = (queryKey: QueryKey, pageId: string): boolean =>
+const isFileSourceQueryForPage = (queryKey: QueryKey, pageId: string): boolean =>
   queryKey[0] === "libraryPages" && queryKey[1] === "files" && queryKey[3] === pageId;
 
 /** Marks every cached access-context view stale, including currently unmounted Page tabs. */
@@ -11,7 +11,7 @@ export const invalidateCachedPageFileQueries = async (
   pageId: string,
 ): Promise<void> => {
   await queryClient.invalidateQueries({
-    predicate: (query) => isPageFileQueryForPage(query.queryKey, pageId),
+    predicate: (query) => isFileSourceQueryForPage(query.queryKey, pageId),
   });
 };
 

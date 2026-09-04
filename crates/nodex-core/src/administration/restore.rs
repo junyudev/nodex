@@ -27,8 +27,6 @@ use crate::infrastructure::store_replacement::{
 };
 
 const ASSETS_DIRECTORY_NAME: &str = "assets";
-const MAX_CANVAS_ASSET_BYTES: u64 = 10 * 1024 * 1024;
-const MAX_PAGE_FILE_BLOB_BYTES: u64 = 64 * 1024 * 1024;
 
 pub(super) struct RestoreInstallation {
     pub journal: StoreReplacementJournal,
@@ -555,7 +553,7 @@ fn validate_canvas_projection(
     let loaded = load_canvas_scene(connection, authority)?;
     let projected_files = connection
         .prepare(
-            "SELECT file_id, mime_type, asset_uri, managed_file_name \
+            "SELECT file_id, mime_type, asset_uri, target_file_id, file_version, default_name, asset_hash, byte_length \
              FROM canvas_scene_file_refs WHERE document_id = ?1 AND library_id = ?2 \
                AND document_generation = ?3 ORDER BY file_id",
         )?
@@ -571,6 +569,10 @@ fn validate_canvas_projection(
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, i64>(7)?,
                 ))
             },
         )?
@@ -578,13 +580,29 @@ fn validate_canvas_projection(
     if projected_files.len() != loaded.scene.files.len() {
         return Err(corrupt("Restore candidate Canvas file projection is stale"));
     }
-    for (file_id, mime_type, asset_uri, managed_file_name) in projected_files {
+    for (
+        file_id,
+        mime_type,
+        asset_uri,
+        target_file_id,
+        file_version,
+        default_name,
+        asset_hash,
+        byte_length,
+    ) in projected_files
+    {
         let Some(file) = loaded.scene.files.get(&file_id) else {
             return Err(corrupt("Restore candidate Canvas file projection is stale"));
         };
-        if file.mime_type != mime_type
+        let evidence =
+            crate::document::canvas_file_content_evidence(connection, &authority.head.id, file)?;
+        if asset_hash != evidence.0
+            || byte_length != evidence.1
+            || file.mime_type != mime_type
             || file.source != asset_uri
-            || file.managed_file_name != managed_file_name
+            || file.target_file_id != target_file_id
+            || file.file_version != file_version
+            || file.default_name != default_name
         {
             return Err(corrupt("Restore candidate Canvas file projection is stale"));
         }
@@ -717,52 +735,7 @@ fn validate_assets(
         }
     }
 
-    let canvas_assets = connection
-        .prepare(
-            "SELECT asset_uri, managed_file_name, asset_hash, byte_length \
-             FROM canvas_scene_file_refs asset JOIN documents document \
-               ON document.id = asset.document_id AND document.library_id = asset.library_id \
-             WHERE asset.document_generation = document.generation \
-             ORDER BY asset_uri, document_id, file_id",
-        )?
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?,
-            ))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    for (asset_uri, managed_file_name, expected_hash, expected_length) in canvas_assets {
-        let parsed = parse_asset_source(&asset_uri).ok_or_else(|| {
-            corrupt("Restore candidate contains an invalid Canvas managed asset URI")
-        })?;
-        if parsed != managed_file_name || expected_length < 0 {
-            return Err(corrupt(
-                "Restore candidate Canvas asset projection is invalid",
-            ));
-        }
-        let Some(bytes) = read_asset(
-            assets_root,
-            &managed_file_name,
-            Some(MAX_CANVAS_ASSET_BYTES),
-            missing_asset_policy,
-            &mut missing_assets,
-        )?
-        else {
-            continue;
-        };
-        if i64::try_from(bytes.len()).ok() != Some(expected_length)
-            || sha256(&bytes) != expected_hash
-        {
-            return Err(corrupt(
-                "Restore candidate Canvas asset evidence does not match its file",
-            ));
-        }
-    }
-
-    let page_file_blobs = connection
+    let managed_blobs = connection
         .prepare(
             "SELECT physical_asset_name, content_hash, byte_length \
              FROM managed_blobs ORDER BY content_hash",
@@ -775,16 +748,14 @@ fn validate_assets(
             ))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    for (managed_file_name, expected_hash, expected_length) in page_file_blobs {
+    for (managed_file_name, expected_hash, expected_length) in managed_blobs {
         if expected_length < 0 {
-            return Err(corrupt(
-                "Restore candidate Page File Blob length is invalid",
-            ));
+            return Err(corrupt("Restore candidate Blob length is invalid"));
         }
         let Some(bytes) = read_asset(
             assets_root,
             &managed_file_name,
-            Some(MAX_PAGE_FILE_BLOB_BYTES),
+            Some(nodex_core_contracts::MAX_MANAGED_BLOB_BYTES),
             missing_asset_policy,
             &mut missing_assets,
         )?
@@ -795,28 +766,34 @@ fn validate_assets(
             || sha256(&bytes) != expected_hash
         {
             return Err(corrupt(
-                "Restore candidate Page File Blob evidence does not match its file",
+                "Restore candidate Blob evidence does not match its file",
             ));
         }
     }
 
-    let invalid_page_file_namespace = connection.query_row(
+    let invalid_file_relationships = connection.query_row(
         "SELECT EXISTS( \
-           SELECT 1 FROM page_files file \
-           LEFT JOIN page_file_namespace namespace ON namespace.file_id = file.file_id \
-           WHERE (file.state = 'live' AND ( \
-             namespace.file_id IS NULL \
-             OR namespace.owner_page_id <> file.owner_page_id \
-             OR namespace.library_id <> file.library_id \
-             OR namespace.path_key <> file.path_key \
-           )) OR (file.state = 'deleted' AND namespace.file_id IS NOT NULL) \
+           SELECT 1 FROM library_files file \
+           LEFT JOIN file_versions version \
+             ON version.file_id = file.file_id AND version.version = file.head_version \
+              AND version.library_id = file.library_id \
+           LEFT JOIN managed_blobs blob ON blob.content_hash = version.blob_hash \
+           WHERE version.file_id IS NULL OR blob.content_hash IS NULL \
+             OR blob.byte_length <> version.byte_length \
+         ) OR EXISTS( \
+           SELECT 1 FROM page_file_entries entry \
+           LEFT JOIN pages page ON page.block_id = entry.page_id \
+             AND page.library_id = entry.library_id \
+           LEFT JOIN library_files file ON file.file_id = entry.file_id \
+             AND file.library_id = entry.library_id \
+           WHERE page.block_id IS NULL OR file.file_id IS NULL OR file.lifecycle <> 'live' \
          )",
         [],
         |row| row.get::<_, bool>(0),
     )?;
-    if invalid_page_file_namespace {
+    if invalid_file_relationships {
         return Err(corrupt(
-            "Restore candidate Page File namespace does not match current File heads",
+            "Restore candidate File heads or Page relationships are invalid",
         ));
     }
 
@@ -990,13 +967,17 @@ mod tests {
                    content_hash TEXT NOT NULL, physical_asset_name TEXT NOT NULL, \
                    byte_length INTEGER NOT NULL \
                  ); \
-                 CREATE TABLE page_files( \
-                   file_id TEXT NOT NULL, owner_page_id TEXT NOT NULL, library_id TEXT NOT NULL, \
-                   path_key TEXT NOT NULL, state TEXT NOT NULL \
+                 CREATE TABLE pages(block_id TEXT NOT NULL, library_id TEXT NOT NULL); \
+                 CREATE TABLE library_files( \
+                   file_id TEXT NOT NULL, library_id TEXT NOT NULL, head_version INTEGER NOT NULL, \
+                   lifecycle TEXT NOT NULL \
                  ); \
-                 CREATE TABLE page_file_namespace( \
-                   file_id TEXT NOT NULL, owner_page_id TEXT NOT NULL, library_id TEXT NOT NULL, \
-                   path_key TEXT NOT NULL \
+                 CREATE TABLE file_versions( \
+                   file_id TEXT NOT NULL, version INTEGER NOT NULL, library_id TEXT NOT NULL, \
+                   blob_hash TEXT NOT NULL, byte_length INTEGER NOT NULL \
+                 ); \
+                 CREATE TABLE page_file_entries( \
+                   page_id TEXT NOT NULL, library_id TEXT NOT NULL, file_id TEXT NOT NULL \
                  ); \
                  INSERT INTO documents(id, library_id, generation, head_seq) \
                  VALUES ('document:1', 'library:1', 1, 4); \
@@ -1029,8 +1010,8 @@ mod tests {
     }
 
     #[test]
-    fn restore_rejects_tampered_page_file_blob_bytes() {
-        let connection = Connection::open_in_memory().expect("Page File restore fixture");
+    fn restore_rejects_tampered_file_blob_bytes() {
+        let connection = Connection::open_in_memory().expect("File restore fixture");
         connection
             .execute_batch(
                 "CREATE TABLE documents( \
@@ -1052,31 +1033,34 @@ mod tests {
                    content_hash TEXT NOT NULL, physical_asset_name TEXT NOT NULL, \
                    byte_length INTEGER NOT NULL \
                  ); \
-                 CREATE TABLE page_files( \
-                   file_id TEXT NOT NULL, owner_page_id TEXT NOT NULL, library_id TEXT NOT NULL, \
-                   path_key TEXT NOT NULL, state TEXT NOT NULL \
+                 CREATE TABLE pages(block_id TEXT NOT NULL, library_id TEXT NOT NULL); \
+                 CREATE TABLE library_files( \
+                   file_id TEXT NOT NULL, library_id TEXT NOT NULL, head_version INTEGER NOT NULL, \
+                   lifecycle TEXT NOT NULL \
                  ); \
-                 CREATE TABLE page_file_namespace( \
-                   file_id TEXT NOT NULL, owner_page_id TEXT NOT NULL, library_id TEXT NOT NULL, \
-                   path_key TEXT NOT NULL \
+                 CREATE TABLE file_versions( \
+                   file_id TEXT NOT NULL, version INTEGER NOT NULL, library_id TEXT NOT NULL, \
+                   blob_hash TEXT NOT NULL, byte_length INTEGER NOT NULL \
+                 ); \
+                 CREATE TABLE page_file_entries( \
+                   page_id TEXT NOT NULL, library_id TEXT NOT NULL, file_id TEXT NOT NULL \
                  );",
             )
-            .expect("Page File restore schema");
+            .expect("File restore schema");
         let expected = b"trusted bytes";
         let content_hash = sha256(expected);
         connection
             .execute(
                 "INSERT INTO managed_blobs(content_hash, physical_asset_name, byte_length) \
-                 VALUES (?1, 'page-file-test.blob', ?2)",
+                 VALUES (?1, 'file-test.blob', ?2)",
                 params![content_hash, expected.len() as i64],
             )
             .expect("managed Blob evidence");
         let assets = tempdir().expect("assets");
-        fs::write(assets.path().join("page-file-test.blob"), b"forged-bytes!")
-            .expect("tampered Blob");
+        fs::write(assets.path().join("file-test.blob"), b"forged-bytes!").expect("tampered Blob");
 
         let error = validate_assets(&connection, assets.path(), MissingAssetPolicy::Reject)
-            .expect_err("restore must reject a tampered Page File Blob");
+            .expect_err("restore must reject a tampered File Blob");
         assert_eq!(error.code, StoreErrorCode::StoreCorrupt);
     }
 }

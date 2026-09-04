@@ -16,7 +16,7 @@ use crate::document::DocumentHeadRevision;
 use crate::workspace::{ProjectAppearance, ProjectLifecycle};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 44;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 45;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -33,6 +33,27 @@ pub enum LibraryResourceTarget {
     Page { page_id: String },
     Database { database_id: String },
     Canvas { canvas_id: String },
+    File { file_id: String },
+}
+
+/// Resources with a Block placement in Library navigation. Files have independent
+/// identity and authorization; Page entries never give them a Block placement.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LibraryPlacedResourceTarget {
+    Page { page_id: String },
+    Database { database_id: String },
+    Canvas { canvas_id: String },
+}
+
+impl From<LibraryPlacedResourceTarget> for LibraryResourceTarget {
+    fn from(target: LibraryPlacedResourceTarget) -> Self {
+        match target {
+            LibraryPlacedResourceTarget::Page { page_id } => Self::Page { page_id },
+            LibraryPlacedResourceTarget::Database { database_id } => Self::Database { database_id },
+            LibraryPlacedResourceTarget::Canvas { canvas_id } => Self::Canvas { canvas_id },
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -360,7 +381,6 @@ pub struct LibraryAgentMovePagesResult {
     pub pages: Vec<LibraryAgentMovedPage>,
     pub document_commits: Vec<LibraryBlockTransferDocumentCommit>,
     pub affected_database_ids: Vec<String>,
-    pub file_ownership_moves: Vec<LibraryPageFileOwnershipMove>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -559,7 +579,6 @@ pub struct LibraryBlockTransferResult {
     pub page_etags: std::collections::BTreeMap<String, String>,
     pub move_etags: std::collections::BTreeMap<String, String>,
     pub page_view_placements: std::collections::BTreeMap<String, LibraryPageViewPlacementResult>,
-    pub file_ownership_moves: Vec<LibraryPageFileOwnershipMove>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub undo_token: Option<LibraryBlockTransferUndoToken>,
 }
@@ -570,7 +589,6 @@ pub struct LibraryBlockTransferUndoResult {
     pub restored_source_root_ids: Vec<String>,
     pub removed_page_ids: Vec<String>,
     pub document_commits: Vec<LibraryBlockTransferDocumentCommit>,
-    pub file_ownership_moves: Vec<LibraryPageFileOwnershipMove>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -748,13 +766,47 @@ pub struct LibraryStructuralEditResult {
     pub history: Option<LibraryStructuralHistoryToken>,
     pub superseded_history_recipe_operation_ids: Vec<String>,
     pub resume: Option<LibraryEditorResumeTarget>,
-    pub file_ownership_moves: Vec<LibraryPageFileOwnershipMove>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LibraryRead {
     Metadata,
+    Files {
+        query: Option<String>,
+        lifecycle: LibraryFileLifecycle,
+        usage: LibraryFileUsageFilter,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    },
+    File {
+        file_id: String,
+    },
+    FilePresentation {
+        file_id: String,
+        source: LibraryFileReadSource,
+        version: Option<i64>,
+    },
+    FileUsages {
+        file_id: String,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    },
+    FileVersions {
+        file_id: String,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    },
+    PageFileInventory {
+        page_id: String,
+        query: Option<String>,
+        cursor: Option<String>,
+        limit: Option<u32>,
+    },
+    ResolvePageFile {
+        page_id: String,
+        selector: LibraryPageFileSelector,
+    },
     ResourceProjectAccess {
         target: LibraryResourceTarget,
     },
@@ -771,7 +823,7 @@ pub enum LibraryRead {
     StandaloneRoots {
         cursor: Option<String>,
         limit: Option<u32>,
-        force_include_target: Option<LibraryResourceTarget>,
+        force_include_target: Option<LibraryPlacedResourceTarget>,
     },
     Path {
         target: LibraryRouteTarget,
@@ -784,7 +836,7 @@ pub enum LibraryRead {
         limit: Option<u32>,
     },
     MoveDestinations {
-        target: LibraryResourceTarget,
+        target: LibraryPlacedResourceTarget,
         scope: LibraryMoveDestinationScope,
         cursor: Option<String>,
         limit: Option<u32>,
@@ -803,23 +855,6 @@ pub enum LibraryRead {
     },
     PageContent {
         page_id: String,
-    },
-    PageFiles {
-        page_id: String,
-        query: Option<String>,
-        cursor: Option<String>,
-        limit: Option<u32>,
-        include_deleted: Option<bool>,
-    },
-    PageFileMetadata {
-        page_id: String,
-        file_id: String,
-    },
-    PageFileVersions {
-        page_id: String,
-        file_id: String,
-        cursor: Option<String>,
-        limit: Option<u32>,
     },
     PageProjectionFile {
         page_id: String,
@@ -995,7 +1030,7 @@ pub enum LibraryNavigationNode {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryCatalogEntry {
-    pub target: LibraryResourceTarget,
+    pub target: LibraryPlacedResourceTarget,
     pub title: String,
     pub kind: LibraryCatalogKind,
     pub lifecycle: LibraryLifecycle,
@@ -1555,31 +1590,262 @@ pub struct LibraryPageContent {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum LibraryPageFileState {
+pub enum LibraryFileLifecycle {
     Live,
-    Deleted,
+    Trashed,
+}
+
+/// One authorized content target. Historical names and bytes are independent
+/// of the shared File's current metadata and head.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryFilePresentation {
+    pub file_id: String,
+    pub version: i64,
+    pub default_name: String,
+    pub mime_type: String,
+    pub byte_length: u64,
+    pub blob_etag: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryFile {
+    pub file_id: String,
+    pub library_id: String,
+    pub default_name: String,
+    pub head_version: i64,
+    pub revision: i64,
+    pub lifecycle: LibraryFileLifecycle,
+    pub mime_type: String,
+    pub byte_length: u64,
+    pub blob_etag: String,
+    pub created_by_actor_id: String,
+    pub created_by_turn_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryFileVersion {
+    pub file_id: String,
+    pub version: i64,
+    pub mime_type: String,
+    pub byte_length: u64,
+    pub blob_etag: String,
+    pub actor_id: String,
+    pub turn_id: Option<String>,
+    pub operation_id: String,
+    pub occurred_at: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryFilePage {
+    pub items: Vec<LibraryFile>,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+    pub total: u64,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum LibraryPageFileChangeKind {
-    Create,
-    Replace,
-    Rename,
-    Delete,
-    Restore,
-    Clone,
-    Rehome,
+pub enum LibraryFileUsageFilter {
+    All,
+    Unused,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryPageFileOwnershipMove {
+pub struct LibraryFileVersionPage {
+    pub items: Vec<LibraryFileVersion>,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LibraryFileChange {
+    Create {
+        file_id: String,
+        default_name: String,
+        mime_type: String,
+        prepared_blob_receipt_id: String,
+    },
+    ReplaceContent {
+        file_id: String,
+        expected_revision: i64,
+        expected_head_version: i64,
+        mime_type: String,
+        prepared_blob_receipt_id: String,
+    },
+    Rename {
+        file_id: String,
+        expected_revision: i64,
+        default_name: String,
+    },
+    Trash {
+        file_id: String,
+        expected_revision: i64,
+    },
+    Restore {
+        file_id: String,
+        expected_revision: i64,
+    },
+    Purge {
+        file_id: String,
+        expected_revision: i64,
+    },
+    Fork {
+        source_file_id: String,
+        source_version: i64,
+        source: LibraryFileReadSource,
+        file_id: String,
+        default_name: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryFileUsage {
+    pub title: String,
+    pub lifecycle: LibraryPageLifecycleState,
+    pub target: LibraryPlacedResourceTarget,
+    pub logical_path: Option<String>,
+    pub occurrence_count: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryFileUsagePage {
+    pub items: Vec<LibraryFileUsage>,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+    pub can_write: bool,
+    pub can_trash: bool,
+    pub can_restore: bool,
+    pub can_purge: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryFileMutationResult {
     pub file_id: String,
-    pub previous_owner_page_id: String,
-    pub owner_page_id: String,
-    pub previous_logical_path: String,
+    pub revision: i64,
+    pub file: Option<LibraryFile>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryPageFileEntry {
+    pub page_id: String,
+    pub file_id: String,
     pub logical_path: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryPageFileItem {
+    pub file: LibraryFile,
+    pub logical_path: Option<String>,
+    pub body_count: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryPageFileInventory {
+    pub can_write: bool,
+    pub page_id: String,
+    pub revision: i64,
+    pub body_usage_revision: i64,
+    pub files: Vec<LibraryPageFileItem>,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+    pub total: u64,
+    pub unplaced_total: u64,
+    pub placed_total: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LibraryPageFileEntryChange {
+    Import {
+        file_id: String,
+        logical_path: String,
+        mime_type: String,
+        prepared_blob_receipt_id: String,
+        collision_policy: LibraryPageFileCollisionPolicy,
+    },
+    Attach {
+        file_id: String,
+        logical_path: String,
+        source: LibraryFileReadSource,
+        collision_policy: LibraryPageFileCollisionPolicy,
+    },
+    Rename {
+        file_id: String,
+        logical_path: String,
+    },
+    Remove {
+        file_id: String,
+    },
+    Retarget {
+        file_id: String,
+        replacement_file_id: String,
+        source: LibraryFileReadSource,
+    },
+    Replace {
+        file_id: String,
+        replacement_file_id: String,
+        mime_type: String,
+        prepared_blob_receipt_id: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryPageFileEntryReceipt {
+    pub page_id: String,
+    pub manifest_revision: i64,
+    pub changed_file_ids: Vec<String>,
+    pub created_file_ids: Vec<String>,
+    pub replacements: std::collections::BTreeMap<String, String>,
+    pub consumed_blob_receipt_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LibraryFileReadSource {
+    Direct,
+    Page {
+        page_id: String,
+    },
+    DocumentRevision {
+        document_id: String,
+        revision_id: String,
+    },
+    RecoveryDraft {
+        document_id: String,
+        draft_id: String,
+    },
+    Canvas {
+        canvas_id: String,
+        scene_file_id: String,
+    },
+    CanvasRevision {
+        document_id: String,
+        revision_id: String,
+        scene_file_id: String,
+    },
+    CanvasRecovery {
+        document_id: String,
+        draft_id: String,
+        scene_file_id: String,
+    },
+}
+
+/// An exact read selected by an owning preview. It conveys no authority beyond its source.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryFileReadBinding {
+    pub file_id: String,
     pub version: i64,
+    pub source: LibraryFileReadSource,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LibraryPageFileSelector {
+    FileId { file_id: String },
+    Path { logical_path: String },
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1590,126 +1856,7 @@ pub enum LibraryPageFileCollisionPolicy {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum LibraryPageFileBodyUsage {
-    NotInBody,
-    Placed { placement_count: u64 },
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryPageFileSummary {
-    pub file_id: String,
-    pub owner_page_id: String,
-    pub logical_path: String,
-    pub mime_type: String,
-    pub byte_length: u64,
-    pub version: i64,
-    pub blob_etag: String,
-    pub state: LibraryPageFileState,
-    pub created_by_actor_id: String,
-    pub created_by_turn_id: Option<String>,
-    pub created_at: String,
-    pub updated_at: String,
-    pub body_usage: LibraryPageFileBodyUsage,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryPageFileManifest {
-    pub page_id: String,
-    pub revision: i64,
-    pub body_usage_revision: i64,
-    pub files: Vec<LibraryPageFileSummary>,
-    pub next_cursor: Option<String>,
-    pub has_more: bool,
-    pub total: u64,
-    pub live_total: u64,
-    pub unplaced_total: u64,
-    pub placed_total: u64,
-    pub deleted_total: u64,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryPageFileVersion {
-    pub file_id: String,
-    pub version: i64,
-    pub owner_page_id: String,
-    pub manifest_revision: i64,
-    pub change_kind: LibraryPageFileChangeKind,
-    pub logical_path: String,
-    pub mime_type: String,
-    pub byte_length: u64,
-    pub blob_etag: Option<String>,
-    pub actor_id: String,
-    pub turn_id: Option<String>,
-    pub operation_id: String,
-    pub occurred_at: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryPageFileVersionPage {
-    pub page_id: String,
-    pub file_id: String,
-    pub versions: Vec<LibraryPageFileVersion>,
-    pub next_cursor: Option<String>,
-    pub has_more: bool,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum LibraryPageFileChange {
-    Put {
-        file_id: String,
-        logical_path: String,
-        mime_type: String,
-        prepared_blob_receipt_id: String,
-    },
-    Create {
-        file_id: String,
-        logical_path: String,
-        mime_type: String,
-        prepared_blob_receipt_id: String,
-        collision_policy: LibraryPageFileCollisionPolicy,
-    },
-    ReplaceContent {
-        file_id: String,
-        expected_version: i64,
-        mime_type: String,
-        prepared_blob_receipt_id: String,
-    },
-    Rename {
-        file_id: String,
-        expected_version: i64,
-        logical_path: String,
-    },
-    Delete {
-        file_id: String,
-        expected_version: i64,
-    },
-    RestoreVersion {
-        file_id: String,
-        expected_version: i64,
-        source_version: i64,
-    },
-    CloneIntoPage {
-        source_page_id: String,
-        source_file_id: String,
-        target_file_id: String,
-        logical_path: String,
-    },
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryPageFileMutationReceipt {
-    pub page_id: String,
-    pub manifest_revision: i64,
-    pub created_file_ids: Vec<String>,
-    pub updated_file_ids: Vec<String>,
-    pub deleted_file_ids: Vec<String>,
-    pub consumed_blob_receipt_ids: Vec<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct LibraryPreparedPageFileBlob {
+pub struct PreparedBlobReceipt {
     pub receipt_id: String,
     pub blob_etag: String,
     pub byte_length: u64,
@@ -1838,7 +1985,7 @@ pub struct LibraryPageDraftProjection {
     pub document_head_seq: i64,
     pub meta_yaml: String,
     pub body_nested_markdown: String,
-    pub page_files: LibraryPageFileManifest,
+    pub page_files: LibraryPageFileInventory,
     pub title_etag: String,
     pub body_etag: String,
 }
@@ -2440,6 +2587,27 @@ pub struct LibraryPageHistoryPage {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LibraryReadValue {
+    PageFileInventory {
+        value: LibraryPageFileInventory,
+    },
+    ResolvedPageFile {
+        value: LibraryPageFileItem,
+    },
+    Files {
+        value: LibraryFilePage,
+    },
+    File {
+        value: LibraryFile,
+    },
+    FilePresentation {
+        value: LibraryFilePresentation,
+    },
+    FileUsages {
+        value: LibraryFileUsagePage,
+    },
+    FileVersions {
+        value: LibraryFileVersionPage,
+    },
     Metadata {
         profile_id: String,
         library_id: String,
@@ -2475,7 +2643,7 @@ pub enum LibraryReadValue {
         total: u64,
     },
     MoveDestinations {
-        target: LibraryResourceTarget,
+        target: LibraryPlacedResourceTarget,
         scope: LibraryMoveDestinationScope,
         items: Vec<LibraryMoveDestinationEntry>,
         current_destination: Option<LibraryMoveDestinationEntry>,
@@ -2500,15 +2668,6 @@ pub enum LibraryReadValue {
     },
     PageContent {
         value: Box<LibraryPageContent>,
-    },
-    PageFiles {
-        value: Box<LibraryPageFileManifest>,
-    },
-    PageFileMetadata {
-        value: Box<LibraryPageFileSummary>,
-    },
-    PageFileVersions {
-        value: Box<LibraryPageFileVersionPage>,
     },
     PageProjectionFile {
         value: Box<LibraryPageProjectionFile>,
@@ -2596,6 +2755,36 @@ pub enum LibraryReadValue {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LibraryIntent {
+    /// Resolve and replace a Page path inside the same idempotent transaction.
+    PutPageFileEntry {
+        page_id: String,
+        expected_manifest_revision: i64,
+        file_id: String,
+        logical_path: String,
+        mime_type: String,
+        prepared_blob_receipt_id: String,
+        replace_entry: bool,
+        turn_id: Option<String>,
+    },
+    ApplyPageFileEntries {
+        page_id: String,
+        expected_manifest_revision: i64,
+        changes: Vec<LibraryPageFileEntryChange>,
+        turn_id: Option<String>,
+    },
+    TransferPageFileEntry {
+        file_id: String,
+        source_page_id: String,
+        source_manifest_revision: i64,
+        target_page_id: String,
+        target_manifest_revision: i64,
+        target_logical_path: String,
+        copy: bool,
+    },
+    ApplyFileChange {
+        change: LibraryFileChange,
+        turn_id: Option<String>,
+    },
     CreatePage {
         page_id: String,
         document_id: String,
@@ -2613,20 +2802,6 @@ pub enum LibraryIntent {
         title_markdown: String,
         nfm: String,
         destination: LibraryPageWriteDestination,
-    },
-    ApplyPageFileChanges {
-        page_id: String,
-        expected_manifest_revision: i64,
-        changes: Vec<LibraryPageFileChange>,
-        turn_id: Option<String>,
-    },
-    PutPageFile {
-        page_id: String,
-        file_id: String,
-        logical_path: String,
-        mime_type: String,
-        prepared_blob_receipt_id: String,
-        turn_id: Option<String>,
     },
     CreateDatabase {
         database_id: String,
@@ -2689,16 +2864,16 @@ pub enum LibraryIntent {
         expected_etag: String,
     },
     MoveBlock {
-        target: LibraryResourceTarget,
+        target: LibraryPlacedResourceTarget,
         expected_location_revision: i64,
         parent: LibraryWriteParent,
     },
     ArchiveResource {
-        target: LibraryResourceTarget,
+        target: LibraryPlacedResourceTarget,
         expected_metadata_revision: i64,
     },
     RestoreResource {
-        target: LibraryResourceTarget,
+        target: LibraryPlacedResourceTarget,
         expected_metadata_revision: i64,
     },
     ApplyPageLifecycle {
@@ -2828,10 +3003,11 @@ pub struct LibraryReceipt {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryCommitValue {
+    pub page_file_entries: Vec<LibraryPageFileEntryReceipt>,
+    pub file_mutation: Option<LibraryFileMutationResult>,
     pub affected_resource_ids: Vec<String>,
     pub page_create: Option<LibraryPageCreateResult>,
     pub page_copy: Option<LibraryPageCopyResult>,
-    pub page_files: Option<LibraryPageFileMutationReceipt>,
     pub canvas_mutation: Option<LibraryCanvasMutationResult>,
     pub block_transfer: Option<LibraryBlockTransferResult>,
     pub block_transfer_undo: Option<LibraryBlockTransferUndoResult>,
@@ -2895,6 +3071,7 @@ pub enum LibraryPageFileInvalidation {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryEvent {
+    pub file_revisions: std::collections::BTreeMap<String, i64>,
     pub kind: LibraryEventKind,
     pub page_ids: Vec<String>,
     pub database_ids: Vec<String>,

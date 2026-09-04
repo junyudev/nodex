@@ -115,6 +115,14 @@ Main provides a typed Adapter and never writes a recovery database. Recovery
 metadata publishes through LocalCommit independently of live document streams.
 Packages survive source deletion and remain discoverable in their Library.
 
+When accepting a Yjs or Canvas package, Core freezes the versions and default
+names of its authorized File references in a canonical, hashed companion snapshot.
+Canvas targets retain their scene slot coordinates, including separate versions
+of one File. Its
+retention index must agree with that snapshot. Unresolved targets stay explicit;
+neither the source timestamp nor a later File head supplies missing evidence.
+File presentation through a recovery package reads only its captured target.
+
 A draft is pending or resolved as already saved, restored, copied, or discarded.
 Restore/copy and resolution share one transaction and receipt. Retrying an uncertain
 user choice keeps its persisted identity; stale draft revisions and preview heads
@@ -127,11 +135,22 @@ full scene. No renderer error label, state vector, age, or partial receipt is a
 proof that the whole package was committed. Capability checks fail closed for
 unavailable schemas, resource closures, changed ownership and structural barriers.
 
+Yjs recovery merges the retained causal state before remapping File occurrences.
+Changed Files are forked once per retained identity, so restoring or copying a
+draft cannot rewind another Page's shared content. File creation, grants, Page
+or Document changes, and resolution commit together. A recovered Page combines
+its File and Page effects in one Library event within the same LocalCommit.
+Canvas recovery keeps live fixed-version bindings and forks trashed targets per
+distinct File/version/name. Missing retained slots are reconstructed from exact
+evidence; conflicting current slot identities cannot silently redirect images.
+Canvas copies compose their File and Canvas effects in the same Library event.
+
 Recovery roots retain known source/owned Blocks and referenced immutable asset
 hashes. Pending packages never expire. Bounded maintenance removes only handled
 packages older than 30 days and releases their roots in the same transaction.
 The package, aggregate storage, record count and summary page all have independent
 bounds. Refusing new capture never deletes unacknowledged renderer staging.
+The byte bounds include canonical File companion snapshots.
 
 ## Semantic history
 
@@ -145,6 +164,13 @@ lifecycle, and relocation activity. Only compatible Document revisions are
 restorable. Restore pins current state, applies the selected state as one new
 forward engine mutation, records its receipt/revision, and never rewinds Yjs or
 Canvas causality.
+
+Title/body snapshots include exact File versions and frozen default names.
+Automatic coverage compares the complete snapshot, because shared File changes
+can leave the Document head unchanged. A compatible restore reuses matching live
+Files and forks changed targets in the same commit, while leaving Page paths
+independent. A legacy revision without exact File evidence remains previewable
+as unresolved and cannot silently restore current bytes.
 
 Named and restore revisions are pinned. Unpinned revisions follow the current
 age/tier/count policy implemented by the Document retention Module. Deleting a

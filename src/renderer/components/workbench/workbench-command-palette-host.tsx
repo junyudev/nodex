@@ -63,6 +63,7 @@ interface WorkbenchCommandPaletteHostProps {
   readonly toggleSidebar: () => void;
   readonly toggleSidePanel: () => void;
   readonly openAutomations: () => void;
+  readonly openLibraryFiles: () => void;
   readonly openProcessManager: () => void;
   readonly openSettings: () => void;
   readonly openKeyboardShortcuts: () => void;
@@ -90,6 +91,7 @@ export function WorkbenchCommandPaletteHost({
   toggleSidebar,
   toggleSidePanel,
   openAutomations,
+  openLibraryFiles,
   openProcessManager,
   openSettings,
   openKeyboardShortcuts,
@@ -202,6 +204,7 @@ export function WorkbenchCommandPaletteHost({
       sessionCommands.requestContentSearchOpen("command_palette");
     },
     manageTasks: openAutomations,
+    openLibraryFiles,
     openProcessManager,
     settings: openSettings,
     showKeyboardShortcuts: openKeyboardShortcuts,

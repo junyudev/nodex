@@ -2165,7 +2165,7 @@ fn routing_claims(
                     view_id: view_id.clone(),
                 });
             }
-            ResourceKey::Canvas { .. } => {}
+            ResourceKey::Canvas { .. } | ResourceKey::File { .. } => {}
         }
     }
     for revocation in revocations {
@@ -2210,7 +2210,7 @@ fn routing_claims(
                     view_id: revocation.resource_id.clone(),
                 });
             }
-            RevokedResourceKind::Canvas => {}
+            RevokedResourceKind::Canvas | RevokedResourceKind::File => {}
         }
     }
     for page_id in documents.iter().filter_map(|effect| effect.page_id.clone()) {
@@ -2297,6 +2297,7 @@ fn revoked_resource_kind_name(kind: RevokedResourceKind) -> &'static str {
         RevokedResourceKind::DataSource => "data_source",
         RevokedResourceKind::View => "view",
         RevokedResourceKind::Canvas => "canvas",
+        RevokedResourceKind::File => "file",
     }
 }
 
@@ -2331,6 +2332,7 @@ fn parse_revoked_resource_kind(value: &str) -> Result<RevokedResourceKind, Store
         "data_source" => Ok(RevokedResourceKind::DataSource),
         "view" => Ok(RevokedResourceKind::View),
         "canvas" => Ok(RevokedResourceKind::Canvas),
+        "file" => Ok(RevokedResourceKind::File),
         _ => Err(corrupt("LocalCommit revoked resource kind is invalid")),
     }
 }

@@ -1,3 +1,16 @@
+import {
+  isLibraryFileReadMode,
+  isLibraryFileReadValueKind,
+  isLibraryFileOperationKind,
+  LIBRARY_FILE_OPERATION_KINDS,
+} from "./library-files";
+import {
+  libraryFileReadSchema,
+  libraryFileReadValueSchema,
+  libraryFileOperationSchema,
+  fileMutationResultSchema,
+  pageFileEntryReceiptSchema,
+} from "./library-files-transport";
 import { parseDatabaseId, parseDatabaseViewId, parseDataSourceId } from "./database-identities";
 import type { DatabaseViewLayout } from "./database-kernel";
 import { parseLibraryBlockPropertyMutationRequestV2 } from "./block-property-mutations-v2";
@@ -30,13 +43,12 @@ import {
   type LibraryPageRelocationUndoToken,
   type LibraryPageWriteDestination,
   type LibraryPageReferenceCandidate,
-  type LibraryPageFileBodyUsage,
-  type LibraryPageFileOwnershipMove,
   type LibraryNavigationNode,
   type LibraryNavigationParent,
   type LibraryPlacementAnchor,
   type LibraryReadValue,
   type LibraryRouteTarget,
+  type LibraryResourceTarget,
   type LibraryStructuralReplacementBlock,
   type LibraryWriteParent,
 } from "./library-module";
@@ -451,6 +463,17 @@ const parseRouteTarget = (value: unknown, label: string): LibraryRouteTarget => 
   throw new TypeError(`${label}.kind is unsupported`);
 };
 
+const parseResourceTarget = (value: unknown, label: string): LibraryResourceTarget => {
+  const target = record(value, label);
+  if (target.kind === "file") {
+    exactKeys(target, label, ["kind", "fileId"]);
+    return { kind: "file", fileId: string(target.fileId, `${label}.fileId`) };
+  }
+  const placed = parseRouteTarget(target, label);
+  if (placed.kind === "view") throw new TypeError(`${label} cannot be a View`);
+  return placed;
+};
+
 const parseNavigationParent = (value: unknown, label: string): LibraryNavigationParent => {
   const parent = record(value, label);
   if (parent.kind === "library") {
@@ -784,6 +807,9 @@ export const bindLibraryModuleApply = (value: unknown): LibraryModuleApplyReques
   const operationId = uuidV7(request.operationId, "operationId");
   const storeEpoch = string(request.storeEpoch, "libraryModuleApply.storeEpoch");
   const operation = record(request.operation, "libraryModuleApply.operation");
+  if (isLibraryFileOperationKind(operation.kind)) {
+    return { operationId, storeEpoch, operation: libraryFileOperationSchema.parse(operation) };
+  }
   if (operation.kind === "create_page") {
     exactKeys(operation, "libraryModuleApply.operation", [
       "kind",
@@ -1143,7 +1169,7 @@ export const bindLibraryModuleApply = (value: unknown): LibraryModuleApplyReques
       operation: {
         kind: "grant_project_access",
         projectId: string(operation.projectId, "libraryModuleApply.operation.projectId"),
-        target: parseApplyResourceTarget(operation.target, "libraryModuleApply.operation.target"),
+        target: parseResourceTarget(operation.target, "libraryModuleApply.operation.target"),
         access: operation.access,
       },
     };
@@ -1189,7 +1215,7 @@ export const bindLibraryModuleApply = (value: unknown): LibraryModuleApplyReques
       storeEpoch,
       operation: {
         kind: operation.kind,
-        target: parseApplyResourceTarget(operation.target, "libraryModuleApply.operation.target"),
+        target: parseResourceTarget(operation.target, "libraryModuleApply.operation.target"),
         changes,
       },
     };
@@ -1232,132 +1258,6 @@ export const bindLibraryModuleApply = (value: unknown): LibraryModuleApplyReques
           { readonly kind: "edit_property_values" }
         >[],
         intrinsicFields: intrinsic.fields,
-      },
-    };
-  }
-  if (operation.kind === "apply_page_file_changes") {
-    exactKeys(
-      operation,
-      "libraryModuleApply.operation",
-      ["kind", "pageId", "expectedManifestRevision", "changes"],
-      ["turnId"],
-    );
-    if (!Array.isArray(operation.changes) || operation.changes.length === 0) {
-      throw new TypeError("libraryModuleApply.operation.changes must be a non-empty array");
-    }
-    const changes = operation.changes.map((candidate, index) => {
-      const label = `libraryModuleApply.operation.changes[${index}]`;
-      const change = record(candidate, label);
-      if (change.kind === "create") {
-        exactKeys(change, label, [
-          "kind",
-          "fileId",
-          "logicalPath",
-          "mimeType",
-          "preparedBlobReceiptId",
-          "collisionPolicy",
-        ]);
-        return {
-          kind: change.kind,
-          fileId: string(change.fileId, `${label}.fileId`, MAX_ID_LENGTH),
-          logicalPath: string(change.logicalPath, `${label}.logicalPath`, 1_024),
-          mimeType: string(change.mimeType, `${label}.mimeType`, 255),
-          preparedBlobReceiptId: string(
-            change.preparedBlobReceiptId,
-            `${label}.preparedBlobReceiptId`,
-            MAX_ID_LENGTH,
-          ),
-          collisionPolicy: (() => {
-            const policy = string(change.collisionPolicy, `${label}.collisionPolicy`);
-            if (policy === "reject" || policy === "suffix") return policy;
-            throw new TypeError(`${label}.collisionPolicy is invalid`);
-          })(),
-        } as const;
-      }
-      if (change.kind === "replace_content") {
-        exactKeys(change, label, [
-          "kind",
-          "fileId",
-          "expectedVersion",
-          "mimeType",
-          "preparedBlobReceiptId",
-        ]);
-        return {
-          kind: change.kind,
-          fileId: string(change.fileId, `${label}.fileId`, MAX_ID_LENGTH),
-          expectedVersion: revision(change.expectedVersion, `${label}.expectedVersion`),
-          mimeType: string(change.mimeType, `${label}.mimeType`, 255),
-          preparedBlobReceiptId: string(
-            change.preparedBlobReceiptId,
-            `${label}.preparedBlobReceiptId`,
-            MAX_ID_LENGTH,
-          ),
-        } as const;
-      }
-      if (change.kind === "rename") {
-        exactKeys(change, label, ["kind", "fileId", "expectedVersion", "logicalPath"]);
-        return {
-          kind: change.kind,
-          fileId: string(change.fileId, `${label}.fileId`, MAX_ID_LENGTH),
-          expectedVersion: revision(change.expectedVersion, `${label}.expectedVersion`),
-          logicalPath: string(change.logicalPath, `${label}.logicalPath`, 1_024),
-        } as const;
-      }
-      if (change.kind === "delete") {
-        exactKeys(change, label, ["kind", "fileId", "expectedVersion"]);
-        return {
-          kind: change.kind,
-          fileId: string(change.fileId, `${label}.fileId`, MAX_ID_LENGTH),
-          expectedVersion: revision(change.expectedVersion, `${label}.expectedVersion`),
-        } as const;
-      }
-      if (change.kind === "restore_version") {
-        exactKeys(change, label, ["kind", "fileId", "expectedVersion", "sourceVersion"]);
-        return {
-          kind: change.kind,
-          fileId: string(change.fileId, `${label}.fileId`, MAX_ID_LENGTH),
-          expectedVersion: revision(change.expectedVersion, `${label}.expectedVersion`),
-          sourceVersion: revision(change.sourceVersion, `${label}.sourceVersion`),
-        } as const;
-      }
-      if (change.kind === "clone_into_page") {
-        exactKeys(change, label, [
-          "kind",
-          "sourcePageId",
-          "sourceFileId",
-          "targetFileId",
-          "logicalPath",
-        ]);
-        return {
-          kind: change.kind,
-          sourcePageId: string(change.sourcePageId, `${label}.sourcePageId`, MAX_ID_LENGTH),
-          sourceFileId: string(change.sourceFileId, `${label}.sourceFileId`, MAX_ID_LENGTH),
-          targetFileId: string(change.targetFileId, `${label}.targetFileId`, MAX_ID_LENGTH),
-          logicalPath: string(change.logicalPath, `${label}.logicalPath`, 1_024),
-        } as const;
-      }
-      throw new TypeError(`${label}.kind is unsupported`);
-    });
-    return {
-      operationId,
-      storeEpoch,
-      operation: {
-        kind: operation.kind,
-        pageId: string(operation.pageId, "libraryModuleApply.operation.pageId", MAX_ID_LENGTH),
-        expectedManifestRevision: revision(
-          operation.expectedManifestRevision,
-          "libraryModuleApply.operation.expectedManifestRevision",
-        ),
-        ...(operation.turnId === undefined
-          ? {}
-          : {
-              turnId: string(
-                operation.turnId,
-                "libraryModuleApply.operation.turnId",
-                MAX_ID_LENGTH,
-              ),
-            }),
-        changes,
       },
     };
   }
@@ -1633,6 +1533,7 @@ export const bindLibraryModuleRead = (value: unknown): LibraryModuleReadRequest 
   const request = record(value, "libraryModuleRead");
   exactKeys(request, "libraryModuleRead", ["read"]);
   const read = record(request.read, "libraryModuleRead.read");
+  if (isLibraryFileReadMode(read.mode)) return { read: libraryFileReadSchema.parse(read) };
   if (read.mode === "metadata") {
     exactKeys(read, "libraryModuleRead.read", ["mode"]);
     return { read: { mode: "metadata" } };
@@ -1642,7 +1543,7 @@ export const bindLibraryModuleRead = (value: unknown): LibraryModuleReadRequest 
     return {
       read: {
         mode: "resource_project_access",
-        target: parseApplyResourceTarget(read.target, "libraryModuleRead.read.target"),
+        target: parseResourceTarget(read.target, "libraryModuleRead.read.target"),
       },
     };
   }
@@ -1838,64 +1739,6 @@ export const bindLibraryModuleRead = (value: unknown): LibraryModuleReadRequest 
           "libraryModuleRead.read.targetPageId",
           MAX_ID_LENGTH,
         ),
-        ...(cursor === undefined ? {} : { cursor }),
-        ...(limit === undefined ? {} : { limit }),
-      },
-    };
-  }
-  if (read.mode === "page_files") {
-    exactKeys(
-      read,
-      "libraryModuleRead.read",
-      ["mode", "pageId"],
-      ["query", "cursor", "limit", "includeDeleted"],
-    );
-    const cursor = optionalString(
-      read.cursor,
-      "libraryModuleRead.read.cursor",
-      MAX_LIBRARY_CURSOR_LENGTH,
-    );
-    const limit = readLimit(read.limit, "libraryModuleRead.read.limit");
-    return {
-      read: {
-        mode: read.mode,
-        pageId: string(read.pageId, "libraryModuleRead.read.pageId", MAX_ID_LENGTH),
-        ...(read.query === undefined
-          ? {}
-          : { query: string(read.query, "libraryModuleRead.read.query", 1_024) }),
-        ...(cursor === undefined ? {} : { cursor }),
-        ...(limit === undefined ? {} : { limit }),
-        ...(read.includeDeleted === undefined
-          ? {}
-          : {
-              includeDeleted: boolean(read.includeDeleted, "libraryModuleRead.read.includeDeleted"),
-            }),
-      },
-    };
-  }
-  if (read.mode === "page_file_metadata") {
-    exactKeys(read, "libraryModuleRead.read", ["mode", "pageId", "fileId"]);
-    return {
-      read: {
-        mode: read.mode,
-        pageId: string(read.pageId, "libraryModuleRead.read.pageId", MAX_ID_LENGTH),
-        fileId: string(read.fileId, "libraryModuleRead.read.fileId", MAX_ID_LENGTH),
-      },
-    };
-  }
-  if (read.mode === "page_file_versions") {
-    exactKeys(read, "libraryModuleRead.read", ["mode", "pageId", "fileId"], ["cursor", "limit"]);
-    const cursor = optionalString(
-      read.cursor,
-      "libraryModuleRead.read.cursor",
-      MAX_LIBRARY_CURSOR_LENGTH,
-    );
-    const limit = readLimit(read.limit, "libraryModuleRead.read.limit");
-    return {
-      read: {
-        mode: read.mode,
-        pageId: string(read.pageId, "libraryModuleRead.read.pageId", MAX_ID_LENGTH),
-        fileId: string(read.fileId, "libraryModuleRead.read.fileId", MAX_ID_LENGTH),
         ...(cursor === undefined ? {} : { cursor }),
         ...(limit === undefined ? {} : { limit }),
       },
@@ -2313,93 +2156,10 @@ const parseProjectAccessRow = (
   };
 };
 
-const parsePageFileSummary = (value: unknown, label: string) => {
-  const file = record(value, label);
-  exactKeys(file, label, [
-    "fileId",
-    "ownerPageId",
-    "logicalPath",
-    "mimeType",
-    "byteLength",
-    "version",
-    "blobEtag",
-    "state",
-    "createdByActorId",
-    "createdByTurnId",
-    "createdAt",
-    "updatedAt",
-    "bodyUsage",
-  ]);
-  if (file.state !== "live" && file.state !== "deleted") {
-    throw new TypeError(`${label}.state is unsupported`);
-  }
-  const bodyUsage = record(file.bodyUsage, `${label}.bodyUsage`);
-  if (bodyUsage.kind === "not_in_body") {
-    exactKeys(bodyUsage, `${label}.bodyUsage`, ["kind"]);
-  } else if (bodyUsage.kind === "placed") {
-    exactKeys(bodyUsage, `${label}.bodyUsage`, ["kind", "placementCount"]);
-    if (revision(bodyUsage.placementCount, `${label}.bodyUsage.placementCount`) < 1) {
-      throw new TypeError(`${label}.bodyUsage.placementCount must be positive`);
-    }
-  } else {
-    throw new TypeError(`${label}.bodyUsage.kind is unsupported`);
-  }
-  const parsedBodyUsage: LibraryPageFileBodyUsage =
-    bodyUsage.kind === "placed"
-      ? {
-          kind: "placed",
-          placementCount: revision(bodyUsage.placementCount, `${label}.bodyUsage.placementCount`),
-        }
-      : { kind: "not_in_body" };
-  return {
-    fileId: string(file.fileId, `${label}.fileId`, MAX_ID_LENGTH),
-    ownerPageId: string(file.ownerPageId, `${label}.ownerPageId`, MAX_ID_LENGTH),
-    logicalPath: string(file.logicalPath, `${label}.logicalPath`, 1_024),
-    mimeType: string(file.mimeType, `${label}.mimeType`, 255),
-    byteLength: revision(file.byteLength, `${label}.byteLength`),
-    version: revision(file.version, `${label}.version`),
-    blobEtag: string(file.blobEtag, `${label}.blobEtag`, 128),
-    state: file.state,
-    createdByActorId: string(file.createdByActorId, `${label}.createdByActorId`, MAX_ID_LENGTH),
-    createdByTurnId:
-      file.createdByTurnId === null
-        ? null
-        : string(file.createdByTurnId, `${label}.createdByTurnId`, MAX_ID_LENGTH),
-    createdAt: string(file.createdAt, `${label}.createdAt`),
-    updatedAt: string(file.updatedAt, `${label}.updatedAt`),
-    bodyUsage: parsedBodyUsage,
-  } as const;
-};
-
-const parsePageFileOwnershipMove = (
-  value: unknown,
-  label: string,
-): LibraryPageFileOwnershipMove => {
-  const move = record(value, label);
-  exactKeys(move, label, [
-    "fileId",
-    "previousOwnerPageId",
-    "ownerPageId",
-    "previousLogicalPath",
-    "logicalPath",
-    "version",
-  ]);
-  return {
-    fileId: string(move.fileId, `${label}.fileId`, MAX_ID_LENGTH),
-    previousOwnerPageId: string(
-      move.previousOwnerPageId,
-      `${label}.previousOwnerPageId`,
-      MAX_ID_LENGTH,
-    ),
-    ownerPageId: string(move.ownerPageId, `${label}.ownerPageId`, MAX_ID_LENGTH),
-    previousLogicalPath: string(move.previousLogicalPath, `${label}.previousLogicalPath`, 1_024),
-    logicalPath: string(move.logicalPath, `${label}.logicalPath`, 1_024),
-    version: revision(move.version, `${label}.version`),
-  };
-};
-
 const parseReadValue = (value: unknown): LibraryReadValue => {
   const readValue = record(value, "libraryModuleReadResult.value.value");
+  if (isLibraryFileReadValueKind(readValue.kind))
+    return libraryFileReadValueSchema.parse(readValue);
   if (readValue.kind === "metadata") {
     exactKeys(readValue, "libraryModuleReadResult.value.value", ["kind"]);
     return { kind: "metadata" };
@@ -2414,7 +2174,7 @@ const parseReadValue = (value: unknown): LibraryReadValue => {
     return {
       kind: readValue.kind,
       value: {
-        target: parseApplyResourceTarget(
+        target: parseResourceTarget(
           accessValue.target,
           "libraryModuleReadResult.value.value.value.target",
         ),
@@ -2732,142 +2492,6 @@ const parseReadValue = (value: unknown): LibraryReadValue => {
     });
     return { kind: readValue.kind, items };
   }
-  if (readValue.kind === "page_files") {
-    exactKeys(readValue, "libraryModuleReadResult.value.value", ["kind", "value"]);
-    const manifest = record(readValue.value, "library Page Files manifest");
-    exactKeys(manifest, "library Page Files manifest", [
-      "pageId",
-      "revision",
-      "bodyUsageRevision",
-      "files",
-      "nextCursor",
-      "hasMore",
-      "total",
-      "liveTotal",
-      "unplacedTotal",
-      "placedTotal",
-      "deletedTotal",
-    ]);
-    if (!Array.isArray(manifest.files)) {
-      throw new TypeError("library Page Files manifest.files must be an array");
-    }
-    return {
-      kind: readValue.kind,
-      value: {
-        pageId: string(manifest.pageId, "library Page Files manifest.pageId", MAX_ID_LENGTH),
-        revision: revision(manifest.revision, "library Page Files manifest.revision"),
-        bodyUsageRevision: revision(
-          manifest.bodyUsageRevision,
-          "library Page Files manifest.bodyUsageRevision",
-        ),
-        files: manifest.files.map((file, index) =>
-          parsePageFileSummary(file, `library Page Files manifest.files[${index}]`),
-        ),
-        nextCursor:
-          manifest.nextCursor === null
-            ? null
-            : string(
-                manifest.nextCursor,
-                "library Page Files manifest.nextCursor",
-                MAX_LIBRARY_CURSOR_LENGTH,
-              ),
-        hasMore: boolean(manifest.hasMore, "library Page Files manifest.hasMore"),
-        total: revision(manifest.total, "library Page Files manifest.total"),
-        liveTotal: revision(manifest.liveTotal, "library Page Files manifest.liveTotal"),
-        unplacedTotal: revision(
-          manifest.unplacedTotal,
-          "library Page Files manifest.unplacedTotal",
-        ),
-        placedTotal: revision(manifest.placedTotal, "library Page Files manifest.placedTotal"),
-        deletedTotal: revision(manifest.deletedTotal, "library Page Files manifest.deletedTotal"),
-      },
-    };
-  }
-  if (readValue.kind === "page_file_metadata") {
-    exactKeys(readValue, "libraryModuleReadResult.value.value", ["kind", "value"]);
-    return {
-      kind: readValue.kind,
-      value: parsePageFileSummary(readValue.value, "library Page File metadata"),
-    };
-  }
-  if (readValue.kind === "page_file_versions") {
-    exactKeys(readValue, "libraryModuleReadResult.value.value", ["kind", "value"]);
-    const page = record(readValue.value, "library Page File versions");
-    exactKeys(page, "library Page File versions", [
-      "pageId",
-      "fileId",
-      "versions",
-      "nextCursor",
-      "hasMore",
-    ]);
-    if (!Array.isArray(page.versions)) {
-      throw new TypeError("library Page File versions.versions must be an array");
-    }
-    const versions = page.versions.map((candidate, index) => {
-      const label = `library Page File versions.versions[${index}]`;
-      const version = record(candidate, label);
-      exactKeys(version, label, [
-        "fileId",
-        "version",
-        "ownerPageId",
-        "manifestRevision",
-        "changeKind",
-        "logicalPath",
-        "mimeType",
-        "byteLength",
-        "blobEtag",
-        "actorId",
-        "turnId",
-        "operationId",
-        "occurredAt",
-      ]);
-      if (
-        version.changeKind !== "create" &&
-        version.changeKind !== "replace" &&
-        version.changeKind !== "rename" &&
-        version.changeKind !== "delete" &&
-        version.changeKind !== "restore" &&
-        version.changeKind !== "clone" &&
-        version.changeKind !== "rehome"
-      ) {
-        throw new TypeError(`${label}.changeKind is unsupported`);
-      }
-      return {
-        fileId: string(version.fileId, `${label}.fileId`, MAX_ID_LENGTH),
-        version: revision(version.version, `${label}.version`),
-        ownerPageId: string(version.ownerPageId, `${label}.ownerPageId`, MAX_ID_LENGTH),
-        manifestRevision: revision(version.manifestRevision, `${label}.manifestRevision`),
-        changeKind: version.changeKind,
-        logicalPath: string(version.logicalPath, `${label}.logicalPath`, 1_024),
-        mimeType: string(version.mimeType, `${label}.mimeType`, 255),
-        byteLength: revision(version.byteLength, `${label}.byteLength`),
-        blobEtag:
-          version.blobEtag === null ? null : string(version.blobEtag, `${label}.blobEtag`, 128),
-        actorId: string(version.actorId, `${label}.actorId`, MAX_ID_LENGTH),
-        turnId:
-          version.turnId === null ? null : string(version.turnId, `${label}.turnId`, MAX_ID_LENGTH),
-        operationId: string(version.operationId, `${label}.operationId`, MAX_ID_LENGTH),
-        occurredAt: string(version.occurredAt, `${label}.occurredAt`),
-      } as const;
-    });
-    return {
-      kind: readValue.kind,
-      value: {
-        pageId: string(page.pageId, "library Page File versions.pageId", MAX_ID_LENGTH),
-        fileId: string(page.fileId, "library Page File versions.fileId", MAX_ID_LENGTH),
-        versions,
-        nextCursor:
-          page.nextCursor === null
-            ? null
-            : string(
-                page.nextCursor,
-                "library Page File versions.nextCursor",
-                MAX_LIBRARY_CURSOR_LENGTH,
-              ),
-        hasMore: boolean(page.hasMore, "library Page File versions.hasMore"),
-      },
-    };
-  }
   throw new TypeError("libraryModuleReadResult value kind is unsupported");
 };
 
@@ -2995,9 +2619,10 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
       "commitSeq",
       "committedAt",
     ],
-    ["pageFiles", "pageRelocation", "pageRelocationUndo"],
+    ["pageRelocation", "pageRelocationUndo", "fileMutation", "pageFileEntries"],
   );
   const operationKinds = new Set([
+    ...LIBRARY_FILE_OPERATION_KINDS,
     "create_page",
     "create_database",
     "create_canvas",
@@ -3013,7 +2638,6 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
     "grant_project_access",
     "set_project_access",
     "apply_page_metadata_properties",
-    "apply_page_file_changes",
     "apply_structural_edit",
     "reverse_structural_edit",
   ]);
@@ -3044,10 +2668,7 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
   const createdTarget =
     rawCreatedTarget === null
       ? null
-      : parseRouteTarget(rawCreatedTarget, "libraryModuleApplyResult.value.createdTarget");
-  if (createdTarget?.kind === "view") {
-    throw new TypeError("libraryModuleApplyResult.value.createdTarget cannot be a View");
-  }
+      : parseResourceTarget(rawCreatedTarget, "libraryModuleApplyResult.value.createdTarget");
   const canvasMutation = (() => {
     if (receipt.canvasMutation === null) return null;
     const mutation = record(
@@ -3117,7 +2738,6 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
       "documentCommits",
       "affectedPageIds",
       "affectedDatabaseIds",
-      "fileOwnershipMoves",
       "clipboard",
       "history",
       "supersededHistoryRecipeOperationIds",
@@ -3165,14 +2785,6 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
         edit.affectedDatabaseIds,
         `${label}.affectedDatabaseIds`,
       ).map(parseDatabaseId),
-      fileOwnershipMoves: (() => {
-        if (!Array.isArray(edit.fileOwnershipMoves)) {
-          throw new TypeError(`${label}.fileOwnershipMoves must be an array`);
-        }
-        return edit.fileOwnershipMoves.map((candidate, index) =>
-          parsePageFileOwnershipMove(candidate, `${label}.fileOwnershipMoves[${index}]`),
-        );
-      })(),
       clipboard:
         edit.clipboard === null
           ? null
@@ -3186,31 +2798,6 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
         `${label}.supersededHistoryRecipeOperationIds`,
       ),
       resume,
-    };
-  })();
-  const pageFiles = (() => {
-    if (receipt.pageFiles === undefined) return undefined;
-    if (receipt.pageFiles === null) return null;
-    const files = record(receipt.pageFiles, "libraryModuleApplyResult.value.pageFiles");
-    const label = "libraryModuleApplyResult.value.pageFiles";
-    exactKeys(files, label, [
-      "pageId",
-      "manifestRevision",
-      "createdFileIds",
-      "updatedFileIds",
-      "deletedFileIds",
-      "consumedBlobReceiptIds",
-    ]);
-    return {
-      pageId: string(files.pageId, `${label}.pageId`, MAX_ID_LENGTH),
-      manifestRevision: revision(files.manifestRevision, `${label}.manifestRevision`),
-      createdFileIds: parseStringList(files.createdFileIds, `${label}.createdFileIds`),
-      updatedFileIds: parseStringList(files.updatedFileIds, `${label}.updatedFileIds`),
-      deletedFileIds: parseStringList(files.deletedFileIds, `${label}.deletedFileIds`),
-      consumedBlobReceiptIds: parseStringList(
-        files.consumedBlobReceiptIds,
-        `${label}.consumedBlobReceiptIds`,
-      ),
     };
   })();
   const pageRelocation = (() => {
@@ -3252,10 +2839,21 @@ const parseApplyReceipt = (value: unknown): LibraryModuleApplyReceipt => {
     operationKind: receipt.operationKind as LibraryModuleApplyReceipt["operationKind"],
     duplicate: boolean(receipt.duplicate, "libraryModuleApplyResult.value.duplicate"),
     didMutate: boolean(receipt.didMutate, "libraryModuleApplyResult.value.didMutate"),
+    ...(receipt.fileMutation === undefined
+      ? {}
+      : { fileMutation: fileMutationResultSchema.parse(receipt.fileMutation) }),
+    ...(receipt.pageFileEntries === undefined
+      ? {}
+      : {
+          pageFileEntries: (() => {
+            if (!Array.isArray(receipt.pageFileEntries) || receipt.pageFileEntries.length > 2)
+              throw new TypeError("Page entry result must contain at most two Page receipts");
+            return receipt.pageFileEntries.map((entry) => pageFileEntryReceiptSchema.parse(entry));
+          })(),
+        }),
     createdTarget,
     canvasMutation,
     structuralEdit,
-    ...(pageFiles === undefined ? {} : { pageFiles }),
     ...(pageRelocation === undefined ? {} : { pageRelocation }),
     ...(pageRelocationUndo === undefined ? {} : { pageRelocationUndo }),
     affectedParentKeys: parseStringList(

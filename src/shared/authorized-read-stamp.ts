@@ -34,6 +34,7 @@ const RESOURCE_KIND_ORDER: Readonly<Record<AuthorityResource["kind"], number>> =
   data_source: 5,
   view: 6,
   canvas: 7,
+  file: 8,
 };
 const UTF8_ENCODER = new TextEncoder();
 
@@ -55,6 +56,8 @@ const authorityResourceId = (resource: AuthorityResource): string => {
       return resource.view_id;
     case "canvas":
       return resource.canvas_id;
+    case "file":
+      return resource.file_id;
   }
 };
 
@@ -76,6 +79,8 @@ export const authorityResourceKey = (resource: AuthorityResource): string => {
       return JSON.stringify([resource.kind, resource.view_id]);
     case "canvas":
       return JSON.stringify([resource.kind, resource.canvas_id]);
+    case "file":
+      return JSON.stringify([resource.kind, resource.file_id]);
   }
 };
 
@@ -98,6 +103,8 @@ export const isAuthorityResource = (value: unknown): value is AuthorityResource 
       return hasExactKeys(value, ["kind", "view_id"]) && isIdentity(value.view_id);
     case "canvas":
       return hasExactKeys(value, ["kind", "canvas_id"]) && isIdentity(value.canvas_id);
+    case "file":
+      return hasExactKeys(value, ["kind", "file_id"]) && isIdentity(value.file_id);
     default:
       return false;
   }

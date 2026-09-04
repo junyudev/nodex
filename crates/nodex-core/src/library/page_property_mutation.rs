@@ -341,6 +341,9 @@ pub(super) fn apply(
                 context,
                 operation_id,
                 MutationEffects {
+                    page_file_entries: Vec::new(),
+                    file_revisions: BTreeMap::new(),
+                    file_mutation: Default::default(),
                     project_id: actor_project_id.clone(),
                     operation_kind: MUTATION_KIND,
                     change_kind: "block_mutation",
@@ -355,7 +358,6 @@ pub(super) fn apply(
                     committed_revisions,
                     page_create: None,
                     page_copy: None,
-                    page_files: None,
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
@@ -1335,10 +1337,11 @@ fn finish_rejection(
     let commit_seq = crate::infrastructure::local_commit::head(connection)?;
     let committed = crate::ModuleWriterResult {
         value: LibraryCommitValue {
+            page_file_entries: Vec::new(),
+            file_mutation: Default::default(),
             affected_resource_ids: Vec::new(),
             page_create: None,
             page_copy: None,
-            page_files: None,
             canvas_mutation: None,
             block_transfer: None,
             block_transfer_undo: None,

@@ -11,6 +11,7 @@ import {
   materializePortableCanvasScene,
   type PortableCanvasScene,
 } from "../../../shared/block-documents/canvas-scene";
+import { CANVAS_DOCUMENT_SCHEMA_VERSION } from "../../../shared/block-documents/canvas-document-identity";
 import {
   type CanvasSceneMutationRequest,
   type CanvasSceneRealtimeEvent,
@@ -321,12 +322,16 @@ const descriptor = {
   generation: 1,
   headSeq: 1,
   schemaKey: "nodex.canvas",
-  schemaVersion: 1,
+  schemaVersion: CANVAS_DOCUMENT_SCHEMA_VERSION,
   readiness: "ready",
   sync: { kind: "canvas_scene" },
 } as const;
 
 vi.mock("@excalidraw/excalidraw/index.css", () => ({}));
+
+vi.mock("@/features/document-recovery/recovery-entry", () => ({
+  RecoveryEntry: () => null,
+}));
 
 vi.mock("./canvas-view-deps", () => ({
   loadExcalidraw: async () => ({

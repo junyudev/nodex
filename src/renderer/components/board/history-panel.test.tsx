@@ -8,7 +8,17 @@ import type { PageHistoryEntry, PageHistoryPage } from "../../../shared/page-his
 import { renderWithMaitai as render } from "../../test/thread-maitai";
 import { textContent } from "../../test/dom";
 import { mergePageHistoryEntries } from "./page-history-view-model";
-import { HistoryPanel } from "./history-panel";
+import { HistoryPanel as HistoryPanelView, type HistoryPanelProps } from "./history-panel";
+const HistoryPanel = (props: Omit<HistoryPanelProps, "fileAuthority">) => (
+  <HistoryPanelView
+    {...props}
+    fileAuthority={{
+      libraryId: "library:one",
+      storeEpoch: "epoch:one",
+      contentAccessContext: { kind: "project", projectId: props.projectId },
+    }}
+  />
+);
 
 type HistoryPanelApiOperation =
   | "listPageHistory"
@@ -516,6 +526,7 @@ function makeVersionDetail(): DocumentVersionDetail {
       sourceChangeSeq: null,
       pinned: true,
       checkpointHash: HASH,
+      fileSnapshotStatus: "exact",
       checkpointMetadata: {
         format: "yjs_update_v1",
         stateVectorHash: HASH,

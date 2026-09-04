@@ -173,8 +173,7 @@ import {
   uploadResourceAsset,
 } from "@/lib/assets";
 import { readImageFileSourceDimensions } from "@/lib/image-source-dimensions";
-import { parsePageFileSource } from "../../../../shared/page-files";
-import type { LibraryPageFileOwnershipMove } from "../../../../shared/library-module";
+import { parseFileSource } from "../../../../shared/file-resources";
 import { useSpellcheck } from "@/lib/use-spellcheck";
 import { useTheme } from "@/lib/use-theme";
 import { usePasteResourceSettings } from "@/lib/use-paste-resource-settings";
@@ -219,13 +218,11 @@ import {
   type NfmEditorStructuralMutationRuntime,
 } from "./nfm-editor-relocation";
 import {
-  createPageFilePlacementRuntime,
-  createRendererPageFileReadCache,
-  PageFileRuntimeProvider,
-} from "./page-file-runtime";
-import { subscribePageFileReadAuthority } from "@/lib/page-file-read-authority";
+  createFilePlacementRuntime,
+  createRendererFileReadCache,
+  FileRuntimeProvider,
+} from "./file-runtime";
 import { moveNfmBlocks } from "@/lib/nfm-block-move-runtime";
-import { summarizePageFileOwnershipMoveCollisions } from "@/lib/page-file-ownership-move-feedback";
 import {
   hasTypedOwnerBlock,
   hasTypedOwnerType,
@@ -415,22 +412,6 @@ function resolveImagePreview(input: { readonly source: string; readonly alt: str
   return source ? { source, alt: input.alt } : null;
 }
 
-function reportPageFileOwnershipMoveCollisions(
-  moves: readonly LibraryPageFileOwnershipMove[],
-): void {
-  const feedback = summarizePageFileOwnershipMoveCollisions(moves);
-  if (!feedback) return;
-  const receiptKey = moves
-    .filter((move) => move.previousLogicalPath !== move.logicalPath)
-    .map((move) => `${move.fileId}:${move.version}`)
-    .sort()
-    .join(",");
-  toast.info(feedback.title, {
-    id: `page-file-move-collision:${receiptKey}`,
-    description: feedback.description,
-  });
-}
-
 export function NfmEditor(props: NfmEditorProps) {
   const source = props.source;
   const editorInstanceKey = getNfmEditorInstanceKey({
@@ -571,51 +552,44 @@ function NfmEditorInstance({
     [executionProjectId],
   );
   // One editor instance owns one isolated cache; the Provider releases every acquired scope.
-  const [pageFileReadCache] = useState(createRendererPageFileReadCache);
-  const pageFileRuntime = useMemo(
+  const [pageFileReadCache] = useState(createRendererFileReadCache);
+  const fileRuntime = useMemo(
     () =>
-      sourcePageId
-        ? createPageFilePlacementRuntime(
+      sourcePageId && surfaceMutationBarrier?.libraryId
+        ? createFilePlacementRuntime(
             {
               contentAccessContext: pageFileContentAccessContext,
-              ...(surfaceMutationBarrier?.libraryId
-                ? { libraryId: surfaceMutationBarrier.libraryId }
-                : {}),
-              pageId: sourcePageId,
+              libraryId: surfaceMutationBarrier.libraryId,
+              readSource: { kind: "page", page_id: sourcePageId },
               storeEpoch: source.storeEpoch,
             },
             pageFileReadCache,
+            source.documentId,
           )
         : null,
     [
       pageFileReadCache,
       pageFileContentAccessContext,
       source.storeEpoch,
+      source.documentId,
       sourcePageId,
       surfaceMutationBarrier?.libraryId,
     ],
   );
-  useEffect(() => {
-    if (!sourcePageId || !pageFileRuntime) return;
-    return subscribePageFileReadAuthority(sourcePageId, source.documentId, (invalidation) => {
-      pageFileRuntime.invalidate(invalidation);
-    });
-  }, [pageFileRuntime, source.documentId, sourcePageId]);
   const resolveLocalClipboardFileReference = useCallback(
     async (fileReference: string): Promise<string | null> => {
-      if (!parsePageFileSource(fileReference)) {
+      if (!parseFileSource(fileReference)) {
         return await resolveManagedAssetReference(fileReference);
       }
-      if (!pageFileRuntime) return null;
+      if (!fileRuntime) return null;
 
       try {
-        const metadata = await pageFileRuntime.metadata(fileReference);
-        return window.api?.resolveManagedBlobPath?.(metadata.blobEtag)?.trim() || null;
+        return await fileRuntime.materialize(fileReference);
       } catch {
         return null;
       }
     },
-    [pageFileRuntime],
+    [fileRuntime],
   );
   const resolveCopiedFileReferences = useCallback(
     (payload: CopiedSelectionPayload): Promise<CopiedSelectionPayload> | null => {
@@ -655,9 +629,7 @@ function NfmEditorInstance({
   const uploadFile = useCallback(
     async (file: File) => {
       const [url, dimensions] = await Promise.all([
-        pageFileRuntime
-          ? pageFileRuntime.upload({ kind: "browser_file", file })
-          : uploadImageAsset(file),
+        fileRuntime ? fileRuntime.upload({ kind: "browser_file", file }) : uploadImageAsset(file),
         readImageFileSourceDimensions(file),
       ]);
 
@@ -669,38 +641,38 @@ function NfmEditorInstance({
         },
       };
     },
-    [pageFileRuntime],
+    [fileRuntime],
   );
 
   const resolveFileUrl = useCallback(
     async (fileSource: string) => {
-      if (parsePageFileSource(fileSource)) {
-        if (!pageFileRuntime) throw new Error("Page File authority is unavailable");
-        return pageFileRuntime.readImageDataUrl(fileSource);
+      if (parseFileSource(fileSource)) {
+        if (!fileRuntime) throw new Error("File authority is unavailable");
+        return fileRuntime.readImageDataUrl(fileSource);
       }
       const displayUrl = resolveAssetSourceToDisplayUrl(fileSource);
       if (!displayUrl) throw new Error("Managed image path is unavailable");
       return displayUrl;
     },
-    [pageFileRuntime],
+    [fileRuntime],
   );
 
   const openImagePreview = useCallback(
     (input: { readonly source: string; readonly alt: string }) => {
-      if (!parsePageFileSource(input.source)) {
+      if (!parseFileSource(input.source)) {
         setImagePreview(resolveImagePreview(input));
         return;
       }
-      if (!pageFileRuntime) {
-        toast.danger("Page File authority is unavailable");
+      if (!fileRuntime) {
+        toast.danger("File authority is unavailable");
         return;
       }
-      void pageFileRuntime
+      void fileRuntime
         .readImageDataUrl(input.source)
         .then((source) => setImagePreview({ source, alt: input.alt }))
         .catch(() => toast.danger("Couldn’t preview image"));
     },
-    [pageFileRuntime],
+    [fileRuntime],
   );
 
   const canvasCommandHandlersRef = useRef({
@@ -1287,9 +1259,9 @@ function NfmEditorInstance({
           if (item.kind === "text") {
             const text = pasteResourceDialog.textPayload ?? "";
             const upload = createPastedTextUploadFile(text);
-            const uploaded = pageFileRuntime
+            const uploaded = fileRuntime
               ? {
-                  source: await pageFileRuntime.upload({ kind: "browser_file", file: upload }),
+                  source: await fileRuntime.upload({ kind: "browser_file", file: upload }),
                   mimeType: upload.type || "text/plain",
                   bytes: upload.size,
                 }
@@ -1326,9 +1298,9 @@ function NfmEditorInstance({
           }
 
           if (item.path) {
-            const uploaded = pageFileRuntime
+            const uploaded = fileRuntime
               ? {
-                  source: await pageFileRuntime.upload(
+                  source: await fileRuntime.upload(
                     { kind: "local_path", path: item.path },
                     item.name,
                   ),
@@ -1353,9 +1325,9 @@ function NfmEditorInstance({
           }
 
           if (item.file) {
-            const uploaded = pageFileRuntime
+            const uploaded = fileRuntime
               ? {
-                  source: await pageFileRuntime.upload({ kind: "browser_file", file: item.file }),
+                  source: await fileRuntime.upload({ kind: "browser_file", file: item.file }),
                   name: item.file.name,
                   mimeType: item.file.type || "application/octet-stream",
                   bytes: item.file.size,
@@ -1414,7 +1386,7 @@ function NfmEditorInstance({
       editor,
       pasteResourceDialog,
       pasteResourcePending,
-      pageFileRuntime,
+      fileRuntime,
       structuralEditingController,
     ],
   );
@@ -1702,7 +1674,6 @@ function NfmEditorInstance({
       resolveClipboardText,
       onError: (message) => toast.danger(message),
       onClipboardFallback: (message) => toast.info(message),
-      onFileOwnershipMoves: reportPageFileOwnershipMoveCollisions,
     });
   }, [
     contentAccessContext,
@@ -2028,7 +1999,7 @@ function NfmEditorInstance({
       }
       const sourceHead = await structuralMutationParticipant.prepareAndFence();
 
-      const receipt = await moveNfmBlocks({
+      await moveNfmBlocks({
         projectId: executionProjectId,
         storeEpoch: source.storeEpoch,
         sourcePageId: sourcePageContext.pageId,
@@ -2038,7 +2009,6 @@ function NfmEditorInstance({
         sourceHead,
         destination,
       });
-      reportPageFileOwnershipMoveCollisions(receipt.fileOwnershipMoves);
     },
     [executionProjectId, source, sourcePageContext, structuralMutationParticipant],
   );
@@ -2276,7 +2246,6 @@ function NfmEditorInstance({
           );
         },
         reportError: (message: string) => toast.danger(message),
-        reportFileOwnershipMoves: reportPageFileOwnershipMoveCollisions,
       },
     };
   }, [
@@ -2862,7 +2831,7 @@ function NfmEditorInstance({
       : `${Math.max(searchActiveIndex + 1, 0)} of ${searchMatchCount}`;
 
   return (
-    <PageFileRuntimeProvider value={pageFileRuntime}>
+    <FileRuntimeProvider value={fileRuntime}>
       <div
         ref={containerRef}
         className={cn("nfm-editor relative", className)}
@@ -3173,6 +3142,6 @@ function NfmEditorInstance({
           />
         )}
       </div>
-    </PageFileRuntimeProvider>
+    </FileRuntimeProvider>
   );
 }

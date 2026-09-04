@@ -21,8 +21,11 @@ import type {
 } from "../../../src/shared/sidebar-sections";
 import type {
   ScenarioBoardObservation,
+  ScenarioDocumentCheckpointSeed,
   ScenarioDocumentReplacement,
+  ScenarioLibraryFileSeed,
   ScenarioPageObservation,
+  ScenarioPageFileEntrySeed,
   ScenarioPageSeed,
   ScenarioRelatedChatSeed,
   ScenarioRelatedChatSeedResult,
@@ -205,6 +208,108 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
       `Replace ${input.pageId}`,
     );
     return { commitSeq: mutation.commitSeq, createdBlockIds: mutation.createdBlockIds };
+  }
+
+  async createLibraryFile(input: ScenarioLibraryFileSeed) {
+    const prepared = await this.#runtime.clientForProject(input.projectId).prepareFileBlob({
+      operationId: input.operationId,
+      bytes: input.bytes,
+    });
+    const result = requireSuccess(
+      await this.#library(input.projectId).apply({
+        operationId: input.operationId,
+        storeEpoch: this.#runtime.identity.storeEpoch,
+        operation: {
+          kind: "apply_file_change",
+          change: {
+            kind: "create",
+            file_id: input.fileId,
+            default_name: input.defaultName,
+            mime_type: input.mimeType,
+            prepared_blob_receipt_id: prepared.receipt_id,
+          },
+        },
+      }),
+      `Create File ${input.defaultName}`,
+    );
+    const file = result.fileMutation?.file;
+    if (!file || file.file_id !== input.fileId) {
+      throw new Error(`Create File ${input.defaultName} omitted its committed File`);
+    }
+    return file;
+  }
+
+  async addPageFileEntry(input: ScenarioPageFileEntrySeed) {
+    const result = requireSuccess(
+      await this.#library(input.projectId).apply({
+        operationId: input.operationId,
+        storeEpoch: this.#runtime.identity.storeEpoch,
+        operation: {
+          kind: "apply_page_file_entries",
+          page_id: input.pageId,
+          expected_manifest_revision: input.expectedManifestRevision,
+          changes: [
+            {
+              kind: "attach",
+              file_id: input.fileId,
+              logical_path: input.logicalPath,
+              source: { kind: "direct" },
+              collision_policy: "reject",
+            },
+          ],
+        },
+      }),
+      `Add ${input.logicalPath} to Page`,
+    );
+    const receipt = result.pageFileEntries?.find((item) => item.page_id === input.pageId);
+    if (!receipt) throw new Error(`Add ${input.logicalPath} omitted its Page receipt`);
+    return receipt;
+  }
+
+  async readPageFileInventory(projectId: string, pageId: string) {
+    const result = requireSuccess(
+      await this.#library(projectId).read({
+        read: { mode: "page_file_inventory", page_id: pageId, limit: 100 },
+      }),
+      `Read Page Files for ${pageId}`,
+    );
+    if (result.value.kind !== "page_file_inventory") {
+      throw new Error(`Read Page Files for ${pageId} returned an unexpected value`);
+    }
+    return result.value.value;
+  }
+
+  async createDocumentCheckpoint(input: ScenarioDocumentCheckpointSeed): Promise<string> {
+    const documents = createCoreDocumentSyncAdapter(
+      this.#runtime.clientForProject(input.projectId),
+    );
+    const descriptor = requireSuccess(
+      await documents.prepareOwner({
+        ownerBlockId: input.pageId,
+        operationId: createUuidV7(),
+        clientSessionId: "scenario:document-checkpoint",
+      }),
+      `Prepare checkpoint ${input.label}`,
+    );
+    if (descriptor.documentId !== input.documentId) {
+      throw new Error(`Checkpoint ${input.label} resolved a different Document`);
+    }
+    const checkpoint = requireSuccess(
+      await documents.createCheckpoint({
+        operationId: input.operationId,
+        projectId: input.projectId,
+        storeEpoch: descriptor.storeEpoch,
+        documentId: descriptor.documentId,
+        expectedGeneration: descriptor.generation,
+        expectedHeadSeq: descriptor.headSeq,
+        cause: "scenario_seed",
+        label: input.label,
+        actor: { kind: "scenario_seed" },
+        revisionKind: "manual",
+      }),
+      `Create checkpoint ${input.label}`,
+    );
+    return checkpoint.checkpoint.versionId;
   }
 
   async readPage(

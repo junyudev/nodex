@@ -33,7 +33,7 @@ import {
 } from "./workbench-session-view";
 import { parseDatabaseId } from "../database-identities";
 import type { ContentAccessContext } from "../content-access-context";
-import type { LibraryResourceTarget } from "../library-module";
+import type { LibraryPlacedResourceTarget } from "../library-module";
 
 const idSchema = z.string().min(1).max(512);
 const surfaceIdSchema = z.string().min(1).max(160);
@@ -102,7 +102,7 @@ const WorkbenchSceneOwnerV4Schema = z.discriminatedUnion("kind", [
             canvasId: idSchema,
           })
           .strict(),
-      ]) satisfies z.ZodType<LibraryResourceTarget>,
+      ]) satisfies z.ZodType<LibraryPlacedResourceTarget>,
     })
     .strict(),
 ]) satisfies z.ZodType<WorkbenchSceneOwnerV4>;

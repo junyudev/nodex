@@ -421,9 +421,9 @@ CREATE TABLE document_versions (
       CHECK (source_mutation_id IS NULL OR length(trim(source_mutation_id)) BETWEEN 1 AND 512),
       CHECK (source_change_seq IS NULL OR source_change_seq >= 1),
       CHECK (pinned IN (0, 1)),
-      CHECK (checkpoint_format IN ('yjs_update_v1', 'block_tree_snapshot_v2', 'canvas_scene_json_v1')),
+      CHECK (checkpoint_format IN ('yjs_update_v1', 'block_tree_snapshot_v2', 'block_tree_snapshot_v3', 'canvas_scene_json_v1', 'canvas_scene_json_v2')),
       CHECK (
-        checkpoint_format NOT IN ('block_tree_snapshot_v2', 'canvas_scene_json_v1')
+        checkpoint_format NOT IN ('block_tree_snapshot_v2', 'block_tree_snapshot_v3', 'canvas_scene_json_v1', 'canvas_scene_json_v2')
         OR (
           length(state_vector) = 0
           AND json_valid(CAST(full_update_blob AS TEXT))
@@ -437,6 +437,38 @@ CREATE TABLE document_versions (
       ),
       CHECK (length(created_at) > 0)
     ) WITHOUT ROWID;
+CREATE TABLE document_version_file_index (
+  version_id TEXT PRIMARY KEY REFERENCES document_versions(version_id) ON DELETE CASCADE,
+  checkpoint_hash TEXT NOT NULL,
+  file_count INTEGER NOT NULL CHECK (file_count >= 0),
+  CHECK (length(checkpoint_hash) = 64 AND checkpoint_hash NOT GLOB '*[^0-9a-f]*')
+) WITHOUT ROWID, STRICT;
+CREATE TABLE document_version_file_refs (
+  version_id TEXT NOT NULL REFERENCES document_versions(version_id) ON DELETE CASCADE,
+  binding_kind TEXT NOT NULL CHECK (binding_kind IN ('body', 'canvas')),
+  binding_id TEXT NOT NULL CHECK (length(binding_id) BETWEEN 1 AND 512),
+  file_id TEXT NOT NULL,
+  library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+  file_version INTEGER,
+  default_name TEXT,
+  resolution TEXT NOT NULL CHECK (resolution IN ('exact', 'unresolved_legacy')),
+  PRIMARY KEY (version_id, binding_kind, binding_id),
+  CHECK (binding_kind <> 'body' OR binding_id = file_id),
+  FOREIGN KEY (file_id, file_version) REFERENCES file_versions(file_id, version) ON DELETE RESTRICT,
+  CHECK ((resolution = 'exact' AND file_version IS NOT NULL AND file_version >= 1 AND default_name IS NOT NULL)
+      OR (resolution = 'unresolved_legacy' AND file_version IS NULL AND default_name IS NULL))
+) WITHOUT ROWID, STRICT;
+CREATE INDEX idx_document_version_file_refs_file ON document_version_file_refs(file_id, version_id);
+CREATE TRIGGER document_version_file_refs_validate_insert BEFORE INSERT ON document_version_file_refs
+WHEN NOT EXISTS (
+  SELECT 1 FROM document_versions version JOIN documents document ON document.id = version.document_id
+  WHERE version.version_id = NEW.version_id AND document.library_id = NEW.library_id
+) OR (NEW.resolution = 'exact' AND NOT EXISTS (
+  SELECT 1 FROM file_versions version WHERE version.file_id = NEW.file_id
+    AND version.version = NEW.file_version AND version.library_id = NEW.library_id
+)) BEGIN
+  SELECT RAISE(ABORT, 'Document File snapshot target is outside its Library');
+END;
 CREATE TABLE document_version_retention_index (
       version_id TEXT PRIMARY KEY
         REFERENCES document_versions(version_id) ON DELETE CASCADE,
@@ -1337,7 +1369,7 @@ CREATE TABLE local_commit_revocations (
     json_valid(authorization_scope_json)
     AND json_type(authorization_scope_json) = 'object'
   ),
-  CHECK (resource_kind IN ('page', 'document', 'database', 'data_source', 'view', 'canvas')),
+  CHECK (resource_kind IN ('page', 'document', 'database', 'data_source', 'view', 'canvas', 'file')),
   CHECK (length(resource_id) BETWEEN 1 AND 512),
   CHECK (reason IN ('ownership_moved', 'access_revoked', 'archived', 'deleted'))
 ) WITHOUT ROWID, STRICT;
@@ -1726,78 +1758,127 @@ CREATE TABLE page_file_manifests (
   FOREIGN KEY (page_id, library_id)
     REFERENCES pages(block_id, library_id) ON UPDATE CASCADE ON DELETE CASCADE
 ) WITHOUT ROWID, STRICT;
-CREATE TABLE page_file_versions (
+CREATE TABLE library_files (
+  file_id TEXT PRIMARY KEY CHECK (length(file_id) BETWEEN 1 AND 512),
+  library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE RESTRICT,
+  default_name TEXT NOT NULL CHECK (length(default_name) BETWEEN 1 AND 255),
+  head_version INTEGER NOT NULL CHECK (head_version >= 1),
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  lifecycle TEXT NOT NULL CHECK (lifecycle IN ('live', 'trashed')),
+  created_by_actor_id TEXT NOT NULL CHECK (length(created_by_actor_id) BETWEEN 1 AND 512),
+  created_by_turn_id TEXT,
+  created_at TEXT NOT NULL CHECK (length(created_at) > 0),
+  updated_at TEXT NOT NULL CHECK (length(updated_at) > 0),
+  UNIQUE (file_id, library_id),
+  FOREIGN KEY (file_id, head_version, library_id)
+    REFERENCES file_versions(file_id, version, library_id)
+    DEFERRABLE INITIALLY DEFERRED
+) WITHOUT ROWID, STRICT;
+
+CREATE TABLE file_versions (
   file_id TEXT NOT NULL,
   version INTEGER NOT NULL CHECK (version >= 1),
   library_id TEXT NOT NULL,
-  owner_page_id TEXT NOT NULL,
-  manifest_revision INTEGER NOT NULL CHECK (manifest_revision >= 1),
-  change_kind TEXT NOT NULL
-    CHECK (change_kind IN (
-      'create', 'replace', 'rename', 'delete', 'restore', 'clone', 'rehome'
-    )),
-  logical_path TEXT NOT NULL,
-  path_key TEXT NOT NULL,
-  mime_type TEXT NOT NULL,
-  blob_hash TEXT REFERENCES managed_blobs(content_hash) ON DELETE RESTRICT,
+  blob_hash TEXT NOT NULL REFERENCES managed_blobs(content_hash) ON DELETE RESTRICT,
+  mime_type TEXT NOT NULL CHECK (length(mime_type) BETWEEN 1 AND 255),
   byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
-  actor_id TEXT NOT NULL,
+  actor_id TEXT NOT NULL CHECK (length(actor_id) BETWEEN 1 AND 512),
   turn_id TEXT,
-  operation_id TEXT NOT NULL,
-  occurred_at TEXT NOT NULL,
+  operation_id TEXT NOT NULL CHECK (length(operation_id) BETWEEN 1 AND 512),
+  occurred_at TEXT NOT NULL CHECK (length(occurred_at) > 0),
   PRIMARY KEY (file_id, version),
-  FOREIGN KEY (file_id) REFERENCES page_files(file_id)
-    ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
-  CHECK (length(file_id) BETWEEN 1 AND 512),
-  CHECK (length(logical_path) BETWEEN 1 AND 1024),
-  CHECK (length(path_key) BETWEEN 1 AND 1024),
-  CHECK (length(mime_type) BETWEEN 1 AND 255),
-  CHECK (length(actor_id) BETWEEN 1 AND 512),
-  CHECK (turn_id IS NULL OR length(turn_id) BETWEEN 1 AND 512),
-  CHECK (length(operation_id) BETWEEN 1 AND 512),
-  CHECK (length(occurred_at) > 0),
-  CHECK (
-    (change_kind = 'delete' AND blob_hash IS NULL)
-    OR (change_kind <> 'delete' AND blob_hash IS NOT NULL)
-  )
+  UNIQUE (file_id, version, library_id),
+  FOREIGN KEY (file_id, library_id) REFERENCES library_files(file_id, library_id)
+    ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
 ) WITHOUT ROWID, STRICT;
-CREATE TABLE page_files (
-  file_id TEXT PRIMARY KEY,
+
+CREATE TABLE page_file_entries (
+  page_id TEXT NOT NULL,
   library_id TEXT NOT NULL,
-  owner_page_id TEXT NOT NULL,
-  logical_path TEXT NOT NULL,
-  path_key TEXT NOT NULL,
-  mime_type TEXT NOT NULL,
-  byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
-  current_version INTEGER NOT NULL CHECK (current_version >= 1),
-  state TEXT NOT NULL DEFAULT 'live' CHECK (state IN ('live', 'deleted')),
-  created_by_actor_id TEXT NOT NULL,
-  created_by_turn_id TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  FOREIGN KEY (owner_page_id, library_id)
-    REFERENCES pages(block_id, library_id) ON UPDATE CASCADE ON DELETE CASCADE,
-  CHECK (length(file_id) BETWEEN 1 AND 512),
-  CHECK (length(logical_path) BETWEEN 1 AND 1024),
-  CHECK (length(path_key) BETWEEN 1 AND 1024),
-  CHECK (length(mime_type) BETWEEN 1 AND 255),
-  CHECK (length(created_by_actor_id) BETWEEN 1 AND 512),
-  CHECK (created_by_turn_id IS NULL OR length(created_by_turn_id) BETWEEN 1 AND 512),
-  CHECK (length(created_at) > 0),
-  CHECK (length(updated_at) > 0)
+  file_id TEXT NOT NULL,
+  logical_path TEXT NOT NULL CHECK (length(logical_path) BETWEEN 1 AND 1024),
+  path_key TEXT NOT NULL CHECK (length(path_key) BETWEEN 1 AND 1024),
+  PRIMARY KEY (page_id, file_id),
+  UNIQUE (page_id, path_key),
+  FOREIGN KEY (page_id, library_id) REFERENCES pages(block_id, library_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (file_id, library_id) REFERENCES library_files(file_id, library_id)
+    ON DELETE RESTRICT
 ) WITHOUT ROWID, STRICT;
-CREATE TABLE page_file_namespace (
-  owner_page_id TEXT NOT NULL,
-  library_id TEXT NOT NULL,
-  path_key TEXT NOT NULL,
-  file_id TEXT NOT NULL UNIQUE,
-  PRIMARY KEY (owner_page_id, path_key),
-  FOREIGN KEY (owner_page_id, library_id)
-    REFERENCES pages(block_id, library_id) ON UPDATE CASCADE ON DELETE CASCADE,
-  FOREIGN KEY (file_id) REFERENCES page_files(file_id)
-    ON UPDATE CASCADE ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
-  CHECK (length(path_key) BETWEEN 1 AND 1024)
+
+CREATE TABLE retired_file_ids (
+  file_id TEXT PRIMARY KEY CHECK (length(file_id) BETWEEN 1 AND 512),
+  library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE RESTRICT,
+  retired_at TEXT NOT NULL CHECK (length(retired_at) > 0)
 ) WITHOUT ROWID, STRICT;
+
+CREATE TABLE file_import_events (
+  file_id TEXT NOT NULL REFERENCES library_files(file_id) ON DELETE CASCADE
+    DEFERRABLE INITIALLY DEFERRED,
+  source_version INTEGER NOT NULL CHECK (source_version >= 1),
+  evidence_json TEXT NOT NULL CHECK (json_valid(evidence_json)),
+  PRIMARY KEY (file_id, source_version)
+) WITHOUT ROWID, STRICT;
+
+CREATE INDEX idx_library_files_catalog
+  ON library_files(library_id, lifecycle, default_name COLLATE NOCASE, file_id);
+CREATE INDEX idx_file_versions_blob ON file_versions(blob_hash);
+CREATE INDEX idx_page_file_entries_file ON page_file_entries(file_id, page_id);
+
+CREATE TRIGGER library_files_retain_document_history BEFORE DELETE ON library_files
+WHEN EXISTS (SELECT 1 FROM document_version_file_refs reference WHERE reference.file_id = OLD.file_id AND reference.library_id = OLD.library_id)
+BEGIN
+  SELECT RAISE(ABORT, 'File is retained by Document history');
+END;
+CREATE TRIGGER library_files_validate_insert
+BEFORE INSERT ON library_files
+WHEN EXISTS (SELECT 1 FROM retired_file_ids retired WHERE retired.file_id = NEW.file_id)
+BEGIN
+  SELECT RAISE(ABORT, 'Retired File identities cannot be reused');
+END;
+
+CREATE TRIGGER library_files_validate_update
+BEFORE UPDATE ON library_files
+WHEN NEW.file_id <> OLD.file_id OR NEW.library_id <> OLD.library_id
+  OR NEW.revision <> OLD.revision + 1
+  OR NEW.head_version < OLD.head_version
+  OR NEW.created_by_actor_id <> OLD.created_by_actor_id
+  OR NEW.created_by_turn_id IS NOT OLD.created_by_turn_id
+  OR NEW.created_at <> OLD.created_at
+BEGIN
+  SELECT RAISE(ABORT, 'File updates must preserve identity and advance revision');
+END;
+
+CREATE TRIGGER library_files_validate_trash BEFORE UPDATE OF lifecycle ON library_files
+WHEN NEW.lifecycle = 'trashed' AND (
+  EXISTS (SELECT 1 FROM page_file_entries WHERE file_id = NEW.file_id AND library_id = NEW.library_id)
+  OR EXISTS (SELECT 1 FROM block_asset_refs WHERE file_id = NEW.file_id AND library_id = NEW.library_id)
+  OR EXISTS (SELECT 1 FROM canvas_scene_file_refs WHERE target_file_id = NEW.file_id AND library_id = NEW.library_id)
+)
+BEGIN SELECT RAISE(ABORT, 'Current or recoverable content prevents File trash'); END;
+CREATE TRIGGER library_files_require_retirement BEFORE DELETE ON library_files
+WHEN NOT EXISTS (SELECT 1 FROM retired_file_ids WHERE file_id = OLD.file_id AND library_id = OLD.library_id)
+BEGIN SELECT RAISE(ABORT, 'Permanent File deletion must retire its identity'); END;
+CREATE TRIGGER file_versions_retain_while_file_exists BEFORE DELETE ON file_versions
+WHEN EXISTS (SELECT 1 FROM library_files WHERE file_id = OLD.file_id)
+BEGIN SELECT RAISE(ABORT, 'File versions remain retained while the File exists'); END;
+
+CREATE TRIGGER file_versions_validate_insert
+BEFORE INSERT ON file_versions
+WHEN NOT EXISTS (
+  SELECT 1 FROM managed_blobs blob
+  WHERE blob.content_hash = NEW.blob_hash AND blob.byte_length = NEW.byte_length
+)
+BEGIN
+  SELECT RAISE(ABORT, 'File version bytes must match a published Blob');
+END;
+
+CREATE TRIGGER file_versions_reject_update
+BEFORE UPDATE ON file_versions
+BEGIN
+  SELECT RAISE(ABORT, 'File versions are immutable');
+END;
+
 CREATE TABLE "block_properties" (
   block_id TEXT NOT NULL,
   library_id TEXT NOT NULL,
@@ -1845,9 +1926,10 @@ CREATE TABLE "block_asset_refs" (
   ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
   asset_uri TEXT NOT NULL,
   asset_hash TEXT,
-  page_file_id TEXT REFERENCES page_files(file_id) ON DELETE RESTRICT,
+  file_id TEXT,
   updated_at TEXT NOT NULL,
   PRIMARY KEY (document_id, block_id, role, ordinal),
+  FOREIGN KEY (file_id, library_id) REFERENCES library_files(file_id, library_id) ON DELETE RESTRICT,
   FOREIGN KEY (document_id, library_id)
     REFERENCES documents(id, library_id) ON UPDATE CASCADE ON DELETE CASCADE,
   FOREIGN KEY (block_id, library_id)
@@ -1862,9 +1944,9 @@ CREATE TABLE "block_asset_refs" (
     )
   ),
   CHECK (
-    (page_file_id IS NULL AND asset_uri NOT LIKE 'nodex://files/%')
-    OR (page_file_id IS NOT NULL
-      AND asset_uri = 'nodex://files/' || page_file_id
+    (file_id IS NULL AND asset_uri NOT LIKE 'nodex://files/%')
+    OR (file_id IS NOT NULL
+      AND asset_uri = 'nodex://files/' || file_id
       AND asset_hash IS NOT NULL)
   ),
   CHECK (length(updated_at) > 0)
@@ -1937,11 +2019,14 @@ CREATE TABLE "canvas_scene_file_refs" (
   projected_seq INTEGER NOT NULL CHECK (projected_seq >= 0),
   mime_type TEXT NOT NULL,
   asset_uri TEXT NOT NULL,
-  managed_file_name TEXT NOT NULL,
+  target_file_id TEXT NOT NULL,
+  file_version INTEGER NOT NULL CHECK (file_version >= 1),
+  default_name TEXT NOT NULL,
   asset_hash TEXT NOT NULL,
   byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
   updated_at TEXT NOT NULL,
   PRIMARY KEY (document_id, file_id),
+  FOREIGN KEY (target_file_id, file_version, library_id) REFERENCES file_versions(file_id, version, library_id) ON DELETE RESTRICT,
   FOREIGN KEY (owner_block_id, document_id, library_id)
     REFERENCES block_documents(block_id, document_id, library_id) ON DELETE CASCADE,
   FOREIGN KEY (document_id, library_id)
@@ -1949,7 +2034,8 @@ CREATE TABLE "canvas_scene_file_refs" (
   CHECK (length(file_id) BETWEEN 1 AND 512),
   CHECK (length(mime_type) BETWEEN 1 AND 256),
   CHECK (length(asset_uri) BETWEEN 1 AND 4096),
-  CHECK (length(managed_file_name) BETWEEN 1 AND 512),
+  CHECK (length(target_file_id) BETWEEN 1 AND 512),
+  CHECK (length(default_name) BETWEEN 1 AND 255),
   CHECK (length(asset_hash) = 64 AND asset_hash NOT GLOB '*[^0-9a-f]*')
 ) WITHOUT ROWID, STRICT;
 CREATE TABLE "page_read_model" (
@@ -2224,13 +2310,13 @@ CREATE TABLE "project_resource_grants" (
   root_kind TEXT NOT NULL,
   root_id TEXT NOT NULL,
   access TEXT NOT NULL,
-  recursive INTEGER NOT NULL DEFAULT 1 CHECK (recursive = 1),
+  recursive INTEGER NOT NULL DEFAULT 1 CHECK ((root_kind = 'file' AND recursive = 0) OR (root_kind <> 'file' AND recursive = 1)),
   revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
   lifecycle TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (project_id, root_kind, root_id),
-  CHECK (root_kind IN ('page', 'database', 'canvas')),
+  CHECK (root_kind IN ('page', 'database', 'canvas', 'file')),
   CHECK (access IN ('read', 'read_write')),
   CHECK (lifecycle IN ('active', 'revoked'))
 ) WITHOUT ROWID, STRICT;
@@ -2373,7 +2459,7 @@ CREATE TABLE structural_retention_members (
   authority_kind TEXT NOT NULL CHECK (authority_kind IN ('clipboard_bundle', 'history_recipe')),
   authority_id TEXT NOT NULL,
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
-  member_kind TEXT NOT NULL CHECK (member_kind IN ('block', 'document', 'database', 'asset')),
+  member_kind TEXT NOT NULL CHECK (member_kind IN ('block', 'document', 'database', 'asset', 'file')),
   member_id TEXT NOT NULL,
   PRIMARY KEY (authority_kind, authority_id, member_kind, member_id),
   CHECK (length(authority_id) BETWEEN 1 AND 512),
@@ -2381,6 +2467,10 @@ CREATE TABLE structural_retention_members (
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX idx_structural_retention_members_identity
   ON structural_retention_members(library_id, member_kind, member_id);
+CREATE TRIGGER library_files_retain_structural_evidence BEFORE DELETE ON library_files
+WHEN EXISTS (SELECT 1 FROM structural_retention_members member
+  WHERE member.library_id = OLD.library_id AND member.member_kind = 'file' AND member.member_id = OLD.file_id)
+BEGIN SELECT RAISE(ABORT, 'File is retained by structural evidence'); END;
 CREATE INDEX idx_structural_history_recipes_state
   ON structural_history_recipes(library_id, state, created_at);
 CREATE INDEX idx_project_sources_project_order
@@ -2598,13 +2688,6 @@ CREATE INDEX idx_prepared_blob_receipts_expiry
   ON prepared_blob_receipts(state, expires_at_unix_ms, receipt_id);
 CREATE INDEX idx_prepared_blob_receipts_blob
   ON prepared_blob_receipts(content_hash, state, receipt_id);
-CREATE INDEX idx_page_file_versions_owner
-  ON page_file_versions(owner_page_id, library_id, occurred_at DESC, file_id, version DESC);
-CREATE INDEX idx_page_file_versions_blob
-  ON page_file_versions(blob_hash, file_id)
-  WHERE blob_hash IS NOT NULL;
-CREATE INDEX idx_page_files_owner_path
-  ON page_files(owner_page_id, state, path_key, file_id);
 CREATE INDEX idx_block_properties_library_key
   ON block_properties(library_id, property_key, block_id);
 CREATE UNIQUE INDEX idx_block_documents_owner_document_library
@@ -2616,8 +2699,8 @@ CREATE INDEX idx_block_asset_refs_document_freshness
 CREATE INDEX idx_block_asset_refs_library_uri
   ON block_asset_refs(library_id, asset_uri, block_id);
 CREATE INDEX idx_block_asset_refs_page_file
-  ON block_asset_refs(page_file_id, document_id, block_id)
-  WHERE page_file_id IS NOT NULL;
+  ON block_asset_refs(file_id, document_id, block_id)
+  WHERE file_id IS NOT NULL;
 CREATE INDEX idx_block_search_units_block ON block_search_units(block_id, library_id);
 CREATE INDEX idx_block_search_units_owner ON block_search_units(owner_block_id, library_id);
 CREATE INDEX idx_block_search_units_document_freshness
@@ -2627,6 +2710,8 @@ CREATE INDEX idx_block_search_units_library_source
   ON block_search_units(library_id, source_kind, block_id);
 CREATE INDEX idx_canvas_page_references_target
   ON canvas_page_references(library_id, target_block_id, document_id);
+CREATE INDEX idx_canvas_scene_file_refs_target_file
+  ON canvas_scene_file_refs(target_file_id, library_id, owner_block_id);
 CREATE INDEX idx_canvas_scene_file_refs_owner
   ON canvas_scene_file_refs(library_id, owner_block_id, file_id);
 CREATE INDEX idx_page_read_model_library_lifecycle
@@ -2913,7 +2998,7 @@ CREATE TRIGGER document_versions_validate_checkpoint_format
       BEFORE INSERT ON document_versions
       WHEN (
         NEW.checkpoint_format IN (
-          'block_tree_snapshot_v2', 'canvas_scene_json_v1'
+          'block_tree_snapshot_v2', 'block_tree_snapshot_v3', 'canvas_scene_json_v1', 'canvas_scene_json_v2'
         )
         AND (
           length(NEW.state_vector) <> 0
@@ -2921,7 +3006,7 @@ CREATE TRIGGER document_versions_validate_checkpoint_format
           OR json_type(CAST(NEW.full_update_blob AS TEXT)) <> 'object'
         )
       ) OR NEW.checkpoint_format NOT IN (
-        'yjs_update_v1', 'block_tree_snapshot_v2', 'canvas_scene_json_v1'
+        'yjs_update_v1', 'block_tree_snapshot_v2', 'block_tree_snapshot_v3', 'canvas_scene_json_v1', 'canvas_scene_json_v2'
       )
       BEGIN
         SELECT RAISE(ABORT, 'Document checkpoint format does not match its payload');
@@ -3854,119 +3939,6 @@ BEGIN
     page_id, library_id, revision, body_usage_revision, updated_at
   ) VALUES (NEW.block_id, NEW.library_id, 0, 0, NEW.updated_at);
 END;
-CREATE TRIGGER page_file_versions_validate_insert
-BEFORE INSERT ON page_file_versions
-WHEN NOT EXISTS (
-  SELECT 1 FROM page_file_manifests manifest
-  WHERE manifest.page_id = NEW.owner_page_id
-    AND manifest.library_id = NEW.library_id
-    AND manifest.revision = NEW.manifest_revision
-) OR (
-  NEW.blob_hash IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM managed_blobs blob
-    WHERE blob.content_hash = NEW.blob_hash AND blob.byte_length = NEW.byte_length
-  )
-) OR (
-  NEW.change_kind = 'rehome' AND NOT EXISTS (
-    SELECT 1
-    FROM page_files file
-    JOIN page_file_versions previous
-      ON previous.file_id = file.file_id
-     AND previous.version = file.current_version
-    WHERE file.file_id = NEW.file_id
-      AND file.library_id = NEW.library_id
-      AND file.owner_page_id <> NEW.owner_page_id
-      AND file.state = 'live'
-      AND NEW.version = file.current_version + 1
-      AND previous.blob_hash = NEW.blob_hash
-      AND previous.mime_type = NEW.mime_type
-      AND previous.byte_length = NEW.byte_length
-  )
-)
-BEGIN
-  SELECT RAISE(ABORT, 'Page File version authority is invalid');
-END;
-CREATE TRIGGER page_file_versions_are_immutable
-BEFORE UPDATE ON page_file_versions
-BEGIN
-  SELECT RAISE(ABORT, 'Page File versions are immutable');
-END;
-CREATE TRIGGER page_files_validate_insert
-BEFORE INSERT ON page_files
-WHEN NOT EXISTS (
-  SELECT 1 FROM page_file_versions version
-  WHERE version.file_id = NEW.file_id
-    AND version.version = NEW.current_version
-    AND version.library_id = NEW.library_id
-    AND version.owner_page_id = NEW.owner_page_id
-    AND version.logical_path = NEW.logical_path
-    AND version.path_key = NEW.path_key
-    AND version.mime_type = NEW.mime_type
-    AND version.byte_length = NEW.byte_length
-    AND (
-      (NEW.state = 'live' AND version.change_kind <> 'delete' AND version.blob_hash IS NOT NULL)
-      OR (NEW.state = 'deleted' AND version.change_kind = 'delete' AND version.blob_hash IS NULL)
-    )
-) OR (
-  NEW.state = 'live' AND NOT EXISTS (
-    SELECT 1 FROM page_file_namespace namespace
-    WHERE namespace.owner_page_id = NEW.owner_page_id
-      AND namespace.library_id = NEW.library_id
-      AND namespace.path_key = NEW.path_key
-      AND namespace.file_id = NEW.file_id
-  )
-) OR (
-  NEW.state = 'deleted' AND EXISTS (
-    SELECT 1 FROM page_file_namespace namespace WHERE namespace.file_id = NEW.file_id
-  )
-)
-BEGIN
-  SELECT RAISE(ABORT, 'Page File head does not match its current version');
-END;
-CREATE TRIGGER page_files_validate_update
-BEFORE UPDATE ON page_files
-WHEN OLD.file_id <> NEW.file_id
-  OR OLD.library_id <> NEW.library_id
-  OR OLD.created_by_actor_id <> NEW.created_by_actor_id
-  OR OLD.created_by_turn_id IS NOT NEW.created_by_turn_id
-  OR OLD.created_at <> NEW.created_at
-  OR NEW.current_version <> OLD.current_version + 1
-  OR NOT EXISTS (
-    SELECT 1 FROM page_file_versions version
-    WHERE version.file_id = NEW.file_id
-      AND version.version = NEW.current_version
-      AND version.library_id = NEW.library_id
-      AND version.owner_page_id = NEW.owner_page_id
-      AND version.logical_path = NEW.logical_path
-      AND version.path_key = NEW.path_key
-      AND version.mime_type = NEW.mime_type
-      AND version.byte_length = NEW.byte_length
-      AND (
-        (OLD.owner_page_id <> NEW.owner_page_id AND version.change_kind = 'rehome')
-        OR (OLD.owner_page_id = NEW.owner_page_id AND version.change_kind <> 'rehome')
-      )
-      AND (
-        (NEW.state = 'live' AND version.change_kind <> 'delete' AND version.blob_hash IS NOT NULL)
-        OR (NEW.state = 'deleted' AND version.change_kind = 'delete' AND version.blob_hash IS NULL)
-      )
-  )
-  OR (
-    NEW.state = 'live' AND NOT EXISTS (
-      SELECT 1 FROM page_file_namespace namespace
-      WHERE namespace.owner_page_id = NEW.owner_page_id
-        AND namespace.library_id = NEW.library_id
-        AND namespace.path_key = NEW.path_key
-        AND namespace.file_id = NEW.file_id
-    )
-  )
-  OR (
-    NEW.state = 'deleted' AND EXISTS (
-      SELECT 1 FROM page_file_namespace namespace WHERE namespace.file_id = NEW.file_id
-    )
-  )
-BEGIN
-  SELECT RAISE(ABORT, 'Page File head transition is invalid');
-END;
 CREATE TRIGGER block_asset_refs_validate_insert BEFORE INSERT ON block_asset_refs
 WHEN NOT EXISTS (
   SELECT 1 FROM documents document
@@ -3980,13 +3952,13 @@ WHEN NOT EXISTS (
     AND ownership.block_id = NEW.owner_block_id
     AND block_index.projected_seq = NEW.projected_seq
 ) OR (
-  NEW.page_file_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM page_files file
-    JOIN page_file_versions version
-      ON version.file_id = file.file_id AND version.version = file.current_version
-    WHERE file.file_id = NEW.page_file_id
+  NEW.file_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM library_files file
+    JOIN file_versions version
+      ON version.file_id = file.file_id AND version.version = file.head_version
+    WHERE file.file_id = NEW.file_id
       AND file.library_id = NEW.library_id
-      AND file.state = 'live'
+      AND file.lifecycle = 'live'
       AND version.blob_hash = NEW.asset_hash
   )
 ) BEGIN
@@ -4005,13 +3977,13 @@ WHEN NOT EXISTS (
     AND ownership.block_id = NEW.owner_block_id
     AND block_index.projected_seq = NEW.projected_seq
 ) OR (
-  NEW.page_file_id IS NOT NULL AND NOT EXISTS (
-    SELECT 1 FROM page_files file
-    JOIN page_file_versions version
-      ON version.file_id = file.file_id AND version.version = file.current_version
-    WHERE file.file_id = NEW.page_file_id
+  NEW.file_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM library_files file
+    JOIN file_versions version
+      ON version.file_id = file.file_id AND version.version = file.head_version
+    WHERE file.file_id = NEW.file_id
       AND file.library_id = NEW.library_id
-      AND file.state = 'live'
+      AND file.lifecycle = 'live'
       AND version.blob_hash = NEW.asset_hash
   )
 ) BEGIN
@@ -4589,11 +4561,14 @@ WHEN NEW.lifecycle = 'active' AND (
   NOT EXISTS (
     SELECT 1 FROM projects project
     WHERE project.id = NEW.project_id AND project.library_id = NEW.library_id
-  ) OR NOT EXISTS (
+  ) OR (NEW.root_kind = 'file' AND NOT EXISTS (
+    SELECT 1 FROM library_files file
+    WHERE file.file_id = NEW.root_id AND file.library_id = NEW.library_id
+  )) OR (NEW.root_kind <> 'file' AND NOT EXISTS (
     SELECT 1 FROM blocks block
     WHERE block.id = NEW.root_id AND block.library_id = NEW.library_id
       AND block.type = NEW.root_kind
-  ) OR (
+  )) OR (
     NEW.root_kind = 'canvas' AND EXISTS (
       SELECT 1 FROM blocks block
       WHERE block.id = NEW.root_id AND block.lifecycle <> 'deleted'
@@ -4618,11 +4593,14 @@ WHEN NEW.lifecycle = 'active' AND (
   NOT EXISTS (
     SELECT 1 FROM projects project
     WHERE project.id = NEW.project_id AND project.library_id = NEW.library_id
-  ) OR NOT EXISTS (
+  ) OR (NEW.root_kind = 'file' AND NOT EXISTS (
+    SELECT 1 FROM library_files file
+    WHERE file.file_id = NEW.root_id AND file.library_id = NEW.library_id
+  )) OR (NEW.root_kind <> 'file' AND NOT EXISTS (
     SELECT 1 FROM blocks block
     WHERE block.id = NEW.root_id AND block.library_id = NEW.library_id
       AND block.type = NEW.root_kind
-  ) OR (
+  )) OR (
     NEW.root_kind = 'canvas' AND EXISTS (
       SELECT 1 FROM blocks block
       WHERE block.id = NEW.root_id AND block.lifecycle <> 'deleted'
@@ -4828,11 +4806,28 @@ CREATE TABLE codex_queued_follow_up_ledgers (
   ledger_hash TEXT NOT NULL CHECK (length(ledger_hash) = 64),
   updated_at TEXT NOT NULL CHECK (length(updated_at) > 0)
 ) WITHOUT ROWID, STRICT;
+CREATE TABLE codex_thread_asset_refs (
+  thread_id TEXT NOT NULL REFERENCES codex_threads(thread_id) ON DELETE CASCADE,
+  library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE RESTRICT,
+  blob_hash TEXT NOT NULL REFERENCES managed_blobs(content_hash) ON DELETE RESTRICT,
+  retained_at TEXT NOT NULL CHECK (length(retained_at) > 0),
+  PRIMARY KEY (thread_id, library_id, blob_hash)
+) WITHOUT ROWID, STRICT;
+CREATE TRIGGER codex_thread_asset_refs_validate_insert BEFORE INSERT ON codex_thread_asset_refs
+WHEN NOT EXISTS (
+  SELECT 1 FROM codex_threads thread LEFT JOIN projects project ON project.id = thread.project_id
+  WHERE thread.thread_id = NEW.thread_id AND (thread.project_id IS NULL OR project.library_id = NEW.library_id)
+)
+BEGIN SELECT RAISE(ABORT, 'Thread attachment must belong to its Library'); END;
+CREATE TRIGGER codex_thread_asset_refs_immutable BEFORE UPDATE ON codex_thread_asset_refs
+BEGIN SELECT RAISE(ABORT, 'Retained Thread attachment identities are immutable'); END;
+CREATE INDEX idx_codex_thread_asset_refs_blob ON codex_thread_asset_refs(blob_hash);
+
 CREATE TABLE codex_queued_follow_up_payload_manifests (
-  payload_sha256 TEXT PRIMARY KEY CHECK (length(payload_sha256) = 64),
-  schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+  payload_sha256 TEXT PRIMARY KEY REFERENCES managed_blobs(content_hash) ON DELETE RESTRICT CHECK (length(payload_sha256) = 64),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 2),
   asset_uri TEXT NOT NULL UNIQUE CHECK (
-    asset_uri LIKE 'nodex://assets/queued-follow-up-v1-%.json'
+    asset_uri = 'nodex://assets/' || payload_sha256 || '.blob'
   ),
   byte_length INTEGER NOT NULL CHECK (byte_length >= 2)
 ) WITHOUT ROWID, STRICT;
@@ -4840,8 +4835,10 @@ CREATE TABLE codex_queued_follow_up_payload_asset_refs (
   payload_sha256 TEXT NOT NULL REFERENCES codex_queued_follow_up_payload_manifests(payload_sha256) ON DELETE CASCADE,
   ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
   asset_uri TEXT NOT NULL CHECK (asset_uri LIKE 'nodex://assets/%'),
-  sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
+  sha256 TEXT NOT NULL REFERENCES managed_blobs(content_hash) ON DELETE RESTRICT CHECK (length(sha256) = 64),
   byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
+  mime_type TEXT NOT NULL CHECK (length(trim(mime_type)) BETWEEN 1 AND 255),
+  CHECK (asset_uri = 'nodex://assets/' || sha256 || '.blob'),
   PRIMARY KEY (payload_sha256, ordinal),
   UNIQUE (payload_sha256, asset_uri)
 ) WITHOUT ROWID, STRICT;
@@ -4866,16 +4863,6 @@ CREATE TABLE codex_queued_follow_up_entries (
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX idx_codex_queued_follow_up_entries_payload
   ON codex_queued_follow_up_entries(payload_sha256);
-CREATE TABLE codex_queued_follow_up_manifest_gc (
-  asset_uri TEXT PRIMARY KEY CHECK (
-    asset_uri LIKE 'nodex://assets/queued-follow-up-v1-%.json'
-  ),
-  sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
-  enqueued_at TEXT NOT NULL CHECK (length(enqueued_at) > 0),
-  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
-  last_attempt_at TEXT CHECK (last_attempt_at IS NULL OR length(last_attempt_at) > 0),
-  last_error TEXT CHECK (last_error IS NULL OR length(last_error) BETWEEN 1 AND 4096)
-) WITHOUT ROWID, STRICT;
 CREATE TABLE operational_journal_state (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   commit_head_seq INTEGER NOT NULL DEFAULT 0 CHECK (commit_head_seq >= 0),
@@ -4923,7 +4910,7 @@ CREATE TABLE operational_journal_state (
   ),
   CHECK (length(operation_identity_cutover_at) > 0)
 ) WITHOUT ROWID, STRICT;
-PRAGMA user_version = 151;
+PRAGMA user_version = 152;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
@@ -4949,6 +4936,42 @@ CREATE INDEX document_recovery_drafts_document
     ON document_recovery_drafts(library_id, document_id, draft_id);
 CREATE INDEX document_recovery_drafts_retention
     ON document_recovery_drafts(library_id, resolved_at) WHERE resolution IS NOT NULL;
+CREATE TABLE document_recovery_file_snapshots (
+    library_id TEXT NOT NULL,
+    draft_id TEXT NOT NULL,
+    snapshot_json TEXT NOT NULL CHECK (json_valid(snapshot_json) AND json_type(snapshot_json) = 'object'),
+    snapshot_hash TEXT NOT NULL CHECK (length(snapshot_hash) = 64 AND snapshot_hash NOT GLOB '*[^0-9a-f]*'),
+    PRIMARY KEY (library_id, draft_id),
+    FOREIGN KEY (library_id, draft_id) REFERENCES document_recovery_drafts(library_id, draft_id) ON DELETE CASCADE
+) WITHOUT ROWID, STRICT;
+CREATE TABLE document_recovery_file_refs (
+    library_id TEXT NOT NULL,
+    draft_id TEXT NOT NULL,
+    binding_kind TEXT NOT NULL CHECK (binding_kind IN ('body', 'canvas')),
+    binding_id TEXT NOT NULL CHECK (length(binding_id) BETWEEN 1 AND 512),
+    file_id TEXT NOT NULL CHECK (length(file_id) BETWEEN 1 AND 512),
+    file_version INTEGER,
+    default_name TEXT,
+    PRIMARY KEY (library_id, draft_id, binding_kind, binding_id),
+    CHECK (binding_kind <> 'body' OR binding_id = file_id),
+    FOREIGN KEY (library_id, draft_id) REFERENCES document_recovery_file_snapshots(library_id, draft_id) ON DELETE CASCADE,
+    FOREIGN KEY (file_id, file_version, library_id) REFERENCES file_versions(file_id, version, library_id) ON DELETE RESTRICT,
+    CHECK ((file_version IS NULL AND default_name IS NULL) OR
+           (file_version IS NOT NULL AND file_version >= 1 AND default_name IS NOT NULL AND length(default_name) BETWEEN 1 AND 255))
+) WITHOUT ROWID, STRICT;
+CREATE INDEX document_recovery_file_refs_file ON document_recovery_file_refs(file_id, file_version);
+CREATE TRIGGER document_recovery_file_snapshots_immutable BEFORE UPDATE ON document_recovery_file_snapshots
+BEGIN
+    SELECT RAISE(ABORT, 'Recovery File snapshots are immutable');
+END;
+CREATE TRIGGER library_files_retain_recovery BEFORE DELETE ON library_files
+WHEN EXISTS (SELECT 1 FROM document_recovery_file_refs reference WHERE reference.library_id = OLD.library_id AND reference.file_id = OLD.file_id)
+  OR EXISTS (SELECT 1 FROM document_recovery_drafts draft LEFT JOIN document_recovery_file_snapshots snapshot
+      ON snapshot.library_id = draft.library_id AND snapshot.draft_id = draft.draft_id
+      WHERE draft.library_id = OLD.library_id AND (snapshot.draft_id IS NULL OR json_extract(snapshot.snapshot_json, '$.complete') <> 1))
+BEGIN
+    SELECT RAISE(ABORT, 'File is retained by recovery drafts');
+END;
 CREATE TABLE document_recovery_asset_roots (
     library_id TEXT NOT NULL,
     draft_id TEXT NOT NULL,
@@ -4964,3 +4987,31 @@ CREATE TABLE document_recovery_block_roots (
     PRIMARY KEY (library_id, draft_id, block_id),
     FOREIGN KEY (library_id, draft_id) REFERENCES document_recovery_drafts(library_id, draft_id) ON DELETE CASCADE
 ) WITHOUT ROWID;
+
+CREATE TRIGGER visibility_dirty_library_files_insert
+BEFORE INSERT ON library_files
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM local_commit_visibility_context
+    WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
+  ) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
+  INSERT INTO local_commit_visibility_dirty_facts(
+    store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
+  )
+  SELECT store_epoch, commit_seq, 'library_files', 'insert', NULL, json_object('file_id', NEW."file_id", 'library_id', NEW."library_id", 'default_name', NEW."default_name", 'head_version', NEW."head_version", 'revision', NEW."revision", 'lifecycle', NEW."lifecycle", 'created_by_actor_id', NEW."created_by_actor_id", 'created_by_turn_id', NEW."created_by_turn_id", 'created_at', NEW."created_at", 'updated_at', NEW."updated_at")
+  FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
+END;
+
+CREATE TRIGGER visibility_dirty_library_files_delete
+BEFORE DELETE ON library_files
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM local_commit_visibility_context
+    WHERE id = 1 AND mode IN ('active', 'overlay', 'maintenance')
+  ) THEN RAISE(ABORT, 'authority-bearing write requires VisibilityDeltaJournal') END;
+  INSERT INTO local_commit_visibility_dirty_facts(
+    store_epoch, commit_seq, relation_kind, operation, old_row_json, new_row_json
+  )
+  SELECT store_epoch, commit_seq, 'library_files', 'delete', json_object('file_id', OLD."file_id", 'library_id', OLD."library_id", 'default_name', OLD."default_name", 'head_version', OLD."head_version", 'revision', OLD."revision", 'lifecycle', OLD."lifecycle", 'created_by_actor_id', OLD."created_by_actor_id", 'created_by_turn_id', OLD."created_by_turn_id", 'created_at', OLD."created_at", 'updated_at', OLD."updated_at"), NULL
+  FROM local_commit_visibility_context WHERE id = 1 AND mode = 'active';
+END;

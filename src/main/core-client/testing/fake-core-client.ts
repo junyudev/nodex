@@ -1,3 +1,4 @@
+import type { ReadFileBytesInput } from "../../../shared/library-files";
 import type {
   AutomationApplyInput,
   AutomationApplyResult,
@@ -21,8 +22,8 @@ import type {
   LibraryApplyResult,
   LibraryRead,
   LibraryReadSnapshot,
-  PageFileBlobBytes,
-  PreparedPageFileBlob,
+  ManagedBlobBytes,
+  PreparedBlobReceipt,
   OwnedDocumentApplyInput,
   OwnedDocumentApplyResult,
   OwnedDocumentRead,
@@ -172,20 +173,20 @@ export const createFakeCoreHandshake = ({
 };
 
 export class FakeCoreClient implements CoreClientPort {
+  readonly readFileBlobs: ReadFileBytesInput[] = [];
   readonly automationReads: AutomationRead[] = [];
   readonly automationReadOptions: Array<CoreRequestOptions | undefined> = [];
   readonly automationApplies: AutomationApplyInput[] = [];
   readonly automationApplyOptions: Array<CoreRequestOptions | undefined> = [];
   readonly reads: LibraryRead[] = [];
   readonly applies: LibraryApplyInput[] = [];
-  readonly preparedPageFileBlobs: Array<{
+  readonly preparedFileBlobs: Array<{
     readonly operationId: string;
     readonly bytes: Uint8Array;
   }> = [];
-  readonly readPageFileBlobs: Array<{
-    readonly pageId: string;
-    readonly fileId: string;
-    readonly version?: number;
+  readonly readThreadAssetBlobs: Array<{
+    readonly threadId: string;
+    readonly contentHash: string;
   }> = [];
   readonly databaseReads: DatabaseRead[] = [];
   readonly databaseApplies: DatabaseApplyInput[] = [];
@@ -210,8 +211,8 @@ export class FakeCoreClient implements CoreClientPort {
   readonly #automationReadResults: AutomationReadSnapshot[] = [];
   readonly #automationApplyResults: AutomationApplyResult[] = [];
   readonly #applyResults: LibraryApplyResult[] = [];
-  readonly #preparedPageFileBlobResults: PreparedPageFileBlob[] = [];
-  readonly #pageFileBlobReadResults: PageFileBlobBytes[] = [];
+  readonly #preparedFileBlobResults: PreparedBlobReceipt[] = [];
+  readonly #fileBlobReadResults: ManagedBlobBytes[] = [];
   readonly #databaseReadResults: DatabaseReadSnapshot[] = [];
   readonly #databaseApplyResults: DatabaseApplyResult[] = [];
   readonly #workspaceReadResults: ProjectWorkspaceReadSnapshot[] = [];
@@ -260,12 +261,12 @@ export class FakeCoreClient implements CoreClientPort {
     this.#applyResults.push(normalizeApplyFixture(result));
   }
 
-  enqueuePreparedPageFileBlob(result: PreparedPageFileBlob): void {
-    this.#preparedPageFileBlobResults.push(result);
+  enqueuePreparedBlobReceipt(result: PreparedBlobReceipt): void {
+    this.#preparedFileBlobResults.push(result);
   }
 
-  enqueuePageFileBlobRead(result: PageFileBlobBytes): void {
-    this.#pageFileBlobReadResults.push(result);
+  enqueueFileBlobRead(result: ManagedBlobBytes): void {
+    this.#fileBlobReadResults.push(result);
   }
 
   enqueueDatabaseRead(result: DatabaseReadSnapshot): void {
@@ -369,25 +370,39 @@ export class FakeCoreClient implements CoreClientPort {
     return result;
   }
 
-  async preparePageFileBlob(input: {
+  async prepareBlob(input: {
     readonly operationId: string;
     readonly idempotencySlot?: string;
     readonly bytes: Uint8Array;
-  }): Promise<PreparedPageFileBlob> {
-    this.preparedPageFileBlobs.push(input);
-    const result = this.#preparedPageFileBlobResults.shift();
-    if (!result) throw new Error("Fake Core client has no queued Prepared Page File Blob");
+  }): Promise<PreparedBlobReceipt> {
+    return this.prepareFileBlob(input);
+  }
+
+  async readThreadAssetBlob(input: {
+    readonly threadId: string;
+    readonly contentHash: string;
+  }): Promise<ManagedBlobBytes> {
+    this.readThreadAssetBlobs.push(input);
+    const result = this.#fileBlobReadResults.shift();
+    if (!result) throw new Error("Fake Core client has no queued Thread Blob read");
     return result;
   }
 
-  async readPageFileBlob(input: {
-    readonly pageId: string;
-    readonly fileId: string;
-    readonly version?: number;
-  }): Promise<PageFileBlobBytes> {
-    this.readPageFileBlobs.push(input);
-    const result = this.#pageFileBlobReadResults.shift();
-    if (!result) throw new Error("Fake Core client has no queued Page File Blob read");
+  async prepareFileBlob(input: {
+    readonly operationId: string;
+    readonly idempotencySlot?: string;
+    readonly bytes: Uint8Array;
+  }): Promise<PreparedBlobReceipt> {
+    this.preparedFileBlobs.push(input);
+    const result = this.#preparedFileBlobResults.shift();
+    if (!result) throw new Error("Fake Core client has no queued prepared File Blob");
+    return result;
+  }
+
+  async readFileBlob(input: ReadFileBytesInput): Promise<ManagedBlobBytes> {
+    this.readFileBlobs.push(input);
+    const result = this.#fileBlobReadResults.shift();
+    if (!result) throw new Error("Fake Core client has no queued File Blob read");
     return result;
   }
 

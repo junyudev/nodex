@@ -1,7 +1,7 @@
 # NFM Editor Attachment Chip Behavior
 
 Status: Active
-Last Updated: 2026-08-28
+Last Updated: 2026-09-05
 
 This document describes the current pasted-attachment behavior inside the NFM / BlockNote editor.
 
@@ -36,9 +36,9 @@ Not included:
 ## Terminology
 
 - `attachment chip`: the inline visual token inserted into paragraph-like content
-- `Page File attachment`: an attachment with `mode="materialized"` that points
-  to a `nodex://files/<file-id>` resource owned or canonically placed by the
-  containing Page
+- `Library File attachment`: an attachment with `mode="materialized"` that
+  points to an independent `nodex://files/<file-id>` resource and is readable
+  through the containing Page's canonical occurrence
 - `legacy saved attachment`: a materialized `nodex://assets/...` attachment
   created by a non-Page or older authoring surface
 - `linked attachment`: an attachment with `mode="link"` that points to an original absolute local path
@@ -220,10 +220,10 @@ The dialog lists each pasted item with:
 
 The editor:
 
-- on a Page, creates a direct `.txt` Page File; other editor hosts retain their
-  narrow managed-asset behavior
-- derives the preferred logical filename from the first non-empty line,
-  slugified, with `.txt`, and allocates a portable collision-free Page path
+- on a Page, creates an independent `.txt` Library File; other editor hosts
+  retain their narrow managed-asset behavior
+- derives the preferred File default name from the first non-empty line,
+  slugified and suffixed with `.txt`; it does not allocate a Page path
 - derives the chip label from the first non-empty line, truncated to 80 characters, fallback `Pasted text`
 - inserts a `kind="text"` attachment chip with `mode="materialized"`
 
@@ -231,8 +231,8 @@ The editor:
 
 The editor:
 
-- on a Page, copies the exact bytes into a direct Page File through Core; other
-  editor hosts retain their narrow managed-asset behavior
+- on a Page, copies the exact bytes into an independent Library File through
+  Core; other editor hosts retain their narrow managed-asset behavior
 - inserts a `kind="file"` attachment chip with `mode="materialized"`
 - preserves `origin` when the source came from an absolute local path
 
@@ -302,7 +302,7 @@ The chip should feel like a mention/reference token, not like a separate block e
 
 `kind="file"` or `kind="folder"`:
 
-- for a Page File, resolve the current logical basename by stable File ID
+- for a Library File, resolve its authorized presentation name by stable File ID
 - otherwise use `name`
 
 Inline display truncates labels to 48 characters.
@@ -340,13 +340,13 @@ Metadata area shows:
 
 Actions:
 
-- Page File: `Save` and `Copy reference`
+- Library File: `Save` and `Copy reference`
 - legacy saved or linked attachment: `Open`, `Reveal`, and `Copy path`
 - `Open original` when `origin` exists and differs from the primary source
 
 ### Primary target resolution
 
-Page File attachment:
+Library File attachment:
 
 - `Save` reads the currently authorized File bytes through Core and opens a
   destination chooser; no Profile path is revealed
@@ -471,8 +471,9 @@ Desktop Electron:
 - validates metadata for Files captured by the current paste event
 - transfers bounded rich content and native resource metadata together asynchronously
 - supports resolving saved asset paths for open/reveal actions
-- on Page surfaces, publishes new materialized attachments as direct Page Files
-  and resolves their metadata/bytes through the owner Page authority
+- on Page surfaces, publishes new materialized attachments as independent
+  Library Files and resolves their metadata/bytes through the containing Page
+  occurrence authority
 
 Browser runtime:
 

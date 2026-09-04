@@ -1,4 +1,4 @@
-import type { LibraryResourceTarget as AnyLibraryResourceTarget } from "../../../shared/library-module";
+import type { LibraryPlacedResourceTarget as AnyLibraryResourceTarget } from "../../../shared/library-module";
 
 export type LibraryResourceTarget = Exclude<AnyLibraryResourceTarget, { readonly kind: "canvas" }>;
 

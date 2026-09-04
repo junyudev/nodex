@@ -11,16 +11,16 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { NfmImageBlockIcon } from "@/components/shared/icons";
 import { readManagedImageByteLength } from "@/lib/assets";
 import { parseAssetSource } from "../../../../shared/assets";
-import { parsePageFileSource } from "../../../../shared/page-files";
+import { parseFileSource } from "../../../../shared/file-resources";
 import {
   normalizeImageSourceDimensions,
   type ImageSourceDimensions,
 } from "../../../../shared/image-layout";
 import {
-  usePageFilePlacementRuntime,
-  usePageFileReadSnapshot,
-  type PageFilePlacementRuntime,
-} from "./page-file-runtime";
+  useFilePlacementRuntime,
+  useFileReadSnapshot,
+  type FilePlacementRuntime,
+} from "./file-runtime";
 
 import { resolveAssetSourceToDisplayUrl, type ManagedAssetPathResolver } from "../../../lib/assets";
 
@@ -206,14 +206,14 @@ function ExternalImagePreview(props: Omit<ImageBlockRenderProps, "contentRef">) 
   );
 }
 
-function PageFileImagePreview({
+function FileImagePreview({
   block,
   editor,
   runtime,
 }: Omit<ImageBlockRenderProps, "contentRef"> & {
-  readonly runtime: PageFilePlacementRuntime;
+  readonly runtime: FilePlacementRuntime;
 }) {
-  const snapshot = usePageFileReadSnapshot(runtime, block.props.url, { objectUrl: true });
+  const snapshot = useFileReadSnapshot(runtime, block.props.url, { objectUrl: true });
   const persistDecodedDimensions = usePersistDecodedImageDimensions({ block, editor });
   if (!snapshot.objectUrl) {
     return <ImageLoadingState block={block} failed={Boolean(snapshot.contentError)} />;
@@ -237,21 +237,20 @@ function PageFileImagePreview({
 
 function ImagePreview(props: Omit<ImageBlockRenderProps, "contentRef">) {
   const { block } = props;
-  const pageFileRuntime = usePageFilePlacementRuntime();
-  const isPageFile = parsePageFileSource(block.props.url) !== null;
+  const fileRuntime = useFilePlacementRuntime();
+  const isFileSource = parseFileSource(block.props.url) !== null;
 
-  if (!isPageFile) return <ExternalImagePreview {...props} />;
-  if (!pageFileRuntime) return <ImageLoadingState block={block} failed />;
-  return <PageFileImagePreview {...props} runtime={pageFileRuntime} />;
+  if (!isFileSource) return <ExternalImagePreview {...props} />;
+  if (!fileRuntime) return <ImageLoadingState block={block} failed />;
+  return <FileImagePreview {...props} runtime={fileRuntime} />;
 }
 
 function NfmImageFileName({ block }: Omit<ImageBlockRenderProps, "contentRef">) {
-  const pageFileRuntime = usePageFilePlacementRuntime();
-  const snapshot = usePageFileReadSnapshot(pageFileRuntime, block.props.url, { metadata: true });
-  const logicalPath = snapshot.metadata?.logicalPath ?? null;
-  const name =
-    logicalPath?.split("/").at(-1) || resolveImageFileName(block.props.url, block.props.name);
-  const fileSize = useImageFileSize(block.props.url, snapshot.metadata?.byteLength ?? null);
+  const fileRuntime = useFilePlacementRuntime();
+  const snapshot = useFileReadSnapshot(fileRuntime, block.props.url, { metadata: true });
+  const defaultName = snapshot.metadata?.default_name ?? null;
+  const name = defaultName || resolveImageFileName(block.props.url, block.props.name);
+  const fileSize = useImageFileSize(block.props.url, snapshot.metadata?.byte_length ?? null);
 
   return (
     <div

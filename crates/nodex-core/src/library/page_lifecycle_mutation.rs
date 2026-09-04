@@ -670,6 +670,9 @@ fn create_page(
                 context,
                 operation_id,
                 MutationEffects {
+                    page_file_entries: Vec::new(),
+                    file_revisions: BTreeMap::new(),
+                    file_mutation: Default::default(),
                     project_id: project_id.to_owned(),
                     operation_kind: "create_page",
                     change_kind: "library.changed",
@@ -703,7 +706,6 @@ fn create_page(
                     },
                     page_create: None,
                     page_copy: None,
-                    page_files: None,
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
@@ -3360,6 +3362,9 @@ fn seal_page_lifecycle(
         context,
         operation_id,
         MutationEffects {
+            page_file_entries: Vec::new(),
+            file_revisions: BTreeMap::new(),
+            file_mutation: Default::default(),
             project_id: context
                 .project_id
                 .as_ref()
@@ -3381,7 +3386,6 @@ fn seal_page_lifecycle(
             committed_revisions,
             page_create: None,
             page_copy: None,
-            page_files: None,
             canvas_mutation: None,
             block_transfer: None,
             block_transfer_undo: None,

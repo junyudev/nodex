@@ -4,7 +4,10 @@ import type { ProjectionCursor, ProjectionScope } from "./projection-stream";
 
 export interface ResourceRevocation {
   readonly authorization_scope: components["schemas"]["DeliveryAuthorizationScope"];
-  readonly resource_kind: "page" | "document" | "database" | "data_source" | "view" | "canvas";
+  readonly resource_kind: Exclude<
+    components["schemas"]["ResourceKey"]["kind"],
+    "library" | "project"
+  >;
   readonly resource_id: string;
   readonly reason: "ownership_moved" | "access_revoked" | "archived" | "deleted";
 }

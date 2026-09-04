@@ -40,9 +40,9 @@ const createInspection = (): RecoveryDraftInspection => ({
   already_saved: false,
   can_restore: true,
   can_copy: true,
-  retained: { kind: "document", title: "Retained edits", rich_title: [], nfm: "" },
-  restored: { kind: "document", title: "Merged edits", rich_title: [], nfm: "" },
-  current: { kind: "document", title: "Current content", rich_title: [], nfm: "" },
+  retained: { kind: "document", title: "Retained edits", rich_title: [], nfm: "", files: {} },
+  restored: { kind: "document", title: "Merged edits", rich_title: [], nfm: "", files: {} },
+  current: { kind: "document", title: "Current content", rich_title: [], nfm: "", files: {} },
 });
 
 test("review keeps export and Later separate from persisted discard, undo and restore", async () => {
@@ -92,6 +92,19 @@ test("review keeps export and Later separate from persisted discard, undo and re
   };
   expect((await view.findByRole("article", { name: "Recovery preview" })).textContent).toBe(
     "Merged edits",
+  );
+  await click("Current content");
+  inspection = {
+    ...inspection,
+    current: { kind: "document", title: "New current content", rich_title: [], nfm: "", files: {} },
+  };
+  await act(async () => {
+    await module.refresh();
+  });
+  await waitFor(() =>
+    expect(view.getByRole("article", { name: "Recovery preview" }).textContent).toBe(
+      "New current content",
+    ),
   );
   await click("Export");
   expect(exportDraft).toHaveBeenCalledWith("draft:retained");

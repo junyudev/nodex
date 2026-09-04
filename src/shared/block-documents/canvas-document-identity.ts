@@ -2,7 +2,7 @@ import { isUuidV7 } from "../uuid-v7";
 
 export const CANVAS_BLOCK_TYPE = "canvas";
 export const CANVAS_DOCUMENT_SCHEMA_KEY = "nodex.canvas";
-export const CANVAS_DOCUMENT_SCHEMA_VERSION = 1;
+export const CANVAS_DOCUMENT_SCHEMA_VERSION = 2;
 
 const MAX_CANVAS_IDENTITY_LENGTH = 512;
 const PRIMARY_CANVAS_BLOCK_PREFIX = "canvas:primary:";

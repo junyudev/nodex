@@ -51,6 +51,22 @@ class RecordingSeedPort implements ScenarioSeedPort {
     throw new Error("Standalone Page seeding is not part of this scenario");
   }
 
+  async createLibraryFile(): Promise<never> {
+    throw new Error("File seeding is not part of this scenario");
+  }
+
+  async addPageFileEntry(): Promise<never> {
+    throw new Error("Page File seeding is not part of this scenario");
+  }
+
+  async readPageFileInventory(): Promise<never> {
+    throw new Error("Page File inspection is not part of this scenario");
+  }
+
+  async createDocumentCheckpoint(): Promise<never> {
+    throw new Error("Document history seeding is not part of this scenario");
+  }
+
   async ensurePrimaryDataSourcePropertyCount(): Promise<{
     readonly commitSeq: number;
     readonly propertyCount: number;

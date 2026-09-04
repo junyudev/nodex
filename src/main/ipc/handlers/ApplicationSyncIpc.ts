@@ -11,7 +11,7 @@ import {
   PRELOAD_FILE_PATH_MAX_LENGTH,
 } from "../../../shared/preload-file-access";
 import { MainConfig } from "../../app/MainConfig";
-import { ProfileAssets } from "../../local-store/ProfileAssets";
+import { TemporaryAssets } from "../../local-store/TemporaryAssets";
 import { resolveManagedBlobPath } from "../../local-store/managed-blob-path";
 import { ElectronSyncIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
@@ -20,11 +20,11 @@ import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 export const live: Layer.Layer<
   never,
   never,
-  ElectronSyncIpc | MainConfig | ProfileAssets | WindowRuntime
+  ElectronSyncIpc | MainConfig | TemporaryAssets | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* MainConfig;
-    const assets = yield* ProfileAssets;
+    const assets = yield* TemporaryAssets;
     const ipc = yield* ElectronSyncIpc;
     const windows = yield* WindowRuntime;
     const authorize = (event: IpcMainEvent, capability: string): void => {

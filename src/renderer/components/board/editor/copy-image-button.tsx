@@ -10,8 +10,8 @@ import { useCallback } from "react";
 import { toast } from "@/components/ui/toast";
 
 import { copyImageToClipboard } from "./copy-image";
-import { parsePageFileSource } from "../../../../shared/page-files";
-import { usePageFilePlacementRuntime } from "./page-file-runtime";
+import { parseFileSource } from "../../../../shared/file-resources";
+import { useFilePlacementRuntime } from "./file-runtime";
 
 export function CopyImageButton({
   copyImageToClipboardImpl = copyImageToClipboard,
@@ -20,7 +20,7 @@ export function CopyImageButton({
 }) {
   const Components = useComponentsContext()!;
   const editor = useBlockNoteEditor<BlockSchema, InlineContentSchema, StyleSchema>();
-  const pageFileRuntime = usePageFilePlacementRuntime();
+  const fileRuntime = useFilePlacementRuntime();
 
   const block = useEditorState({
     editor,
@@ -51,8 +51,8 @@ export function CopyImageButton({
 
     void (async () => {
       const source =
-        parsePageFileSource(block.props.url) && pageFileRuntime
-          ? await pageFileRuntime.readImageDataUrl(block.props.url)
+        parseFileSource(block.props.url) && fileRuntime
+          ? await fileRuntime.readImageDataUrl(block.props.url)
           : block.props.url;
       return copyImageToClipboardImpl(source);
     })()
@@ -74,7 +74,7 @@ export function CopyImageButton({
           id: "editor-copy-image",
         });
       });
-  }, [block, copyImageToClipboardImpl, editor, pageFileRuntime]);
+  }, [block, copyImageToClipboardImpl, editor, fileRuntime]);
 
   if (!block) return null;
 

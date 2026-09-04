@@ -8,7 +8,7 @@
 use crate::administration::StoreAdministrationRead;
 use crate::automation::AutomationRead;
 use crate::database::DatabaseRead;
-use crate::document::OwnedDocumentRead;
+use crate::document::{OwnedDocumentRead, RecoveryRead};
 use crate::library::LibraryRead;
 use crate::workspace::ProjectWorkspaceRead;
 
@@ -123,15 +123,21 @@ fn administration_policy(read: &StoreAdministrationRead) -> ReadBudgetPolicy {
 
 fn document_policy(read: &OwnedDocumentRead) -> ReadBudgetPolicy {
     match read {
-        OwnedDocumentRead::ListVersions { .. }
+        OwnedDocumentRead::Recovery {
+            read: RecoveryRead::List { .. },
+        }
+        | OwnedDocumentRead::ListVersions { .. }
         | OwnedDocumentRead::AgentSemanticSnapshot { .. } => ReadBudgetPolicy::CollectionWindow,
         OwnedDocumentRead::Descriptor { .. }
         | OwnedDocumentRead::GetVersion { .. }
         | OwnedDocumentRead::CanvasCompactionEligibility { .. } => ReadBudgetPolicy::Identity,
         OwnedDocumentRead::PrepareAgentSemanticMutation { .. } => ReadBudgetPolicy::BoundedBatch,
-        OwnedDocumentRead::SyncYjs { .. } | OwnedDocumentRead::FetchUpdate { .. } => {
-            ReadBudgetPolicy::LargeObject
+        OwnedDocumentRead::Recovery {
+            read: RecoveryRead::Inspect { .. },
         }
+        | OwnedDocumentRead::RecoveryArtifact { .. }
+        | OwnedDocumentRead::SyncYjs { .. }
+        | OwnedDocumentRead::FetchUpdate { .. } => ReadBudgetPolicy::LargeObject,
     }
 }
 
@@ -144,8 +150,10 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         | LibraryRead::PageRelocationDestinations { .. }
         | LibraryRead::AgentSearch { .. }
         | LibraryRead::Search { .. }
-        | LibraryRead::PageFiles { .. }
-        | LibraryRead::PageFileVersions { .. }
+        | LibraryRead::Files { .. }
+        | LibraryRead::FileUsages { .. }
+        | LibraryRead::FileVersions { .. }
+        | LibraryRead::PageFileInventory { .. }
         | LibraryRead::PageHistory { .. }
         | LibraryRead::PageBacklinks { .. } => ReadBudgetPolicy::CollectionWindow,
         LibraryRead::Path { .. } | LibraryRead::PageOwnershipPath { .. } => {
@@ -166,7 +174,9 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         | LibraryRead::ResourceProjectAccess { .. }
         | LibraryRead::FilterProjectionImpactForProject { .. }
         | LibraryRead::PageDetail { .. }
-        | LibraryRead::PageFileMetadata { .. }
+        | LibraryRead::File { .. }
+        | LibraryRead::FilePresentation { .. }
+        | LibraryRead::ResolvePageFile { .. }
         | LibraryRead::PageDraftProjection { .. }
         | LibraryRead::AcquireSearchSnapshot { .. }
         | LibraryRead::ReleaseSearchSnapshot { .. }

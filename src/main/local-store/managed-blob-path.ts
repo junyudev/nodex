@@ -18,10 +18,5 @@ export function resolveManagedBlobPath(profileHome: string, contentHash: string)
   if (!SHA256_PATTERN.test(contentHash)) return null;
 
   const assetsRoot = path.join(profileHome, "assets");
-  const current = regularFilePath(path.join(assetsRoot, `${contentHash}.blob`));
-  if (current) return current;
-
-  // Profiles created before the content-addressed filename was simplified may
-  // retain reachable blobs under the former physical name.
-  return regularFilePath(path.join(assetsRoot, `page-file-${contentHash}.blob`));
+  return regularFilePath(path.join(assetsRoot, `${contentHash}.blob`));
 }

@@ -6,7 +6,7 @@ import {
   PlusIcon,
   CanvasIcon,
 } from "@/components/shared/icons";
-import type { LibraryResourceTarget, LibraryReadValue } from "../../../shared/library-module";
+import type { LibraryPlacedResourceTarget, LibraryReadValue } from "../../../shared/library-module";
 import { useInfiniteLibraryStandaloneRoots } from "@/lib/use-library-navigation";
 import {
   CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS,
@@ -46,7 +46,7 @@ export interface SidebarPagesDataSource {
   readonly useStandaloneRoots: (
     input: Readonly<{
       limit?: number;
-      forceIncludeTarget?: LibraryResourceTarget;
+      forceIncludeTarget?: LibraryPlacedResourceTarget;
     }>,
   ) => StandaloneRootsQueryState;
 }
@@ -55,13 +55,13 @@ const DEFAULT_PAGES_DATA_SOURCE: SidebarPagesDataSource = {
   useStandaloneRoots: (input) => useInfiniteLibraryStandaloneRoots(input),
 };
 
-const rootKey = (root: LibraryResourceTarget): string => {
+const rootKey = (root: LibraryPlacedResourceTarget): string => {
   if (root.kind === "page") return `page:${root.pageId}`;
   if (root.kind === "database") return `database:${root.databaseId}`;
   return `canvas:${root.canvasId}`;
 };
 
-const nodeTarget = (node: StandaloneRoot): LibraryResourceTarget => {
+const nodeTarget = (node: StandaloneRoot): LibraryPlacedResourceTarget => {
   if (node.kind === "page") return { kind: "page", pageId: node.pageId };
   if (node.kind === "database") {
     return { kind: "database", databaseId: node.databaseId };
@@ -89,7 +89,7 @@ function SidebarPageRootRow({
   readonly active: boolean;
   readonly projects: readonly LibraryProjectOption[];
   readonly mutationsEnabled: boolean;
-  readonly onOpen: (target: LibraryResourceTarget) => void;
+  readonly onOpen: (target: LibraryPlacedResourceTarget) => void;
   readonly onOpenInProject?: (
     projectId: string,
     target: ActionableLibraryResourceTarget,
@@ -218,9 +218,9 @@ export function SidebarPagesSection({
   mutationsEnabled = dataSource === DEFAULT_PAGES_DATA_SOURCE,
 }: {
   readonly collapsed: boolean;
-  readonly activeRoot: LibraryResourceTarget | null;
+  readonly activeRoot: LibraryPlacedResourceTarget | null;
   readonly onToggle: () => void;
-  readonly onOpenRoot: (target: LibraryResourceTarget) => void;
+  readonly onOpenRoot: (target: LibraryPlacedResourceTarget) => void;
   readonly projects?: readonly LibraryProjectOption[];
   readonly onOpenInProject?: (
     projectId: string,

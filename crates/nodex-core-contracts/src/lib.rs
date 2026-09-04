@@ -13,7 +13,7 @@ where
     T::deserialize(deserializer).map(Some)
 }
 
-pub const CORE_EVENT_VERSION: u32 = 9;
+pub const CORE_EVENT_VERSION: u32 = 10;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(transparent)]
@@ -179,6 +179,9 @@ pub trait VersionedModuleContract {
     const VERSION: u32;
     const MODULE: ModuleName;
 }
+
+/// Maximum bytes in one prepared immutable Blob, including private attachments.
+pub const MAX_MANAGED_BLOB_BYTES: u64 = 256 * 1024 * 1024;
 
 pub mod administration;
 pub mod agent;

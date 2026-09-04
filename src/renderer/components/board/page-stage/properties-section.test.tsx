@@ -9,35 +9,41 @@ import { PageStagePropertiesSection } from "./properties-section";
 import type { PageStageController } from "./use-page-stage-controller";
 import type { PageStagePropertyControls } from "./use-page-stage-properties";
 import type {
-  LibraryPageFileManifest,
-  LibraryPageFileSummary,
-} from "../../../../shared/library-module";
+  LibraryPageFileInventory,
+  LibraryPageFileItem,
+} from "../../../../shared/library-files";
 
 const api = vi.hoisted(() => ({
   applyLibraryModule: vi.fn(),
-  pickAndPreparePageFiles: vi.fn(),
-  prepareDroppedPageFiles: vi.fn(),
-  preparePageFile: vi.fn(),
-  readPageFileBytes: vi.fn(),
-  savePageFile: vi.fn(),
+  prepareFileBlob: vi.fn(),
+  readFileBytes: vi.fn(),
+  saveFile: vi.fn(),
   readLibraryModule: vi.fn(),
 }));
+const modal = vi.hoisted(() => ({ openModal: vi.fn() }));
 
 vi.mock("@/lib/api", () => api);
+vi.mock("@/lib/modal-registry", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/modal-registry")>()),
+  openModal: modal.openModal,
+}));
+vi.mock("@/lib/maitai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/maitai")>()),
+  useScopeHandle: () => ({ scope: "test" }),
+}));
 
 const emptyManifest = {
-  pageId: "nested-page",
+  page_id: "nested-page",
   revision: 0,
-  bodyUsageRevision: 0,
+  body_usage_revision: 0,
+  can_write: true,
   files: [],
-  nextCursor: null,
-  hasMore: false,
+  next_cursor: null,
+  has_more: false,
   total: 0,
-  liveTotal: 0,
-  unplacedTotal: 0,
-  placedTotal: 0,
-  deletedTotal: 0,
-} satisfies LibraryPageFileManifest;
+  unplaced_total: 0,
+  placed_total: 0,
+} satisfies LibraryPageFileInventory;
 
 const pageFile = (
   fileId: string,
@@ -45,33 +51,42 @@ const pageFile = (
   bodyUsage:
     | { readonly kind: "not_in_body" }
     | { readonly kind: "placed"; readonly placementCount: number },
-): LibraryPageFileSummary => ({
-  fileId,
-  ownerPageId: "nested-page",
-  logicalPath,
-  mimeType: logicalPath.endsWith(".png") ? "image/png" : "text/plain",
-  byteLength: 12,
-  version: 1,
-  blobEtag: `etag-${fileId}`,
-  state: "live" as const,
-  createdByActorId: "actor-1",
-  createdByTurnId: null,
-  createdAt: "2026-08-28T00:00:00.000Z",
-  updatedAt: "2026-08-28T00:00:00.000Z",
-  bodyUsage,
+): LibraryPageFileItem => ({
+  logical_path: logicalPath,
+  body_count: bodyUsage.kind === "placed" ? bodyUsage.placementCount : 0,
+  file: {
+    file_id: fileId,
+    library_id: "library-1",
+    default_name: logicalPath,
+    mime_type: logicalPath.endsWith(".png") ? "image/png" : "text/plain",
+    byte_length: 12,
+    head_version: 1,
+    blob_etag: `etag-${fileId}`,
+    lifecycle: "live",
+    revision: 1,
+    created_by_actor_id: "actor-1",
+    created_by_turn_id: null,
+    created_at: "2026-08-28T00:00:00.000Z",
+    updated_at: "2026-08-28T00:00:00.000Z",
+  },
 });
 
-const manifestResponse = (manifest: LibraryPageFileManifest) => ({
+const manifestResponse = (manifest: LibraryPageFileInventory) => ({
   ok: true,
   value: {
+    libraryId: "library-1",
+    storeEpoch: "epoch-1",
+    commitSeq: 1,
+    authorization: null,
     value: {
-      kind: "page_files",
+      kind: "page_file_inventory",
       value: manifest,
     },
   },
 });
 
 beforeEach(() => {
+  modal.openModal.mockReset();
   api.readLibraryModule.mockReset();
   api.readLibraryModule.mockResolvedValue(manifestResponse(emptyManifest));
 });
@@ -164,8 +179,11 @@ describe("PageStagePropertiesSection", () => {
       fireEvent.click(files);
       await Promise.resolve();
     });
-    expect(view.getByRole("dialog")).toBeTruthy();
-    expect(view.queryByRole("button", { name: "New text" })).toBeNull();
+    expect(modal.openModal).toHaveBeenCalledOnce();
+    expect(modal.openModal.mock.calls[0]?.[2]).toMatchObject({
+      accessContext: { kind: "project", projectId: "project-1" },
+      pageId: "nested-page",
+    });
   });
 
   test("keeps empty Files and linked Chats in the same disclosure", async () => {
@@ -305,8 +323,7 @@ describe("PageStagePropertiesSection", () => {
         revision: 1,
         files: [pageFile("file-brief", "brief.txt", { kind: "not_in_body" })],
         total: 1,
-        liveTotal: 1,
-        unplacedTotal: 1,
+        unplaced_total: 1,
       }),
     );
 
@@ -321,11 +338,11 @@ describe("PageStagePropertiesSection", () => {
       manifestResponse({
         ...emptyManifest,
         revision: 1,
-        bodyUsageRevision: 1,
+        body_usage_revision: 1,
+        can_write: true,
         files: [pageFile("file-image", "image.png", { kind: "placed", placementCount: 1 })],
         total: 1,
-        liveTotal: 1,
-        placedTotal: 1,
+        placed_total: 1,
       }),
     );
 

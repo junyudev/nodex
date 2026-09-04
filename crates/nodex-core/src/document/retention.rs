@@ -33,7 +33,7 @@ const DOCUMENT_BEARING_BLOCK_TYPES: [&str; 4] = [
     CANVAS_OWNER_TYPE,
 ];
 
-const KNOWN_INBOUND_AUTHORITY_TABLES: [&str; 33] = [
+const KNOWN_INBOUND_AUTHORITY_TABLES: [&str; 35] = [
     "block_asset_refs",
     "block_documents",
     "block_properties",
@@ -61,6 +61,8 @@ const KNOWN_INBOUND_AUTHORITY_TABLES: [&str; 33] = [
     "document_versions",
     "library_block_placements",
     "page_read_model",
+    "page_file_entries",
+    "page_file_manifests",
     "pages",
     "recurrence_exceptions",
     "reminder_receipts",
@@ -1549,7 +1551,6 @@ fn analyze_candidate(
         || evidence.has_unknown_inbound_reference(connection, closure)?
         || evidence.has_current_authority_reference(closure, &database_view_ids)
         || has_current_projection_reference(connection, closure)?
-        || has_external_page_file_placement(connection, &block_ids_json, &document_ids_json)?
         || has_historical_reference(connection, closure, &database_view_ids)?
         || evidence.has_cross_library_immutable_reference(closure)
         || evidence.has_relocation_reference(closure)
@@ -1586,27 +1587,6 @@ fn analyze_candidate(
         collectible: retained_owned_versions == 0,
         prunable_recovery_artifact_ids,
     })
-}
-
-/// A deleted owner Page remains the lifecycle anchor for its Files while any
-/// live Document outside the candidate closure still places one of them.
-fn has_external_page_file_placement(
-    connection: &Connection,
-    block_ids_json: &str,
-    document_ids_json: &str,
-) -> Result<bool, StoreError> {
-    connection
-        .query_row(
-            "SELECT EXISTS( \
-               SELECT 1 FROM page_files file \
-               JOIN block_asset_refs reference ON reference.page_file_id = file.file_id \
-               WHERE file.owner_page_id IN (SELECT value FROM json_each(?1)) \
-                 AND reference.document_id NOT IN (SELECT value FROM json_each(?2)) \
-             )",
-            params![block_ids_json, document_ids_json],
-            |row| row.get::<_, bool>(0),
-        )
-        .map_err(Into::into)
 }
 
 fn has_historical_reference(
@@ -1834,10 +1814,10 @@ fn collect_candidate_closure(
          WHERE block_id IN (SELECT value FROM json_each(?1))",
         [&block_ids_json],
     )?;
-    // Page File rows cascade from their owner Page. Remove the candidate's
-    // derived placements first so same-closure references do not falsely act
-    // like external retention roots. External placements were rejected by
-    // candidate analysis above and therefore remain untouched.
+    // Page relationships cascade from the Page. Remove the candidate's derived
+    // occurrences first so same-closure references do not falsely act like
+    // external retention roots. External occurrences were rejected by candidate
+    // analysis above and therefore remain untouched.
     connection.execute(
         "DELETE FROM block_asset_refs \
          WHERE document_id IN (SELECT value FROM json_each(?1))",
@@ -2719,118 +2699,33 @@ mod tests {
     }
 
     #[test]
-    fn external_file_placement_retains_its_deleted_owner_page() {
+    fn collecting_a_page_keeps_shared_library_files_and_other_placements() {
         let fixture = Fixture::new();
         fixture.insert_owned_page_closure("deleted");
         fixture.insert_active_page_documents(1);
-        fixture
-            .kernel
-            .writer()
-            .call(|connection| {
-                with_immediate_transaction(connection, |connection| {
-                    let now = "2026-01-01T00:00:00.000Z";
-                    let hash = "b".repeat(64);
-                    connection.execute(
-                        "INSERT INTO managed_blobs( \
-                       content_hash, physical_asset_name, byte_length, created_at \
-                     ) VALUES (?1, ?1, 4, ?2)",
-                        params![hash, now],
-                    )?;
-                    connection.execute(
-                        "UPDATE page_file_manifests SET revision = 1, updated_at = ?1 \
-                     WHERE page_id = 'block:owned-page' AND library_id = ?2",
-                        params![now, LIBRARY_ID],
-                    )?;
-                    connection.execute(
-                        "INSERT INTO page_file_versions( \
-                       file_id, version, library_id, owner_page_id, manifest_revision, \
-                       change_kind, logical_path, path_key, mime_type, blob_hash, byte_length, \
-                       actor_id, turn_id, operation_id, occurred_at \
-                     ) VALUES ( \
-                       'file:retained-owner', 1, ?1, 'block:owned-page', 1, 'create', \
-                       'image.png', 'image.png', 'image/png', ?2, 4, ?3, NULL, \
-                       'operation:file-retention', ?4 \
-                     )",
-                        params![LIBRARY_ID, hash, PROJECT_ID, now],
-                    )?;
-                    connection.execute(
-                        "INSERT INTO page_file_namespace( \
-                           owner_page_id, library_id, path_key, file_id \
-                         ) VALUES ( \
-                           'block:owned-page', ?1, 'image.png', 'file:retained-owner' \
-                         )",
-                        [LIBRARY_ID],
-                    )?;
-                    connection.execute(
-                        "INSERT INTO page_files( \
-                       file_id, library_id, owner_page_id, logical_path, path_key, mime_type, \
-                       byte_length, current_version, state, created_by_actor_id, \
-                       created_by_turn_id, created_at, updated_at \
-                     ) VALUES ( \
-                       'file:retained-owner', ?1, 'block:owned-page', 'image.png', 'image.png', \
-                       'image/png', 4, 1, 'live', ?2, NULL, ?3, ?3 \
-                     )",
-                        params![LIBRARY_ID, PROJECT_ID, now],
-                    )?;
-                    let (block_id, projected_seq) = connection.query_row(
-                        "SELECT block_id, projected_seq FROM document_block_index \
-                     WHERE document_id = 'document:retention-pressure:0000' \
-                     ORDER BY ordinal LIMIT 1",
-                        [],
-                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-                    )?;
-                    connection.execute(
-                        "INSERT INTO block_asset_refs( \
-                       document_id, block_id, owner_block_id, library_id, document_generation, \
-                       projected_seq, projection_version, role, ordinal, asset_uri, asset_hash, \
-                       page_file_id, updated_at \
-                     ) VALUES ( \
-                       'document:retention-pressure:0000', ?1, \
-                       'page:retention-pressure:0000', ?2, 1, ?3, 1, 'image', 0, \
-                       'nodex://files/file:retained-owner', ?4, 'file:retained-owner', ?5 \
-                     )",
-                        params![block_id, LIBRARY_ID, projected_seq, hash, now],
-                    )?;
-                    Ok(())
-                })?;
-
-                let retained = run_block_retention_pass(connection, 0)?;
-                assert_eq!(retained.retained_candidates, 2);
-                assert_eq!(retained.collected_candidates, 0);
-                assert_eq!(
-                    connection.query_row(
-                        "SELECT count(*) FROM page_files \
-                         WHERE file_id = 'file:retained-owner'",
-                        [],
-                        |row| row.get::<_, i64>(0),
-                    )?,
-                    1,
-                );
-
-                connection.execute(
-                    "DELETE FROM block_asset_refs \
-                     WHERE page_file_id = 'file:retained-owner'",
-                    [],
-                )?;
-                connection.execute(
-                    "UPDATE block_retention_deferrals SET retry_after_ms = 0 \
-                     WHERE root_block_id = 'block:owned-page'",
-                    [],
-                )?;
-                let collected = run_block_retention_pass(connection, 0)?;
-                assert_eq!(collected.collected_candidates, 1);
-                assert_eq!(
-                    connection.query_row(
-                        "SELECT count(*) FROM page_files \
-                         WHERE file_id = 'file:retained-owner'",
-                        [],
-                        |row| row.get::<_, i64>(0),
-                    )?,
-                    0,
-                );
+        fixture.kernel.writer().call(|connection| {
+            with_immediate_transaction(connection, |connection| {
+                let now = "2026-01-01T00:00:00.000Z";
+                let hash = "b".repeat(64);
+                connection.execute("INSERT INTO managed_blobs(content_hash, physical_asset_name, byte_length, created_at) VALUES (?1, ?1, 4, ?2)", params![hash, now])?;
+                connection.execute("INSERT INTO file_versions(file_id, version, library_id, blob_hash, mime_type, byte_length, actor_id, operation_id, occurred_at) VALUES ('file:shared', 1, ?1, ?2, 'image/png', 4, ?3, 'create-file', ?4)", params![LIBRARY_ID, hash, PROJECT_ID, now])?;
+                connection.execute("INSERT INTO library_files(file_id, library_id, default_name, head_version, revision, lifecycle, created_by_actor_id, created_at, updated_at) VALUES ('file:shared', ?1, 'shared.png', 1, 1, 'live', ?2, ?3, ?3)", params![LIBRARY_ID, PROJECT_ID, now])?;
+                connection.execute("INSERT INTO page_file_entries(page_id, library_id, file_id, logical_path, path_key) VALUES ('block:owned-page', ?1, 'file:shared', 'shared.png', 'shared.png')", [LIBRARY_ID])?;
+                let (block_id, projected_seq) = connection.query_row("SELECT block_id, projected_seq FROM document_block_index WHERE document_id = 'document:retention-pressure:0000' ORDER BY ordinal LIMIT 1", [], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))?;
+                connection.execute("INSERT INTO block_asset_refs(document_id, block_id, owner_block_id, library_id, document_generation, projected_seq, projection_version, role, ordinal, asset_uri, asset_hash, file_id, updated_at) VALUES ('document:retention-pressure:0000', ?1, 'page:retention-pressure:0000', ?2, 1, ?3, 1, 'image', 0, 'nodex://files/file:shared', ?4, 'file:shared', ?5)", params![block_id, LIBRARY_ID, projected_seq, hash, now])?;
                 Ok(())
-            })
-            .expect("Page File owner retention");
+            })?;
+            let collected = run_block_retention_pass(connection, 0)?;
+            assert_eq!(collected.collected_candidates, 1);
+            for (sql, expected) in [
+                ("SELECT count(*) FROM blocks WHERE id = 'block:owned-page'", 0),
+                ("SELECT count(*) FROM page_file_entries WHERE file_id = 'file:shared'", 0),
+                ("SELECT count(*) FROM library_files WHERE file_id = 'file:shared'", 1),
+                ("SELECT count(*) FROM file_versions WHERE file_id = 'file:shared'", 1),
+                ("SELECT count(*) FROM block_asset_refs WHERE file_id = 'file:shared'", 1),
+            ] { assert_eq!(connection.query_row(sql, [], |row| row.get::<_, i64>(0))?, expected); }
+            Ok(())
+        }).expect("Page collection preserves independent File identity");
     }
 
     #[test]

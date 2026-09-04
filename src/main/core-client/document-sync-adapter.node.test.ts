@@ -78,7 +78,8 @@ const documentVersionSummary = () => ({
   preview: "Checkpoint preview",
   blockCount: 1,
   createdAt: "2026-07-19T21:10:00.000Z",
-  checkpointMetadata: { format: "block_tree_snapshot_v2" },
+  fileSnapshotStatus: "exact",
+  checkpointMetadata: { format: "block_tree_snapshot_v3" },
 });
 
 const documentVersionDetail = () => ({

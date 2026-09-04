@@ -112,7 +112,7 @@ import {
   CodexQueuedFollowUps,
   make as makeCodexQueuedFollowUps,
 } from "../codex-application/CodexQueuedFollowUps";
-import { codexQueuedFollowUpPayloadStoreLive } from "../codex-application/CodexQueuedFollowUpPayloadStore";
+import { codexInputAssetsLive } from "../codex-application/CodexInputAssets";
 import {
   CodexTurnCommands,
   make as makeCodexTurnCommands,
@@ -465,14 +465,15 @@ const notificationAdmission = Layer.effect(
 const agentConfig = Layer.effect(CodexAgentConfigRuntime, makeCodexAgentConfigRuntime).pipe(
   Layer.provideMerge(notificationAdmission),
 );
+const inputAssets = codexInputAssetsLive;
 const turnPreparation = Layer.effect(CodexTurnPreparation, makeCodexTurnPreparation).pipe(
-  Layer.provideMerge(agentConfig),
+  Layer.provideMerge(Layer.mergeAll(agentConfig, inputAssets)),
 );
 const turnCommands = Layer.effect(CodexTurnCommands, makeCodexTurnCommands).pipe(
   Layer.provideMerge(turnPreparation),
 );
 const queuedFollowUps = Layer.effect(CodexQueuedFollowUps, makeCodexQueuedFollowUps).pipe(
-  Layer.provideMerge(Layer.mergeAll(turnCommands, codexQueuedFollowUpPayloadStoreLive)),
+  Layer.provideMerge(turnCommands),
 );
 const activeGoalContinuation = Layer.effect(
   CodexActiveGoalContinuation,

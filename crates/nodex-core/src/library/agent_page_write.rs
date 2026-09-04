@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use nodex_core_contracts::agent::{
@@ -373,6 +373,9 @@ pub(super) fn execute_page_copy(
                     &agent_context,
                     &operation_id,
                     MutationEffects {
+                        page_file_entries: Vec::new(),
+                        file_revisions: BTreeMap::new(),
+                        file_mutation: Default::default(),
                         project_id: execution.actor_project_id,
                         operation_kind: "agent_duplicate_page",
                         change_kind: "library.changed",
@@ -389,7 +392,6 @@ pub(super) fn execute_page_copy(
                         committed_revisions: execution.committed_revisions,
                         page_create: None,
                         page_copy: Some(execution.result),
-                        page_files: None,
                         canvas_mutation: None,
                         block_transfer: None,
                         block_transfer_undo: None,

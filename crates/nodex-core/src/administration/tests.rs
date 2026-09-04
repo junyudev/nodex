@@ -932,23 +932,29 @@ fn exact_no_op_retry_keeps_its_original_observation_after_an_unrelated_commit() 
 fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
     let fixture = Fixture::new();
     fs::create_dir(fixture.home().join("assets")).expect("assets root");
-    fs::write(fixture.home().join("assets/managed.bin"), b"backup asset").expect("backup asset");
     let managed_hash = crate::document::sha256(b"backup asset");
+    let managed_name = format!("{managed_hash}.blob");
+    fs::write(
+        fixture.home().join("assets").join(&managed_name),
+        b"backup asset",
+    )
+    .expect("backup asset");
     let queue_manifest = serde_json::to_vec(&serde_json::json!({
-        "schema_version": 1,
+        "schema_version": 2,
         "payload": {
             "prompt": "restore me",
-            "prompt_input": { "source": "nodex://assets/managed.bin" }
+            "prompt_input": { "source": format!("nodex://assets/{managed_name}") }
         },
         "asset_references": [{
-            "asset_uri": "nodex://assets/managed.bin",
+            "asset_uri": format!("nodex://assets/{managed_name}"),
             "sha256": managed_hash,
-            "byte_length": b"backup asset".len()
+            "byte_length": b"backup asset".len(),
+            "mime_type": "application/octet-stream"
         }]
     }))
     .expect("queued follow-up manifest");
     let queue_manifest_hash = crate::document::sha256(&queue_manifest);
-    let queue_manifest_name = format!("queued-follow-up-v1-{queue_manifest_hash}.json");
+    let queue_manifest_name = format!("{queue_manifest_hash}.blob");
     let queue_manifest_length = queue_manifest.len();
     let queue_ledger_hash = crate::document::sha256(
         &serde_json::to_vec(&vec![ProjectWorkspaceQueuedFollowUpEntry {
@@ -957,7 +963,7 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
             created_at_ms: 1,
             pause: None,
             payload: ProjectWorkspaceQueuedFollowUpPayloadRef {
-                schema_version: 1,
+                schema_version: 2,
                 asset_uri: format!("nodex://assets/{queue_manifest_name}"),
                 sha256: queue_manifest_hash.clone(),
                 byte_length: queue_manifest_length as u64,
@@ -974,6 +980,7 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
         .kernel
         .writer()
         .call({
+            let managed_name = managed_name.clone();
             let queue_manifest_name = queue_manifest_name.clone();
             let queue_manifest_hash = queue_manifest_hash.clone();
             let queue_ledger_hash = queue_ledger_hash.clone();
@@ -982,6 +989,20 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
                     "UPDATE projects SET description = 'backup' \
                      WHERE id = 'project:administration-test'",
                     [],
+                )?;
+                connection.execute(
+                    "INSERT INTO managed_blobs( \
+                       content_hash, physical_asset_name, byte_length, created_at \
+                     ) VALUES (?1, ?2, ?3, '2026-07-19T00:00:00.000Z'), \
+                              (?4, ?5, ?6, '2026-07-19T00:00:00.000Z')",
+                    rusqlite::params![
+                        crate::document::sha256(b"backup asset"),
+                        managed_name,
+                        i64::try_from(b"backup asset".len()).expect("asset length"),
+                        queue_manifest_hash,
+                        queue_manifest_name,
+                        i64::try_from(queue_manifest_length).expect("manifest length"),
+                    ],
                 )?;
                 connection.execute(
                     "INSERT INTO codex_threads( \
@@ -1002,8 +1023,8 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
                 )?;
                 connection.execute(
                     "INSERT INTO codex_queued_follow_up_payload_manifests( \
-                   payload_sha256, schema_version, asset_uri, byte_length \
-                 ) VALUES (?1, 1, ?2, ?3)",
+                       payload_sha256, schema_version, asset_uri, byte_length \
+                     ) VALUES (?1, 2, ?2, ?3)",
                     rusqlite::params![
                         queue_manifest_hash,
                         format!("nodex://assets/{queue_manifest_name}"),
@@ -1012,10 +1033,11 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
                 )?;
                 connection.execute(
                     "INSERT INTO codex_queued_follow_up_payload_asset_refs( \
-                   payload_sha256, ordinal, asset_uri, sha256, byte_length \
-                 ) VALUES (?1, 0, 'nodex://assets/managed.bin', ?2, ?3)",
+                   payload_sha256, ordinal, asset_uri, sha256, byte_length, mime_type \
+                 ) VALUES (?1, 0, ?2, ?3, ?4, 'application/octet-stream')",
                     rusqlite::params![
                         queue_manifest_hash,
+                        format!("nodex://assets/{managed_name}"),
                         crate::document::sha256(b"backup asset"),
                         i64::try_from(b"backup asset".len()).expect("asset length"),
                     ],
@@ -1059,7 +1081,11 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
             Ok(())
         })
         .expect("current marker");
-    fs::write(fixture.home().join("assets/managed.bin"), b"current asset").expect("current asset");
+    fs::write(
+        fixture.home().join("assets").join(&managed_name),
+        b"current asset",
+    )
+    .expect("current asset");
 
     let restored = fixture.restore_backup("administration:restore-backup:1", &backup_id, true);
     let installed_epoch = restored.committed.store_epoch.0.clone();
@@ -1127,7 +1153,7 @@ fn restores_database_assets_epoch_and_exact_retry_with_a_safety_backup() {
     assert_eq!(receipt_epochs, installed_epoch);
     assert_eq!(result_epochs, installed_epoch);
     assert_eq!(
-        fs::read(fixture.home().join("assets/managed.bin")).expect("restored asset"),
+        fs::read(fixture.home().join("assets").join(&managed_name)).expect("restored asset"),
         b"backup asset"
     );
     assert_eq!(

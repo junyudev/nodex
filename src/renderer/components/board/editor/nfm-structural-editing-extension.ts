@@ -12,7 +12,6 @@ import type {
 } from "../../../../shared/clipboard-paste";
 import type {
   LibraryModuleApplyResult,
-  LibraryPageFileOwnershipMove,
   LibraryStructuralClipboardToken,
   LibraryStructuralEditResult,
   LibraryStructuralHistoryToken,
@@ -123,7 +122,6 @@ export interface NfmStructuralEditingRuntime {
   readonly resolveClipboardText?: (portableText: string) => Promise<string>;
   readonly onError?: (message: string) => void;
   readonly onClipboardFallback?: (message: string) => void;
-  readonly onFileOwnershipMoves?: (moves: readonly LibraryPageFileOwnershipMove[]) => void;
 }
 
 const topLevelRoots = (
@@ -210,7 +208,7 @@ const textReplacementBlock = (text: string): LibraryStructuralReplacementBlock =
   children: [],
 });
 
-const isPageFileLocator = (value: unknown): value is string =>
+const isFileLocator = (value: unknown): value is string =>
   typeof value === "string" && value.startsWith("nodex://files/");
 
 const fallbackTextContent = (text: string): readonly unknown[] =>
@@ -224,7 +222,7 @@ const sanitizePortableInlineContent = (content: unknown): unknown => {
     record.props && typeof record.props === "object"
       ? (record.props as Readonly<Record<string, unknown>>)
       : null;
-  if (record.type === "attachment" && props && isPageFileLocator(props.source)) {
+  if (record.type === "attachment" && props && isFileLocator(props.source)) {
     const name = typeof props.name === "string" && props.name.trim() ? props.name.trim() : "File";
     return { type: "text", text: name, styles: {} };
   }
@@ -236,7 +234,7 @@ const sanitizePortableInlineContent = (content: unknown): unknown => {
 /** Removes private File locators before a portable fallback crosses Page authority. */
 const sanitizePortableFallbackBlock = (block: StructuralEditorBlock): StructuralEditorBlock => {
   const props = block.props ?? {};
-  const imageLocator = isPageFileLocator(props.url) || isPageFileLocator(props.source);
+  const imageLocator = isFileLocator(props.url) || isFileLocator(props.source);
   if (block.type === "image" && imageLocator) {
     const label =
       (typeof props.name === "string" && props.name.trim()) ||
@@ -325,7 +323,6 @@ export class NfmStructuralEditingSession {
       reverseStructural: async (token) => await this.reverseStructural(token),
       releaseStructural: async (tokens) => await this.releaseStructuralHistory(tokens),
       onStructuralReversed: async (result) => {
-        this.notifyFileOwnershipMoves(result);
         if (this.historyReplayFocusChanged) return;
         await this.restoreSelection(result);
         this.restoreFocusIfUnclaimed();
@@ -888,12 +885,6 @@ export class NfmStructuralEditingSession {
 
   private recordStructuralResult(result: LibraryStructuralEditResult): void {
     this.history.recordStructural(result);
-    this.notifyFileOwnershipMoves(result);
-  }
-
-  private notifyFileOwnershipMoves(result: LibraryStructuralEditResult): void {
-    if (result.fileOwnershipMoves.length === 0) return;
-    this.runtime?.onFileOwnershipMoves?.(result.fileOwnershipMoves);
   }
 
   cancelPreparations = (): void => {

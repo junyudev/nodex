@@ -8,6 +8,7 @@ import { nfmCodeBlockActionsScenario } from "./scenarios/nfm-code-block-actions"
 import { nfmEquationAndMermaidScenario } from "./scenarios/nfm-equation-and-mermaid";
 import { pageRelatedChatActivityScenario } from "./scenarios/page-related-chat-activity";
 import { sidebarCustomSectionsScenario } from "./scenarios/sidebar-custom-sections";
+import { libraryFilesScenario } from "./scenarios/library-files";
 
 const scenarios = new Map<string, ScenarioDomainRecipe>([
   [documentSyncRecoveryScenario.id, documentSyncRecoveryScenario],
@@ -19,6 +20,7 @@ const scenarios = new Map<string, ScenarioDomainRecipe>([
   [nfmCodeBlockActionsScenario.id, nfmCodeBlockActionsScenario],
   [nfmEquationAndMermaidScenario.id, nfmEquationAndMermaidScenario],
   [sidebarCustomSectionsScenario.id, sidebarCustomSectionsScenario],
+  [libraryFilesScenario.id, libraryFilesScenario],
 ]);
 
 export const listScenarioIds = (): readonly string[] => [...scenarios.keys()];

@@ -147,11 +147,10 @@ describe("CanvasSceneBinding", () => {
         materializeImage: async () => {
           await uploadGate;
           return {
-            source: "nodex://assets/image.png",
-            fileName: "image.png",
+            source: "nodex://files/image.png",
+            fileVersion: 1,
+            defaultName: "image.png",
             mimeType: "image/png",
-            contentHash: "a".repeat(64),
-            byteLength: 1,
           };
         },
       },
@@ -180,7 +179,7 @@ describe("CanvasSceneBinding", () => {
     await Promise.all([first.committed, second.committed]);
     expect(provider.submissions).toHaveLength(1);
     expect(provider.submissions[0]?.elementCandidates[0]?.version).toBe(3);
-    expect(provider.submissions[0]?.fileAdditions?.image?.source).toBe("nodex://assets/image.png");
+    expect(provider.submissions[0]?.fileAdditions?.image?.source).toBe("nodex://files/image.png");
   });
 
   test("reuses a staged image while its first durable mutation awaits Core ACK", async () => {
@@ -196,11 +195,10 @@ describe("CanvasSceneBinding", () => {
         materializeImage: async () => {
           materializations += 1;
           return {
-            source: "nodex://assets/canvas-content.png",
-            fileName: "canvas-content.png",
+            source: "nodex://files/canvas-content.png",
+            fileVersion: 1,
+            defaultName: "image.png",
             mimeType: "image/png",
-            contentHash: "a".repeat(64),
-            byteLength: 1,
           };
         },
       },
@@ -246,11 +244,10 @@ describe("CanvasSceneBinding", () => {
           uploadAttempts += 1;
           if (uploadAttempts === 1) throw new Error("upload failed");
           return {
-            source: "nodex://assets/image.png",
-            fileName: "image.png",
+            source: "nodex://files/image.png",
+            fileVersion: 1,
+            defaultName: "image.png",
             mimeType: "image/png",
-            contentHash: "a".repeat(64),
-            byteLength: 1,
           };
         },
       },

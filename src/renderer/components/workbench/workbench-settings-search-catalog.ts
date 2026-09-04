@@ -189,7 +189,7 @@ const SETTINGS_SEARCH_PANELS = {
         entries: [
           entry(
             "Copy file references as local paths",
-            "Use absolute local paths in copied plain text; Page Files resolve to this Profile’s immutable .blob files.",
+            "Use absolute local paths in copied plain text; Library Files resolve to this Profile’s immutable .blob files.",
             ["absolute path", "portable file reference", "NFM copy"],
           ),
           entry(

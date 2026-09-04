@@ -176,6 +176,8 @@ const retainedLocalStoreFiles = new Set([
   "persisted-atoms.ts",
   "store-maintenance-gate.test.ts",
   "store-maintenance-gate.ts",
+  "TemporaryAssets.node.test.ts",
+  "TemporaryAssets.ts",
 ]);
 for (const entry of readdirSync(path.join(repositoryRoot, "src/main/local-store"))) {
   if (retainedLocalStoreFiles.has(entry)) continue;
@@ -188,11 +190,13 @@ const expectedRoutes = new Set([
   "/core/v1/handshake",
   "/core/v1/health",
   "/core/v1/local-mutations/resolve",
-  // Page File metadata stays behind the Library Module. Exact bytes use these
+  "/core/v1/blobs/prepare",
+  // File metadata stays behind the Library Module. Exact bytes use these
   // separately bounded, authenticated streams so they never enter JSON commands.
-  "/core/v1/page-files/blobs/prepare",
-  "/core/v1/page-files/blobs/{file_id}",
+  "/core/v1/files/blobs/prepare",
+  "/core/v1/files/blobs/{file_id}",
   "/core/v1/requests/cancel",
+  "/core/v1/threads/{thread_id}/blobs/{content_hash}",
   ...["administration", "automation", "database", "document", "library", "workspace"].flatMap(
     (module) => ["apply", "read"].map((operation) => `/core/v1/modules/${module}/${operation}`),
   ),

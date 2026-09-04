@@ -6,7 +6,6 @@ import type {
   BlockTransferDocumentHead,
 } from "../../../../shared/block-transfer";
 import type { DocumentHeadFence } from "../../../lib/block-document-surface-runtime";
-import type { LibraryPageFileOwnershipMove } from "../../../../shared/library-module";
 import {
   blockTransferDropLabel,
   claimLocalBlockDragDropTarget,
@@ -76,7 +75,6 @@ export interface BlockTransferDropBoundary {
   }) => Promise<void>;
   readonly createOperationId: () => string;
   readonly reportError: (message: string) => void;
-  readonly reportFileOwnershipMoves?: (moves: readonly LibraryPageFileOwnershipMove[]) => void;
 }
 
 interface DropAnchor {
@@ -502,7 +500,6 @@ export const setupBlockTransferDocumentDrop = (
             boundary.reportError(result.error.message);
             return;
           }
-          boundary.reportFileOwnershipMoves?.(result.value.fileOwnershipMoves);
         })
         .catch((error: unknown) => reportFailure(error, "Block transfer failed"));
     },

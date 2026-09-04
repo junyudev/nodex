@@ -1,4 +1,9 @@
 import { CORE_TRANSPORT_BUDGETS, type components } from "@nodex/core-protocol";
+import {
+  compareAuthorityResources,
+  isAuthorityResource,
+  type AuthorityResource,
+} from "./authorized-read-stamp";
 
 export type AuthorizedDeliveryPacket = components["schemas"]["AuthorizedDeliveryPacket"];
 
@@ -73,42 +78,13 @@ const isUniqueIdentities = (value: unknown): value is readonly string[] => {
   return true;
 };
 
-const resourceIdentityKeys = new Map<string, string>([
-  ["library", "library_id"],
-  ["project", "project_id"],
-  ["page", "page_id"],
-  ["document", "document_id"],
-  ["database", "database_id"],
-  ["data_source", "data_source_id"],
-  ["view", "view_id"],
-  ["canvas", "canvas_id"],
-]);
-const resourceKindOrder = [...resourceIdentityKeys.keys()];
-
-const isResourceKey = (value: unknown): boolean => {
-  if (!isRecord(value) || typeof value.kind !== "string") return false;
-  const identityKey = resourceIdentityKeys.get(value.kind);
-  return (
-    identityKey !== undefined &&
-    hasExactKeys(value, ["kind", identityKey]) &&
-    isIdentity(value[identityKey])
-  );
-};
-
 const isCanonicalResourceKeys = (value: unknown): boolean => {
-  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_PACKET_ITEMS) {
-    return false;
-  }
-  let previous: string | undefined;
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_PACKET_ITEMS) return false;
+  let previous: AuthorityResource | undefined;
   for (const resource of value) {
-    if (!isResourceKey(resource)) return false;
-    const record = resource as Readonly<Record<string, unknown>>;
-    const kind = String(record.kind);
-    const identityKey = resourceIdentityKeys.get(kind);
-    if (!identityKey) return false;
-    const key = `${resourceKindOrder.indexOf(kind).toString().padStart(2, "0")}\u0000${String(record[identityKey])}`;
-    if (previous !== undefined && previous >= key) return false;
-    previous = key;
+    if (!isAuthorityResource(resource)) return false;
+    if (previous && compareAuthorityResources(previous, resource) >= 0) return false;
+    previous = resource;
   }
   return true;
 };

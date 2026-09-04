@@ -3277,36 +3277,24 @@ export function ClockIcon({ className, ...props }: SVGProps<SVGSVGElement>) {
   );
 }
 
-function SwapArrowsGlyph({ className }: IconProps) {
+/** The 1.6-unit stroke matches compact action glyphs when rendered at 16px. */
+export function ReplaceIcon({ className }: IconProps) {
   return (
     <svg
-      width="14"
-      height="14"
-      viewBox="0 0 14 14"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
       fill="none"
-      className={cn("shrink-0", className)}
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={cn("icon-xs shrink-0", className)}
       aria-hidden="true"
     >
-      <path
-        d="M10.5 4.667H2.333v2.333M3.5 9.333h8.167V7"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M8.75 2.917l1.75 1.75-1.75 1.75M5.25 11.083l-1.75-1.75 1.75-1.75"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <path d="m16 3 4 4-4 4M20 7H4m4 14-4-4 4-4M4 17h16" />
     </svg>
   );
-}
-
-export function ReplaceIcon({ className }: IconProps) {
-  return <SwapArrowsGlyph className={className} />;
 }
 
 export function RepeatIcon({ className }: IconProps) {

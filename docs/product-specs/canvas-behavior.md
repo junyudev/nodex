@@ -56,11 +56,26 @@ are presentation state. Separate windows converge element candidates by the
 scene's deterministic version/tie-break rules; deletion is an explicit
 tombstone.
 
-Image bytes are materialized as content-addressed managed assets before scene
-authority references them. Equal logical file assertions are idempotent; a
-different digest under the same logical identity is rejected. Page shapes keep
-only a stable target Page identity and never copy Page content or Data Source
-membership into Canvas state.
+Images bind a Library File and an exact immutable FileVersion in each scene-file
+slot. The binding includes its frozen display name. The same File may appear in
+two slots using different versions; a later shared File update or rename does
+not change either slot. Creating a binding requires direct File read authority
+or an exact current binding in the authorized Canvas. Canvas access exposes
+only the bound bytes, not global File metadata or arbitrary versions.
+
+Canvas image insertion publishes an independent Library File before the scene
+mutation. It does not create a Page File entry. Renderer serialization accepts
+only schema 2 exact bindings and reads every image through its Canvas, revision,
+or recovery slot source. The active reader rejects stale in-flight bytes after
+reset or authorization loss; the surface clears its binary presentation before
+repairing or reopening the owner. Historical and recovery SVG previews use the
+same slot-limited reads and never substitute a direct grant or current head.
+
+Equal binding assertions are idempotent. A slot cannot be redefined to another
+File or version; replacing an image creates a new slot and retargets its element.
+Duplicating a Canvas preserves these bindings. Page shapes keep only a stable
+target Page identity and never copy Page content or Data Source membership into
+Canvas state.
 
 ## Offline work, sync, and presence
 
@@ -80,7 +95,11 @@ Quarantine retains the observed scene alongside the exact rejected intent.
 `Unsaved edits · Review` previews those edits, safely merges compatible intents,
 or creates an independent complete copy. Discard is reversible; export alone does
 not resolve a draft. Conflict previews preserve the intended values even when
-normal scene convergence would choose newer canonical elements. The shared
+normal scene convergence would choose newer canonical elements. Images retain
+the exact authorized version and name captured with the draft, even after shared
+File updates or direct File access revocation. Removed image slots can be
+reconstructed; a slot reused for another image requires a separate retained copy.
+The shared
 [Document recovery contract](document-sync-and-recovery-behavior.md) owns resolution,
 cross-window convergence and retention.
 
@@ -99,7 +118,12 @@ history, or offline state.
 
 Canvas history is semantic scene history. Restore applies a new forward scene
 mutation with newer element versions and explicit tombstones rather than
-replacing current authority with old JSON.
+replacing current authority with old JSON. File bindings remain keyed by scene-file
+slot in both canonical history and its retention index, so two versions of the
+same File survive history capture and restore independently. Restoring an image
+whose File is in Trash creates a new File for that captured version and name;
+it does not untrash or update the original shared File. If a current slot has a
+different binding, restoration allocates a fresh slot for the historical image.
 
 Tombstone/file compaction may run after the last fully committed Canvas surface
 closes and only after Core proves there is no active copy or pending work. It

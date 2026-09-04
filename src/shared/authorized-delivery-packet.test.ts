@@ -110,7 +110,10 @@ describe("authorized delivery packet boundary", () => {
     ).toThrow("Authorized delivery packet is invalid");
   });
 
-  test("accepts a pure exact revoke and rejects a divergent delta scope", () => {
+  test.each([
+    { kind: "page", page_id: "page-1" },
+    { kind: "file", file_id: "file-1" },
+  ] as const)("accepts an exact $kind revoke and rejects a divergent delta scope", (root) => {
     const value: AuthorizedDeliveryPacket = {
       ...packet(),
       document_effects: [],
@@ -124,7 +127,7 @@ describe("authorized delivery packet boundary", () => {
         {
           authorization_scope: packet().authorization_scope,
           change: { kind: "revoke", reason: "access_revoked" },
-          roots: [{ kind: "page", page_id: "page-1" }],
+          roots: [root],
           delta_hash: "4".repeat(64),
         },
       ],

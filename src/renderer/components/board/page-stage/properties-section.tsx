@@ -347,8 +347,8 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
   const pageId = controller.page?.id ?? "";
   const baseFiles = usePageFiles(controller.contentAccessContext, pageId);
   const filesSignal = resolvePageFilesPropertySignal({
-    hasManifest: baseFiles.manifest !== null,
-    unplacedTotal: baseFiles.manifest?.unplacedTotal ?? 0,
+    hasManifest: baseFiles.inventory !== null,
+    unplacedTotal: baseFiles.inventory?.unplaced_total ?? 0,
     hasError: baseFiles.error !== null,
   });
   const linkedChatsSignal = resolveLinkedChatsPropertySignal({
@@ -356,7 +356,7 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
     loading: controller.relatedChatsLoading,
     hasError: controller.relatedChatsError !== null,
   });
-  const filesManifestRevision = baseFiles.manifest?.revision ?? null;
+  const filesManifestRevision = baseFiles.inventory?.revision ?? null;
   const quietPropertiesInput: PageStageQuietPropertiesInput = {
     pageId,
     files: {

@@ -9,7 +9,7 @@ use nodex_core::infrastructure::schema::CURRENT_STORE_REVISION;
 use nodex_core_contracts::administration::{StoreAdministrationRead, StoreAdministrationReadValue};
 use nodex_core_contracts::events::DeliveryAuthorizationScope;
 use nodex_core_contracts::library::{
-    LibraryAccess, LibraryIntent, LibraryPageFileChange, LibraryPagePrepareKind,
+    LibraryAccess, LibraryIntent, LibraryPageFileEntryChange, LibraryPagePrepareKind,
     LibraryPageProjectionFileKind, LibraryRead, LibraryReadValue, LibraryResourceTarget,
     LibraryWriteParent,
 };
@@ -172,10 +172,10 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
     assert!(value.validators.title_etag.is_some());
     assert!(value.validators.body_etag.is_none());
 
-    let file_bytes = b"native client Page File";
+    let file_bytes = b"native client Library File";
     let file_operation_id = "native-client-page-file";
     let prepared = client
-        .prepare_page_file_blob(
+        .prepare_file_blob(
             Some(project_id),
             file_operation_id,
             &client.handshake.store_epoch,
@@ -183,15 +183,15 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
             &mut Cursor::new(file_bytes),
             file_bytes.len() as u64,
         )
-        .expect("stream Page File through native client");
+        .expect("stream File through native client");
     let file_request = ModuleApplyRequest {
         contract_version: nodex_core_contracts::library::LIBRARY_CONTRACT_VERSION,
         operation_id: file_operation_id.to_owned(),
         store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
-        intent: LibraryIntent::ApplyPageFileChanges {
+        intent: LibraryIntent::ApplyPageFileEntries {
             page_id: page_id.to_owned(),
             expected_manifest_revision: 0,
-            changes: vec![LibraryPageFileChange::Create {
+            changes: vec![LibraryPageFileEntryChange::Import {
                 file_id: "native-client-file".to_owned(),
                 logical_path: "references/native.txt".to_owned(),
                 mime_type: "text/plain".to_owned(),
@@ -204,10 +204,10 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
     };
     let applied = client
         .library_apply(Some(project_id), file_request.clone())
-        .expect("commit Page File through native client");
+        .expect("commit File relation through native client");
     assert!(matches!(applied.0, ResponseEnvelope::Ok(_)));
     let prepared_replay = client
-        .prepare_page_file_blob(
+        .prepare_file_blob(
             Some(project_id),
             file_operation_id,
             &client.handshake.store_epoch,
@@ -215,25 +215,260 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
             &mut Cursor::new(file_bytes),
             file_bytes.len() as u64,
         )
-        .expect("replay prepared Page File through native client");
+        .expect("replay prepared File through native client");
     assert_eq!(prepared_replay.receipt_id, prepared.receipt_id);
     let replayed = client
         .library_apply(Some(project_id), file_request)
-        .expect("replay Page File commit through native client");
+        .expect("replay File relation commit through native client");
     let ResponseEnvelope::Ok(replayed) = replayed.0 else {
-        panic!("expected replayed Page File commit")
+        panic!("expected replayed File relation commit")
     };
     assert!(replayed.receipt().mutation.duplicate);
     let read_back = client
-        .read_page_file_blob(Some(project_id), page_id, "native-client-file", None)
-        .expect("read Page File through native client");
+        .read_file_blob(
+            Some(project_id),
+            "native-client-file",
+            &nodex_core_contracts::library::LibraryFileReadSource::Page {
+                page_id: page_id.to_owned(),
+            },
+            None,
+        )
+        .expect("read File through native client");
     assert_eq!(read_back.bytes, file_bytes);
     assert_eq!(read_back.mime_type, "text/plain");
+    assert_library_file_streams(&client, project_id, page_id);
+    assert_thread_asset_streams(&client, project_id);
 
     drop(second);
     drop(client);
     drop(guard);
     wait_for_runtime_cleanup(&home);
+}
+
+fn assert_library_file_streams(client: &CoreClient, project_id: &str, unrelated_page_id: &str) {
+    use nodex_core_contracts::library::{LibraryFileChange, LibraryFileReadSource};
+    let file_id = "native-library-file";
+    for (index, bytes) in [
+        b"first File bytes".as_slice(),
+        b"updated File bytes".as_slice(),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let operation_id = format!("native-library-file:{index}");
+        let prepared = client
+            .prepare_file_blob(
+                Some(project_id),
+                &operation_id,
+                &client.handshake.store_epoch,
+                None,
+                &mut Cursor::new(bytes),
+                bytes.len() as u64,
+            )
+            .unwrap();
+        let change = if index == 0 {
+            LibraryFileChange::Create {
+                file_id: file_id.to_owned(),
+                default_name: "native.txt".to_owned(),
+                mime_type: "text/plain".to_owned(),
+                prepared_blob_receipt_id: prepared.receipt_id,
+            }
+        } else {
+            LibraryFileChange::ReplaceContent {
+                file_id: file_id.to_owned(),
+                expected_revision: 1,
+                expected_head_version: 1,
+                mime_type: "text/plain".to_owned(),
+                prepared_blob_receipt_id: prepared.receipt_id,
+            }
+        };
+        let result = client
+            .library_apply(
+                Some(project_id),
+                ModuleApplyRequest {
+                    contract_version: nodex_core_contracts::library::LIBRARY_CONTRACT_VERSION,
+                    operation_id,
+                    store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
+                    intent: LibraryIntent::ApplyFileChange {
+                        change,
+                        turn_id: None,
+                    },
+                },
+            )
+            .unwrap();
+        assert!(matches!(result.0, ResponseEnvelope::Ok(_)), "{result:?}");
+        let current = client
+            .read_file_blob(
+                Some(project_id),
+                file_id,
+                &LibraryFileReadSource::Direct,
+                None,
+            )
+            .unwrap();
+        assert_eq!(current.bytes, bytes);
+        assert_eq!(current.mime_type, "text/plain");
+    }
+    let first = client
+        .read_file_blob(
+            Some(project_id),
+            file_id,
+            &LibraryFileReadSource::Direct,
+            Some(1),
+        )
+        .unwrap();
+    assert_eq!(first.bytes, b"first File bytes");
+    assert!(
+        client
+            .read_file_blob(
+                Some(project_id),
+                file_id,
+                &LibraryFileReadSource::Page {
+                    page_id: unrelated_page_id.to_owned()
+                },
+                None
+            )
+            .is_err()
+    );
+}
+
+fn assert_thread_asset_streams(client: &CoreClient, project_id: &str) {
+    use nodex_core_contracts::workspace::ProjectWorkspaceThreadPatch;
+    let thread_id = "native-client-attachment-thread";
+    let apply = |operation_id: &str, intent| {
+        let response = client.workspace_apply(Some(project_id), ModuleApplyRequest {
+            contract_version: <nodex_core_contracts::workspace::ProjectWorkspaceContract as VersionedModuleContract>::VERSION,
+            operation_id: operation_id.to_owned(),
+            store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
+            intent,
+        }).unwrap();
+        assert!(
+            matches!(response.0, ResponseEnvelope::Ok(_)),
+            "{response:?}"
+        );
+    };
+    apply(
+        "native-thread-assets:create",
+        ProjectWorkspaceIntent::UpsertThread {
+            thread_id: thread_id.to_owned(),
+            patch: Box::new(ProjectWorkspaceThreadPatch {
+                project_id: Some(Some(project_id.to_owned())),
+                thread_name: Some(Some("Attachment stream".to_owned())),
+                created_at: Some(1),
+                updated_at: Some(1),
+                ..ProjectWorkspaceThreadPatch::default()
+            }),
+        },
+    );
+    let bytes = b"immutable conversation input";
+    let prepared = client
+        .prepare_blob(
+            Some(project_id),
+            "native-thread-assets:retain",
+            &client.handshake.store_epoch,
+            None,
+            &mut Cursor::new(bytes),
+            bytes.len() as u64,
+        )
+        .unwrap();
+    assert!(
+        client
+            .read_thread_asset_blob(Some(project_id), thread_id, &prepared.blob_etag)
+            .is_err()
+    );
+    apply(
+        "native-thread-assets:retain",
+        ProjectWorkspaceIntent::RetainThreadAssets {
+            thread_id: thread_id.to_owned(),
+            prepared_blob_receipt_ids: vec![prepared.receipt_id],
+        },
+    );
+    let read = client
+        .read_thread_asset_blob(Some(project_id), thread_id, &prepared.blob_etag)
+        .unwrap();
+    assert_eq!(read.bytes, bytes);
+    assert_eq!(read.mime_type, "application/octet-stream");
+    use nodex_core_contracts::workspace::{
+        ProjectWorkspaceQueuedFollowUpEntry, ProjectWorkspaceQueuedFollowUpPayloadRef,
+    };
+    let queued_bytes = b"queued input";
+    let queued_blob = client
+        .prepare_blob(
+            Some(project_id),
+            "native-queue:commit",
+            &client.handshake.store_epoch,
+            Some("attachment"),
+            &mut Cursor::new(queued_bytes),
+            queued_bytes.len() as u64,
+        )
+        .unwrap();
+    let source = format!("nodex://assets/{}.blob", queued_blob.blob_etag);
+    let manifest = serde_json::to_vec(&serde_json::json!({
+        "schema_version": 2,
+        "payload": { "prompt": "Review input", "prompt_input": { "items": [{ "source": source }] } },
+        "asset_references": [{ "asset_uri": source, "sha256": queued_blob.blob_etag, "byte_length": queued_bytes.len(), "mime_type": "text/plain" }],
+    })).unwrap();
+    let payload = client
+        .prepare_blob(
+            Some(project_id),
+            "native-queue:commit",
+            &client.handshake.store_epoch,
+            Some("manifest"),
+            &mut Cursor::new(&manifest),
+            manifest.len() as u64,
+        )
+        .unwrap();
+    apply(
+        "native-queue:commit",
+        ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+            thread_id: thread_id.to_owned(),
+            expected_revision: 0,
+            prepared_blob_receipt_ids: vec![queued_blob.receipt_id, payload.receipt_id],
+            entries: vec![ProjectWorkspaceQueuedFollowUpEntry {
+                follow_up_id: "native-follow-up".to_owned(),
+                client_user_message_id: "native-message".to_owned(),
+                created_at_ms: 1,
+                pause: None,
+                payload: ProjectWorkspaceQueuedFollowUpPayloadRef {
+                    schema_version: 2,
+                    asset_uri: format!("nodex://assets/{}.blob", payload.blob_etag),
+                    sha256: payload.blob_etag,
+                    byte_length: payload.byte_length,
+                },
+            }],
+        },
+    );
+    assert_eq!(
+        client
+            .read_thread_asset_blob(Some(project_id), thread_id, &queued_blob.blob_etag)
+            .unwrap()
+            .bytes,
+        queued_bytes
+    );
+    apply(
+        "native-queue:clear",
+        ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
+            thread_id: thread_id.to_owned(),
+            expected_revision: 1,
+            entries: Vec::new(),
+            prepared_blob_receipt_ids: Vec::new(),
+        },
+    );
+    assert!(
+        client
+            .read_thread_asset_blob(Some(project_id), thread_id, &queued_blob.blob_etag)
+            .is_err()
+    );
+    apply(
+        "native-thread-assets:delete",
+        ProjectWorkspaceIntent::DeleteThread {
+            thread_id: thread_id.to_owned(),
+        },
+    );
+    assert!(
+        client
+            .read_thread_asset_blob(Some(project_id), thread_id, &prepared.blob_etag)
+            .is_err()
+    );
 }
 
 fn wait_for_runtime_cleanup(home: &Path) {

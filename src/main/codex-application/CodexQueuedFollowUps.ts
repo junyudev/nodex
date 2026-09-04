@@ -33,10 +33,7 @@ import type { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { RendererClientRuntime } from "../host-runtime/RendererClientRuntime";
 import { MAIN_RELIABLE_COMMAND_CAPACITY } from "../runtime-limits";
 import { CodexConversationProjection } from "./CodexConversationProjection";
-import {
-  CodexQueuedFollowUpPayloadStore,
-  type CodexQueuedFollowUpDurableEntry,
-} from "./CodexQueuedFollowUpPayloadStore";
+import { CodexInputAssets, type CodexQueuedFollowUpDurableEntry } from "./CodexInputAssets";
 import { CodexRendererConversationRegistry } from "./CodexRendererConversationRegistry";
 import { CodexTurnCommands } from "./CodexTurnCommands";
 import {
@@ -268,7 +265,7 @@ export const make: Effect.Effect<
   CodexQueuedFollowUps["Service"],
   never,
   | CodexConversationProjection
-  | CodexQueuedFollowUpPayloadStore
+  | CodexInputAssets
   | CodexRendererConversationRegistry
   | CodexTurnCommands
   | ConversationEntityMap
@@ -278,7 +275,7 @@ export const make: Effect.Effect<
 > = Effect.gen(function* () {
   const conversations = yield* ConversationEntityMap;
   const core = yield* CoreModules;
-  const payloads = yield* CodexQueuedFollowUpPayloadStore;
+  const payloads = yield* CodexInputAssets;
   const rendererConversations = yield* CodexRendererConversationRegistry;
   const rendererClients = yield* RendererClientRuntime;
   const turns = yield* CodexTurnCommands;
@@ -443,16 +440,22 @@ export const make: Effect.Effect<
     operationId: string,
     remainingAttempts = 2,
   ): Effect.Effect<number, CodexQueuedFollowUpsError> =>
-    core.workspace
-      .apply({
-        operationId,
-        intent: {
-          kind: "commit_queued_follow_up_ledger",
-          thread_id: threadId,
-          expected_revision: expectedRevision,
-          entries: entries.map(toCoreEntry),
-        },
-      })
+    payloads
+      .publish(threadId, operationId, entries)
+      .pipe(
+        Effect.flatMap((preparedBlobReceiptIds) =>
+          core.workspace.apply({
+            operationId,
+            intent: {
+              kind: "commit_queued_follow_up_ledger",
+              thread_id: threadId,
+              expected_revision: expectedRevision,
+              entries: entries.map(toCoreEntry),
+              prepared_blob_receipt_ids: [...preparedBlobReceiptIds],
+            },
+          }),
+        ),
+      )
       .pipe(
         Effect.flatMap((result) => {
           const commit = result.outcome.queued_follow_up_ledger;

@@ -7,8 +7,8 @@ use nodex_core_contracts::library::{
     LibraryAccess, LibraryBlockPropertyMutationReceipt, LibraryBlockTransferDocumentCommit,
     LibraryBlockTransferResult, LibraryCanvasMutationResult, LibraryCommitValue, LibraryIntent,
     LibraryPageCopyResult, LibraryPageCreateResult, LibraryPageFileInvalidation,
-    LibraryPageFileOwnershipMove, LibraryPageInsertion, LibraryPageLifecycleMutationReceipt,
-    LibraryPageMentionDestination, LibraryPageMentionHost, LibraryProjectAccessChange,
+    LibraryPageInsertion, LibraryPageLifecycleMutationReceipt, LibraryPageMentionDestination,
+    LibraryPageMentionHost, LibraryPlacedResourceTarget, LibraryProjectAccessChange,
     LibraryReceipt, LibraryResourceTarget, LibraryWriteParent,
 };
 use nodex_core_contracts::{
@@ -64,6 +64,9 @@ const MAX_EXACT_PAGE_FILE_INVALIDATION_IDS: usize = 4_096;
 const MAX_EXACT_PAGE_FILE_INVALIDATION_BYTES: usize = 128 * 1024;
 
 pub(super) struct MutationEffects {
+    pub(super) page_file_entries: Vec<nodex_core_contracts::library::LibraryPageFileEntryReceipt>,
+    pub(super) file_revisions: BTreeMap<String, i64>,
+    pub(super) file_mutation: Option<nodex_core_contracts::library::LibraryFileMutationResult>,
     pub(super) project_id: String,
     pub(super) operation_kind: &'static str,
     pub(super) change_kind: &'static str,
@@ -78,7 +81,6 @@ pub(super) struct MutationEffects {
     pub(super) committed_revisions: BTreeMap<String, i64>,
     pub(super) page_create: Option<LibraryPageCreateResult>,
     pub(super) page_copy: Option<LibraryPageCopyResult>,
-    pub(super) page_files: Option<nodex_core_contracts::library::LibraryPageFileMutationReceipt>,
     pub(super) canvas_mutation: Option<LibraryCanvasMutationResult>,
     pub(super) block_transfer: Option<LibraryBlockTransferResult>,
     pub(super) block_transfer_undo:
@@ -230,6 +232,22 @@ pub(super) fn apply(
                 return library_commit_result(transaction, replayed);
             }
             match &request.intent {
+                LibraryIntent::PutPageFileEntry { page_id, expected_manifest_revision, file_id, logical_path, mime_type, prepared_blob_receipt_id, replace_entry, turn_id } => super::page_file_entry_mutation::put(
+                    transaction, &context, &store_epoch, &request.operation_id, &request_hash,
+                    page_id, *expected_manifest_revision, file_id, logical_path, mime_type,
+                    prepared_blob_receipt_id, *replace_entry, turn_id.as_deref(),
+                ),
+                LibraryIntent::ApplyPageFileEntries { page_id, expected_manifest_revision, changes, turn_id } => super::page_file_entry_mutation::apply(
+                    transaction, &context, &store_epoch, &request.operation_id, &request_hash,
+                    page_id, *expected_manifest_revision, changes, turn_id.as_deref(),
+                ),
+                LibraryIntent::TransferPageFileEntry { file_id, source_page_id, source_manifest_revision, target_page_id, target_manifest_revision, target_logical_path, copy } => super::page_file_entry_mutation::transfer(
+                    transaction, &context, &store_epoch, &request.operation_id, &request_hash, file_id,
+                    source_page_id, *source_manifest_revision, target_page_id, *target_manifest_revision, target_logical_path, *copy,
+                ),
+                LibraryIntent::ApplyFileChange { change, turn_id } => super::file_mutation::apply(
+                    transaction, &context, &store_epoch, &request.operation_id, &request_hash, change, turn_id.as_deref(),
+                ),
                 LibraryIntent::CreatePage {
                     page_id,
                     document_id,
@@ -295,44 +313,6 @@ pub(super) fn apply(
                         destination,
                     )
                 }
-                LibraryIntent::ApplyPageFileChanges {
-                    page_id,
-                    expected_manifest_revision,
-                    changes,
-                    turn_id,
-                } => super::page_files::apply(
-                    transaction,
-                    &context,
-                    &store_epoch,
-                    &library_id,
-                    &request.operation_id,
-                    &request_hash,
-                    page_id,
-                    *expected_manifest_revision,
-                    changes,
-                    turn_id.as_deref(),
-                ),
-                LibraryIntent::PutPageFile {
-                    page_id,
-                    file_id,
-                    logical_path,
-                    mime_type,
-                    prepared_blob_receipt_id,
-                    turn_id,
-                } => super::page_files::put(
-                    transaction,
-                    &context,
-                    &store_epoch,
-                    &library_id,
-                    &request.operation_id,
-                    &request_hash,
-                    page_id,
-                    file_id,
-                    logical_path,
-                    mime_type,
-                    prepared_blob_receipt_id,
-                    turn_id.as_deref(),
-                ),
                 LibraryIntent::CreateDatabase {
                     database_id,
                     data_source_id,
@@ -774,7 +754,7 @@ fn move_block(
     library_id: &str,
     operation_id: &str,
     request_hash: &str,
-    target: &LibraryResourceTarget,
+    target: &LibraryPlacedResourceTarget,
     expected_location_revision: i64,
     parent: &LibraryWriteParent,
 ) -> Result<LibraryApplyOutcome, StoreError> {
@@ -1042,6 +1022,9 @@ fn move_block(
                 context,
                 operation_id,
                 MutationEffects {
+                    page_file_entries: Vec::new(),
+                    file_revisions: BTreeMap::new(),
+                    file_mutation: Default::default(),
                     project_id: actor_project_id.clone(),
                     operation_kind: "move_block",
                     change_kind: "library.changed",
@@ -1059,7 +1042,6 @@ fn move_block(
                     committed_revisions,
                     page_create: None,
                     page_copy: None,
-                    page_files: None,
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
@@ -1087,7 +1069,7 @@ fn change_resource_lifecycle(
     library_id: &str,
     operation_id: &str,
     request_hash: &str,
-    target: &LibraryResourceTarget,
+    target: &LibraryPlacedResourceTarget,
     expected_metadata_revision: i64,
     restore: bool,
 ) -> Result<LibraryApplyOutcome, StoreError> {
@@ -1248,6 +1230,9 @@ fn change_resource_lifecycle(
                 context,
                 operation_id,
                 MutationEffects {
+                    page_file_entries: Vec::new(),
+                    file_revisions: BTreeMap::new(),
+                    file_mutation: Default::default(),
                     project_id: actor_project_id.clone(),
                     operation_kind,
                     change_kind: "library.changed",
@@ -1282,7 +1267,6 @@ fn change_resource_lifecycle(
                     ),
                     page_create: None,
                     page_copy: None,
-                    page_files: None,
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
@@ -1314,7 +1298,10 @@ fn grant_project_access(
     target: &LibraryResourceTarget,
     access: LibraryAccess,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let authority = read_resource_authority(connection, library_id, target)?;
+    let authority = read_grant_authority(connection, library_id, target)?;
+    if authority.resource_kind == "file" {
+        super::require_trusted_library_authority(context)?;
+    }
     if authority.resource_kind == "canvas" {
         return Err(invalid(
             "Canvas access is inherited from its owning Page or Project",
@@ -1348,6 +1335,9 @@ fn grant_project_access(
                 context,
                 operation_id,
                 MutationEffects {
+                    page_file_entries: Vec::new(),
+                    file_revisions: BTreeMap::new(),
+                    file_mutation: Default::default(),
                     project_id: project_id.to_owned(),
                     operation_kind: "grant_project_access",
                     change_kind: "library.changed",
@@ -1372,7 +1362,6 @@ fn grant_project_access(
                         .collect(),
                     page_create: None,
                     page_copy: None,
-                    page_files: None,
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
@@ -1410,7 +1399,7 @@ fn set_project_access(
             "Project access changes must contain 1 to 100000 Projects",
         ));
     }
-    let authority = read_resource_authority(connection, library_id, target)?;
+    let authority = read_grant_authority(connection, library_id, target)?;
     if authority.resource_kind == "canvas" {
         return Err(invalid(
             "Canvas access is inherited from its owning Page or Project",
@@ -1466,6 +1455,9 @@ fn set_project_access(
                 context,
                 operation_id,
                 MutationEffects {
+                    page_file_entries: Vec::new(),
+                    file_revisions: BTreeMap::new(),
+                    file_mutation: Default::default(),
                     project_id: actor_project_id.clone(),
                     operation_kind: "set_project_access",
                     change_kind: "library.changed",
@@ -1486,7 +1478,6 @@ fn set_project_access(
                     committed_revisions,
                     page_create: None,
                     page_copy: None,
-                    page_files: None,
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
@@ -1523,11 +1514,76 @@ struct DirectGrantMutation {
     revision: Option<i64>,
 }
 
+struct GrantAuthority {
+    id: String,
+    resource_kind: &'static str,
+    containing_document_id: Option<String>,
+}
+
+fn read_grant_authority(
+    connection: &Connection,
+    library_id: &str,
+    target: &LibraryResourceTarget,
+) -> Result<GrantAuthority, StoreError> {
+    let placed = match target {
+        LibraryResourceTarget::File { file_id } => {
+            super::files::metadata(connection, library_id, file_id)?;
+            return Ok(GrantAuthority {
+                id: file_id.clone(),
+                resource_kind: "file",
+                containing_document_id: None,
+            });
+        }
+        LibraryResourceTarget::Page { page_id } => LibraryPlacedResourceTarget::Page {
+            page_id: page_id.clone(),
+        },
+        LibraryResourceTarget::Database { database_id } => LibraryPlacedResourceTarget::Database {
+            database_id: database_id.clone(),
+        },
+        LibraryResourceTarget::Canvas { canvas_id } => LibraryPlacedResourceTarget::Canvas {
+            canvas_id: canvas_id.clone(),
+        },
+    };
+    let resource = read_resource_authority(connection, library_id, &placed)?;
+    Ok(GrantAuthority {
+        id: resource.id,
+        resource_kind: resource.resource_kind,
+        containing_document_id: resource.containing_document_id,
+    })
+}
+
+pub(super) fn grant_created_file(
+    connection: &Connection,
+    library_id: &str,
+    file_id: &str,
+    project_id: &str,
+    now: &str,
+) -> Result<(), StoreError> {
+    let authority = read_grant_authority(
+        connection,
+        library_id,
+        &LibraryResourceTarget::File {
+            file_id: file_id.to_owned(),
+        },
+    )?;
+    mutate_direct_project_access(
+        connection,
+        library_id,
+        &authority,
+        project_id,
+        Some(LibraryAccess::ReadWrite),
+        DirectGrantRevisionFence::Exact(None),
+        PrimaryDatabaseAccessUpdate::Reject,
+        now,
+    )?;
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn mutate_direct_project_access(
     connection: &Connection,
     library_id: &str,
-    authority: &ResourceAuthority,
+    authority: &GrantAuthority,
     project_id: &str,
     access: Option<LibraryAccess>,
     revision_fence: DirectGrantRevisionFence,
@@ -1652,7 +1708,7 @@ fn mutate_direct_project_access(
             "INSERT INTO project_resource_grants(\
                id, project_id, library_id, root_kind, root_id, access, recursive, revision, \
                lifecycle, created_at, updated_at\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, 1, 'active', ?7, ?7)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?8, 1, 'active', ?7, ?7)",
             params![
                 grant_id,
                 project_id,
@@ -1661,6 +1717,7 @@ fn mutate_direct_project_access(
                 authority.id,
                 access,
                 now,
+                i64::from(authority.resource_kind != "file"),
             ],
         )?;
         return Ok(DirectGrantMutation {
@@ -1713,12 +1770,12 @@ fn revision_conflict() -> StoreError {
 pub(super) fn read_resource_authority(
     connection: &Connection,
     library_id: &str,
-    target: &LibraryResourceTarget,
+    target: &LibraryPlacedResourceTarget,
 ) -> Result<ResourceAuthority, StoreError> {
     let (id, resource_kind) = match target {
-        LibraryResourceTarget::Page { page_id } => (page_id, "page"),
-        LibraryResourceTarget::Database { database_id } => (database_id, "database"),
-        LibraryResourceTarget::Canvas { canvas_id } => (canvas_id, "canvas"),
+        LibraryPlacedResourceTarget::Page { page_id } => (page_id, "page"),
+        LibraryPlacedResourceTarget::Database { database_id } => (database_id, "database"),
+        LibraryPlacedResourceTarget::Canvas { canvas_id } => (canvas_id, "canvas"),
     };
     let row = connection
         .query_row(
@@ -2071,10 +2128,9 @@ fn persist_parent_operations(
         phase,
         parent,
         operations,
-        ParentDocumentPlacement::Derived {
+        ParentDocumentOperationPolicy::attached(ParentDocumentPlacement::Derived {
             attachment_advances: &[],
-        },
-        StructuralDetachPolicy::Reject,
+        }),
     )
     .map(|commit| commit.head_seq)
 }
@@ -2093,8 +2149,28 @@ pub(super) fn persist_parent_operations_detailed_with_local_commit(
         phase,
         parent,
         operations,
-        placement,
-        StructuralDetachPolicy::Reject,
+        ParentDocumentOperationPolicy::attached(placement),
+    )
+}
+
+/// File authority comes from the caller's validated source or authenticated
+/// snapshot, and survives source detachment within this LocalCommit.
+pub(super) fn persist_parent_operations_from_source_with_local_commit(
+    connection: &Connection,
+    write: ParentDocumentWriteContext<'_>,
+    phase: &str,
+    parent: &ResolvedParentDocument,
+    operations: &[DocumentBlockOperation],
+    placement: ParentDocumentPlacement<'_>,
+    authorized_file_ids: &[String],
+) -> Result<LibraryBlockTransferDocumentCommit, StoreError> {
+    persist_parent_operations_detailed(
+        connection,
+        write,
+        phase,
+        parent,
+        operations,
+        ParentDocumentOperationPolicy::from_source(placement, authorized_file_ids),
     )
 }
 
@@ -2114,10 +2190,7 @@ pub(super) fn persist_parent_relocation_source_with_local_commit(
         phase,
         parent,
         operations,
-        ParentDocumentPlacement::Derived {
-            attachment_advances: &[],
-        },
-        StructuralDetachPolicy::Explicit(relocated_block_ids),
+        ParentDocumentOperationPolicy::detached(relocated_block_ids),
     )
 }
 
@@ -2141,10 +2214,7 @@ pub(super) fn persist_parent_relocation_source_with_placeholder(
         phase,
         parent,
         operations,
-        ParentDocumentPlacement::Derived {
-            attachment_advances: &[],
-        },
-        StructuralDetachPolicy::Explicit(relocated_block_ids),
+        ParentDocumentOperationPolicy::detached(relocated_block_ids),
     )
 }
 
@@ -2171,14 +2241,51 @@ enum StructuralDetachPolicy<'a> {
     Explicit(&'a [String]),
 }
 
+#[derive(Clone, Copy)]
+struct ParentDocumentOperationPolicy<'a> {
+    placement: ParentDocumentPlacement<'a>,
+    structural_detach_policy: StructuralDetachPolicy<'a>,
+    authorized_file_ids: &'a [String],
+}
+
+impl<'a> ParentDocumentOperationPolicy<'a> {
+    fn attached(placement: ParentDocumentPlacement<'a>) -> Self {
+        Self {
+            placement,
+            structural_detach_policy: StructuralDetachPolicy::Reject,
+            authorized_file_ids: &[],
+        }
+    }
+
+    fn from_source(
+        placement: ParentDocumentPlacement<'a>,
+        authorized_file_ids: &'a [String],
+    ) -> Self {
+        Self {
+            placement,
+            structural_detach_policy: StructuralDetachPolicy::Reject,
+            authorized_file_ids,
+        }
+    }
+
+    fn detached(block_ids: &'a [String]) -> Self {
+        Self {
+            placement: ParentDocumentPlacement::Derived {
+                attachment_advances: &[],
+            },
+            structural_detach_policy: StructuralDetachPolicy::Explicit(block_ids),
+            authorized_file_ids: &[],
+        }
+    }
+}
+
 fn persist_parent_operations_detailed(
     connection: &Connection,
     write: ParentDocumentWriteContext<'_>,
     phase: &str,
     parent: &ResolvedParentDocument,
     operations: &[DocumentBlockOperation],
-    placement: ParentDocumentPlacement<'_>,
-    structural_detach_policy: StructuralDetachPolicy<'_>,
+    policy: ParentDocumentOperationPolicy<'_>,
 ) -> Result<LibraryBlockTransferDocumentCommit, StoreError> {
     let full_state = parent.engine.full_state_v1();
     let prepared = prepare_document_operation_update(
@@ -2204,7 +2311,7 @@ fn persist_parent_operations_detailed(
         "library-document-{phase}:{}",
         sha256(write.operation_id.as_bytes())
     );
-    let structurally_detached_block_ids = match structural_detach_policy {
+    let structurally_detached_block_ids = match policy.structural_detach_policy {
         StructuralDetachPolicy::Reject => Vec::new(),
         StructuralDetachPolicy::Explicit(block_ids) => block_ids.to_vec(),
     };
@@ -2213,7 +2320,7 @@ fn persist_parent_operations_detailed(
         placement_preapplied_block_ids,
         placement_advance_block_ids,
         tombstone_reactivation,
-    ) = match placement {
+    ) = match policy.placement {
         ParentDocumentPlacement::Derived {
             attachment_advances,
         } => (&[][..], &[][..], attachment_advances, None),
@@ -2279,7 +2386,8 @@ fn persist_parent_operations_detailed(
                     .with_genesis(placement_genesis_block_ids)
                     .with_preapplied(placement_preapplied_block_ids)
                     .with_advances(placement_advance_block_ids)
-                    .with_exact_moves(&exact_moved_block_ids);
+                    .with_exact_moves(&exact_moved_block_ids)
+                    .with_authorized_file_ids(policy.authorized_file_ids);
                 tombstone_reactivation.map_or(
                     evidence,
                     |(block_ids, source_document_id, source_document_generation)| {
@@ -2434,6 +2542,9 @@ fn create_database(
                 context,
                 operation_id,
                 MutationEffects {
+                    page_file_entries: Vec::new(),
+                    file_revisions: BTreeMap::new(),
+                    file_mutation: Default::default(),
                     project_id,
                     operation_kind: "create_database",
                     change_kind: "library.changed",
@@ -2474,7 +2585,6 @@ fn create_database(
                     ),
                     page_create: None,
                     page_copy: None,
-                    page_files: None,
                     canvas_mutation: None,
                     block_transfer: None,
                     block_transfer_undo: None,
@@ -2509,8 +2619,17 @@ fn create_page_records_and_genesis(
     now: &str,
     commit: &CommitContext,
 ) -> Result<LibraryPageCreateResult, StoreError> {
+    let authorized_file_ids = match &genesis {
+        PageGenesisInput::Retained {
+            authorized_file_ids,
+            ..
+        } => *authorized_file_ids,
+        _ => &[],
+    };
     let prepared = match genesis {
-        PageGenesisInput::Retained { rich_title, nfm } => {
+        PageGenesisInput::Retained {
+            rich_title, nfm, ..
+        } => {
             let rich_title: Vec<crate::domain::rich_text::RichTextItem> =
                 serde_json::from_value(rich_title.clone())
                     .map_err(|_| invalid("Invalid retained title"))?;
@@ -2629,7 +2748,8 @@ fn create_page_records_and_genesis(
             full_state: &full_state,
             store_epoch,
             operation_id: &genesis_update_id,
-            placement: DocumentPlacementEvidence::STRUCTURAL,
+            placement: DocumentPlacementEvidence::STRUCTURAL
+                .with_authorized_file_ids(authorized_file_ids),
             emit_event: false,
         },
         commit,
@@ -3219,6 +3339,7 @@ enum PageGenesisInput<'a> {
     Retained {
         rich_title: &'a serde_json::Value,
         nfm: &'a str,
+        authorized_file_ids: &'a [String],
     },
     PlainTitle(&'a str),
     NestedMarkdown {
@@ -3382,7 +3503,7 @@ pub(super) fn seal_mutation_with(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn build_mutation_result(
+pub(super) fn build_mutation_result(
     connection: &Connection,
     context: &BoundModuleContext,
     store_epoch: &str,
@@ -3453,22 +3574,22 @@ fn build_mutation_result(
                 .map(|page_id| (page_id.to_owned(), *revision))
         })
         .collect::<BTreeMap<_, _>>();
-    let (page_file_manifest_invalidations, page_file_content_invalidations) =
-        derive_page_file_event_invalidations(
-            connection,
-            &context.library_id.0,
-            &effects,
-            &page_file_manifest_revisions,
-            &page_file_content_revisions,
-        )?;
+    let page_file_invalidations = derive_page_file_event_invalidations(
+        connection,
+        &context.library_id.0,
+        &effects,
+        &page_file_manifest_revisions,
+        &page_file_content_revisions,
+    )?;
     payload_object.insert(
         "pageFileManifestInvalidations".to_owned(),
-        json!(page_file_manifest_invalidations),
+        json!(page_file_invalidations.manifest),
     );
     payload_object.insert(
         "pageFileContentInvalidations".to_owned(),
-        json!(page_file_content_invalidations),
+        json!(page_file_invalidations.content),
     );
+    payload_object.insert("fileRevisions".to_owned(), json!(effects.file_revisions));
     let data_source_ids = effects
         .affected_parent_keys
         .iter()
@@ -3476,8 +3597,8 @@ fn build_mutation_result(
         .map(str::to_owned)
         .collect::<Vec<_>>();
     // Database projection compilation is intentionally driven by the
-    // relational resources named by the Library mutation itself. Document
-    // owner Pages are added to the semantic impact below so open editors can
+    // relational resources named by the Library mutation itself. Document host Pages
+    // are added to the semantic impact below so open editors can
     // advance their heads, but cross-producting those owners with every
     // affected View would manufacture unrelated row removals and collapse an
     // otherwise exact row upsert into a read-only invalidation.
@@ -3595,65 +3716,38 @@ fn build_mutation_result(
     ))
 }
 
+struct PageFileEventInvalidations {
+    manifest: BTreeMap<String, LibraryPageFileInvalidation>,
+    content: BTreeMap<String, LibraryPageFileInvalidation>,
+}
+
 fn derive_page_file_event_invalidations(
     connection: &Connection,
     library_id: &str,
     effects: &MutationEffects,
     manifest_revisions: &BTreeMap<String, i64>,
     content_revisions: &BTreeMap<String, i64>,
-) -> Result<
-    (
-        BTreeMap<String, LibraryPageFileInvalidation>,
-        BTreeMap<String, LibraryPageFileInvalidation>,
-    ),
-    StoreError,
-> {
+) -> Result<PageFileEventInvalidations, StoreError> {
     let mut manifest_file_ids = BTreeMap::<String, BTreeSet<String>>::new();
-    let mut placement_filtered_content_candidate_file_ids = BTreeSet::new();
     let mut content_file_ids = BTreeMap::<String, BTreeSet<String>>::new();
+    if let Some(file) = &effects.file_mutation {
+        for page_id in content_revisions.keys() {
+            content_file_ids
+                .entry(page_id.clone())
+                .or_default()
+                .insert(file.file_id.clone());
+        }
+    }
 
-    if let Some(receipt) = &effects.page_files {
+    for receipt in &effects.page_file_entries {
         manifest_file_ids
             .entry(receipt.page_id.clone())
             .or_default()
-            .extend(
-                receipt
-                    .created_file_ids
-                    .iter()
-                    .chain(&receipt.updated_file_ids)
-                    .chain(&receipt.deleted_file_ids)
-                    .cloned(),
-            );
-        placement_filtered_content_candidate_file_ids
-            .extend(receipt.updated_file_ids.iter().cloned());
+            .extend(receipt.changed_file_ids.iter().cloned());
     }
 
-    for movement in page_file_ownership_moves(effects) {
-        manifest_file_ids
-            .entry(movement.previous_owner_page_id.clone())
-            .or_default()
-            .insert(movement.file_id.clone());
-        manifest_file_ids
-            .entry(movement.owner_page_id.clone())
-            .or_default()
-            .insert(movement.file_id.clone());
-        // Ownership evidence is authoritative for both sides of a rehome.
-        // The previous owner has no post-state placement left to discover,
-        // but its Page-scoped File read cache must still be invalidated.
-        content_file_ids
-            .entry(movement.previous_owner_page_id.clone())
-            .or_default()
-            .insert(movement.file_id.clone());
-        content_file_ids
-            .entry(movement.owner_page_id.clone())
-            .or_default()
-            .insert(movement.file_id.clone());
-        placement_filtered_content_candidate_file_ids.insert(movement.file_id.clone());
-    }
-
-    // Page copy deliberately exposes copied Block identities rather than its
-    // private File identity remap. The copied Page starts with an empty File
-    // manifest, so its complete live inventory is the exact changed set.
+    // Copying a Page adds entries to a fresh manifest while preserving File
+    // identities. Its explicit entries are the exact changed namespace.
     if effects.page_copy.is_some() {
         for page_id in manifest_revisions.keys() {
             if manifest_file_ids.contains_key(page_id) {
@@ -3672,52 +3766,16 @@ fn derive_page_file_event_invalidations(
         "Page File manifest invalidation",
     )?;
 
-    for page_id in content_revisions.keys() {
-        let placed_file_ids = placed_candidate_file_ids(
-            connection,
-            library_id,
-            page_id,
-            &placement_filtered_content_candidate_file_ids,
-        )?;
-        content_file_ids
-            .entry(page_id.clone())
-            .or_default()
-            .extend(placed_file_ids);
-    }
     let content_invalidations = build_page_file_invalidations(
         content_revisions,
         &content_file_ids,
         "Page File content invalidation",
     )?;
 
-    Ok((manifest_invalidations, content_invalidations))
-}
-
-fn page_file_ownership_moves(
-    effects: &MutationEffects,
-) -> impl Iterator<Item = &LibraryPageFileOwnershipMove> {
-    effects
-        .block_transfer
-        .iter()
-        .flat_map(|result| &result.file_ownership_moves)
-        .chain(
-            effects
-                .block_transfer_undo
-                .iter()
-                .flat_map(|result| &result.file_ownership_moves),
-        )
-        .chain(
-            effects
-                .structural_edit
-                .iter()
-                .flat_map(|result| &result.file_ownership_moves),
-        )
-        .chain(
-            effects
-                .agent_move_pages
-                .iter()
-                .flat_map(|result| &result.file_ownership_moves),
-        )
+    Ok(PageFileEventInvalidations {
+        manifest: manifest_invalidations,
+        content: content_invalidations,
+    })
 }
 
 fn live_page_file_ids(
@@ -3727,37 +3785,12 @@ fn live_page_file_ids(
 ) -> Result<BTreeSet<String>, StoreError> {
     connection
         .prepare(
-            "SELECT file_id FROM page_files \
-             WHERE owner_page_id = ?1 AND library_id = ?2 AND state = 'live' \
-             ORDER BY file_id",
+            "SELECT entry.file_id FROM page_file_entries entry \
+             JOIN library_files file ON file.file_id = entry.file_id \
+             WHERE entry.page_id = ?1 AND entry.library_id = ?2 AND file.lifecycle = 'live' \
+             ORDER BY entry.file_id",
         )?
         .query_map(params![page_id, library_id], |row| row.get::<_, String>(0))?
-        .collect::<rusqlite::Result<BTreeSet<_>>>()
-        .map_err(Into::into)
-}
-
-fn placed_candidate_file_ids(
-    connection: &Connection,
-    library_id: &str,
-    page_id: &str,
-    candidate_file_ids: &BTreeSet<String>,
-) -> Result<BTreeSet<String>, StoreError> {
-    if candidate_file_ids.is_empty() {
-        return Ok(BTreeSet::new());
-    }
-    let file_ids = serde_json::to_string(candidate_file_ids)
-        .map_err(|_| internal("Page File invalidation candidates could not be encoded"))?;
-    connection
-        .prepare(
-            "SELECT DISTINCT reference.page_file_id \
-             FROM block_asset_refs reference \
-             WHERE reference.library_id = ?1 AND reference.owner_block_id = ?2 \
-               AND reference.page_file_id IN (SELECT value FROM json_each(?3)) \
-             ORDER BY reference.page_file_id",
-        )?
-        .query_map(params![library_id, page_id, file_ids], |row| {
-            row.get::<_, String>(0)
-        })?
         .collect::<rusqlite::Result<BTreeSet<_>>>()
         .map_err(Into::into)
 }
@@ -3822,8 +3855,11 @@ fn assemble_mutation_result(
         .affected_block_ids
         .iter()
         .chain(effects.affected_page_ids.iter())
-        .chain(&effects.affected_database_ids)
+        .chain(effects.affected_database_ids.iter())
+        .chain(effects.file_revisions.keys())
         .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect::<Vec<_>>();
     let receipt = LibraryReceipt {
         mutation: ModuleMutationReceipt {
@@ -3843,10 +3879,11 @@ fn assemble_mutation_result(
     };
     crate::ModuleWriterResult {
         value: LibraryCommitValue {
+            page_file_entries: effects.page_file_entries,
+            file_mutation: effects.file_mutation,
             affected_resource_ids: block_ids,
             page_create: effects.page_create,
             page_copy: effects.page_copy,
-            page_files: effects.page_files,
             canvas_mutation: effects.canvas_mutation,
             block_transfer: effects.block_transfer,
             block_transfer_undo: effects.block_transfer_undo,
@@ -4342,6 +4379,185 @@ fn corrupt(message: &str) -> StoreError {
 
 fn internal(message: &str) -> StoreError {
     StoreError::new(StoreErrorCode::Internal, message, false)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute_page_create(
+    connection: &Connection,
+    _context: &BoundModuleContext,
+    store_epoch: &str,
+    library_id: &str,
+    operation_id: &str,
+    page_id: &str,
+    document_id: &str,
+    genesis: PageGenesisInput<'_>,
+    parent: &LibraryWriteParent,
+    resolved_parent: &ResolvedWriteParent,
+    project_id: String,
+    now: String,
+    scope: &DurableMutationScope<'_>,
+) -> Result<MutationEffects, StoreError> {
+    let page_create = create_page_records_and_genesis(
+        connection,
+        store_epoch,
+        library_id,
+        operation_id,
+        page_id,
+        document_id,
+        genesis,
+        parent,
+        resolved_parent,
+        &project_id,
+        &now,
+        scope.evidence(),
+    )?;
+
+    let parent_insertion = match parent {
+        LibraryWriteParent::Page { insertion, .. } => insertion.as_ref(),
+        LibraryWriteParent::Library { .. } => None,
+    };
+    let parent_head_seq = resolved_parent
+        .document
+        .as_ref()
+        .map(|parent| {
+            let write = ParentDocumentWriteContext {
+                actor_project_id: &project_id,
+                store_epoch,
+                operation_id,
+                commit: scope.evidence(),
+            };
+            if let Some(insertion) = parent_insertion {
+                return persist_parent_insert_with_insertion(
+                    connection,
+                    write,
+                    parent,
+                    insertion,
+                    embedded_resource_block(page_id, "page"),
+                );
+            }
+            persist_parent_insert(
+                connection,
+                write,
+                parent,
+                embedded_resource_block(page_id, "page"),
+                resolved_parent.before_block_id.clone(),
+            )
+        })
+        .transpose()?;
+    Ok(MutationEffects {
+        page_file_entries: Vec::new(),
+        file_revisions: BTreeMap::new(),
+        file_mutation: Default::default(),
+        project_id,
+        operation_kind: "create_page",
+        change_kind: "library.changed",
+        did_mutate: true,
+        created_target: Some(LibraryResourceTarget::Page {
+            page_id: page_id.to_owned(),
+        }),
+        affected_parent_keys: vec![resolved_parent.parent_key.clone()],
+        affected_block_ids: Vec::new(),
+        affected_page_ids: std::iter::once(page_id.to_owned())
+            .chain(resolved_parent.page_id.clone())
+            .collect(),
+        affected_database_ids: Vec::new(),
+        affected_view_ids: Vec::new(),
+        affected_document_ids: std::iter::once(document_id.to_owned())
+            .chain(
+                resolved_parent
+                    .document
+                    .as_ref()
+                    .map(|parent| parent.authority.head.id.clone()),
+            )
+            .collect(),
+        committed_revisions: BTreeMap::from_iter(
+            [
+                (format!("blockLocation:{page_id}"), 1),
+                (format!("blockMetadata:{page_id}"), 1),
+                (
+                    format!("documentHead:{document_id}"),
+                    page_create.document_head_seq,
+                ),
+            ]
+            .into_iter()
+            .chain(parent_head_seq.zip(resolved_parent.document.as_ref()).map(
+                |(commit, parent)| {
+                    (
+                        format!("documentHead:{}", parent.authority.head.id),
+                        commit.head_seq,
+                    )
+                },
+            )),
+        ),
+        page_create: Some(page_create),
+        page_copy: None,
+        canvas_mutation: None,
+        block_transfer: None,
+        block_transfer_undo: None,
+        page_relocation_undo: None,
+        structural_edit: None,
+        page_lifecycle: None,
+        block_property_mutation: None,
+        agent_page_copy: None,
+        agent_create_pages: None,
+        agent_move_pages: None,
+        change_payload: None,
+        committed_at: now.clone(),
+    })
+}
+
+/// Create a recovered Page through the same identity, placement, genesis and projection rules as normal creation.
+pub(super) fn create_recovery_page(
+    scope: &DurableMutationScope<'_>,
+    context: &BoundModuleContext,
+    page_id: &str,
+    document_id: &str,
+    rich_title: &serde_json::Value,
+    nfm: &str,
+    restored_files: &super::RestoredFiles,
+) -> Result<(), StoreError> {
+    let connection = scope.connection();
+    let parent = LibraryWriteParent::Library { before: None };
+    let resolved =
+        resolve_write_parent_for_context(connection, context, &context.library_id.0, &parent)?;
+    let mut effects = execute_page_create(
+        connection,
+        context,
+        scope.store_epoch(),
+        &context.library_id.0,
+        scope.evidence().operation_id(),
+        page_id,
+        document_id,
+        PageGenesisInput::Retained {
+            rich_title,
+            nfm,
+            authorized_file_ids: &restored_files.authorized_file_ids,
+        },
+        &parent,
+        &resolved,
+        resolved.actor_project_id.clone(),
+        scope.committed_at().to_owned(),
+        scope,
+    )?;
+    restored_files.add_to(&mut effects);
+    record_recovery_creation(scope, context, effects)
+}
+
+pub(super) fn record_recovery_creation(
+    scope: &DurableMutationScope<'_>,
+    context: &BoundModuleContext,
+    effects: MutationEffects,
+) -> Result<(), StoreError> {
+    build_mutation_result(
+        scope.connection(),
+        context,
+        scope.store_epoch(),
+        scope.evidence().operation_id(),
+        effects,
+        scope.evidence(),
+        &scope.authorization_before()?,
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -5218,7 +5434,7 @@ mod tests {
                         "018f0000-0000-7000-8000-000000000003".to_owned(),
                         1,
                         1,
-                        5,
+                        6,
                         9,
                         1,
                         1,
@@ -5425,7 +5641,7 @@ mod tests {
                     operation_id: "operation:archive-nested-page".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: LibraryIntent::ArchiveResource {
-                        target: LibraryResourceTarget::Page {
+                        target: nodex_core_contracts::library::LibraryPlacedResourceTarget::Page {
                             page_id: "page:nested".to_owned(),
                         },
                         expected_metadata_revision: 1,
@@ -5481,7 +5697,7 @@ mod tests {
                     operation_id: "operation:restore-nested-page".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: LibraryIntent::RestoreResource {
-                        target: LibraryResourceTarget::Page {
+                        target: nodex_core_contracts::library::LibraryPlacedResourceTarget::Page {
                             page_id: "page:nested".to_owned(),
                         },
                         expected_metadata_revision: 2,
@@ -5494,7 +5710,7 @@ mod tests {
             (
                 "operation:archive-database",
                 LibraryIntent::ArchiveResource {
-                    target: LibraryResourceTarget::Database {
+                    target: nodex_core_contracts::library::LibraryPlacedResourceTarget::Database {
                         database_id: "018f0000-0000-7000-8000-000000000001".to_owned(),
                     },
                     expected_metadata_revision: 1,
@@ -5503,7 +5719,7 @@ mod tests {
             (
                 "operation:restore-database",
                 LibraryIntent::RestoreResource {
-                    target: LibraryResourceTarget::Database {
+                    target: nodex_core_contracts::library::LibraryPlacedResourceTarget::Database {
                         database_id: "018f0000-0000-7000-8000-000000000001".to_owned(),
                     },
                     expected_metadata_revision: 2,
@@ -5963,9 +6179,10 @@ mod tests {
                     operation_id: "operation:archive-primary".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: LibraryIntent::ArchiveResource {
-                        target: LibraryResourceTarget::Database {
-                            database_id: "018f0000-0000-7000-8000-000000000001".to_owned(),
-                        },
+                        target:
+                            nodex_core_contracts::library::LibraryPlacedResourceTarget::Database {
+                                database_id: "018f0000-0000-7000-8000-000000000001".to_owned(),
+                            },
                         expected_metadata_revision: 3,
                     },
                 },
@@ -6005,7 +6222,7 @@ mod tests {
                     operation_id: "operation:move-page-to-library".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: LibraryIntent::MoveBlock {
-                        target: LibraryResourceTarget::Page {
+                        target: nodex_core_contracts::library::LibraryPlacedResourceTarget::Page {
                             page_id: "page:nested".to_owned(),
                         },
                         expected_location_revision: 1,
@@ -6031,7 +6248,7 @@ mod tests {
                     operation_id: "operation:move-page-back".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: LibraryIntent::MoveBlock {
-                        target: LibraryResourceTarget::Page {
+                        target: nodex_core_contracts::library::LibraryPlacedResourceTarget::Page {
                             page_id: "page:nested".to_owned(),
                         },
                         expected_location_revision: 2,
@@ -6054,7 +6271,7 @@ mod tests {
                     operation_id: "operation:reorder-page".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: LibraryIntent::MoveBlock {
-                        target: LibraryResourceTarget::Page {
+                        target: nodex_core_contracts::library::LibraryPlacedResourceTarget::Page {
                             page_id: "page:nested".to_owned(),
                         },
                         expected_location_revision: 3,
@@ -6096,9 +6313,10 @@ mod tests {
                     operation_id: "operation:move-database-across-pages".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: LibraryIntent::MoveBlock {
-                        target: LibraryResourceTarget::Database {
-                            database_id: "018f0000-0000-7000-8000-000000000011".to_owned(),
-                        },
+                        target:
+                            nodex_core_contracts::library::LibraryPlacedResourceTarget::Database {
+                                database_id: "018f0000-0000-7000-8000-000000000011".to_owned(),
+                            },
                         expected_location_revision: 1,
                         parent: LibraryWriteParent::Page {
                             page_id: "page:other".to_owned(),
@@ -6127,7 +6345,7 @@ mod tests {
                     operation_id: "operation:reject-page-cycle".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: LibraryIntent::MoveBlock {
-                        target: LibraryResourceTarget::Page {
+                        target: nodex_core_contracts::library::LibraryPlacedResourceTarget::Page {
                             page_id: "page:created".to_owned(),
                         },
                         expected_location_revision: 1,
@@ -8766,175 +8984,4 @@ mod tests {
             })
             .expect("embedded Database authority is restored with Page");
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn execute_page_create(
-    connection: &Connection,
-    _context: &BoundModuleContext,
-    store_epoch: &str,
-    library_id: &str,
-    operation_id: &str,
-    page_id: &str,
-    document_id: &str,
-    genesis: PageGenesisInput<'_>,
-    parent: &LibraryWriteParent,
-    resolved_parent: &ResolvedWriteParent,
-    project_id: String,
-    now: String,
-    scope: &DurableMutationScope<'_>,
-) -> Result<MutationEffects, StoreError> {
-    let page_create = create_page_records_and_genesis(
-        connection,
-        store_epoch,
-        library_id,
-        operation_id,
-        page_id,
-        document_id,
-        genesis,
-        parent,
-        &resolved_parent,
-        &project_id,
-        &now,
-        scope.evidence(),
-    )?;
-
-    let parent_insertion = match parent {
-        LibraryWriteParent::Page { insertion, .. } => insertion.as_ref(),
-        LibraryWriteParent::Library { .. } => None,
-    };
-    let parent_head_seq = resolved_parent
-        .document
-        .as_ref()
-        .map(|parent| {
-            let write = ParentDocumentWriteContext {
-                actor_project_id: &project_id,
-                store_epoch,
-                operation_id,
-                commit: scope.evidence(),
-            };
-            if let Some(insertion) = parent_insertion {
-                return persist_parent_insert_with_insertion(
-                    connection,
-                    write,
-                    parent,
-                    insertion,
-                    embedded_resource_block(page_id, "page"),
-                );
-            }
-            persist_parent_insert(
-                connection,
-                write,
-                parent,
-                embedded_resource_block(page_id, "page"),
-                resolved_parent.before_block_id.clone(),
-            )
-        })
-        .transpose()?;
-    Ok(MutationEffects {
-        project_id,
-        operation_kind: "create_page",
-        change_kind: "library.changed",
-        did_mutate: true,
-        created_target: Some(LibraryResourceTarget::Page {
-            page_id: page_id.to_owned(),
-        }),
-        affected_parent_keys: vec![resolved_parent.parent_key.clone()],
-        affected_block_ids: Vec::new(),
-        affected_page_ids: std::iter::once(page_id.to_owned())
-            .chain(resolved_parent.page_id.clone())
-            .collect(),
-        affected_database_ids: Vec::new(),
-        affected_view_ids: Vec::new(),
-        affected_document_ids: std::iter::once(document_id.to_owned())
-            .chain(
-                resolved_parent
-                    .document
-                    .as_ref()
-                    .map(|parent| parent.authority.head.id.clone()),
-            )
-            .collect(),
-        committed_revisions: BTreeMap::from_iter(
-            [
-                (format!("blockLocation:{page_id}"), 1),
-                (format!("blockMetadata:{page_id}"), 1),
-                (
-                    format!("documentHead:{document_id}"),
-                    page_create.document_head_seq,
-                ),
-            ]
-            .into_iter()
-            .chain(parent_head_seq.zip(resolved_parent.document.as_ref()).map(
-                |(commit, parent)| {
-                    (
-                        format!("documentHead:{}", parent.authority.head.id),
-                        commit.head_seq,
-                    )
-                },
-            )),
-        ),
-        page_create: Some(page_create),
-        page_copy: None,
-        page_files: None,
-        canvas_mutation: None,
-        block_transfer: None,
-        block_transfer_undo: None,
-        page_relocation_undo: None,
-        structural_edit: None,
-        page_lifecycle: None,
-        block_property_mutation: None,
-        agent_page_copy: None,
-        agent_create_pages: None,
-        agent_move_pages: None,
-        change_payload: None,
-        committed_at: now.clone(),
-    })
-}
-
-/// Create a recovered Page through the same identity, placement, genesis and projection rules as normal creation.
-pub(super) fn create_recovery_page(
-    scope: &DurableMutationScope<'_>,
-    context: &BoundModuleContext,
-    page_id: &str,
-    document_id: &str,
-    rich_title: &serde_json::Value,
-    nfm: &str,
-) -> Result<(), StoreError> {
-    let connection = scope.connection();
-    let parent = LibraryWriteParent::Library { before: None };
-    let resolved =
-        resolve_write_parent_for_context(connection, context, &context.library_id.0, &parent)?;
-    let effects = execute_page_create(
-        connection,
-        context,
-        scope.store_epoch(),
-        &context.library_id.0,
-        scope.evidence().operation_id(),
-        page_id,
-        document_id,
-        PageGenesisInput::Retained { rich_title, nfm },
-        &parent,
-        &resolved,
-        resolved.actor_project_id.clone(),
-        scope.committed_at().to_owned(),
-        scope,
-    )?;
-    record_recovery_creation(scope, context, effects)
-}
-
-pub(super) fn record_recovery_creation(
-    scope: &DurableMutationScope<'_>,
-    context: &BoundModuleContext,
-    effects: MutationEffects,
-) -> Result<(), StoreError> {
-    build_mutation_result(
-        scope.connection(),
-        context,
-        scope.store_epoch(),
-        scope.evidence().operation_id(),
-        effects,
-        scope.evidence(),
-        &scope.authorization_before()?,
-    )?;
-    Ok(())
 }

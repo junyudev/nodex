@@ -1,3 +1,5 @@
+import type { ReadFileBytesInput } from "../../shared/library-files";
+import { readFileBytesSchema } from "../../shared/library-files-transport";
 import { randomUUID } from "node:crypto";
 
 import { CORE_CLIENT_REQUIREMENTS, CORE_TRANSPORT_BUDGETS } from "@nodex/core-protocol";
@@ -63,8 +65,8 @@ import type {
   LibraryRead,
   LibraryReadResponse,
   LibraryReadSnapshot,
-  PageFileBlobBytes,
-  PreparedPageFileBlob,
+  ManagedBlobBytes,
+  PreparedBlobReceipt,
   DocumentLiveRepair,
   ProjectionLiveRepair,
   OwnedDocumentApplyInput,
@@ -250,14 +252,43 @@ export class CoreClient implements CoreClientPort {
     throw new CoreModuleResponseError(response.payload);
   }
 
-  async preparePageFileBlob(
+  async prepareFileBlob(
     input: {
       readonly operationId: string;
       readonly idempotencySlot?: string;
       readonly bytes: Uint8Array;
     },
     options: CoreRequestOptions = {},
-  ): Promise<PreparedPageFileBlob> {
+  ): Promise<PreparedBlobReceipt> {
+    if (input.bytes.byteLength > CORE_TRANSPORT_BUDGETS.file_blob_bytes) {
+      throw new Error("File upload exceeds its byte limit");
+    }
+    return this.#prepareBlob("/core/v1/files/blobs/prepare", input, options);
+  }
+
+  async prepareBlob(
+    input: {
+      readonly operationId: string;
+      readonly idempotencySlot?: string;
+      readonly bytes: Uint8Array;
+    },
+    options: CoreRequestOptions = {},
+  ): Promise<PreparedBlobReceipt> {
+    if (input.bytes.byteLength > CORE_TRANSPORT_BUDGETS.managed_blob_bytes) {
+      throw new Error("Blob publication exceeds its byte limit");
+    }
+    return this.#prepareBlob("/core/v1/blobs/prepare", input, options);
+  }
+
+  async #prepareBlob(
+    endpoint: string,
+    input: {
+      readonly operationId: string;
+      readonly idempotencySlot?: string;
+      readonly bytes: Uint8Array;
+    },
+    options: CoreRequestOptions,
+  ): Promise<PreparedBlobReceipt> {
     const query = new URLSearchParams({
       operation_id: input.operationId,
       store_epoch: this.handshake.store_epoch,
@@ -265,55 +296,65 @@ export class CoreClient implements CoreClientPort {
     if (input.idempotencySlot) query.set("idempotency_slot", input.idempotencySlot);
     const response = await this.#transport.requestBoundedBytes(
       "POST",
-      `/core/v1/page-files/blobs/prepare?${query.toString()}`,
+      `${endpoint}?${query.toString()}`,
       input.bytes,
       this.#moduleHeaders(),
       CORE_TRANSPORT_BUDGETS.ordinary_json_response_bytes,
       options,
     );
     if (response.contentType !== "application/json") {
-      throw new Error("Core Prepared Page File Blob response has an invalid Content-Type");
+      throw new Error("Core prepared Blob response has an invalid Content-Type");
     }
-    return decodeBoundedJson<PreparedPageFileBlob>(
+    return decodeBoundedJson<PreparedBlobReceipt>(
       response.bytes,
       CORE_TRANSPORT_BUDGETS.ordinary_json_response_bytes,
-      "Core Prepared Page File Blob response",
+      "Core prepared Blob response",
     );
   }
 
-  async readPageFileBlob(
-    input: {
-      readonly pageId: string;
-      readonly fileId: string;
-      readonly version?: number;
-    },
+  async readThreadAssetBlob(
+    input: { readonly threadId: string; readonly contentHash: string },
     options: CoreRequestOptions = {},
-  ): Promise<PageFileBlobBytes> {
-    const query = new URLSearchParams({ page_id: input.pageId });
-    if (input.version !== undefined) query.set("version", String(input.version));
+  ): Promise<ManagedBlobBytes> {
     const response = await this.#transport.requestBoundedBytes(
       "GET",
-      `/core/v1/page-files/blobs/${encodeURIComponent(input.fileId)}?${query.toString()}`,
+      `/core/v1/threads/${encodeURIComponent(input.threadId)}/blobs/${encodeURIComponent(input.contentHash)}`,
       undefined,
       this.#moduleHeaders(),
-      CORE_TRANSPORT_BUDGETS.page_file_blob_bytes,
+      CORE_TRANSPORT_BUDGETS.managed_blob_bytes,
       options,
     );
-    // HTTP status already separates Core errors from successful bytes. JSON is
-    // also a valid user-owned File MIME type and must remain readable as bytes.
-    if (!response.contentType) {
-      throw new Error("Core Page File Blob response has an invalid Content-Type");
-    }
-    if (!response.etag) {
-      throw new Error("Core Page File Blob response omitted its ETag");
+    if (!response.contentType || !response.etag) {
+      throw new Error("Core Thread Blob response omitted its content evidence");
     }
     return {
       bytes: response.bytes,
       mimeType: response.contentType,
-      etag:
-        response.etag.startsWith('"') && response.etag.endsWith('"')
-          ? response.etag.slice(1, -1)
-          : response.etag,
+      etag: response.etag.replace(/^"|"$/gu, ""),
+    };
+  }
+
+  async readFileBlob(
+    input: ReadFileBytesInput,
+    options: CoreRequestOptions = {},
+  ): Promise<ManagedBlobBytes> {
+    const checked = readFileBytesSchema.parse(input);
+    const query = new URLSearchParams(checked.source);
+    if (checked.version !== undefined) query.set("version", String(checked.version));
+    const response = await this.#transport.requestBoundedBytes(
+      "GET",
+      `/core/v1/files/blobs/${encodeURIComponent(checked.fileId)}?${query.toString()}`,
+      undefined,
+      this.#moduleHeaders(),
+      CORE_TRANSPORT_BUDGETS.file_blob_bytes,
+      options,
+    );
+    if (!response.contentType || !response.etag)
+      throw new Error("Core File response omitted its content evidence");
+    return {
+      bytes: response.bytes,
+      mimeType: response.contentType,
+      etag: response.etag.replace(/^"|"$/gu, ""),
     };
   }
 

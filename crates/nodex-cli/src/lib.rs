@@ -10,6 +10,7 @@ mod config;
 pub mod deeplink;
 mod draft;
 pub mod error;
+mod files;
 pub mod meta_yaml;
 mod open;
 mod page_files;

@@ -264,7 +264,6 @@ describe("collaborative NFM undo in Chromium", () => {
             documentCommits: [],
             affectedPageIds: [],
             affectedDatabaseIds: [],
-            fileOwnershipMoves: [],
             clipboard: null,
             history: {
               recipeOperationId: "operation:backward-merge",

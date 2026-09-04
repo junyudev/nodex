@@ -200,7 +200,10 @@ const defineLibraryOperation = (kind: LibraryOperationKind): LibraryOperationCom
   });
 
 const libraryCommands = {
-  apply_page_file_changes: defineLibraryOperation("apply_page_file_changes"),
+  apply_file_change: defineLibraryOperation("apply_file_change"),
+  put_page_file_entry: defineLibraryOperation("put_page_file_entry"),
+  apply_page_file_entries: defineLibraryOperation("apply_page_file_entries"),
+  transfer_page_file_entry: defineLibraryOperation("transfer_page_file_entry"),
   apply_page_metadata_properties: defineLibraryOperation("apply_page_metadata_properties"),
   apply_structural_edit: defineLibraryOperation("apply_structural_edit"),
   archive_resource: defineLibraryOperation("archive_resource"),

@@ -40,6 +40,7 @@ export type CommandPaletteShellCommandId =
   | "openSideChat"
   | "findInThread"
   | "manageTasks"
+  | "openLibraryFiles"
   | "openProcessManager"
   | "settings"
   | "showKeyboardShortcuts";
@@ -90,6 +91,7 @@ export function isCommandPaletteShellCommandId(id: string): id is CommandPalette
     id === "openSideChat" ||
     id === "findInThread" ||
     id === "manageTasks" ||
+    id === "openLibraryFiles" ||
     id === "openProcessManager" ||
     id === "settings" ||
     id === "showKeyboardShortcuts"
@@ -202,14 +204,14 @@ export function buildCommandPaletteCommands(
         disabledReason: context.pageCreateUnavailableReason ?? undefined,
       },
     ),
-    ...maybeMockCommand(
-      "searchFiles",
+    command(
+      "openLibraryFiles",
       "Suggested",
-      "Search files",
-      "Search workspace files",
-      ["search", "file", "workspace"],
+      "Library files",
+      "Browse shared Files, versions, usage, and Trash",
+      ["search", "file", "library", "asset", "trash"],
       1180,
-      shortcutLabel("searchFiles"),
+      { shortcut: shortcutLabel("openLibraryFiles") },
     ),
     command(
       "newThread",
