@@ -4,7 +4,6 @@ import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent, OpenDialogOptions } from "electron";
 import { parseAssetSource } from "../../../shared/assets";
 import { MainConfig } from "../../app/MainConfig";
-import { readClipboardPastePayload } from "../../clipboard-paste-inspector";
 import { writeImageToClipboard } from "../../clipboard-image-writer";
 import {
   COMPOSER_IMAGE_FILE_EXTENSIONS,
@@ -105,11 +104,9 @@ export const live: Layer.Layer<
       authorize(event).pipe(
         Effect.andThen(
           typeof input?.source === "string"
-            ? run("write-clipboard-image", () =>
-                writeImageToClipboard(input.source!, clipboard, {
-                  resolveAssetPath: assets.resolveAssetPath,
-                }),
-              )
+            ? writeImageToClipboard(input.source, clipboard, {
+                resolveAssetPath: assets.resolveAssetPath,
+              })
             : Effect.succeed({ ok: false, message: "Could not copy image." } as const),
         ),
       ),
@@ -125,9 +122,7 @@ export const live: Layer.Layer<
       ),
     );
     yield* handleQuery("clipboard:read-paste", (event) =>
-      authorize(event).pipe(
-        Effect.andThen(run("read-clipboard-paste", () => readClipboardPastePayload(clipboard))),
-      ),
+      authorize(event).pipe(Effect.andThen(clipboard.readPaste)),
     );
     yield* handlePlainCommand("composer:pick-files", (event, input) =>
       authorize(event).pipe(

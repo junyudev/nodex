@@ -80,9 +80,7 @@ test("previews a pasted image above editor chrome and refreshes Files only for p
         ),
       ).not.toContain("true");
 
-      await application.evaluate(({ clipboard, nativeImage }, dataUrl) => {
-        clipboard.writeImage(nativeImage.createFromDataURL(dataUrl));
-      }, PNG_DATA_URL);
+      await writeTestClipboardImage(application, PNG_DATA_URL);
       await page.keyboard.press(primaryShortcut("v"));
 
       const pastedImageBlock = stage
@@ -154,9 +152,7 @@ test("copies portable File references by default and local blob paths when enabl
       const stage = page.locator('[data-page-stage-surface="true"]:visible');
       const editor = stage.locator('.nfm-editor .ProseMirror[contenteditable="true"]');
       await editor.click();
-      await application.evaluate(({ clipboard, nativeImage }, dataUrl) => {
-        clipboard.writeImage(nativeImage.createFromDataURL(dataUrl));
-      }, PNG_DATA_URL);
+      await writeTestClipboardImage(application, PNG_DATA_URL);
       await page.keyboard.press(primaryShortcut("v"));
 
       const imageBlock = stage
@@ -169,7 +165,7 @@ test("copies portable File references by default and local blob paths when enabl
         .poll(() => application.evaluate(({ clipboard }) => clipboard.readText()))
         .toMatch(/nodex:\/\/files\//u);
 
-      await page.getByRole("button", { name: "Settings" }).click();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
       const localPathSwitch = page.getByRole("switch", {
         name: "Copy file references as local paths",
       });
@@ -348,3 +344,4 @@ test("imports native files and folders with canonical identities", async () => {
     },
   );
 });
+import { writeTestClipboardImage } from "./clipboard";

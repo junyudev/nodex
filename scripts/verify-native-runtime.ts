@@ -1412,6 +1412,10 @@ export function verifyPackagedNativeRuntimeStructure(
   assertRegularExecutable(cliRipgrep);
   assertMachOArchitecture(cliRipgrep, options.targetArch);
   nativeBinaryPaths.push(cliRipgrep);
+  const clipboardBridge = join(contentsPath, "Resources/native/nodex-clipboard.node");
+  assertRegularExecutable(clipboardBridge);
+  assertMachO(clipboardBridge, options.targetArch, manifest.minimumMacOS);
+  nativeBinaryPaths.push(clipboardBridge);
   const sparkleCodeObjects = verifySparkleRuntime(appPath, options);
   const computerUseInfo = join(
     contentsPath,

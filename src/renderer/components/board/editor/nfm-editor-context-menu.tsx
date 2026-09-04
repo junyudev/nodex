@@ -15,6 +15,7 @@ import {
   type NodexContextMenuItemProps,
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components/ui/toast";
 import {
   attachNodexClipboardEnvelope,
   attachNodexStructuralClipboardWriteClaim,
@@ -24,6 +25,8 @@ import {
   NODEX_STRUCTURAL_CLIPBOARD_MIME,
 } from "../../../../shared/clipboard-paste";
 import type { ClipboardPastePayload } from "../../../../shared/types";
+import type { NfmPasteTarget } from "./nfm-paste-target";
+import { attachNativePastePayload } from "./nfm-paste-event";
 
 type NfmEditorCommand = "cut" | "copy" | "paste";
 
@@ -47,7 +50,7 @@ interface NfmEditorCommandEditor {
 interface NfmEditorContextMenuProps {
   editor: NfmEditorCommandEditor;
   children: ReactNode;
-  onPreparePaste?: () => () => void;
+  onPreparePaste?: () => NfmPasteTarget;
 }
 
 interface NfmEditorContextMenuContentProps {
@@ -78,7 +81,8 @@ function hasClipboardPayload(
     typeof payload?.text === "string" ||
     payload?.structuralEnvelope !== undefined ||
     payload?.structuralWriteClaim !== undefined ||
-    payload?.structuralDescriptor !== undefined
+    payload?.structuralDescriptor !== undefined ||
+    (payload?.items?.length ?? 0) > 0
   );
 }
 
@@ -197,17 +201,21 @@ function dispatchSyntheticPaste(
     cancelable: true,
     clipboardData: dataTransfer,
   });
+  attachNativePastePayload(event, payload);
   target.dispatchEvent(event);
   return event.defaultPrevented;
 }
 
 async function runPasteCommand(
   editor: NfmEditorCommandEditor,
-  onPreparePaste?: () => () => void,
+  onPreparePaste?: () => NfmPasteTarget,
 ): Promise<boolean> {
-  const releasePreparedPaste = onPreparePaste?.() ?? (() => undefined);
+  const preparedPaste = onPreparePaste?.();
   try {
-    const payload = (await readNativeClipboardPayload()) ?? (await readBrowserClipboardPayload());
+    const payload = window.api?.readPasteClipboard
+      ? await readNativeClipboardPayload()
+      : await readBrowserClipboardPayload();
+    if (!payload || (preparedPaste && !preparedPaste.restore())) return false;
 
     if (payload && dispatchSyntheticPaste(editor, payload)) {
       return true;
@@ -238,7 +246,7 @@ async function runPasteCommand(
 
     return false;
   } finally {
-    releasePreparedPaste();
+    preparedPaste?.release();
   }
 }
 
@@ -248,7 +256,7 @@ export async function runNfmEditorContextCommand(
   execCommand: Document["execCommand"] | undefined = typeof document === "undefined"
     ? undefined
     : document.execCommand.bind(document),
-  onPreparePaste?: () => () => void,
+  onPreparePaste?: () => NfmPasteTarget,
 ): Promise<boolean> {
   focusEditor(editor);
 
@@ -401,7 +409,12 @@ export function NfmEditorContextMenu({
 
   const handleCommand = useCallback(
     (command: NfmEditorCommand) => {
-      void runNfmEditorContextCommand(editor, command, undefined, onPreparePaste);
+      void runNfmEditorContextCommand(editor, command, undefined, onPreparePaste)
+        .then((handled) => {
+          if (command === "paste" && !handled)
+            toast.info("Couldn’t paste at the original position. Try again.");
+        })
+        .catch(() => toast.danger("Couldn’t complete the clipboard action. Try again."));
     },
     [editor, onPreparePaste],
   );

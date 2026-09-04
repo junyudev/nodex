@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { _electron } from "playwright";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import os from "node:os";
 import path from "node:path";
 
@@ -23,6 +24,7 @@ test("enhances a browser copy without losing private formats or overwriting newe
     }
     const page = await application.firstWindow();
     const editor = page.getByRole("textbox");
+    await expect(editor).toBeVisible();
     const original = {
       "text/plain": "Original file reference 图片",
       "text/html": "<p>Original rich presentation</p>",
@@ -88,6 +90,21 @@ test("enhances a browser copy without losing private formats or overwriting newe
       update((await read()).generation, "x".repeat(8 * 1024 * 1024 + 1)),
     ).rejects.toThrow("too_large");
     expect((await paste())["text/plain"]).toBe("Newer browser copy");
+    const resourceRoot = mkdtempSync(path.join(os.tmpdir(), "nodex-clipboard-resources-"));
+    const resourceFile = path.join(resourceRoot, "paste.txt");
+    const resourceFolder = path.join(resourceRoot, "folder");
+    writeFileSync(resourceFile, "Synthetic file");
+    mkdirSync(resourceFolder);
+    const urls = [resourceFile, resourceFolder].map((entry) => pathToFileURL(entry).href);
+    await application.evaluate(async ({ clipboard, ClipboardItem }, fileUrls) => {
+      await clipboard.write([new ClipboardItem({ "text/uri-list": fileUrls.join("\r\n") })]);
+    }, urls);
+    expect((await read()).fileUrls).toEqual(urls);
+    await paste();
+    expect(await page.evaluate(() => Reflect.get(window, "pasteFiles"))).toEqual([
+      { name: "paste.txt", type: "text/plain", size: 14 },
+      { name: "folder", type: "", size: expect.any(Number) },
+    ]);
   } finally {
     // The OS clipboard is shared. Restoring an old snapshot could overwrite another app's copy.
     await application.close();

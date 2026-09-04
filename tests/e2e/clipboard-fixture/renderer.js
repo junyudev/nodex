@@ -8,6 +8,11 @@ document.addEventListener("copy", (event) => {
 });
 document.addEventListener("paste", (event) => {
   event.preventDefault();
+  window.pasteFiles = [...event.clipboardData.files].map((file) => ({
+    name: file.name,
+    type: file.type,
+    size: file.size,
+  }));
   window.pastePayload = Object.fromEntries(
     [...event.clipboardData.types].map((type) => [type, event.clipboardData.getData(type)]),
   );

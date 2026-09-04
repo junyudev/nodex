@@ -26,6 +26,8 @@ import {
   NFM_DISABLED_EXTENSIONS,
 } from "./nfm-editor-extensions";
 import { createNfmLinkExtension } from "./nfm-link-extension";
+import { captureNfmPasteTarget, clearNfmPasteTargets } from "./nfm-paste-target";
+import { readNativePastePayload } from "./nfm-paste-event";
 import { readNfmLinkHrefAtElement } from "./nfm-link-element";
 import { NOTION_BLOCKS_MIME, NOTION_MULTI_TEXT_MIME } from "./notion-paste";
 import { NfmFormattingToolbar } from "./nfm-formatting-toolbar";
@@ -746,8 +748,6 @@ function NfmEditorInstance({
           structuralEditingController.current?.handleBlockPaste(blocks) ?? false,
         shouldHandleStructuralBlockPaste: () =>
           structuralEditingController.current?.hasTypedOwnerSelection() ?? false,
-        readNativeStructuralEnvelope: () =>
-          window.api?.inspectPasteClipboard?.().structuralEnvelope,
       }),
     [source.storeEpoch, structuralEditingController, surfaceMutationBarrier?.libraryId],
   );
@@ -793,6 +793,12 @@ function NfmEditorInstance({
     BlockNoteEditor.create(editorOptions),
   );
   const editor = useCreateBlockNote(editorOptions, [editorInstanceKey], retainedEditor);
+  useLayoutEffect(() => {
+    const view = editor.prosemirrorView;
+    if (!isActivePanelTab) clearNfmPasteTargets(view);
+    return () => clearNfmPasteTargets(view);
+  }, [editor, editorInstanceKey, isActivePanelTab]);
+  useEffect(() => () => pasteResourceDialog?.target.selection?.release(), [pasteResourceDialog]);
 
   const resolveThreadMention = useCallback(
     async (threadId: string): Promise<CodexThreadSummary | null> => {
@@ -1373,6 +1379,9 @@ function NfmEditorInstance({
           throw new Error("No pasted attachment could be created.");
         }
 
+        if (!pasteResourceDialog.target.selection?.restore()) {
+          throw new Error("The original paste position is no longer available.");
+        }
         const inserted = typedTarget
           ? (structuralEditingController.current?.handleBlockPaste([
               {
@@ -1412,6 +1421,11 @@ function NfmEditorInstance({
 
   const handleContinuePasteInline = useCallback(() => {
     if (!editor || !pasteResourceDialog?.textPayload || pasteResourcePending) return;
+    if (!pasteResourceDialog.target.selection?.restore()) {
+      toast.info("The original paste position is no longer available.");
+      closePasteResourceDialog();
+      return;
+    }
     if (
       hasTypedOwnerType([
         ...(pasteResourceDialog.target.selectedBlockTypes ?? []),
@@ -1468,6 +1482,9 @@ function NfmEditorInstance({
           ...(target.selectedBlockTypes ?? []),
           target.currentBlockType ?? null,
         ]);
+        if (!target.selection?.restore()) {
+          throw new Error("The original paste position is no longer available.");
+        }
         const inserted = typedTarget
           ? (structuralEditingController.current?.handleBlockPaste(blocks) ?? false)
           : insertBlocksAtPasteTarget(editor, target, blocks);
@@ -1475,6 +1492,8 @@ function NfmEditorInstance({
       } catch (error) {
         console.error("Failed to paste image", error);
         toast.danger(error instanceof Error ? error.message : "Couldn’t paste image");
+      } finally {
+        target.selection?.release();
       }
     },
     [editor, structuralEditingController, uploadFile],
@@ -1502,6 +1521,7 @@ function NfmEditorInstance({
       }
 
       const currentBlock = editor.getTextCursorPosition().block;
+      if (currentBlock.type === "codeBlock") return;
       const pagePasteIntent = resolvePageDeepLinkPasteIntent({
         plainText: event.clipboardData.getData("text/plain"),
         hasStructuredClipboard: clipboardTypes.some((type) =>
@@ -1550,7 +1570,7 @@ function NfmEditorInstance({
         void handleImagePaste(clipboardFiles, capturePasteResourceTarget(editor));
         return;
       }
-      const inspectedItems = window.api?.inspectPasteClipboard?.().items ?? [];
+      const inspectedItems = readNativePastePayload(event)?.items ?? [];
       const shouldPromptFiles = inspectedItems.length > 0 || clipboardFiles.length > 0;
       const shouldPromptText =
         !shouldPromptFiles &&
@@ -3041,10 +3061,18 @@ function NfmEditorInstance({
               <ThreadMentionRuntimeProvider value={threadMentionRuntimeValue}>
                 <NfmEditorContextMenu
                   editor={editor}
-                  onPreparePaste={() =>
-                    structuralEditingController.current?.prepareNextStructuralPaste() ??
-                    (() => undefined)
-                  }
+                  onPreparePaste={() => {
+                    const target = captureNfmPasteTarget(editor.prosemirrorView);
+                    const releaseStructural =
+                      structuralEditingController.current?.prepareNextStructuralPaste();
+                    return {
+                      restore: target.restore,
+                      release: () => {
+                        target.release();
+                        releaseStructural?.();
+                      },
+                    };
+                  }}
                 >
                   <NfmTextActionMenuRuntimeProvider value={textActionMenuRuntimeValue}>
                     <NfmSideMenuRuntimeProvider value={sideMenuRuntimeValue}>

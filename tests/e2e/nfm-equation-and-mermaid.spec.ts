@@ -59,38 +59,27 @@ test("Equation and Mermaid survive the public Core-to-Electron document path", a
       await expect(blockEquations.locator("math").first()).toBeVisible();
       await expect(editor.locator(".bn-preview-placeholder-error")).toBeVisible();
 
-      const savedClipboard = await application.evaluate(({ clipboard }) => ({
-        html: clipboard.readHTML(),
-        text: clipboard.readText(),
-      }));
       const headingContent = editor
         .locator('.bn-block-content[data-content-type="heading"]')
         .first();
       const headingBlock = headingContent.locator("..");
       const headingBlockId = await headingBlock.getAttribute("data-id");
       if (!headingBlockId) throw new Error("The clipboard fixture heading has no Block ID");
-      try {
-        await application.evaluate(({ clipboard }) => clipboard.writeText("clipboard sentinel"));
-        await headingContent.locator(".bn-inline-content").click();
-        await page.keyboard.press("Home");
-        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+C`);
-        await expect
-          .poll(() => application.evaluate(({ clipboard }) => clipboard.readText()))
-          .toContain("Equation and Mermaid");
-        await expect(headingBlock).toBeVisible();
+      await application.evaluate(({ clipboard }) => clipboard.writeText("clipboard sentinel"));
+      await headingContent.locator(".bn-inline-content").click();
+      await page.keyboard.press("Home");
+      await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+C`);
+      await expect
+        .poll(() => application.evaluate(({ clipboard }) => clipboard.readText()))
+        .toContain("Equation and Mermaid");
+      await expect(headingBlock).toBeVisible();
 
-        await headingContent.locator(".bn-inline-content").click();
-        await page.keyboard.press("Home");
-        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+X`);
-        await expect(headingBlock).toHaveCount(0);
-        await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Z`);
-        await expect(editor.locator(`.bn-block[data-id="${headingBlockId}"]`)).toBeVisible();
-      } finally {
-        await application.evaluate(
-          ({ clipboard }, saved) => clipboard.write(saved),
-          savedClipboard,
-        );
-      }
+      await headingContent.locator(".bn-inline-content").click();
+      await page.keyboard.press("Home");
+      await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+X`);
+      await expect(headingBlock).toHaveCount(0);
+      await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Z`);
+      await expect(editor.locator(`.bn-block[data-id="${headingBlockId}"]`)).toBeVisible();
 
       const firstEquation = blockEquations.first();
       await firstEquation.locator(".bn-preview-container").click();

@@ -1504,6 +1504,7 @@ export interface ClipboardPasteInspectionResult {
 }
 
 export interface ClipboardPastePayload {
+  items?: ClipboardPasteInspectionItem[];
   blocknoteHtml?: string;
   html?: string;
   markdown?: string;

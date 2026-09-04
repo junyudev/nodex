@@ -55,6 +55,11 @@ bounded CI deadline, captures bounded process and Profile logs on failure, and
 terminates the complete Electron process group before releasing the lease.
 Runtime-probe teardown uses bounded filesystem retries because a stopped macOS
 Browser helper can briefly race recursive removal of its temporary Profile.
+The in-process clipboard bridge is built separately for each architecture,
+sealed in package provenance, and checked for the required Mach-O architecture,
+minimum macOS version, signature and entitlements. Full Main readiness also
+requires loading the packaged bridge; a source-only or cross-compiled probe does
+not replace these packaged checks.
 On arm64 macOS 15 or later, that probe must also complete a real Computer Use
 tool call through the vendor-signed `Node -> Codex -> node_repl` ancestry, plus
 the materialized plugin, private host-services socket, `sky.node`, and canonical

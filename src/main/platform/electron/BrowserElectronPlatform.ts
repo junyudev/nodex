@@ -1,7 +1,6 @@
 import {
   BrowserWindow,
   Menu,
-  clipboard,
   session,
   shell,
   webContents,
@@ -78,8 +77,6 @@ export interface BrowserElectronPlatform {
     ownerWebContentsId: number,
   ) => void;
   readonly webContentsFromId: (id: number) => BrowserWebContentsLike | null;
-  readonly writeClipboardImage: typeof clipboard.writeImage;
-  readonly writeClipboardText: typeof clipboard.writeText;
 }
 
 export const browserElectronPlatform: BrowserElectronPlatform = {
@@ -91,6 +88,4 @@ export const browserElectronPlatform: BrowserElectronPlatform = {
     Menu.buildFromTemplate(template).popup(window ? { window } : {});
   },
   webContentsFromId: (id) => webContents.fromId(id) ?? null,
-  writeClipboardImage: (image, type) => clipboard.writeImage(image, type),
-  writeClipboardText: (text, type) => clipboard.writeText(text, type),
 };

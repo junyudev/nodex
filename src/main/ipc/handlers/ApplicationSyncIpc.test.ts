@@ -5,7 +5,6 @@ import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ElectronSyncIpc } from "../../platform/electron/ElectronIpc";
-import { ElectronClipboard } from "../../platform/electron/ElectronClipboard";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { ProfileAssets } from "../../local-store/ProfileAssets";
 import { makeProfileAssets } from "../../local-store/assets";
@@ -29,7 +28,6 @@ it.effect("owns synchronous preload ingress with the Main Scope", () =>
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(ElectronSyncIpc, ipc),
-            Layer.succeed(ElectronClipboard, {} as ElectronClipboard["Service"]),
             mainConfigLayer(),
             Layer.succeed(
               ProfileAssets,
@@ -47,7 +45,6 @@ it.effect("owns synchronous preload ingress with the Main Scope", () =>
     assert.deepEqual([...channels].sort(), [
       "asset:resolve-path-sync",
       "blob:resolve-path-sync",
-      "clipboard:inspect-paste-sync",
       "file-path:inspect-sync",
     ]);
     yield* Scope.close(scope, Exit.void);

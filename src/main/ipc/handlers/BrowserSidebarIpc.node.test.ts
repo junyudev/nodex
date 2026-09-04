@@ -57,6 +57,7 @@ it.effect(
             Effect.provideService(Scope.Scope, scope),
           ),
         electron: browserElectronPlatform,
+        clipboard: { writeText: () => Effect.void, writeImage: () => Effect.void },
         events,
         runtimeRegistry: makeBrowserRuntimeRegistry(),
         saveBrowserImage: () => {

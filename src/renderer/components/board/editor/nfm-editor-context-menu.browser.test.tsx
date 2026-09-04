@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { Schema } from "@tiptap/pm/model";
+import { EditorState, TextSelection } from "@tiptap/pm/state";
+import { EditorView } from "@tiptap/pm/view";
+import { captureNfmPasteTarget, createNfmPasteTargetPlugin } from "./nfm-paste-target";
+import { readNativePastePayload } from "./nfm-paste-event";
 import { NfmEditorContextMenuPreview, runNfmEditorContextCommand } from "./nfm-editor-context-menu";
 
 afterEach(() => {
@@ -7,6 +12,97 @@ afterEach(() => {
 });
 
 describe("nfm editor context menu", () => {
+  test("does not retry a failed native read against a newer browser clipboard", async () => {
+    const originalApi = window.api;
+    const originalClipboard = navigator.clipboard;
+    const calls: string[] = [];
+    Object.defineProperty(window, "api", {
+      configurable: true,
+      value: {
+        readPasteClipboard: async () => {
+          throw new Error("inconsistent_read");
+        },
+      },
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        readText: async () => {
+          calls.push("later read");
+          return "new copy";
+        },
+      },
+    });
+    try {
+      expect(
+        await runNfmEditorContextCommand(
+          {
+            pasteText: () => {
+              calls.push("paste");
+              return true;
+            },
+          },
+          "paste",
+          undefined,
+        ),
+      ).toBe(false);
+      expect(calls).toEqual([]);
+    } finally {
+      Object.defineProperty(window, "api", { configurable: true, value: originalApi });
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: originalClipboard,
+      });
+    }
+  });
+
+  test("pastes delayed native text at the mapped original range, not the later caret", async () => {
+    const originalApi = window.api;
+    const schema = new Schema({
+      nodes: {
+        doc: { content: "paragraph+" },
+        paragraph: { content: "text*", toDOM: () => ["p", 0], parseDOM: [{ tag: "p" }] },
+        text: {},
+      },
+    });
+    const doc = schema.node(
+      "doc",
+      null,
+      schema.node("paragraph", null, schema.text("hello world")),
+    );
+    const host = document.createElement("div");
+    document.body.append(host);
+    const view = new EditorView(host, {
+      state: EditorState.create({
+        schema,
+        doc,
+        selection: TextSelection.create(doc, 2, 4),
+        plugins: [createNfmPasteTargetPlugin()],
+      }),
+    });
+    let resolveRead!: (value: { text: string }) => void;
+    const read = new Promise<{ text: string }>((resolve) => {
+      resolveRead = resolve;
+    });
+    Object.defineProperty(window, "api", {
+      configurable: true,
+      value: { readPasteClipboard: () => read },
+    });
+    try {
+      const paste = runNfmEditorContextCommand({ prosemirrorView: view }, "paste", undefined, () =>
+        captureNfmPasteTarget(view),
+      );
+      view.dispatch(view.state.tr.insertText("prefix", 1));
+      view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(view.state.doc)));
+      resolveRead({ text: "PASTE" });
+      expect(await paste).toBe(true);
+      expect(view.state.doc.textContent).toBe("prefixhPASTElo world");
+    } finally {
+      view.destroy();
+      host.remove();
+      Object.defineProperty(window, "api", { configurable: true, value: originalApi });
+    }
+  });
   test("renders cut, copy, and paste actions with shortcuts", () => {
     const view = render(
       <NfmEditorContextMenuPreview
@@ -24,7 +120,7 @@ describe("nfm editor context menu", () => {
     expect(Boolean(view.baseElement.textContent?.includes("⌘V"))).toBe(true);
   });
 
-  test("emits the selected editing command", () => {
+  test("emits the selected editing command", async () => {
     let command = "";
     const view = render(
       <NfmEditorContextMenuPreview
@@ -36,7 +132,9 @@ describe("nfm editor context menu", () => {
       />,
     );
 
-    fireEvent.click(view.getByText("Copy"));
+    await act(async () => {
+      fireEvent.click(view.getByText("Copy"));
+    });
 
     expect(command).toBe("copy");
   });
@@ -155,8 +253,10 @@ describe("nfm editor context menu", () => {
     const target = document.createElement("div");
     document.body.append(target);
     let pastedHtml = "";
+    let pastedItems: unknown;
     target.addEventListener("paste", (event) => {
       pastedHtml = (event as ClipboardEvent).clipboardData?.getData("text/html") ?? "";
+      pastedItems = readNativePastePayload(event as ClipboardEvent)?.items;
       event.preventDefault();
     });
     const structuralEnvelope = {
@@ -177,6 +277,7 @@ describe("nfm editor context menu", () => {
           html: '<div data-content-type="page">Subpage</div>',
           text: "Subpage",
           structuralEnvelope,
+          items: [{ path: "/synthetic/folder", kind: "folder", name: "folder" }],
         }),
       },
     });
@@ -195,6 +296,7 @@ describe("nfm editor context menu", () => {
 
       expect(handled).toBe(true);
       expect(pastedHtml).toContain('name="nodex-clipboard-envelope-v1"');
+      expect(pastedItems).toEqual([{ path: "/synthetic/folder", kind: "folder", name: "folder" }]);
       expect(pastedHtml).toContain('data-nodex-structural-fallback="1"');
       expect(pastedHtml).not.toContain('data-content-type="page"');
     } finally {
@@ -227,7 +329,12 @@ describe("nfm editor context menu", () => {
       },
       () => {
         calls.push("prepare");
-        return () => calls.push("release");
+        return {
+          restore: () => true,
+          release: () => {
+            calls.push("release");
+          },
+        };
       },
     );
 

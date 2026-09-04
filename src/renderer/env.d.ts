@@ -4,7 +4,6 @@ import type {
   AppUpdateStatus,
   ClipboardPastePayload,
   ClipboardPasteInspectionItem,
-  ClipboardPasteInspectionResult,
 } from "../shared/types";
 import type {
   NativeContextMenuItem,
@@ -76,7 +75,6 @@ declare global {
       ) => () => void;
       resolveManagedAssetPath?: (source: string) => string | null;
       resolveManagedBlobPath?: (contentHash: string) => string | null;
-      inspectPasteClipboard?: () => ClipboardPasteInspectionResult;
       readPasteClipboard?: () => Promise<ClipboardPastePayload>;
       beginStructuralClipboard?: (
         input: StructuralClipboardBeginInput,

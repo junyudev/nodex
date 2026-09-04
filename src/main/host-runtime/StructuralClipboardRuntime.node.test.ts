@@ -43,10 +43,7 @@ const makeClipboard = (initialClaim = firstClaim) => {
   let text = "Portable";
   let currentClaim: string | null = initialClaim;
   const port: ElectronClipboardPort = {
-    availableFormats: () => ["text/html", "text/plain"],
-    readFormat: () => "",
-    readHtml: () => html,
-    readText: () => text,
+    readPaste: Effect.sync(() => ({ html, text })),
     replaceClaimedPresentation: (next) =>
       Effect.sync(() => {
         if (currentClaim !== next.writeClaim) return { ok: false, failure: "superseded" } as const;
@@ -54,7 +51,8 @@ const makeClipboard = (initialClaim = firstClaim) => {
         text = next.text;
         return { ok: true } as const;
       }),
-    writeImage: () => undefined,
+    writeImage: () => Effect.void,
+    writeText: () => Effect.void,
     createImageFromBuffer: () => {
       throw new Error("unused");
     },

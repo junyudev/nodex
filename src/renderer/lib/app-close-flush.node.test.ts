@@ -16,7 +16,6 @@ vi.mock("./app-close-flush-deps", () => ({
       return () => undefined;
     },
     invoke: async () => undefined,
-    inspectPasteClipboard: () => ({ items: [] }),
     getPathInfoForFile: () => null,
   }),
 }));

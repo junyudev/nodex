@@ -20,6 +20,34 @@ import { createEmptyThreadSectionBlock } from "./thread-section";
 
 describe("nfm editor extensions", () => {
   const writeClaim = "0199134e-cbb0-7000-8000-000000000006";
+  test("keeps Code Block paste literal even when the clipboard carries a structural claim", () => {
+    const onStructuralClaimPaste = vi.fn(() => true);
+    const pasteHTML = vi.fn();
+    const defaultPasteHandler = vi.fn(() => true);
+    const codePosition = { parent: { type: { spec: { code: true } } } };
+    const html = attachNodexStructuralClipboardWriteClaim("<p>Literal content</p>", writeClaim);
+    const handler = createNfmPasteHandler({ onStructuralClaimPaste });
+    expect(
+      handler({
+        event: {
+          preventDefault: vi.fn(),
+          clipboardData: {
+            types: ["text/html", "text/plain"],
+            getData: (type: string) => (type === "text/html" ? html : "Literal content"),
+          },
+        } as unknown as ClipboardEvent,
+        editor: {
+          prosemirrorView: { state: { selection: { $from: codePosition, $to: codePosition } } },
+          pasteHTML,
+          tryParseHTMLToBlocks: () => [],
+        } as never,
+        defaultPasteHandler,
+      }),
+    ).toBe(true);
+    expect(defaultPasteHandler).toHaveBeenCalledOnce();
+    expect(onStructuralClaimPaste).not.toHaveBeenCalled();
+    expect(pasteHTML).not.toHaveBeenCalled();
+  });
   test("pastes an ordinary local-path copy immediately without starting structural rendezvous", () => {
     const internal = '<div data-pm-slice="0 0 -1 []"><p>Rich fragment</p></div>';
     const html = attachNodexClipboardWriteClaim(
@@ -145,7 +173,7 @@ describe("nfm editor extensions", () => {
     expect(preventDefault).toHaveBeenCalledOnce();
   });
 
-  test("recovers a native capability when Chromium retains only the fallback marker", () => {
+  test("does not obtain structural authority from a later clipboard read", () => {
     const defaultPasteHandler = vi.fn(() => true);
     const onStructuralPaste = vi.fn(() => true);
     const preventDefault = vi.fn();
@@ -164,7 +192,6 @@ describe("nfm editor extensions", () => {
     ).fallbackHtml;
     const handler = createNfmPasteHandler({
       onStructuralPaste,
-      readNativeStructuralEnvelope: () => envelope,
     });
 
     expect(
@@ -180,8 +207,8 @@ describe("nfm editor extensions", () => {
         defaultPasteHandler,
       }),
     ).toBe(true);
-    expect(onStructuralPaste).toHaveBeenCalledWith(envelope);
-    expect(defaultPasteHandler).not.toHaveBeenCalled();
+    expect(onStructuralPaste).not.toHaveBeenCalled();
+    expect(defaultPasteHandler).toHaveBeenCalledOnce();
   });
 
   test("removes owner semantics before untrusted HTML reaches BlockNote", () => {

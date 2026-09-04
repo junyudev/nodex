@@ -189,7 +189,7 @@ Electron Main is one Effect 4 application kernel. [`MainEntry`](../src/main/app/
 Structural clipboard coordination belongs to one application-scoped Main
 runtime because native clipboard ownership and cross-window rendezvous outlive
 an individual renderer. The runtime owns only ephemeral claim state, pending
-waiters, native compare-and-swap publication, sender lifetime, timeout, and
+waiters, native claim-fenced presentation enhancement, sender lifetime, timeout, and
 shutdown settlement. A bounded private MIME descriptor routes trusted windows
 to that runtime while standard HTML and text remain the portable fallback. Core
 alone owns the durable snapshot, capability validation, source deletion, cut

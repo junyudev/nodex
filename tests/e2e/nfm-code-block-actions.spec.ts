@@ -70,19 +70,11 @@ test("NFM Code Block language and Copy work through the packaged Electron surfac
       await page.getByRole("option", { name: "Python" }).click();
       await expect(surface).toHaveAttribute("data-language", "python");
 
-      const savedClipboard = await application.evaluate(({ clipboard }) => clipboard.readText());
-      try {
-        await surface.hover();
-        await actionBar.getByRole("button", { name: "Copy code to clipboard" }).click();
-        await expect
-          .poll(() => application.evaluate(({ clipboard }) => clipboard.readText()))
-          .toBe(NFM_CODE_BLOCK_ACTIONS_SOURCE);
-      } finally {
-        await application.evaluate(
-          ({ clipboard }, text) => clipboard.writeText(text),
-          savedClipboard,
-        );
-      }
+      await surface.hover();
+      await actionBar.getByRole("button", { name: "Copy code to clipboard" }).click();
+      await expect
+        .poll(() => application.evaluate(({ clipboard }) => clipboard.readText()))
+        .toBe(NFM_CODE_BLOCK_ACTIONS_SOURCE);
     },
   );
 });

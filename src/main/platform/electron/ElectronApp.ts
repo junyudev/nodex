@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
-import { app, type Event } from "electron";
+import { app, type Event, type WebContents, type Certificate } from "electron";
 import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
 
 export class ElectronAppError extends Schema.TaggedError<ElectronAppError>()("ElectronAppError", {
@@ -59,10 +59,28 @@ const scopedListener = <A extends readonly unknown[]>(
     () => Effect.sync(() => unregister(listener)),
   );
 
+/** Background requests must not silently disclose a platform client certificate. */
+export const selectMainClientCertificate = (
+  event: Pick<Event, "preventDefault">,
+  webContents: WebContents | null,
+  _url: string,
+  _certificates: readonly Certificate[],
+  callback: (certificate?: Certificate) => void,
+): void => {
+  if (webContents !== null) return;
+  event.preventDefault();
+  callback();
+};
+
 export const live: Layer.Layer<ElectronApp, never, ScopedCallbackRuntime> = Layer.effect(
   ElectronApp,
   Effect.gen(function* () {
     const callbacks = yield* ScopedCallbackRuntime;
+    yield* scopedListener(
+      (listener) => app.on("select-client-certificate", listener),
+      (listener) => app.removeListener("select-client-certificate", listener),
+      selectMainClientCertificate,
+    );
     const fork = (effect: Effect.Effect<void>) => {
       callbacks.fork(effect);
     };

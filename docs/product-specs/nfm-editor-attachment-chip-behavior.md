@@ -134,14 +134,24 @@ Whitespace-only text does not trigger the prompt.
 
 ### 2. Native desktop file/folder paste
 
-On Electron desktop, the editor inspects the native clipboard for actual file/folder payloads before default BlockNote paste handling.
+On Electron desktop, keyboard paste captures Files from the PasteEvent before
+the handler returns, including screenshots exposed only through DataTransferItem.
+The existing File-object path capability identifies files and directories without
+reading the system clipboard again. Main still owns filesystem validation and
+rejects symbolic links.
 
-Electron Main owns native clipboard and filesystem inspection. The synchronous
-paste-event request returns only bounded clipboard formats plus validated path
-metadata so the editor can decide whether to intercept the event; rich text and
-image payload capture is a separate bounded asynchronous request used only after
-the attachment flow needs it. The preload and renderer do not import Electron
-clipboard APIs or perform path metadata reads themselves.
+Context-menu paste obtains bounded rich content and validated native file/folder
+metadata in one asynchronous Main request. All formats come from one materialized
+pasteboard generation; a changed generation fails the read instead of mixing
+copies. Native resource metadata travels only with that internal paste operation,
+not in a renderer-writable clipboard MIME. A failed native read does not fall
+through to a later browser clipboard read.
+
+Every asynchronous paste freezes its original editor selection. The selection
+maps through subsequent document edits without following a moved caret. Closing
+the view, replacing its Document generation, or deleting the target cancels
+insertion. Resource uploads, attachment choices and Paste Anyway use this same
+target; no temporary Blocks or Undo entries are created while waiting.
 
 This path is for real native paste signals only.
 
@@ -458,8 +468,8 @@ For internal BlockNote copy/export:
 Desktop Electron:
 
 - supports native clipboard inspection for file/folder paste
-- supports bounded synchronous metadata-only inspection in the paste event path
-- transfers bounded rich clipboard payloads asynchronously
+- validates metadata for Files captured by the current paste event
+- transfers bounded rich content and native resource metadata together asynchronously
 - supports resolving saved asset paths for open/reveal actions
 - on Page surfaces, publishes new materialized attachments as direct Page Files
   and resolves their metadata/bytes through the owner Page authority

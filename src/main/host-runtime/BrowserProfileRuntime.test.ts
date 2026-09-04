@@ -51,6 +51,7 @@ it.layer(NodeServices.layer)("BrowserProfileRuntime", (it) => {
                 Effect.provideService(Scope.Scope, scope),
               ),
             electron: browserElectronPlatform,
+            clipboard: { writeText: () => Effect.void, writeImage: () => Effect.void },
             events: { publish: () => undefined },
             runtimeRegistry: makeBrowserRuntimeRegistry(),
             saveBrowserImage: () => {

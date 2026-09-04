@@ -355,6 +355,9 @@ const makeApp = (
   fs.mkdirSync(path.join(resources, "bin"), { recursive: true });
   fs.writeFileSync(path.join(resources, "app.asar"), "current app payload\n");
   writeSparkleRuntime(appPath);
+  fs.writeFileSync(path.join(resources, "native/nodex-clipboard.node"), "clipboard bridge", {
+    mode: 0o755,
+  });
   const agentSkills = writeAgentSkills(resources);
   const prepared = makePreparedManifest(agentSkills);
   writeJson(path.join(resources, "prepared-electron-build.json"), prepared);
@@ -498,6 +501,7 @@ describe("packaged build provenance", () => {
     "bin/rust-core-runtime.json",
     "agent-runtime.json",
     "native/nodex-sparkle.node",
+    "native/nodex-clipboard.node",
   ])("rejects a packaged payload mutation in %s", (relativePath) => {
     const fixture = makeApp();
     writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture));

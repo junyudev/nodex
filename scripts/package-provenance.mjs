@@ -29,7 +29,7 @@ import {
   parseCodexAppServerReleaseLock,
 } from "../src/shared/codex-app-server-release-lock.mjs";
 
-const PROVENANCE_SCHEMA_VERSION = 5;
+const PROVENANCE_SCHEMA_VERSION = 6;
 const PREPARED_SCHEMA_VERSION = 4;
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const canonicalAgentRuntimeLockPath = path.join(
@@ -54,6 +54,7 @@ const resourcesRelativePath = "Contents/Resources";
 const provenanceRelativePath = `${resourcesRelativePath}/nodex-build-provenance.json`;
 const preparedRelativePath = `${resourcesRelativePath}/prepared-electron-build.json`;
 const appAsarRelativePath = `${resourcesRelativePath}/app.asar`;
+const clipboardBridgeRelativePath = `${resourcesRelativePath}/native/nodex-clipboard.node`;
 const nativeManifestRelativePath = `${resourcesRelativePath}/bin/rust-core-runtime.json`;
 const agentManifestRelativePath = `${resourcesRelativePath}/agent-runtime.json`;
 const browserManifestRelativePath = `${resourcesRelativePath}/browser-runtime/browser-runtime-manifest.json`;
@@ -517,6 +518,7 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
     agentRuntime: agentRuntime.identity,
     payload: {
       appAsar: fileIdentity(resolvedAppPath, appAsarRelativePath),
+      clipboardBridge: fileIdentity(resolvedAppPath, clipboardBridgeRelativePath),
       nativeRuntimeManifest: fileIdentity(resolvedAppPath, nativeManifestRelativePath),
       agentRuntimeManifest: fileIdentity(resolvedAppPath, agentManifestRelativePath),
       browserRuntimeManifest: optionalFileIdentity(resolvedAppPath, browserManifestRelativePath),
@@ -607,6 +609,7 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     value.payload,
     [
       "appAsar",
+      "clipboardBridge",
       "nativeRuntimeManifest",
       "agentRuntimeManifest",
       "browserRuntimeManifest",
@@ -615,6 +618,11 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     "Packaged payload",
   );
   const appAsar = parseFileIdentity(value.payload.appAsar, "app.asar", "Packaged app.asar");
+  const clipboardBridge = parseFileIdentity(
+    value.payload.clipboardBridge,
+    "native/nodex-clipboard.node",
+    "Packaged clipboard bridge",
+  );
   const nativeRuntimeManifest = parseFileIdentity(
     value.payload.nativeRuntimeManifest,
     "bin/rust-core-runtime.json",
@@ -697,6 +705,12 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
   }
 
   verifyFileIdentity(resolvedAppPath, appAsar, appAsarRelativePath, "Packaged app.asar");
+  verifyFileIdentity(
+    resolvedAppPath,
+    clipboardBridge,
+    clipboardBridgeRelativePath,
+    "Packaged clipboard bridge",
+  );
   verifyFileIdentity(
     resolvedAppPath,
     nativeRuntimeManifest,

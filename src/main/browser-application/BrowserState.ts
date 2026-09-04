@@ -82,6 +82,10 @@ type BrowserUseCommand = Extract<
 >;
 
 interface BrowserStateDeps {
+  clipboard: Pick<
+    import("../platform/electron/ElectronClipboard").ElectronClipboardPort,
+    "writeImage" | "writeText"
+  >;
   earlyPageRestores: BrowserEarlyPageRestoreRuntime<BrowserSidebarTabSnapshot>;
   events: BrowserSidebarEventPublisher;
   runtimeRegistry: BrowserRuntimeRegistry;
@@ -301,6 +305,7 @@ export class BrowserState {
     BrowserSidebarBrowserUseCaptureSurfaceEvent
   >();
   private readonly electron: BrowserElectronPlatform;
+  private readonly clipboard: BrowserStateDeps["clipboard"];
   private readonly events: BrowserSidebarEventPublisher;
   private readonly contextMenuPresenter: BrowserElectronPlatform["presentContextMenu"];
   private readonly logger: Pick<BackendLogger, "debug" | "info" | "warn">;
@@ -322,6 +327,7 @@ export class BrowserState {
   private teardownSequence = 0;
 
   constructor(deps: BrowserStateDeps) {
+    this.clipboard = deps.clipboard;
     this.earlyPageRestores = deps.earlyPageRestores;
     this.events = deps.events;
     this.electron = deps.electron;
@@ -1698,7 +1704,13 @@ export class BrowserState {
           const image = yield* tryPlatformPromise("capture-screenshot", () =>
             contents.capturePage(),
           );
-          this.electron.writeClipboardImage(image);
+          yield* this.clipboard
+            .writeImage(image)
+            .pipe(
+              Effect.mapError(
+                (cause) => new BrowserStateOperationError({ operation: "copy-screenshot", cause }),
+              ),
+            );
           return { ok: true };
         }
 
@@ -1770,7 +1782,11 @@ export class BrowserState {
           if (!contents.isDestroyed() && contents.canGoBack()) contents.goBack();
         },
         copyLink: (url) => {
-          this.electron.writeClipboardText(url);
+          this.fork(
+            this.clipboard
+              .writeText(url)
+              .pipe(Effect.catch(() => Effect.logWarning("Browser link could not be copied"))),
+          );
         },
         forward: () => {
           if (!contents.isDestroyed() && contents.canGoForward()) contents.goForward();

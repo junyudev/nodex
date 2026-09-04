@@ -1,8 +1,10 @@
 import type { PasteResourceSettings } from "../../../lib/paste-resource-settings";
 import { DEFAULT_PASTE_RESOURCE_SETTINGS } from "../../../lib/paste-resource-settings";
 import { readNodexClipboardFragment } from "../../../../shared/clipboard-paste";
+import { captureNfmPasteTarget, type NfmPasteTarget } from "./nfm-paste-target";
 
 export interface PasteResourceTarget {
+  readonly selection?: NfmPasteTarget;
   selectedBlockIds: string[];
   selectedBlockTypes?: string[];
   currentBlockId: string | null;
@@ -60,6 +62,7 @@ type SelectionBlockLike = {
   children?: SelectionBlockLike[];
 };
 type PasteTargetSelectionEditor = {
+  readonly prosemirrorView?: Parameters<typeof captureNfmPasteTarget>[0];
   schema?: {
     blockSchema?: Record<string, { content?: string }>;
   };
@@ -120,14 +123,7 @@ export function insertBlocksAtPasteTarget(
     return true;
   }
 
-  const lastBlockId = editor.document?.[editor.document.length - 1]?.id;
-  if (typeof lastBlockId === "string" && lastBlockId.length > 0) {
-    insertBlocks.call(editor, blocks, lastBlockId, "after");
-    return true;
-  }
-
-  replaceBlocks.call(editor, [], blocks);
-  return true;
+  return false;
 }
 
 function isEmptyParagraphBlock(block: SelectionBlockLike | null): boolean {
@@ -169,6 +165,9 @@ export function capturePasteResourceTarget(
   try {
     const currentBlock = editor.getTextCursorPosition().block as SelectionBlockLike | undefined;
     return {
+      ...(editor.prosemirrorView
+        ? { selection: captureNfmPasteTarget(editor.prosemirrorView) }
+        : {}),
       selectedBlockIds,
       selectedBlockTypes,
       currentBlockId: currentBlock?.id ?? null,

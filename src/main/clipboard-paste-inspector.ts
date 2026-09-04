@@ -2,18 +2,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { parseLocalFileLinkHref } from "../shared/file-link-openers";
-import {
-  decodeNodexStructuralClipboardDescriptor,
-  inspectNodexClipboardHtml,
-  NODEX_STRUCTURAL_CLIPBOARD_MIME,
-  readNodexClipboardFragment,
-} from "../shared/clipboard-paste";
+import { inspectNodexClipboardHtml, readNodexClipboardFragment } from "../shared/clipboard-paste";
 import type {
   ClipboardPastePayload,
   ClipboardPasteInspectionItem,
   ClipboardPasteInspectionResult,
 } from "../shared/types";
-import type { ElectronClipboardPort } from "./platform/electron/ElectronClipboard";
+import type { NativeClipboardSnapshot } from "./platform/electron/native-clipboard";
 
 const CLIPBOARD_TEXT_FORMATS = ["text/uri-list", "public.file-url"] as const;
 
@@ -21,13 +16,6 @@ export const CLIPBOARD_INSPECTION_MAX_FORMAT_BYTES = 256 * 1024;
 export const CLIPBOARD_INSPECTION_MAX_LINES = 128;
 export const CLIPBOARD_INSPECTION_MAX_ITEMS = 64;
 export const CLIPBOARD_INSPECTION_MAX_PATH_LENGTH = 16 * 1024;
-export const CLIPBOARD_PASTE_FORMAT_MAX_BYTES = 8 * 1024 * 1024;
-export const CLIPBOARD_PASTE_TOTAL_MAX_BYTES = 16 * 1024 * 1024;
-
-export type ClipboardPasteTarget = Pick<
-  ElectronClipboardPort,
-  "availableFormats" | "readFormat" | "readHtml" | "readText"
->;
 
 export function truncateClipboardUtf8(value: string, maxBytes: number): string {
   if (Buffer.byteLength(value, "utf8") <= maxBytes) return value;
@@ -96,130 +84,24 @@ export function inspectClipboardPasteItemsFromStrings(
   return { items };
 }
 
-export function inspectClipboardPasteItems(
-  clipboard: ClipboardPasteTarget,
-): ClipboardPasteInspectionResult {
-  const values: string[] = [];
-  const availableFormats = new Set(clipboard.availableFormats());
-
-  for (const format of CLIPBOARD_TEXT_FORMATS) {
-    if (!availableFormats.has(format)) continue;
-    try {
-      const value = clipboard.readFormat(format);
-      if (value.trim().length > 0) {
-        values.push(value);
-      }
-    } catch {
-      // Ignore unreadable clipboard formats and continue.
-    }
-  }
-
-  const result = inspectClipboardPasteItemsFromStrings(values);
-  const descriptor = availableFormats.has(NODEX_STRUCTURAL_CLIPBOARD_MIME)
-    ? decodeNodexStructuralClipboardDescriptor(
-        readClipboardFormat(clipboard, NODEX_STRUCTURAL_CLIPBOARD_MIME) ?? "",
-      )
-    : null;
-  const html = readClipboardHtml(clipboard);
-  if (!html) {
-    return {
-      ...result,
-      ...(descriptor ? { structuralDescriptor: descriptor } : {}),
-    };
-  }
-  const inspected = inspectNodexClipboardHtml(html);
-  return {
-    ...result,
-    ...(descriptor ? { structuralDescriptor: descriptor } : {}),
-    ...(inspected.envelope ? { structuralEnvelope: inspected.envelope } : {}),
-    ...(inspected.hasStructuralFallback && inspected.writeClaim
-      ? { structuralWriteClaim: inspected.writeClaim }
-      : {}),
+/** Decodes one materialized native observation; never reads the clipboard again. */
+export function readClipboardPastePayload(
+  snapshot: NativeClipboardSnapshot,
+): ClipboardPastePayload {
+  const payload: ClipboardPastePayload = {
+    ...(snapshot.text !== undefined ? { text: snapshot.text } : {}),
+    ...(snapshot.markdown !== undefined ? { markdown: snapshot.markdown } : {}),
   };
-}
-
-function readClipboardFormat(clipboard: ClipboardPasteTarget, format: string): string | undefined {
-  try {
-    const value = clipboard.readFormat(format);
-    return value.trim().length > 0
-      ? truncateClipboardUtf8(value, CLIPBOARD_PASTE_FORMAT_MAX_BYTES)
-      : undefined;
-  } catch {
-    return undefined;
+  const items = inspectClipboardPasteItemsFromStrings([snapshot.fileUrls.join("\n")]).items;
+  if (items.length > 0) payload.items = items;
+  if (!snapshot.html) return payload;
+  const inspected = inspectNodexClipboardHtml(snapshot.html);
+  payload.html = inspected.fallbackHtml;
+  const fragment = readNodexClipboardFragment(snapshot.html);
+  if (fragment) payload.blocknoteHtml = fragment;
+  if (inspected.envelope) payload.structuralEnvelope = inspected.envelope;
+  if (inspected.hasStructuralFallback && inspected.writeClaim) {
+    payload.structuralWriteClaim = inspected.writeClaim;
   }
-}
-
-function readClipboardHtml(clipboard: ClipboardPasteTarget): string | undefined {
-  try {
-    const value = clipboard.readHtml();
-    return value.trim().length > 0
-      ? truncateClipboardUtf8(value, CLIPBOARD_PASTE_FORMAT_MAX_BYTES)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function readClipboardText(clipboard: ClipboardPasteTarget): string | undefined {
-  try {
-    const value = clipboard.readText();
-    return value.length > 0
-      ? truncateClipboardUtf8(value, CLIPBOARD_PASTE_FORMAT_MAX_BYTES)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export function readClipboardPastePayload(clipboard: ClipboardPasteTarget): ClipboardPastePayload {
-  const availableFormats = new Set(clipboard.availableFormats());
-  const payload: ClipboardPastePayload = {};
-
-  if (availableFormats.has(NODEX_STRUCTURAL_CLIPBOARD_MIME)) {
-    const descriptor = decodeNodexStructuralClipboardDescriptor(
-      readClipboardFormat(clipboard, NODEX_STRUCTURAL_CLIPBOARD_MIME) ?? "",
-    );
-    if (descriptor) payload.structuralDescriptor = descriptor;
-  }
-
-  let remainingBytes = CLIPBOARD_PASTE_TOTAL_MAX_BYTES;
-  const assignWithinBudget = <
-    Key extends Exclude<
-      keyof ClipboardPastePayload,
-      "structuralDescriptor" | "structuralEnvelope" | "structuralWriteClaim"
-    >,
-  >(
-    key: Key,
-    value: ClipboardPastePayload[Key],
-  ) => {
-    if (typeof value !== "string" || remainingBytes <= 0) return;
-    const bounded = truncateClipboardUtf8(value, remainingBytes);
-    if (!bounded) return;
-    payload[key] = bounded;
-    remainingBytes -= Buffer.byteLength(bounded, "utf8");
-  };
-
-  if (availableFormats.has("blocknote/html")) {
-    assignWithinBudget("blocknoteHtml", readClipboardFormat(clipboard, "blocknote/html"));
-  }
-
-  if (availableFormats.has("text/markdown")) {
-    assignWithinBudget("markdown", readClipboardFormat(clipboard, "text/markdown"));
-  }
-
-  const html = readClipboardHtml(clipboard);
-  if (html) {
-    const inspected = inspectNodexClipboardHtml(html);
-    if (!payload.blocknoteHtml) {
-      assignWithinBudget("blocknoteHtml", readNodexClipboardFragment(html) ?? undefined);
-    }
-    assignWithinBudget("html", inspected.fallbackHtml);
-    if (inspected.envelope) payload.structuralEnvelope = inspected.envelope;
-    if (inspected.hasStructuralFallback && inspected.writeClaim) {
-      payload.structuralWriteClaim = inspected.writeClaim;
-    }
-  }
-  assignWithinBudget("text", readClipboardText(clipboard));
-
   return payload;
 }

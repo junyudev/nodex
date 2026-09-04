@@ -52,6 +52,7 @@ it.effect("registers and releases Browser Profile ingress with the Main Scope", 
           Effect.provideService(Scope.Scope, scope),
         ),
       electron: browserElectronPlatform,
+      clipboard: { writeText: () => Effect.void, writeImage: () => Effect.void },
       events: { publish: () => undefined },
       runtimeRegistry: makeBrowserRuntimeRegistry(),
       saveBrowserImage: () => {

@@ -164,9 +164,8 @@ const makeFixture = (
         presentContextMenu: () => undefined,
         webContentsFromId: (webContentsId) =>
           webContentsId === contents.id ? (contents as unknown as BrowserWebContentsLike) : null,
-        writeClipboardImage: () => undefined,
-        writeClipboardText: () => undefined,
       },
+      clipboard: { writeImage: () => Effect.void, writeText: () => Effect.void },
       events: { publish: (event) => events.push(event) },
       fork: (effect) => void runBackground(effect),
       logger: { debug: () => undefined, info: () => undefined, warn: () => undefined },

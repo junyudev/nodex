@@ -244,11 +244,15 @@ CI` push run. The privileged release `workflow_run` additionally validates the
   parameters cannot enlarge scope. Widget follow-ups use the existing
   owning-thread action, while external links are bounded credential-free HTTPS
   URLs. Runtime errors expose sanitized errors without stacks.
-- Native file/folder paste inspection is Main-owned. The synchronous paste-event
-  request returns only bounded formats and absolute non-symlink path metadata;
-  rich text and image payloads use a separately bounded asynchronous request.
-  Renderer code never imports Electron clipboard access or reads arbitrary
-  filesystem metadata through the preload.
+- Native menu paste reads are Main-owned, bounded, materialized observations of
+  one pasteboard generation; a generation change rejects the whole read. Keyboard
+  paste uses only its captured event data and Files, with existing File-object
+  path inspection. No synchronous clipboard IPC or later native read can add
+  authority to that event. Renderer code cannot request arbitrary native formats
+  or arbitrary filesystem metadata through the preload.
+- Background Electron network requests without a WebContents continue without a
+  client certificate. They must not silently disclose a platform certificate;
+  this policy does not change Browser page certificate selection.
 - Structural editor copy writes bounded HTML/plain presentation plus an opaque
   capability envelope through trusted Main IPC. The owned snapshot stays in
   Core. Paste verifies the Profile, Library, Store epoch, manifest hash,

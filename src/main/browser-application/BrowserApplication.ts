@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import { ElectronClipboard } from "../platform/electron/ElectronClipboard";
 import * as FileSystem from "effect/FileSystem";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
@@ -197,7 +198,7 @@ export const live = (
 ): Layer.Layer<
   BrowserApplication,
   BrowserApplicationError,
-  BrowserSiteStatusRuntime | ElectronNet | FileSystem.FileSystem | ProfileAssets
+  BrowserSiteStatusRuntime | ElectronNet | ElectronClipboard | FileSystem.FileSystem | ProfileAssets
 > =>
   Layer.effect(
     BrowserApplication,
@@ -205,6 +206,7 @@ export const live = (
       const siteStatus = yield* BrowserSiteStatusRuntime;
       const assets = yield* ProfileAssets;
       const electronNet = yield* ElectronNet;
+      const clipboard = yield* ElectronClipboard;
       const events = yield* makeBrowserSidebarEventHub;
       const earlyPageRestores =
         yield* makeBrowserEarlyPageRestoreRuntime<BrowserSidebarTabSnapshot>();
@@ -235,6 +237,7 @@ export const live = (
         `${userDataPath}/browser-sidebar-page-states.json`,
       ).pipe(Effect.mapError((cause) => applicationError("initialize-pages", cause)));
       const state = new BrowserState({
+        clipboard,
         earlyPageRestores,
         electron: browserElectronPlatform,
         events,

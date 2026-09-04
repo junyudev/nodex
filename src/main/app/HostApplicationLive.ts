@@ -75,6 +75,7 @@ import {
 } from "../host-runtime/WorktreeWorkerRuntime";
 import { getLogger } from "../logging/logger";
 import { ElectronApp } from "../platform/electron/ElectronApp";
+import { live as electronClipboardLive } from "../platform/electron/ElectronClipboard";
 import { ElectronDesktop } from "../platform/electron/ElectronDesktop";
 import { ElectronSessionHost } from "../platform/electron/ElectronSessionHost";
 import * as ElectronNet from "../platform/electron/ElectronNet";
@@ -97,7 +98,7 @@ const browserApplication = Layer.unwrap(
     const userDataPath = yield* electron.userDataPath;
     return browserApplicationLive(userDataPath);
   }),
-).pipe(Layer.provideMerge(browserSiteStatus));
+).pipe(Layer.provideMerge(Layer.merge(browserSiteStatus, electronClipboardLive)));
 const browserProfile = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;

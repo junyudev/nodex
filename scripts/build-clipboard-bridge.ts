@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { chmodSync, copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -20,10 +21,9 @@ export function buildClipboardBridge(architecture: "arm64" | "x64"): void {
     copyFileSync(path.join(source, file), path.join(buildRoot, file));
   }
   execFileSync(
-    "pnpm",
+    process.execPath,
     [
-      "exec",
-      "node-gyp",
+      createRequire(import.meta.url).resolve("node-gyp/bin/node-gyp.js"),
       "rebuild",
       "--directory",
       buildRoot,

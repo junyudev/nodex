@@ -1,5 +1,3 @@
-export const CLIPBOARD_INSPECT_PASTE_SYNC_CHANNEL = "clipboard:inspect-paste-sync" as const;
-
 export const NODEX_CLIPBOARD_ENVELOPE_META_NAME = "nodex-clipboard-envelope-v1" as const;
 export const NODEX_STRUCTURAL_CLIPBOARD_MIME =
   "application/x-nodex-structural-clipboard+json" as const;

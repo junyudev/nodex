@@ -1,9 +1,19 @@
 import * as fs from "node:fs/promises";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ClipboardWriteImageResult } from "../shared/ipc-api";
 import { parseAssetSource } from "../shared/assets";
-import type { ElectronClipboardPort } from "./platform/electron/ElectronClipboard";
+import type {
+  ElectronClipboardPort,
+  ClipboardOperationError,
+} from "./platform/electron/ElectronClipboard";
+
+class ClipboardImageSourceError extends Schema.TaggedError<ClipboardImageSourceError>()(
+  "ClipboardImageSourceError",
+  { message: Schema.String },
+) {}
 
 interface NativeImageLike {
   isEmpty(): boolean;
@@ -107,20 +117,29 @@ function resolveClipboardImageWriterDeps(
   };
 }
 
-export async function writeImageToClipboard(
-  source: string,
-  platform: ClipboardImagePlatform,
-  deps: ClipboardImageWriterDeps,
-): Promise<ClipboardWriteImageResult> {
-  const normalizedSource = source.trim();
-  if (!normalizedSource) {
-    return fail("Could not copy image.");
-  }
+export const writeImageToClipboard = Effect.fn("writeImageToClipboard")(
+  function* (
+    source: string,
+    platform: ClipboardImagePlatform,
+    deps: ClipboardImageWriterDeps,
+  ): Effect.fn.Return<
+    ClipboardWriteImageResult,
+    ClipboardImageSourceError | ClipboardOperationError
+  > {
+    const normalizedSource = source.trim();
+    if (!normalizedSource) {
+      return fail("Could not copy image.");
+    }
 
-  const resolvedDeps = resolveClipboardImageWriterDeps(deps);
+    const resolvedDeps = resolveClipboardImageWriterDeps(deps);
 
-  try {
-    const image = await createNativeImageFromSource(normalizedSource, platform, resolvedDeps);
+    const image = yield* Effect.tryPromise({
+      try: () => createNativeImageFromSource(normalizedSource, platform, resolvedDeps),
+      catch: (cause) =>
+        new ClipboardImageSourceError({
+          message: cause instanceof Error ? cause.message : "Could not load the image file.",
+        }),
+    });
     if (!image) {
       return fail("Could not copy image.");
     }
@@ -128,12 +147,16 @@ export async function writeImageToClipboard(
       return fail("Could not decode this image format for clipboard copy.");
     }
 
-    platform.writeImage(image as Parameters<ClipboardImagePlatform["writeImage"]>[0]);
+    yield* platform.writeImage(image as Parameters<ClipboardImagePlatform["writeImage"]>[0]);
     return { ok: true };
-  } catch (error) {
-    if (error instanceof Error && error.message.length > 0) {
-      return fail(error.message);
-    }
-    return fail("Could not copy image.");
-  }
-}
+  },
+  Effect.catch((error) =>
+    Effect.succeed(
+      fail(
+        Schema.is(ClipboardImageSourceError)(error) && error.message.length > 0
+          ? error.message
+          : "Could not copy image.",
+      ),
+    ),
+  ),
+);

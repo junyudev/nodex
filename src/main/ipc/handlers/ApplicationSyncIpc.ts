@@ -4,7 +4,6 @@ import type { IpcMainEvent } from "electron";
 import { lstatSync } from "node:fs";
 import { basename, isAbsolute } from "node:path";
 import { parseAssetSource } from "../../../shared/assets";
-import { CLIPBOARD_INSPECT_PASTE_SYNC_CHANNEL } from "../../../shared/clipboard-paste";
 import {
   FILE_PATH_INSPECT_SYNC_CHANNEL,
   MANAGED_ASSET_RESOLVE_PATH_SYNC_CHANNEL,
@@ -12,24 +11,20 @@ import {
   PRELOAD_FILE_PATH_MAX_LENGTH,
 } from "../../../shared/preload-file-access";
 import { MainConfig } from "../../app/MainConfig";
-import { inspectClipboardPasteItems } from "../../clipboard-paste-inspector";
 import { ProfileAssets } from "../../local-store/ProfileAssets";
 import { resolveManagedBlobPath } from "../../local-store/managed-blob-path";
-import { captureMainException } from "../../observability/sentry-main";
 import { ElectronSyncIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
-import { ElectronClipboard } from "../../platform/electron/ElectronClipboard";
 
 export const live: Layer.Layer<
   never,
   never,
-  ElectronClipboard | ElectronSyncIpc | MainConfig | ProfileAssets | WindowRuntime
+  ElectronSyncIpc | MainConfig | ProfileAssets | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const assets = yield* ProfileAssets;
-    const clipboard = yield* ElectronClipboard;
     const ipc = yield* ElectronSyncIpc;
     const windows = yield* WindowRuntime;
     const authorize = (event: IpcMainEvent, capability: string): void => {
@@ -39,18 +34,6 @@ export const live: Layer.Layer<
       }
     };
 
-    yield* ipc.on(CLIPBOARD_INSPECT_PASTE_SYNC_CHANNEL, (event) => {
-      try {
-        authorize(event, "Clipboard paste inspection");
-        event.returnValue = inspectClipboardPasteItems(clipboard);
-      } catch (error) {
-        captureMainException(error, {
-          tags: { channel: CLIPBOARD_INSPECT_PASTE_SYNC_CHANNEL, mechanism: "ipc-sync" },
-          extra: { senderWebContentsId: event.sender.id },
-        });
-        event.returnValue = { items: [] };
-      }
-    });
     yield* ipc.on(MANAGED_ASSET_RESOLVE_PATH_SYNC_CHANNEL, (event, source: unknown) => {
       try {
         authorize(event, "Managed asset path access");

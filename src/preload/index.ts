@@ -23,7 +23,6 @@ import {
   type WorkbenchCommandInvocation,
 } from "../shared/workbench-commands";
 import {
-  CLIPBOARD_INSPECT_PASTE_SYNC_CHANNEL,
   type StructuralClipboardAwaitInput,
   type StructuralClipboardBeginInput,
   type StructuralClipboardLifecycleResult,
@@ -237,8 +236,6 @@ contextBridge.exposeInMainWorld("api", {
   },
   resolveManagedAssetPath,
   resolveManagedBlobPath,
-  inspectPasteClipboard: () =>
-    ipcRenderer.sendSync(CLIPBOARD_INSPECT_PASTE_SYNC_CHANNEL) as ClipboardPasteInspectionResult,
   readPasteClipboard: () =>
     ipcRenderer.invoke("clipboard:read-paste") as Promise<ClipboardPastePayload>,
   beginStructuralClipboard: (input: StructuralClipboardBeginInput) =>

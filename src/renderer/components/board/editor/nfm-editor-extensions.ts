@@ -25,6 +25,7 @@ import { type CopiedSelectionPayload } from "./special-block-copy";
 import { createEmptyThreadSectionBlock } from "./thread-section";
 import { canvasCreatePendingExtension } from "./canvas-create-pending-extension";
 import { nfmClipboardPastePendingExtension } from "./nfm-clipboard-paste-pending-extension";
+import { nfmPasteTargetExtension } from "./nfm-paste-target";
 import { mentionChipKeyboardNavigationExtension } from "./mention-chip-keyboard-navigation";
 import { nfmTaskShorthandPreviewExtension } from "./nfm-task-shorthand-preview-extension";
 import {
@@ -37,7 +38,6 @@ import {
   NODEX_STRUCTURAL_CLIPBOARD_MIME,
   readNodexClipboardFragment,
   sanitizeUntrustedTypedOwnerHtml,
-  type NodexClipboardEnvelopeV1,
   type NodexStructuralClipboardDescriptorV1,
 } from "../../../../shared/clipboard-paste";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
@@ -565,6 +565,7 @@ export function createNfmEditorExtensions(options: NfmEditorExtensionOptions = {
     nfmSearchExtension(),
     canvasCreatePendingExtension(),
     nfmClipboardPastePendingExtension(),
+    nfmPasteTargetExtension(),
     nfmTaskShorthandPreviewExtension(),
     NfmStructuredClipboardExtension(options),
     headingToggleAware,
@@ -592,7 +593,6 @@ export interface NfmPasteHandlerOptions {
     blocks: readonly NfmStructuralReplacementBlockLike[],
   ) => boolean;
   readonly shouldHandleStructuralBlockPaste?: () => boolean;
-  readonly readNativeStructuralEnvelope?: () => NodexClipboardEnvelopeV1 | undefined;
 }
 
 const readPortableClipboardBlocks = (
@@ -629,6 +629,10 @@ const readPortableClipboardBlocks = (
 
 export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): NfmPasteHandler {
   return ({ event, editor, defaultPasteHandler }) => {
+    const selection = editor.prosemirrorView?.state.selection;
+    if (selection?.$from.parent.type.spec.code && selection.$to.parent.type.spec.code) {
+      return defaultPasteHandler();
+    }
     const clipboardData = event.clipboardData;
     const types = Array.from(clipboardData?.types ?? []);
     const internalHtml = types.includes("blocknote/html")
@@ -674,9 +678,7 @@ export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): Nfm
       event.preventDefault();
       return true;
     }
-    const structuralEnvelope =
-      htmlInspection.envelope ??
-      (htmlInspection.hasStructuralFallback ? options.readNativeStructuralEnvelope?.() : undefined);
+    const structuralEnvelope = htmlInspection.envelope;
     if (structuralEnvelope && options.onStructuralPaste?.(structuralEnvelope)) {
       event.preventDefault();
       return true;
@@ -699,10 +701,6 @@ export function createNfmPasteHandler(options: NfmPasteHandlerOptions = {}): Nfm
     if (handled) return true;
 
     if (recoveredHtml) {
-      const selection = editor.prosemirrorView?.state.selection;
-      if (selection?.$from.parent.type.spec.code && selection.$to.parent.type.spec.code) {
-        return defaultPasteHandler();
-      }
       editor.pasteHTML(recoveredHtml, true);
       return true;
     }

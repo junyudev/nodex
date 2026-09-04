@@ -165,6 +165,17 @@ pending until the source admits its LocalCommit, even if the capability is alrea
 present in the clipboard or a newer copy has replaced the native slot. A host with
 no matching session can recover the published capability, subject to Core validation.
 
+Native clipboard access is centralized in Main. Menu paste reads materialized
+text, HTML, Markdown and native file URLs from one pasteboard generation; keyboard
+paste never supplements its captured content with a later system read. Menu paste
+and asynchronous resource insertion retain the original mapped selection and
+cancel when that editor or target becomes invalid. Code Blocks retain literal
+text paste priority over rich or structural routing.
+
+Image and Browser screenshot copies finish only after the native PNG write has
+completed. Native failures remain controlled copy failures; Browser link copy
+also observes write completion instead of leaving an unhandled rejection.
+
 Local-path rewriting is all-or-nothing for one copied payload. If any Nodex File
 reference cannot be resolved, every reference remains portable instead of
 producing mixed local and portable locators.
