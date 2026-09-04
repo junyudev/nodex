@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { createElement, useEffect, useRef, type ComponentProps } from "react";
 import { act, fireEvent, type RenderResult, waitFor } from "@testing-library/react";
-import { renderWithMaitai as render, textContent } from "../../test/dom";
+import { renderWithMaitai as render } from "../../test/thread-maitai";
+import { textContent } from "../../test/dom";
 import { TestQueryProvider } from "../../test/query";
 import { __resetNodexToastStoreForTests, NodexToastProvider } from "../ui/toast";
 import { NodexTooltipProvider } from "../ui/tooltip";

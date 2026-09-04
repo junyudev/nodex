@@ -15,21 +15,56 @@ Do not add `--max-warnings 0` or `--deny-warnings` to the canonical commands.
 ## Canonical commands
 
 ```bash
-# Cached integrated format, Effect-patched TypeScript 7, typed Oxlint, and typecheck gate
+# Format plus the complete semantic gate
 vp run check
 
-# Full lint output, including stale suppression comments
+# Equivalent names for TypeScript 7, typed Oxlint, and Effect diagnostics
+vp run check:semantic
+vp run typecheck
 vp run lint
 
-# Compact output for a coding agent
-vp lint --format agent --report-unused-disable-directives
+# Actually execute the semantic task, bypassing the task-result cache
+vp run --no-cache check:semantic
+
+# Compact diagnostics for a focused investigation
+vp lint --format agent
 ```
 
-`effect-tsgo patch --oxlint` runs during dependency preparation. Both
-`lint.options.typeAware` and `lint.options.typeCheck` remain enabled, so Vite+
-owns one integrated TypeScript, Effect, and Oxlint interpretation. The fixture
-mode used by `vp run tooling:verify` disables typed analysis only for isolated
-synthetic files that are intentionally outside the TypeScript project graph.
+The three semantic names execute exactly the same command and share Vite Task's
+command/input/environment cache. `check` runs `vp fmt --check` followed by that
+same semantic command, so formatting does not force another semantic analysis.
+Run options such as `--no-cache` precede the task name; arguments after the name
+are forwarded to its command. `vp check --no-fmt` also executes analysis directly.
+A cached success and compiler incremental analysis are different measurements.
+
+`effect-tsgo patch --oxlint` runs during dependency preparation.
+`lint.options.typeAware` and `lint.options.typeCheck` remain enabled, and
+`reportUnusedDisableDirectives: "warn"` applies uniformly to all entrypoints.
+`tooling:verify` tests actual task reuse and invalidation as well as a small typed
+Program using the real policy. Its typed fixtures prove compiler errors,
+type-aware rules, Effect scope, suppressions, and advisory exit behavior.
+Separate syntax fixtures outside the project graph still use fixture mode.
+
+`tsconfig.tooling.json` owns the suite catalog, Vitest configuration, benchmark
+and test runners, and CI behavior tests. Existing unowned JavaScript entrypoints
+retain their runtime contracts; adding a new control-plane test requires an
+explicit type owner, not just successful Vitest transformation. Host shared tests
+remain in the Node project rather than becoming Web root files; imported
+transport-neutral dependencies may still legitimately appear in both graphs.
+
+The patched compiler supports incremental state, but a raw `tsc -b` is not this
+gate: it reports diagnostics across vendored and fixture dependencies that the
+owned Oxlint policy excludes, and does not provide equivalent typed lint and
+suppression behavior. There is no `types:incremental` shortcut until that
+feedback boundary can be made useful without duplicating diagnostic policy.
+Use focused tests while editing and the shared complete semantic task for handoff.
+
+Keep IPC argument tuples and acknowledgement categories derived from their
+owning tables. Registered command invocation infers the channel, with a finite
+authority/protocol proof; repeating dependent generic constraints through every
+async forwarding layer made native type relation checking the dominant cost.
+Preserve the nominal definition and exact input/output checks when evolving
+that boundary.
 
 Unused disable directives are warnings. Remove them when encountered. A real
 exception may use a narrow inline disable with a concrete reason; broad file or
@@ -145,7 +180,7 @@ intentional warnings (`global-random` and `node-builtin-import`).
 
 After upgrading Vite+, Oxlint, TypeScript, or `@effect/tsgo`:
 
-1. Run `vp lint --report-unused-disable-directives --format json` and group new
+1. Run `vp lint --format json` and group new
    warnings by rule and runtime.
 2. Keep a new warning when samples are actionable and the output remains
    bounded. Do not promote it merely because it is new.

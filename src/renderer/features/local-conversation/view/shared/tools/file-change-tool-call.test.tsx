@@ -7,11 +7,8 @@ import {
   installMeasuredResizeObserver,
   installWindowApi,
 } from "../../../../../test/browser-globals";
-import {
-  renderWithMaitai as render,
-  settleAsyncRender,
-  textContent,
-} from "../../../../../test/dom";
+import { renderWithMaitai as render } from "../../../../../test/thread-maitai";
+import { settleAsyncRender, textContent } from "../../../../../test/dom";
 import type {
   CodexFileChange,
   CodexFileChangeView,

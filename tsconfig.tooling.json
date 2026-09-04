@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.node.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "tsBuildInfoFile": ".cache/typescript/tooling.tsbuildinfo",
+    "paths": {
+      "@/*": ["./src/renderer/*"]
+    }
+  },
+  "include": [
+    "config/test-suites*.ts",
+    "config/vitest-*.ts",
+    "scripts/tooling/**/*.ts",
+    "scripts/testing/**/*.ts",
+    "scripts/testing/**/*.mts",
+    "scripts/ci/**/*.test.ts",
+    "vitest.*.config.ts",
+    "config/renderer-worker-count*.ts"
+  ],
+  "exclude": ["scripts/fixtures/**"]
+}

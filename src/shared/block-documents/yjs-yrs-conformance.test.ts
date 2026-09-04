@@ -1,3 +1,4 @@
+import { requiredNativeExecutable } from "../../../scripts/testing/native-artifacts";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -71,8 +72,7 @@ interface SemanticOperationSummary {
 }
 
 const fixtureRoot = path.resolve("crates/nodex-core/tests/fixtures/yjs-yrs");
-// The first bridge invocation may cold-start rustup and compile the bridge on CI.
-const rustBridgeColdStartTimeoutMs = 300_000;
+const bridgeExecutable = requiredNativeExecutable("yjs-yrs-bridge");
 const temporaryRoots: string[] = [];
 
 const firstXmlText = (node: Y.XmlFragment | Y.XmlElement): Y.XmlText => {
@@ -91,11 +91,7 @@ const firstXmlText = (node: Y.XmlFragment | Y.XmlElement): Y.XmlText => {
 
 const runBridge = <T = BridgeSummary>(args: readonly string[]): T =>
   JSON.parse(
-    execFileSync(
-      "cargo",
-      ["run", "--quiet", "-p", "nodex-core", "--example", "yjs_yrs_bridge", "--", ...args],
-      { cwd: path.resolve("."), encoding: "utf8" },
-    ),
+    execFileSync(bridgeExecutable, [...args], { cwd: path.resolve("."), encoding: "utf8" }),
   ) as T;
 
 const normalizedStateVector = (bytes: Uint8Array): readonly (readonly [number, number])[] =>
@@ -257,26 +253,22 @@ afterEach(() => {
 });
 
 describe("Yjs/Yrs compatibility", () => {
-  test(
-    "materializes the same schema matrix after a Rust BlockTree round trip",
-    () => {
-      const temporaryRoot = mkdtempSync(path.join(tmpdir(), "nodex-block-tree-"));
-      temporaryRoots.push(temporaryRoot);
-      const roundtripUpdatePath = path.join(temporaryRoot, "matrix-roundtrip.bin");
-      runBridge(["matrix-block-tree-roundtrip", fixtureRoot, roundtripUpdatePath]);
+  test("materializes the same schema matrix after a Rust BlockTree round trip", () => {
+    const temporaryRoot = mkdtempSync(path.join(tmpdir(), "nodex-block-tree-"));
+    temporaryRoots.push(temporaryRoot);
+    const roundtripUpdatePath = path.join(temporaryRoot, "matrix-roundtrip.bin");
+    runBridge(["matrix-block-tree-roundtrip", fixtureRoot, roundtripUpdatePath]);
 
-      const source = new Y.Doc({ guid: "matrix-source" });
-      Y.applyUpdate(source, readFileSync(path.join(fixtureRoot, "matrix-base.bin")));
-      const roundtrip = new Y.Doc({ guid: "matrix-roundtrip" });
-      Y.applyUpdate(roundtrip, readFileSync(roundtripUpdatePath));
+    const source = new Y.Doc({ guid: "matrix-source" });
+    Y.applyUpdate(source, readFileSync(path.join(fixtureRoot, "matrix-base.bin")));
+    const roundtrip = new Y.Doc({ guid: "matrix-roundtrip" });
+    Y.applyUpdate(roundtrip, readFileSync(roundtripUpdatePath));
 
-      expect(materializePageDocument(roundtrip)).toEqual(materializePageDocument(source));
-      expect(semanticXml(roundtrip.getXmlFragment("body"))).toEqual(
-        semanticXml(source.getXmlFragment("body")),
-      );
-    },
-    rustBridgeColdStartTimeoutMs,
-  );
+    expect(materializePageDocument(roundtrip)).toEqual(materializePageDocument(source));
+    expect(semanticXml(roundtrip.getXmlFragment("body"))).toEqual(
+      semanticXml(source.getXmlFragment("body")),
+    );
+  }, 30_000);
 
   test("continues editing a rich Page in both engines after a bidirectional round trip", () => {
     const temporaryRoot = mkdtempSync(path.join(tmpdir(), "nodex-yjs-yrs-"));

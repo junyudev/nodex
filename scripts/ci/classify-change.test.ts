@@ -24,10 +24,10 @@ describe("CI change classification", () => {
 
   test("selects only the landing owner for landing plus documentation", () => {
     expect(classifyChangedPaths(["packages/landing/src/App.tsx", "README.md"])).toMatchObject({
-      appTestSuites: [],
+      appTestSuites: ["unit", "renderer"],
       landingOnly: true,
       staticGroups: ["landing"],
-      testMode: "none",
+      testMode: "related",
     });
   });
 
@@ -59,6 +59,9 @@ describe("CI change classification", () => {
       ["src/renderer/lib/example.jsdom.test.ts", "renderer"],
       ["src/renderer/lib/example.browser.test.tsx", "browser"],
       ["src/main/core-client/example.node.test.ts", "core-client"],
+      ["src/main/new-application/example.node.test.ts", "core-client"],
+      ["packages/effect-codex-app-server/src/example.test.ts", "effect-codex"],
+      ["src/shared/block-documents/yjs-yrs-conformance.test.ts", "core-client"],
       ["src/main/example.test.ts", "main"],
       ["src/main/example.integration.ts", "integration"],
     ] as const) {
@@ -88,7 +91,7 @@ describe("CI change classification", () => {
   test("leaves explicit stress tests to their nightly owner", () => {
     expect(classifyChangedPaths(["src/main/git-worker/example.stress.test.ts"])).toMatchObject({
       appTestSuites: [],
-      staticGroups: ["types", "repository-contracts"],
+      staticGroups: ["types", "repository-contracts", "ci-contracts"],
       testMode: "none",
     });
   });
@@ -96,7 +99,12 @@ describe("CI change classification", () => {
   test("routes Rust and protocol ownership without UI, stress, or macOS gates", () => {
     expect(
       classifyChangedPaths(["crates/nodex-core/src/database/relation_projection.rs"]),
-    ).toMatchObject({ appTestSuites: [], rustFast: true, rustMigration: false, testMode: "none" });
+    ).toMatchObject({
+      appTestSuites: ["core-client", "main", "integration"],
+      rustFast: true,
+      rustMigration: false,
+      testMode: "full",
+    });
     expect(
       classifyChangedPaths(["crates/nodex-core/src/infrastructure/migration.rs"]),
     ).toMatchObject({ rustFast: true, rustMigration: true });
@@ -119,11 +127,11 @@ describe("CI change classification", () => {
       testMode: "full",
     });
     expect(classifyChangedPaths(["Cargo.lock", "crates/nodex-core/Cargo.toml"])).toMatchObject({
-      appTestSuites: [],
+      appTestSuites: ["core-client", "main", "integration"],
       dependencyKind: "rust",
       rustFast: true,
       rustMigration: true,
-      testMode: "none",
+      testMode: "full",
     });
   });
 
@@ -222,5 +230,17 @@ describe("CI change classification", () => {
 
   test("rejects paths that escape the repository", () => {
     expect(() => classifyChangedPaths(["../outside"])).toThrow("invalid");
+  });
+});
+
+test("audits landing test ownership and validates the shared process adapter in real suites", () => {
+  expect(classifyChangedPaths(["packages/landing/src/new.jsdom.test.ts"])).toMatchObject({
+    landingOnly: true,
+    staticGroups: ["ci-contracts", "landing"],
+    appTestSuites: ["unit", "renderer"],
+  });
+  expect(classifyChangedPaths(["scripts/tooling/process.ts"])).toMatchObject({
+    appTestSuites: APP_TEST_SUITES,
+    testMode: "full",
   });
 });

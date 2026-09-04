@@ -8,7 +8,8 @@ import {
   installMeasuredResizeObserver,
   installWindowApi,
 } from "../../../../test/browser-globals";
-import { renderWithMaitai as render, settleAsyncRender, textContent } from "../../../../test/dom";
+import { renderWithMaitai as render } from "../../../../test/thread-maitai";
+import { settleAsyncRender, textContent } from "../../../../test/dom";
 import { TestQueryProvider } from "../../../../test/query";
 import { THREAD_SETTINGS_STORAGE_KEY } from "../../../../lib/codex-thread-settings";
 import { CodexThreadSettingsProvider } from "../../../../lib/use-codex-thread-settings";

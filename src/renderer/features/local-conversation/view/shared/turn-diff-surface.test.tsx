@@ -9,7 +9,8 @@ import {
   installAsyncRequestAnimationFrame,
   installWindowApi,
 } from "../../../../test/browser-globals";
-import { renderWithMaitai as render, settleAsyncRender } from "../../../../test/dom";
+import { renderWithMaitai as render } from "../../../../test/thread-maitai";
+import { settleAsyncRender } from "../../../../test/dom";
 import type { CodexTranscriptEntry } from "../../../../lib/types";
 import type { ReviewOpenIntent } from "@/features/review/model/review-view-state";
 import type { GitWorkerQueryClient } from "@/features/review/data/git-query";

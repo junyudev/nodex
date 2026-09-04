@@ -40,8 +40,8 @@ const rawMarkdownReferencePaths = [
   "docs/references/notion-flavored-markdown-syntax-sample.md",
 ];
 
-// These files remain runnable artifacts, but they were deliberately outside the
-// previous `tsc -b` project graph. Keep the TS7 migration scoped to that graph.
+// JavaScript entrypoints use runtime contracts. Tooling test exceptions below
+// have an explicit type owner in tsconfig.tooling.json.
 const nonProjectSources = [
   "**/*.cjs",
   "**/*.js",
@@ -145,6 +145,12 @@ export default defineConfig({
         (path) => !toolingFixtureMode || !toolingFixtureIgnorePatterns.has(path),
       ),
       ...nonProjectSources.filter((path) => !toolingFixtureMode || path !== "scripts/**/*.test.ts"),
+      "!config/test-suites.test.ts",
+      "!config/vitest-test-tier.test.ts",
+      "!config/renderer-worker-count.test.ts",
+      "!scripts/tooling/**/*.test.ts",
+      "!scripts/testing/**/*.test.ts",
+      "!scripts/ci/**/*.test.ts",
     ],
     jsPlugins: [
       "./oxlint-plugin-nodex/index.ts",
@@ -161,6 +167,7 @@ export default defineConfig({
     options: {
       typeAware: !toolingFixtureMode,
       typeCheck: !toolingFixtureMode,
+      reportUnusedDisableDirectives: "warn",
     },
     plugins: ["effecttsgo", "eslint", "oxc", "react", "typescript", "unicorn"],
     rules: {
@@ -354,26 +361,72 @@ export default defineConfig({
     },
     tasks: {
       check: {
-        command: "vp check",
+        command: "vp fmt --check && vp check --no-fmt",
         env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
-        input: [{ auto: true }, "!cache.local", "!cache.local/**"],
+        input: [
+          { auto: true },
+          "package.json",
+          "pnpm-lock.yaml",
+          "pnpm-workspace.yaml",
+          "patches/**",
+          "!cache.local",
+          "!cache.local/**",
+        ],
         output: [],
       },
       "fmt:check": {
         command: "vp fmt --check",
-        input: [{ auto: true }, "!cache.local", "!cache.local/**"],
+        input: [
+          { auto: true },
+          "package.json",
+          "pnpm-lock.yaml",
+          "pnpm-workspace.yaml",
+          "patches/**",
+          "!cache.local",
+          "!cache.local/**",
+        ],
         output: [],
       },
       lint: {
-        command: "vp lint --report-unused-disable-directives",
+        command: "vp check --no-fmt",
         env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
-        input: [{ auto: true }, "!cache.local", "!cache.local/**"],
+        input: [
+          { auto: true },
+          "package.json",
+          "pnpm-lock.yaml",
+          "pnpm-workspace.yaml",
+          "patches/**",
+          "!cache.local",
+          "!cache.local/**",
+        ],
+        output: [],
+      },
+      "check:semantic": {
+        command: "vp check --no-fmt",
+        env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
+        input: [
+          { auto: true },
+          "package.json",
+          "pnpm-lock.yaml",
+          "pnpm-workspace.yaml",
+          "patches/**",
+          "!cache.local",
+          "!cache.local/**",
+        ],
         output: [],
       },
       typecheck: {
         command: "vp check --no-fmt",
         env: ["ESLINT_BETTER_TAILWIND", "NODEX_TOOLING_FIXTURE_MODE"],
-        input: [{ auto: true }, "!cache.local", "!cache.local/**"],
+        input: [
+          { auto: true },
+          "package.json",
+          "pnpm-lock.yaml",
+          "pnpm-workspace.yaml",
+          "patches/**",
+          "!cache.local",
+          "!cache.local/**",
+        ],
         output: [],
       },
     },

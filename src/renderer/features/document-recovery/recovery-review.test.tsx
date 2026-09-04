@@ -1,6 +1,6 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
-import { renderWithMaitai } from "@/test/dom";
+import { renderWithMaitai } from "@/test/thread-maitai";
 import { DocumentRecovery, type DocumentRecoveryPort } from "@/lib/document-recovery";
 import type { RecoveryDraftInspection } from "../../../shared/block-documents/document-recovery";
 import { RecoveryReview } from "./recovery-review";

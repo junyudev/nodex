@@ -431,6 +431,11 @@ evidence at the seam that owns the behavior:
 - Renderer DOM tests and their testkits import the owning
   `shared/block-documents/*` module directly. Importing its aggregate entry
   point pulls unrelated schemas and editors into every isolated test file.
+- Keep `test/dom.tsx` independent of feature Providers. Use
+  `test/app-maitai.tsx` for application atoms and `test/thread-maitai.tsx` only
+  when thread/route owners are part of the behavior. Both create a fresh Store
+  and dispose it on unmount; a generic DOM helper must not import the workbench
+  scope graph on behalf of every component test.
 - Renderer behavior tests make Motion timelines instant by default without
   impersonating a user's accessibility preference, so transition timers and
   exit trees do not distort settled-state assertions. Tests that own full-

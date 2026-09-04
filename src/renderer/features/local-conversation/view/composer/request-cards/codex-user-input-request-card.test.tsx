@@ -2,7 +2,8 @@ import { act, fireEvent } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { NodexTooltipProvider as TooltipProvider } from "@/components/ui/tooltip";
 import type { CodexUserInputRequest } from "@/lib/types";
-import { renderWithMaitai, settleAsyncRender } from "@/test/dom";
+import { renderWithMaitai } from "@/test/thread-maitai";
+import { settleAsyncRender } from "@/test/dom";
 import { installWindowApi } from "@/test/browser-globals";
 import {
   CodexUserInputAutoResolutionCountdown,

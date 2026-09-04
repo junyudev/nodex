@@ -1,3 +1,4 @@
+import { resolveVitestTestTier } from "./config/vitest-test-tier";
 import { testObservation } from "./config/vitest-observation";
 import { playwright } from "vite-plus/test/browser-playwright";
 import { defineConfig } from "vite-plus";
@@ -6,12 +7,9 @@ import {
   rendererViteCss,
   rendererViteResolve,
 } from "./config/renderer-vite-shared";
-import { selectTieredTestFiles } from "./config/vitest-test-tier";
+import { filesForSuite } from "./config/test-suites";
 
-const testFiles = selectTieredTestFiles({
-  defaultInclude: ["src/renderer/**/*.browser.test.{ts,tsx}"],
-  stressInclude: ["src/renderer/**/*.stress.browser.test.{ts,tsx}"],
-});
+const testFiles = filesForSuite("browser", resolveVitestTestTier());
 
 export default defineConfig({
   plugins: createRendererVitePlugins(),

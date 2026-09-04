@@ -1,6 +1,6 @@
-import { fireEvent } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
-import { render, settleAsyncRender, textContent } from "../../../test/dom";
+import { render, openNodexMenu, settleAsyncRender, textContent } from "../../../test/dom";
 import type { ThreadStageActions, ThreadStageHeaderModel } from "../thread-stage-types";
 
 function buildModel(overrides?: Partial<ThreadStageHeaderModel>): ThreadStageHeaderModel {
@@ -101,20 +101,17 @@ describe("ThreadStageHeader", () => {
     );
 
     const trigger = screen.getByRole("button", { name: "Task actions" });
-    fireEvent.pointerDown(trigger, {
-      button: 0,
-      ctrlKey: false,
-    });
-    fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
-    fireEvent.click(trigger);
-    await settleAsyncRender();
+    await openNodexMenu(trigger);
 
     const bodyText = textContent(document.body);
     expect(bodyText.indexOf("Rename") >= 0).toBe(true);
     expect(bodyText.indexOf("Rename") < bodyText.indexOf("Open side task")).toBe(true);
     expect(bodyText.indexOf("Open side task") < bodyText.indexOf("Copy")).toBe(true);
 
-    fireEvent.click(screen.getByText("Rename"));
+    await act(async () => {
+      fireEvent.click(screen.getByText("Rename"));
+      await Promise.resolve();
+    });
     expect(renameCalls).toBe(1);
   });
 
@@ -133,14 +130,11 @@ describe("ThreadStageHeader", () => {
     );
 
     const trigger = screen.getByRole("button", { name: "Task actions" });
-    fireEvent.pointerDown(trigger, {
-      button: 0,
-      ctrlKey: false,
+    await openNodexMenu(trigger);
+    await act(async () => {
+      fireEvent.keyDown(screen.getByRole("menuitem", { name: "Copy" }), { key: "ArrowRight" });
+      await Promise.resolve();
     });
-    fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
-    fireEvent.click(trigger);
-    await settleAsyncRender();
-    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Copy" }), { key: "ArrowRight" });
     await settleAsyncRender();
 
     const bodyText = textContent(document.body);

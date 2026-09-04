@@ -2531,6 +2531,9 @@ export interface IpcApi {
   };
 }
 
+/** The endpoint table already guarantees argument tuples; avoid rediscovering them in callers. */
+export type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"];
+
 export interface IpcEvents {
   "global-dictation:command": import("./global-dictation").GlobalDictationRendererCommand;
   "agent-import:progress": AgentImportProgress;

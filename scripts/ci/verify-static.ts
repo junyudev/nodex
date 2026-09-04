@@ -60,6 +60,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "ignored Rust test tiers",
   },
   {
+    command: ["run", "verify:test-inventory"],
+    group: "ci-contracts",
+    id: "test-inventory",
+    name: "test runtime ownership and collection",
+  },
+  {
     command: ["run", "tooling:verify"],
     group: "repository-contracts",
     id: "tooling-contracts",

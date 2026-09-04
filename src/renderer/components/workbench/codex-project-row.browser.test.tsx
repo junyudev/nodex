@@ -5,7 +5,7 @@ import { userEvent } from "vite-plus/test/browser";
 import type { Project } from "@/lib/types";
 import { NodexHoverCardProvider } from "@/components/ui/hover-card";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import { renderWithMaitai as render } from "../../test/dom";
+import { renderWithMaitai as render } from "../../test/thread-maitai";
 import { TestQueryProvider } from "../../test/query";
 import { CodexProjectRow } from "./codex-sidebar";
 import "../../globals.css";

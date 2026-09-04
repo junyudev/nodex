@@ -5,7 +5,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { NodexHoverCardProvider } from "@/components/ui/hover-card";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import type { Project } from "@/lib/types";
-import { renderWithMaitai as render } from "../../test/dom";
+import { renderWithMaitai as render } from "../../test/thread-maitai";
 import { TestQueryProvider } from "../../test/query";
 import { CodexProjectRow } from "./codex-sidebar";
 import {

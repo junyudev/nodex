@@ -4,7 +4,8 @@ import {
   createDateMentionClockStore,
   setDateMentionClockStoreForTest,
 } from "@/lib/nfm/date-mention-clock";
-import { renderWithMaitai as render, settleAsyncRender, textContent } from "../../../test/dom";
+import { renderWithMaitai as render } from "../../../test/thread-maitai";
+import { settleAsyncRender, textContent } from "../../../test/dom";
 import { ReadonlyNfmBlockNotePreview } from "./readonly-nfm-blocknote-preview";
 
 let restoreDateMentionClockStore: (() => void) | null = null;

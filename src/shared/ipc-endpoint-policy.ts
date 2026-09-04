@@ -634,23 +634,23 @@ export type IpcEndpointPolicy = {
   readonly [Channel in keyof IpcApi]: EndpointPolicy<Channel>;
 };
 
-type ChannelForKind<Kind extends IpcEndpointPolicy[keyof IpcApi]["kind"]> = {
-  [Channel in keyof IpcEndpointPolicy]: IpcEndpointPolicy[Channel] extends { readonly kind: Kind }
-    ? Channel
-    : never;
-}[keyof IpcEndpointPolicy];
+// Keep selection on the channel policy itself. Reconstructing it from IpcEndpointPolicy
+// repeatedly relates every endpoint's argument/result graph for generic callers.
+export type IpcQueryChannel = QueryEndpointPolicy;
+export type IpcControlChannel = ControlEndpointPolicy;
+export type IpcCommandChannel =
+  | CoreLocalCommitCommandEndpointPolicy
+  | MainRevisionCommandEndpointPolicy
+  | PlainResultCommandEndpointPolicy;
 
-export type IpcQueryChannel = ChannelForKind<"query">;
-export type IpcControlChannel = ChannelForKind<"control">;
-export type IpcCommandChannel = ChannelForKind<"command">;
+interface CommandChannelsByAcknowledgement {
+  readonly core_local_commit: CoreLocalCommitCommandEndpointPolicy;
+  readonly main_revision: MainRevisionCommandEndpointPolicy;
+  readonly plain_result: PlainResultCommandEndpointPolicy;
+}
 
-export type IpcCommandChannelFor<Acknowledgement extends IpcAcknowledgement> = {
-  [Channel in IpcCommandChannel]: IpcEndpointPolicy[Channel] extends {
-    readonly acknowledgement: Acknowledgement;
-  }
-    ? Channel
-    : never;
-}[IpcCommandChannel];
+export type IpcCommandChannelFor<Acknowledgement extends IpcAcknowledgement> =
+  CommandChannelsByAcknowledgement[Acknowledgement];
 
 export type CoreLocalCommitCommandChannel = IpcCommandChannelFor<"core_local_commit">;
 export type MainRevisionCommandChannel = IpcCommandChannelFor<"main_revision">;

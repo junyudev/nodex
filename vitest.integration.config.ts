@@ -1,14 +1,12 @@
+import { resolveVitestTestTier } from "./config/vitest-test-tier";
 import { testObservation } from "./config/vitest-observation";
 import { defineConfig } from "vite-plus";
 import { assertElectronTestRuntime } from "./config/electron-test-runtime";
-import { selectTieredTestFiles } from "./config/vitest-test-tier";
+import { filesForSuite } from "./config/test-suites";
 
 assertElectronTestRuntime("integration");
 
-const testFiles = selectTieredTestFiles({
-  defaultInclude: ["src/main/**/*.integration.ts", "src/renderer/**/*.integration.ts"],
-  stressInclude: ["src/main/**/*.stress.integration.ts", "src/renderer/**/*.stress.integration.ts"],
-});
+const testFiles = filesForSuite("integration", resolveVitestTestTier());
 
 export default defineConfig({
   test: {

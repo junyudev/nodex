@@ -1,33 +1,10 @@
+import { resolveVitestTestTier } from "./config/vitest-test-tier";
 import { testObservation } from "./config/vitest-observation";
 import { defineConfig } from "vite-plus";
 import { rendererViteResolve } from "./config/renderer-vite-shared";
-import { selectTieredTestFiles } from "./config/vitest-test-tier";
+import { filesForSuite } from "./config/test-suites";
 
-const testFiles = selectTieredTestFiles({
-  defaultExclude: [
-    "packages/landing/src/download-cta.test.ts",
-    "scripts/fixtures/**",
-    "src/renderer/**/*.browser.test.ts",
-    "src/renderer/**/*.jsdom.test.ts",
-    "src/renderer/**/*.stress.test.{ts,tsx}",
-    "third_party/**",
-  ],
-  defaultInclude: [
-    "config/**/*.test.ts",
-    "scripts/**/*.test.ts",
-    "src/shared/**/*.test.ts",
-    "src/renderer/**/*.test.ts",
-    "src/renderer/**/*.node.test.{ts,tsx}",
-    "packages/landing/src/**/*.test.ts",
-  ],
-  stressInclude: [
-    "config/**/*.stress.test.ts",
-    "scripts/**/*.stress.test.ts",
-    "src/shared/**/*.stress.test.ts",
-    "src/renderer/**/*.stress.node.test.{ts,tsx}",
-    "packages/landing/src/**/*.stress.test.ts",
-  ],
-});
+const testFiles = filesForSuite("unit", resolveVitestTestTier());
 
 export default defineConfig({
   resolve: rendererViteResolve,

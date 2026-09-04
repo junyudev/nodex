@@ -1,3 +1,4 @@
+import { requiredNativeExecutable } from "../../../scripts/testing/native-artifacts";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,7 +18,7 @@ import type {
 } from "./types";
 import { applyResultCursor, applyResultDelivery, applyResultStoreEpoch } from "./types";
 
-const CORE_BINARY = path.resolve("target/debug/nodex-core");
+const CORE_BINARY = requiredNativeExecutable("core-server");
 const CORE_STDERR_LIMIT = 16 * 1024;
 const CORE_STARTUP_TIMEOUT_MS = 35_000;
 const coreStderr = new WeakMap<ChildProcessWithoutNullStreams, string>();
@@ -200,7 +201,7 @@ describe("CoreClient over a Unix socket", () => {
   });
 
   test("reuses one daemon and completes handshake, read, apply, event, and shutdown", async () => {
-    expect(existsSync(CORE_BINARY), "run pnpm run core:test:client").toBe(true);
+    expect(existsSync(CORE_BINARY), "run vp run test:core-client").toBe(true);
     const nodexHome = mkdtempSync(path.join(tmpdir(), "nodex-core-client-"));
     const children = [spawnCore(nodexHome), spawnCore(nodexHome)];
     let subscription: CoreEventSubscription | undefined;

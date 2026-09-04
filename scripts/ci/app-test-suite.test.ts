@@ -17,6 +17,16 @@ describe("application CI suite planning", () => {
         },
       ],
       [
+        "effect-codex",
+        {
+          needsPlaywright: false,
+          needsRust: false,
+          needsXvfb: false,
+          packageScript: "test:effect-codex",
+          relatedPackageScript: "test:effect-codex:related",
+        },
+      ],
+      [
         "core-client",
         {
           needsPlaywright: false,
@@ -52,8 +62,8 @@ describe("application CI suite planning", () => {
           needsPlaywright: false,
           needsRust: true,
           needsXvfb: true,
-          packageScript: "test:integration:ci",
-          relatedPackageScript: "test:integration:ci:related",
+          packageScript: "test:integration",
+          relatedPackageScript: "test:integration:related",
         },
       ],
       [

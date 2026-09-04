@@ -7,7 +7,7 @@ import type {
   CodexPendingWorktreeThreadResolution,
   CodexPendingWorktreesChangedEvent,
 } from "../../../shared/codex-pending-worktree";
-import { renderWithMaitai } from "../../test/dom";
+import { renderWithMaitai } from "../../test/thread-maitai";
 import {
   PendingWorktreeRoute,
   PendingWorktreeRouteView,

@@ -1,7 +1,7 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 
-import { renderWithMaitai } from "../../../../test/dom";
+import { renderWithMaitai } from "../../../../test/thread-maitai";
 import { TestQueryProvider } from "../../../../test/query";
 import { GeneratedImageGallery } from "./generated-image-gallery";
 import { getGeneratedImageAnimationClockSubscriberCount } from "../../../user-attachment-image-editor/view/generated-image-animation-clock";

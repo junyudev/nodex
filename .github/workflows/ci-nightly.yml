@@ -35,8 +35,8 @@ jobs:
     name: nightly application and browser tests
     uses: ./.github/workflows/_app-tests.yml
     with:
-      gate_plan_json: '{"allGates":true,"appTestSuites":["unit","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"releaseTransition":false,"rustFast":true,"rustFull":true,"rustMigration":true,"staticGroups":["types","ui-contracts","ci-contracts","repository-contracts","generated","landing"],"testMode":"full"}'
-      suites_json: '["unit","core-client","main","renderer","integration","browser"]'
+      gate_plan_json: '{"allGates":true,"appTestSuites":["unit","effect-codex","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"releaseTransition":false,"rustFast":true,"rustFull":true,"rustMigration":true,"staticGroups":["types","ui-contracts","ci-contracts","repository-contracts","generated","landing"],"testMode":"full"}'
+      suites_json: '["unit","effect-codex","core-client","main","renderer","integration","browser"]'
       timing_prefix: nightly-app
 
   stress:

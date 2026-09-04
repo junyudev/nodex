@@ -227,11 +227,17 @@ describe("Nodex toast system", () => {
       await settleAsyncRender();
     });
 
-    fireEvent.click(view.getByRole("button", { name: "View recording" }));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "View recording" }));
+      await Promise.resolve();
+    });
     expect(calls).toEqual(["view"]);
     expect(view.getByRole("alert")).toBeTruthy();
 
-    fireEvent.click(view.getByRole("button", { name: "Retry" }));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Retry" }));
+      await Promise.resolve();
+    });
     expect(calls).toEqual(["view", "retry"]);
   });
 

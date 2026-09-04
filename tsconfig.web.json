@@ -22,5 +22,6 @@
     "src/renderer/**/*.ts",
     "src/renderer/**/*.tsx",
     "src/shared/**/*.ts"
-  ]
+  ],
+  "exclude": ["src/shared/**/*.test.ts"]
 }

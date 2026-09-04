@@ -161,26 +161,34 @@ describe("VoiceSettingsPage", () => {
   test("edits dictation hotkeys inline and waits for the non-modifier key", async () => {
     renderPage();
 
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Change shortcut for Toggle dictation hotkey",
-      }),
-    );
+    const trigger = await screen.findByRole("button", {
+      name: "Change shortcut for Toggle dictation hotkey",
+    });
+    await act(async () => {
+      fireEvent.click(trigger);
+      await Promise.resolve();
+    });
     const capture = screen.getByRole("textbox", {
       name: "Toggle dictation hotkey capture",
     });
-    fireEvent.keyDown(capture, {
-      code: "ControlLeft",
-      ctrlKey: true,
-      key: "Control",
-      location: 1,
+    await act(async () => {
+      fireEvent.keyDown(capture, {
+        code: "ControlLeft",
+        ctrlKey: true,
+        key: "Control",
+        location: 1,
+      });
+      await Promise.resolve();
     });
     expect(mocks.setKeybinding).not.toHaveBeenCalled();
 
-    fireEvent.keyDown(capture, {
-      code: "KeyY",
-      ctrlKey: true,
-      key: "y",
+    await act(async () => {
+      fireEvent.keyDown(capture, {
+        code: "KeyY",
+        ctrlKey: true,
+        key: "y",
+      });
+      await Promise.resolve();
     });
 
     await vi.waitFor(() => {

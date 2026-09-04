@@ -1,4 +1,4 @@
-import type { IpcApi } from "../../../shared/ipc-api";
+import type { IpcArgs } from "../../../shared/ipc-api";
 import {
   DEFAULT_BROWSER_USE_POLICY,
   MAX_BROWSER_USE_POLICY_ORIGINS,
@@ -21,10 +21,6 @@ import {
   invokePlainCommandWithTrace,
   invokeRendererQuery,
 } from "@/lib/renderer-command";
-
-type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"] extends readonly unknown[]
-  ? IpcApi[Channel]["args"]
-  : never;
 
 const clearBrowserDataCommand = defineRendererCommand({
   key: "browser_profile.clear_data",

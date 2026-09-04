@@ -1,3 +1,4 @@
+import { requiredNativeExecutable } from "../../scripts/testing/native-artifacts";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
@@ -79,7 +80,7 @@ import {
   live as conversationEntityMapLive,
 } from "./codex-application/internal/ConversationEntityMap";
 
-const CORE_BINARY = path.resolve("target/debug/nodex-core");
+const CORE_BINARY = requiredNativeExecutable("core-server");
 const temporaryDirectories: string[] = [];
 
 const withFinalDataApplications = <A, E>(
@@ -229,7 +230,7 @@ const listCurrentProcessFiles = (): string => {
 };
 
 afterEach(() => {
-  delete process.env.NODEX_CORE_EXECUTABLE;
+  process.env.NODEX_CORE_EXECUTABLE = CORE_BINARY;
   delete process.env.NODEX_HOME;
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });

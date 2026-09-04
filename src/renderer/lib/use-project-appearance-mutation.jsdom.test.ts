@@ -155,13 +155,17 @@ describe("useProjectAppearanceMutation", () => {
     expect(presentedAppearance()).toEqual(RED_HEART);
     await waitFor(() => expect(mocks.invokeCommand).toHaveBeenCalledTimes(1));
 
-    first.resolve({ value: project(RED_FOLDER, 2), acknowledgement: committed(2) });
-    await act(async () => await first.promise);
+    await act(async () => {
+      first.resolve({ value: project(RED_FOLDER, 2), acknowledgement: committed(2) });
+      await first.promise;
+    });
     await waitFor(() => expect(mocks.invokeCommand).toHaveBeenCalledTimes(2));
     expect(presentedAppearance()).toEqual(RED_HEART);
 
-    second.resolve({ value: project(RED_HEART, 3), acknowledgement: committed(3) });
-    await act(async () => await second.promise);
+    await act(async () => {
+      second.resolve({ value: project(RED_HEART, 3), acknowledgement: committed(3) });
+      await second.promise;
+    });
     expect(presentedAppearance()).toEqual(RED_HEART);
   });
 
@@ -204,7 +208,9 @@ describe("useProjectAppearanceMutation", () => {
     expect(presentedAppearance()).toEqual(RED_HEART);
     expect(catalog.getSnapshot().unknownOutcomeCount).toBe(1);
 
-    await catalog.retryProjectUpdate(initialProject.id);
+    await act(async () => {
+      await catalog.retryProjectUpdate(initialProject.id);
+    });
     expect(mocks.invokeCommand.mock.calls[1]?.[1].operationId).toBe(firstCommand.operationId);
     expect(presentedAppearance()).toEqual(RED_HEART);
   });
@@ -220,10 +226,15 @@ describe("useProjectAppearanceMutation", () => {
       hook.result.current.changeAppearance(RED_HEART);
     });
     const waiting = hook.result.current.waitForSettledProject();
-    first.resolve({ value: project(RED_FOLDER, 2), acknowledgement: committed(2) });
-    await act(async () => await first.promise);
+    await act(async () => {
+      first.resolve({ value: project(RED_FOLDER, 2), acknowledgement: committed(2) });
+      await first.promise;
+    });
     await waitFor(() => expect(mocks.invokeCommand).toHaveBeenCalledTimes(2));
-    second.resolve({ value: project(RED_HEART, 3), acknowledgement: committed(3) });
+    await act(async () => {
+      second.resolve({ value: project(RED_HEART, 3), acknowledgement: committed(3) });
+      await waiting;
+    });
 
     await expect(waiting).resolves.toMatchObject({
       bindingRevision: 3,

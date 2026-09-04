@@ -54,9 +54,9 @@ jobs:
     needs: guard
     uses: ./.github/workflows/_app-tests.yml
     with:
-      gate_plan_json: '{"allGates":true,"appTestSuites":["unit","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"releaseTransition":false,"rustFast":true,"rustFull":true,"rustMigration":true,"staticGroups":["types","ui-contracts","ci-contracts","repository-contracts","generated","landing"],"testMode":"full"}'
+      gate_plan_json: '{"allGates":true,"appTestSuites":["unit","effect-codex","core-client","main","renderer","integration","browser"],"dependencyKind":"source","docsOnly":false,"landingOnly":false,"protocolContracts":true,"relatedPaths":[],"releaseTransition":false,"rustFast":true,"rustFull":true,"rustMigration":true,"staticGroups":["types","ui-contracts","ci-contracts","repository-contracts","generated","landing"],"testMode":"full"}'
       source_sha: ${{ inputs.source_sha }}
-      suites_json: '["unit","core-client","main","renderer","integration","browser"]'
+      suites_json: '["unit","effect-codex","core-client","main","renderer","integration","browser"]'
       timing_prefix: certify-app
 
   stress:

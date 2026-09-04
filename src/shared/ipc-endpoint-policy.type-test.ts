@@ -2,6 +2,8 @@ import type { IpcApi } from "./ipc-api";
 import type {
   CoreLocalCommitCommandChannel,
   IpcCommand,
+  IpcCommandChannelFor,
+  MainRevisionCommandChannel,
   IpcEndpointPolicy,
   IpcEndpointPolicyIsComplete,
   IpcOperationDefinitionMap,
@@ -73,3 +75,16 @@ export type IpcEndpointPolicyTypeFixtures =
   | typeof aggregateOperationDefinitions
   | typeof missingAggregateOperation
   | typeof missingEvidenceCommand;
+
+// Acknowledgement selection remains exact for individual and union policies.
+export type AcknowledgementChannelSelection =
+  | ExpectTrue<TypeEqual<IpcCommandChannelFor<"core_local_commit">, CoreLocalCommitCommandChannel>>
+  | ExpectTrue<TypeEqual<IpcCommandChannelFor<"main_revision">, MainRevisionCommandChannel>>
+  | ExpectTrue<TypeEqual<IpcCommandChannelFor<"plain_result">, PlainResultCommandChannel>>
+  | ExpectTrue<
+      TypeEqual<
+        IpcCommandChannelFor<"main_revision" | "plain_result">,
+        MainRevisionCommandChannel | PlainResultCommandChannel
+      >
+    >
+  | ExpectTrue<TypeEqual<IpcCommandChannelFor<never>, never>>;

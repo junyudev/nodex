@@ -5,12 +5,8 @@ import {
   createDateMentionClockStore,
   setDateMentionClockStoreForTest,
 } from "@/lib/nfm/date-mention-clock";
-import {
-  renderWithMaitai as render,
-  settleAsyncRender,
-  textContent,
-  waitForStreamdownCodeHighlight,
-} from "../../test/dom";
+import { renderWithMaitai as render } from "../../test/thread-maitai";
+import { settleAsyncRender, textContent, waitForStreamdownCodeHighlight } from "../../test/dom";
 import { NfmRenderer } from "./nfm-renderer";
 
 let restoreDateMentionClockStore: (() => void) | null = null;

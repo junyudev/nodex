@@ -37,7 +37,7 @@ It ships as an Electron desktop app plus a CLI/HTTP API backed by SQLite.
 - Package installers: `vp run package`
 - Unified check: `vp run check`
 - Semantic check without formatting: `vp run typecheck`
-- Lint only: `vp run lint`
+- Full semantic aliases: `vp run check:semantic`, `vp run typecheck`, `vp run lint` (shared cache)
 - Format check: `vp run fmt:check`
 - Standard tests: `vp run test`
 - Source gate: `vp run verify:source` (`vp run test:all` is an alias)
@@ -153,8 +153,8 @@ Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** 
 
 - Use a two-tier validation strategy: run targeted checks while iterating, then run risk-appropriate handoff checks once after the final edit set is stable.
 - Match targeted test commands to their runtime:
-  - Node/shared tests outside CoreClient: `vp test run --config vitest.node.config.ts <path-to-test>`
-  - CoreClient tests: `vp run test:core-client <path-to-test>`
+  - Node/shared tests outside native Core/bridge contracts: `vp test run --config vitest.node.config.ts <path-to-test>`
+  - All Main `.node.test.ts` files and shared Yjs/Yrs bridge tests: `vp run test:core-client <path-to-test>`
   - Renderer/jsdom tests: `vp test run --config vitest.renderer.config.ts <path-to-test>`
   - Main/store tests: `vp run test:main <path-to-test>`
   - Electron integration tests: `vp run test:integration <path-to-test>`
@@ -166,7 +166,7 @@ Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** 
   - Pure helpers/domain logic: run the related unit test file.
   - Renderer workflow changes: run the related renderer test(s) plus `vp run typecheck` when types or props changed.
   - Main process/store/protocol/migration changes: run the nearest relevant unit or integration test before any broader handoff checks.
-  - Styling or copy-only UI changes: run `vp run lint` and `vp run typecheck` when TypeScript/TSX files changed; review visual parity at the UI evidence boundary below.
+  - Styling or copy-only UI changes: run one complete semantic alias (`vp run typecheck` or `vp run lint`) when TypeScript/TSX files changed; review visual parity at the UI evidence boundary below.
 - For docs-only changes, skip code checks unless the docs change generated artifacts or executable examples. Validate the markdown diff directly and state that no code checks were needed.
 - Prefer tests that prove behavior or domain contracts over tests that mirror implementation details. Avoid trivial UI assertions such as long `className`/Tailwind string matching, broad `textContent.includes(...)`, or "X contains Y string" checks unless the string is a real user-visible or accessibility contract.
 - For UI parity work, put numeric/state rules in pure helpers with boundary tests, keep renderer integration tests to a small number of critical user workflows, and review visual details at the UI evidence boundary below.
@@ -186,7 +186,7 @@ Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** 
 - Choose final checks from the actual risk and changed runtime rather than from a fixed command list:
   - Run the relevant targeted tests for every behavior change.
   - For TypeScript source or contract changes, normally run `vp run typecheck` once the edit set is stable.
-  - Lint all changed source files. Use `vp run lint` when the change is broad or no reliable scoped lint command exists.
+  - `typecheck`, `lint`, and `check:semantic` are the same full semantic gate and share cache results; one successful alias covers types and lint. For a targeted lint investigation, use `vp lint <paths>`. Use `vp run --no-cache check:semantic` to force real analysis, with run options before the task name.
   - Run `vp run build` when build configuration, application entrypoints, packaging, bundling, or a reported build/startup failure is involved.
   - Run `vp run test` for broad cross-cutting refactors, release validation, or changes whose impact cannot be bounded by targeted suites. It is not required for every isolated code change.
   - Run `vp run test:all` only for an explicit full release gate or when the changed release tooling itself requires it.

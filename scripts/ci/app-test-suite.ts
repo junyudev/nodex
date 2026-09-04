@@ -1,7 +1,12 @@
 import { appendFileSync } from "node:fs";
 import path from "node:path";
 
-import { APP_TEST_SUITES, type AppTestSuite } from "./ci-gate-plan";
+import {
+  nativeRequirements,
+  parseTestSuite,
+  runtimeForSuite,
+  type SuiteId as AppTestSuite,
+} from "../../config/test-suites.ts";
 
 export interface AppTestSuitePlan {
   readonly needsPlaywright: boolean;
@@ -11,57 +16,15 @@ export interface AppTestSuitePlan {
   readonly relatedPackageScript: string;
 }
 
-const SUITE_PLANS: Readonly<Record<AppTestSuite, AppTestSuitePlan>> = {
-  browser: {
-    needsPlaywright: true,
-    needsRust: false,
-    needsXvfb: false,
-    packageScript: "test:browser",
-    relatedPackageScript: "test:browser:related",
-  },
-  "core-client": {
-    needsPlaywright: false,
-    needsRust: true,
-    needsXvfb: false,
-    packageScript: "test:core-client",
-    relatedPackageScript: "test:core-client:related",
-  },
-  integration: {
-    needsPlaywright: false,
-    needsRust: true,
-    needsXvfb: true,
-    packageScript: "test:integration:ci",
-    relatedPackageScript: "test:integration:ci:related",
-  },
-  main: {
-    needsPlaywright: false,
-    needsRust: true,
-    needsXvfb: true,
-    packageScript: "test:main",
-    relatedPackageScript: "test:main:related",
-  },
-  renderer: {
-    needsPlaywright: false,
-    needsRust: false,
-    needsXvfb: false,
-    packageScript: "test:renderer",
-    relatedPackageScript: "test:renderer:related",
-  },
-  unit: {
-    needsPlaywright: false,
-    needsRust: false,
-    needsXvfb: false,
-    packageScript: "test:unit",
-    relatedPackageScript: "test:unit:related",
-  },
-};
+export const planAppTestSuite = (suite: AppTestSuite): AppTestSuitePlan => ({
+  needsPlaywright: runtimeForSuite(suite) === "chromium",
+  needsRust: nativeRequirements(suite).length > 0,
+  needsXvfb: runtimeForSuite(suite) === "electron-node",
+  packageScript: "test:" + suite,
+  relatedPackageScript: "test:" + suite + ":related",
+});
 
-export const planAppTestSuite = (suite: AppTestSuite): AppTestSuitePlan => SUITE_PLANS[suite];
-
-export const parseAppTestSuite = (value: string): AppTestSuite => {
-  if ((APP_TEST_SUITES as readonly string[]).includes(value)) return value as AppTestSuite;
-  throw new Error(`Unknown application test suite: ${JSON.stringify(value)}.`);
-};
+export const parseAppTestSuite = parseTestSuite;
 
 const readOption = (args: readonly string[], name: string): string | undefined => {
   const index = args.indexOf(name);

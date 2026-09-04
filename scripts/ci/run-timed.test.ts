@@ -30,7 +30,8 @@ describe("CI timed command runner", () => {
     const summaryPath = path.join(root, "summary.md");
     const environmentWithoutGitHubRunIdentity = Object.fromEntries(
       Object.entries(process.env).filter(
-        ([name]) => !["GITHUB_RUN_ATTEMPT", "GITHUB_RUN_ID", "GITHUB_SHA"].includes(name),
+        ([name]) =>
+          !["GITHUB_RUN_ATTEMPT", "GITHUB_RUN_ID", "GITHUB_SHA", "CI_SOURCE_SHA"].includes(name),
       ),
     );
     const success = await runTimedCommand({
@@ -45,6 +46,7 @@ describe("CI timed command runner", () => {
         GITHUB_RUN_ATTEMPT: "2",
         GITHUB_RUN_ID: "12345",
         GITHUB_SHA: "abc123",
+        CI_SOURCE_SHA: "source456",
       },
     });
     const failure = await runTimedCommand({
@@ -67,7 +69,7 @@ describe("CI timed command runner", () => {
       job: "test job",
       name: "successful step",
       runId: "12345",
-      sha: "abc123",
+      sha: "source456",
     });
     expect(records[1]).toMatchObject({
       attempt: null,

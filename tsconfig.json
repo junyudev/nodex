@@ -6,9 +6,20 @@
   },
   "files": [],
   "references": [
-    { "path": "./tsconfig.node.json" },
-    { "path": "./tsconfig.web.json" },
-    { "path": "./tsconfig.e2e.json" },
-    { "path": "./packages/landing/tsconfig.json" }
+    {
+      "path": "./tsconfig.node.json"
+    },
+    {
+      "path": "./tsconfig.web.json"
+    },
+    {
+      "path": "./tsconfig.e2e.json"
+    },
+    {
+      "path": "./packages/landing/tsconfig.json"
+    },
+    {
+      "path": "./tsconfig.tooling.json"
+    }
   ]
 }

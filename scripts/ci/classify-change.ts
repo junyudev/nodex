@@ -1,3 +1,4 @@
+import { ownerOfTest, nativeRequirements, suiteConfig } from "../../config/test-suites.ts";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -36,7 +37,6 @@ const isElectronMainPath = (path: string): boolean =>
   path.startsWith("src/preload/") ||
   path === "electron.vite.config.ts" ||
   path === "electron-builder.yml" ||
-  path === "scripts/run-vitest-in-electron.mjs" ||
   path.startsWith("scripts/scenarios/");
 
 const isRustPath = (path: string): boolean =>
@@ -94,24 +94,19 @@ const isJavaScriptDependencyPath = (path: string): boolean =>
 const isStressTestPath = (path: string): boolean => path.includes(".stress.");
 
 const owningTestSuite = (path: string): AppTestSuite | undefined => {
-  if (isStressTestPath(path)) return undefined;
-  if (/\.browser\.test\.[cm]?[jt]sx?$/u.test(path)) return "browser";
-  if (/\.integration\.[cm]?[jt]s$/u.test(path)) return "integration";
-  if (path.startsWith("src/main/core-client/") && /\.node\.test\.[cm]?[jt]s$/u.test(path)) {
-    return "core-client";
-  }
-  if (path.startsWith("src/main/") && /(?:\.node)?\.test\.[cm]?[jt]s$/u.test(path)) {
-    return "main";
-  }
-  if (path.startsWith("src/renderer/")) {
-    if (/\.node\.test\.[cm]?[jt]sx?$/u.test(path)) return "unit";
-    if (/\.jsdom\.test\.[cm]?[jt]s$/u.test(path)) return "renderer";
-    if (/\.test\.[cm]?[jt]sx$/u.test(path)) return "renderer";
-    if (/\.test\.[cm]?[jt]s$/u.test(path)) return "unit";
-  }
-  if (/\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(path)) return "unit";
-  return undefined;
+  const owner = ownerOfTest(path);
+  return owner?.tier === "default" ? owner.suite : undefined;
 };
+
+const nativeTestSuites = APP_TEST_SUITES.filter((suite) => nativeRequirements(suite).length > 0);
+
+// Rust and fixture files are external inputs that Vitest's module graph cannot follow.
+const isNativeTestInput = (path: string): boolean =>
+  isRustPath(path) ||
+  isRustDependencyPath(path) ||
+  path.startsWith(".cargo/") ||
+  path.startsWith("rust-toolchain") ||
+  path.startsWith("crates/nodex-core/tests/fixtures/");
 
 const requiresFullTests = (paths: readonly string[]): boolean =>
   paths.some(
@@ -122,7 +117,9 @@ const requiresFullTests = (paths: readonly string[]): boolean =>
       path === "electron.vite.config.ts" ||
       path.startsWith("config/") ||
       path.startsWith("scripts/ci/") ||
-      path === "scripts/run-vitest-in-electron.mjs" ||
+      path.startsWith("scripts/testing/") ||
+      path === "scripts/tooling/process.ts" ||
+      isNativeTestInput(path) ||
       path === "src/renderer/test/setup.ts" ||
       path === "src/renderer/test/setup-browser.ts" ||
       path.startsWith("tsconfig") ||
@@ -149,6 +146,10 @@ const testSuitesForPaths = (paths: readonly string[]): readonly AppTestSuite[] =
       add("renderer");
       continue;
     }
+    if (isNativeTestInput(path)) {
+      add(...nativeTestSuites);
+      continue;
+    }
     if (path.startsWith("src/shared/")) {
       add(...APP_TEST_SUITES);
       continue;
@@ -158,15 +159,19 @@ const testSuitesForPaths = (paths: readonly string[]): readonly AppTestSuite[] =
       continue;
     }
     if (path.startsWith("src/main/") || path.startsWith("src/preload/")) {
-      add("main", "integration");
+      add("core-client", "main", "integration");
       continue;
     }
     if (path.startsWith("src/renderer/")) {
       add("unit", "renderer", "browser");
       continue;
     }
+    if (path.startsWith("packages/effect-codex-app-server/")) {
+      add("effect-codex", "core-client", "main", "integration");
+      continue;
+    }
     if (path.startsWith("packages/landing/")) {
-      add("unit");
+      add("unit", "renderer");
       continue;
     }
     if (path.startsWith("packages/") || path.startsWith("third_party/")) {
@@ -178,12 +183,15 @@ const testSuitesForPaths = (paths: readonly string[]): readonly AppTestSuite[] =
       continue;
     }
     if (path.startsWith("vitest.")) {
-      if (path.startsWith("vitest.browser")) add("browser");
-      else if (path.startsWith("vitest.renderer")) add("renderer");
-      else if (path.startsWith("vitest.core-client")) add("core-client");
-      else if (path.startsWith("vitest.main")) add("main");
-      else if (path.startsWith("vitest.integration")) add("integration");
-      else add("unit");
+      add(...APP_TEST_SUITES.filter((suite) => suiteConfig(suite) === path));
+      continue;
+    }
+    if (
+      path === "config/test-suites.ts" ||
+      path.startsWith("scripts/testing/") ||
+      path === "scripts/tooling/process.ts"
+    ) {
+      add(...APP_TEST_SUITES);
       continue;
     }
     if (path.startsWith("config/vitest-") || path === "config/electron-test-runtime.ts") {
@@ -192,10 +200,6 @@ const testSuitesForPaths = (paths: readonly string[]): readonly AppTestSuite[] =
     }
     if (path.startsWith("config/renderer-")) {
       add("unit", "renderer", "browser");
-      continue;
-    }
-    if (path === "scripts/run-vitest-in-electron.mjs") {
-      add("main", "integration");
       continue;
     }
     if (path.startsWith("tsconfig")) {
@@ -323,6 +327,17 @@ const sourcePlan = (
   if (renderer) staticGroups.add("ui-contracts");
   if (electronMain || rust || protocol) staticGroups.add("repository-contracts");
   if (paths.some(isGeneratedResourcePath)) staticGroups.add("generated");
+  if (
+    paths.some(
+      (path) =>
+        path.startsWith("config/") ||
+        path.startsWith("vitest.") ||
+        path.startsWith("scripts/testing/") ||
+        /\.(?:test|integration)\.[cm]?[jt]sx?$/u.test(path),
+    )
+  ) {
+    staticGroups.add("ci-contracts");
+  }
   return createPlan({
     appTestSuites,
     dependencyKind,
@@ -350,7 +365,16 @@ export function classifyChangedPaths(
   const landingOnly =
     paths.some(isLandingPath) &&
     paths.every((path) => isLandingPath(path) || isDocumentationPath(path));
-  if (landingOnly) return createPlan({ landingOnly: true, staticGroups: ["landing"] });
+  if (landingOnly)
+    return createPlan({
+      landingOnly: true,
+      staticGroups: paths.some((path) => /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(path))
+        ? ["ci-contracts", "landing"]
+        : ["landing"],
+      appTestSuites: ["unit", "renderer"],
+      testMode: options.forceFullTests ? "full" : "related",
+      relatedPaths: options.forceFullTests ? [] : paths.filter(isLandingPath),
+    });
   const executablePaths = paths.filter((path) => !isDocumentationPath(path));
 
   const ciScriptsOnly = executablePaths.every((path) => path.startsWith("scripts/ci/"));
@@ -370,6 +394,8 @@ export function classifyChangedPaths(
   }
   if (dependencyKind === "rust") {
     return createPlan({
+      appTestSuites: nativeTestSuites,
+      testMode: "full",
       dependencyKind,
       protocolContracts: true,
       rustFast: true,

@@ -6,23 +6,9 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { type ReactElement } from "react";
-import { renderWithAppMaitai } from "./app-maitai";
-import { TestThreadRouteScopePath } from "./maitai-scope-harness";
 
 export function render(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">) {
   return rtlRender(ui, options);
-}
-
-export function renderWithMaitai(ui: ReactElement, options?: RenderOptions) {
-  const { wrapper: NestedWrapper, ...renderOptions } = options ?? {};
-  return renderWithAppMaitai(ui, {
-    ...renderOptions,
-    wrapper: ({ children }) => (
-      <TestThreadRouteScopePath>
-        {NestedWrapper ? <NestedWrapper>{children}</NestedWrapper> : children}
-      </TestThreadRouteScopePath>
-    ),
-  });
 }
 
 export function textContent(node: ParentNode): string {

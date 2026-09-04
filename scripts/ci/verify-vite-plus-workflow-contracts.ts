@@ -19,7 +19,7 @@ const forbiddenSetupActions = ["pnpm/action-setup@", "actions/setup-node@"] as c
 const pnpmCommandPattern = /\bpnpm(?:\.cmd)?\b/u;
 const vpCommandPattern =
   /(?:^|[;&|()\s])vp(?:\.cmd|\.exe)?\s+(?:build|check|dev|exec|fmt|install|lint|pack|run|test)\b/u;
-const directCheckPattern = /(?:^|[;&|()\s])vp(?:\.cmd|\.exe)?\s+check\b/u;
+const canonicalCheckPattern = /(?:^|[;&|()\s])vp(?:\.cmd|\.exe)?\s+run\s+check(?:\s|$)/u;
 const staticGroupPattern =
   /(?:^|[;&|()\s])vp(?:\.cmd|\.exe)?\s+exec\s+tsx\s+scripts\/ci\/verify-static\.ts\s+--group\b/u;
 const staticCheckWorkflow = ".github/workflows/_static-checks.yml";
@@ -87,9 +87,9 @@ export const verifyCommandSteps = (
 
 export const verifyStaticCheckSteps = (label: string, steps: readonly UnknownRecord[]): void => {
   const checkIndex = steps.findIndex(
-    (step) => typeof step.run === "string" && directCheckPattern.test(step.run),
+    (step) => typeof step.run === "string" && canonicalCheckPattern.test(step.run),
   );
-  if (checkIndex < 0) throw new Error(`${label} must run vp check directly`);
+  if (checkIndex < 0) throw new Error(`${label} must run the canonical vp run check task`);
 
   const groupedChecksIndex = steps.findIndex(
     (step) => typeof step.run === "string" && staticGroupPattern.test(step.run),
@@ -99,7 +99,7 @@ export const verifyStaticCheckSteps = (label: string, steps: readonly UnknownRec
   }
   if (checkIndex <= groupedChecksIndex) return;
 
-  throw new Error(`${label} must declare vp check before grouped static contracts`);
+  throw new Error(`${label} must declare vp run check before grouped static contracts`);
 };
 
 const verifySharedSetupAction = (): void => {

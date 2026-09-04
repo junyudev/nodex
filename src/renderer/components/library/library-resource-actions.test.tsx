@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { NodexModalHost } from "@/lib/modal-registry";
-import { renderWithMaitai } from "../../test/dom";
+import { renderWithMaitai } from "../../test/thread-maitai";
 
 import { LibraryResourceActions } from "./library-resource-actions";
 

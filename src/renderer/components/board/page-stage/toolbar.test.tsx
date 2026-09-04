@@ -2,7 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { fireEvent, within } from "@testing-library/react";
 import { act, useEffect } from "react";
 import { NodexTooltipProvider, dismissNodexTooltips } from "@/components/ui/tooltip";
-import { render, settleAsyncRender } from "@/test/dom";
+import { render, openNodexMenu } from "@/test/dom";
 import { PageStageToolbar } from "./toolbar";
 
 describe("page stage toolbar", () => {
@@ -91,18 +91,15 @@ describe("page stage toolbar", () => {
     expect(labels).toBe("Show raw,Full width,History,Page actions");
 
     const trigger = view.getByRole("button", { name: "Page actions" });
-    fireEvent.pointerDown(trigger, {
-      button: 0,
-      ctrlKey: false,
-    });
-    fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false });
-    fireEvent.click(trigger);
-    await settleAsyncRender();
+    await openNodexMenu(trigger);
 
     expect(view.getByRole("menuitem", { name: "Copy deeplink" })).toBeTruthy();
     expect(view.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
 
-    fireEvent.click(view.getByRole("menuitem", { name: "Copy deeplink" }));
+    await act(async () => {
+      fireEvent.click(view.getByRole("menuitem", { name: "Copy deeplink" }));
+      await Promise.resolve();
+    });
     expect(copyCalls).toBe(1);
   });
 

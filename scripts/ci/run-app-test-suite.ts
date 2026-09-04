@@ -22,10 +22,11 @@ export const commandForAppTestSuite = (
     throw new Error(`Application suite ${JSON.stringify(suite)} is not selected by the gate plan.`);
   }
   const suitePlan = planAppTestSuite(suite);
-  if (plan.testMode === "full") return ["pnpm", "run", suitePlan.packageScript];
+  if (plan.testMode === "full")
+    return [process.platform === "win32" ? "vp.cmd" : "vp", "run", suitePlan.packageScript];
   if (plan.testMode === "related") {
     return [
-      "pnpm",
+      process.platform === "win32" ? "vp.cmd" : "vp",
       "run",
       suitePlan.relatedPackageScript,
       ...plan.relatedPaths.map((changedPath) => `./${changedPath}`),

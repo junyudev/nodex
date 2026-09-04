@@ -1,9 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { NfmCodeBlockActionBar } from "./nfm-code-block-action-bar";
 
 describe("NfmCodeBlockActionBar", () => {
-  test("offers searchable language, copy, and More actions", () => {
+  test("offers searchable language, copy, and More actions", async () => {
     const onLanguageChange = vi.fn();
     const onCopy = vi.fn(async () => true);
     const onMore = vi.fn();
@@ -29,7 +29,10 @@ describe("NfmCodeBlockActionBar", () => {
     fireEvent.click(rocq);
     expect(onLanguageChange).toHaveBeenCalledWith("rocq");
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy code to clipboard" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy code to clipboard" }));
+      await Promise.resolve();
+    });
     expect(onCopy).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Open block actions menu" }));
     expect(onMore).toHaveBeenCalledOnce();

@@ -4,7 +4,8 @@ import { describe, expect, test } from "vite-plus/test";
 
 import type { DatabasePage, PageInput } from "@/lib/types";
 import { projectPageDetailToStageModel, type PageStagePageModel } from "@/lib/page-stage-page";
-import { renderWithMaitai as render, settleAsyncRender } from "@/test/dom";
+import { renderWithMaitai as render } from "@/test/thread-maitai";
+import { settleAsyncRender } from "@/test/dom";
 import { PAGE_DOCUMENT_SCHEMA_VERSION } from "../../../../shared/block-documents/page-document";
 import { plainTextToPortableRichText } from "../../../../shared/block-documents/portable-rich-text";
 import {

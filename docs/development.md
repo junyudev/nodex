@@ -212,33 +212,36 @@ vp run package
 
 ## Validation
 
-Run the standard checks before handing off code changes:
+Choose validation from the changed runtime and risk. For broad TypeScript work:
 
 ```bash
 vp run check
-vp lint --format agent --report-unused-disable-directives
 vp run test
-vp run verify:source
 ```
 
-Vite+ is the repository engineering control plane. `vp check` combines the
-configured Effect-patched TypeScript 7 checker, Oxlint, and Oxfmt check. The
-cacheable `vp run check` developer task invokes that integrated gate. CI
-deliberately invokes `vp check` directly because its isolated jobs do not have a
-warm Vite Task cache.
+For a bounded change, run its focused suite and `vp run typecheck`; formatting
+can be checked separately with `vp run fmt:check`. `vp run verify:source` is the
+explicit full source gate, including Rust, stress, browser, and static contracts.
+It is not required after every local edit.
+
+Vite+ is the repository engineering control plane. `check:semantic`, `typecheck`,
+and `lint` all execute `vp check --no-fmt`, including TypeScript 7, typed Oxlint,
+and Effect diagnostics. They share the same task-result cache. `check` composes
+`vp fmt --check` with that same semantic command. CI uses the same entrypoint and
+policy. To measure actual analysis, use `vp run --no-cache check:semantic`; the
+run option must precede the task name.
 `correctness`, `suspicious`, and `perf` diagnostics are advisory warnings: keep
 them visible and improve nearby code when useful, but do not treat the warning
 count as an acceptance condition. Type errors, lint errors, and precise
-project-owned contract errors still block the command. The second command is
-the compact agent-facing form and also reports stale suppression comments.
-`vp run check`, `vp run typecheck`, `vp run lint`, and `vp run fmt:check` are
+project-owned contract errors still block the command. Unused suppression comments are advisory in every semantic entrypoint.
+`vp run check`, `vp run check:semantic`, `vp run typecheck`, `vp run lint`, and `vp run fmt:check` are
 deterministic root tasks with automatic input tracking and no restorable output.
 They cache successful local validation without enabling cache replay for the
 repository's side-effectful package scripts. `vp run typecheck` follows the same
 integrated semantic path without formatting; it is deliberately not a
 lint-bypassing type-only authority.
 
-CI's typed static matrix runs `vp check` in the `types` lane and routes the
+CI's typed static matrix runs `vp run check` in the `types` lane and routes the
 remaining selected lanes through `verify-static.ts`. `vp run verify:static` is
 the local composition of the same integrated check and repository contracts.
 
@@ -280,19 +283,32 @@ and release semantics. Run the nearest runtime-specific test command while
 iterating, then the normal typecheck and Effect-boundary gate for changed Main
 source.
 
-`vp run test` invokes Nodex's standard multi-runtime test aggregate. The
-aggregate delegates ordinary Node, CoreClient, Renderer, and Browser suites to
-`vp test`, while Main and Integration keep their Electron-hosted Vitest adapter
-so native modules load under Electron's ABI. Package scripts remain the uncached
-ownership seam for runtime composition and side-effectful workflows, while
-deterministic static checks live in the root Vite Task map. Contributors and
-automation use the installed `vp` command as the canonical entry point. GitHub
-Actions acquire the package.json-pinned version through the shared
-`setup-vite-plus` action and likewise execute `vp install`, `vp run`, and
-`vp exec` directly.
+`config/test-suites.ts` owns runtime, tier, file selection, and native
+prerequisites. The thin `scripts/testing/run-tests.ts` entrypoint consumes that
+catalog for aggregate, focused, related, and standalone execution. Every run is
+uncached. The standard aggregate runs unit, effect-codex, core-client, Main,
+renderer, and integration serially; Chromium remains an explicit browser gate.
+Main and integration run Vitest under Electron so native addons use its ABI.
+Renderer uses up to four workers in CI, and locally on machines with at least
+8 available CPUs and 24 GiB total memory; smaller local machines use up to two.
+The budget never exceeds available CPUs. Stress stays at one worker, file
+isolation stays enabled, and suites do not compete through aggregate parallelism.
 
-Owned package scripts compose other scripts through `vp run` and invoke
-workspace-local binaries through `vp exec`; they never call `pnpm` directly.
+Before execution, the aggregate prepares its union of required Cargo targets
+once. Standalone native suites prepare themselves. Cargo checks freshness and
+returns the executable paths, including when `CARGO_TARGET_DIR` is customized.
+Bridge tests run the prepared executable directly; test bodies never invoke
+Cargo. Reuse binaries, but always create fresh writable Profiles and stores.
+Cancellation terminates only this command's descendants, including detached Core
+authorities; it does not manage other app instances or working trees.
+
+Contributors and automation use the installed `vp` command. GitHub Actions
+acquire the package.json-pinned version through `setup-vite-plus` and execute
+`vp install`, `vp run`, and `vp exec` directly.
+
+Owned package scripts compose other scripts through `vp run` and resolve local
+binaries through Vite Task’s workspace PATH. Direct shell invocations use
+`vp exec`; neither path calls `pnpm` directly.
 This keeps nested work visible to the same Vite Task graph without changing the
 deliberately uncached policy for side-effectful package scripts. `vp run
 tooling:verify` enforces that manifest boundary.
@@ -305,16 +321,22 @@ The test commands follow production boundaries:
   logic in Node. Under `src/renderer`, ordinary `.test.ts` files run in Node by
   default; use `.node.test.tsx` when a pure test needs TSX syntax.
 - `vp run test:core-client` builds the development Core binary, then runs the
-  Node-side Core client, adapter, projection, and supervisor contracts. These
-  tests seed disposable Stores only through public Core APIs.
+  host Node `src/main/**/*.node.test.ts` contracts and the Yjs/Yrs bridge. This is
+  also the owner for new Main application directories. Stateful tests seed
+  disposable Stores only through public Core APIs.
+- `vp run test:effect-codex` runs the companion app-server package contracts.
 - `vp run test:main` runs Electron main-process adapter and host tests.
 - `vp run test:renderer` runs ordinary `.test.tsx` React behavior and explicit
   `.jsdom.test.ts` DOM behavior in jsdom. A `.test.ts` file must not rely on
   browser globals implicitly.
 - `vp run test:browser` runs browser-sensitive renderer contracts in Chromium.
 - `vp run test:integration` runs integration tests in Electron's Node runtime.
-- `vp run test:stress` runs volume, repeated-lifecycle, and concurrency
-  contracts one worker at a time, independently of the ordinary suite.
+- `vp run test:stress` runs every catalogued stress owner, including core-client,
+  one worker at a time, independently of the ordinary suite.
+- `vp run verify:test-inventory` compares independent repository enumeration with
+  Vitest discovery in each actual runtime. Duplicates, unowned files, omitted
+  collection, and wrong tiers fail the gate. Nightly and release certification
+  validate their full suite lists against the same catalog.
 - `vp run test:complete` runs both ordinary and stress tiers without the
   full Electron end-to-end suite.
 - `vp run test:performance` runs Core runtime and scale gates below Electron.
@@ -355,6 +377,65 @@ Seeded fixtures have four distinct evidence classes:
 
 Never share a writable seeded Store between tests.
 Add a snapshot cache only after measurement shows live authoritative materialization is a meaningful bottleneck; `board/dense` remains live-seeded in the initial implementation.
+
+### Measuring engineering feedback
+
+Use one complete semantic entrypoint after editing; `typecheck`, `lint`, and
+`check:semantic` share both implementation and task-result cache. During iteration,
+choose a focused or related suite with direct additional arguments:
+
+```bash
+vp run test:core-client src/shared/block-documents/yjs-yrs-conformance.test.ts
+vp run test:renderer src/renderer/components/board/canvas-view.test.tsx
+vp run test:renderer:related src/renderer/components/board/canvas-view.tsx
+vp run test:integration src/main/rust-data-authority.integration.ts
+```
+
+`tooling:benchmark` writes machine/tool/source identity, dependency-lock fingerprint, load, exit status,
+per-file diagnostics and monotonic command timings beneath
+`notes.local/tooling-performance/`. POSIX benchmark commands also sample this
+command's descendant RSS every second; this is a sampled sum, not an exact
+allocation peak. Sampling is asynchronous, non-overlapping, and bounded to one
+second; unavailable samples never delay command output or completion. Suite
+phases are cumulative across workers and cannot be added
+to obtain wall time. The comparison includes removed/added cases and duplicate
+executions so coverage changes stay visible next to the observed timing ratio.
+Different dependency locks suppress the ratio; a missing fingerprint in legacy
+evidence is reported as unknown and requires checking the recorded source revisions.
+
+```bash
+vp run tooling:benchmark --scenario static-cache-hit --label after --samples 3
+vp run tooling:benchmark --scenario semantic-execute --label after --samples 3
+vp run tooling:benchmark --scenario renderer-cohort --workers 2 --label workers-2 --samples 3
+vp run tooling:benchmark --scenario renderer-cohort --workers 4 --label workers-4 --samples 3
+vp run tooling:benchmark --scenario tests-warm --label after --samples 3
+vp run tooling:benchmark --scenario tests-cold-native --label cold --samples 1
+vp run tooling:benchmark --compare <before-directory> <after-directory>
+```
+
+`static-cache-hit` primes the successful task outside its measured samples.
+`semantic-execute` bypasses task replay. Test scenarios always execute tests;
+`tests-cold-native` allocates a fresh, recorded `CARGO_TARGET_DIR` under
+`.generated/` without clearing global caches. Native preparation is reported
+separately and Cargo retains responsibility for freshness. Keep before/after
+samples sequential, record competing load, and report three samples as a range
+and median, not p95.
+
+The experimental Vitest filesystem module cache remains disabled: the measured
+cohort benefit was below the 10% adoption threshold. It caches transforms only,
+not isolated module instances, environments or test results.
+
+Set `NODEX_TEST_TIMINGS=<directory>` on a focused suite to record diagnostics.
+For an import investigation, add Vitest 4's
+`--experimental.importDurations.limit=20`; omit profiling from timing comparisons.
+Application and stress CI jobs upload the same per-file/native/suite records on
+success or failure, and static jobs upload command timings. Reusable workflows
+record the checked-out source SHA, including an explicit source override. The timing reporter
+retains React `act` warnings and rejects that sample even if Vitest's individual
+tests passed. Fix missing awaited interaction/subscription boundaries instead
+of accepting or silencing these warnings. Compare trends only
+within the same runner/toolchain/scope; ordinary CI does not run repeated full
+benchmarks or enforce a noisy universal wall-time threshold.
 
 ### Block drag-and-drop smoke
 

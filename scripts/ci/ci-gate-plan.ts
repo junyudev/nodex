@@ -1,3 +1,5 @@
+import { APP_TEST_SUITES, type SuiteId as AppTestSuite } from "../../config/test-suites.ts";
+
 export const STATIC_GROUPS = [
   "types",
   "ui-contracts",
@@ -9,16 +11,8 @@ export const STATIC_GROUPS = [
 
 export type StaticGroup = (typeof STATIC_GROUPS)[number];
 
-export const APP_TEST_SUITES = [
-  "unit",
-  "core-client",
-  "main",
-  "renderer",
-  "integration",
-  "browser",
-] as const;
-
-export type AppTestSuite = (typeof APP_TEST_SUITES)[number];
+export { APP_TEST_SUITES } from "../../config/test-suites.ts";
+export type { SuiteId as AppTestSuite } from "../../config/test-suites.ts";
 
 export const TEST_SELECTION_MODES = ["none", "related", "full"] as const;
 
@@ -197,15 +191,14 @@ export function assertCiGatePlan(value: unknown): asserts value is CiGatePlan {
   }
   if (
     candidate.landingOnly &&
-    (candidate.staticGroups.length !== 1 ||
-      candidate.staticGroups[0] !== "landing" ||
-      candidate.appTestSuites.length > 0 ||
+    (!candidate.staticGroups.includes("landing") ||
+      candidate.staticGroups.some((group) => group !== "landing" && group !== "ci-contracts") ||
+      candidate.appTestSuites.some((suite) => suite !== "unit" && suite !== "renderer") ||
       candidate.protocolContracts ||
       candidate.rustFast ||
-      candidate.rustMigration ||
-      candidate.testMode !== "none")
+      candidate.rustMigration)
   ) {
-    throw new Error("Landing-only plans may select only the landing static group.");
+    throw new Error("Landing-only plans may select landing/CI contracts and unit/renderer tests.");
   }
 }
 

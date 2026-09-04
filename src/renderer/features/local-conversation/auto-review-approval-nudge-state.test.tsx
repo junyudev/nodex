@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { act } from "@testing-library/react";
 import { beforeEach, describe, expect, test } from "vite-plus/test";
 import { clearPersistedAtomStoreForTests } from "@/lib/persisted-atom-store";
-import { renderWithMaitai, settleAsyncRender } from "@/test/dom";
+import { renderWithMaitai } from "@/test/thread-maitai";
+import { settleAsyncRender } from "@/test/dom";
 import {
   useAutoReviewApprovalNudgeActions,
   useAutoReviewApprovalNudgeState,

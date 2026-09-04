@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { LibraryPageNavigationNode } from "../../../shared/library-module";
-import { renderWithMaitai } from "@/test/dom";
+import { renderWithMaitai } from "@/test/thread-maitai";
 import { SidebarPagesSection, type SidebarPagesDataSource } from "./sidebar-pages-section";
 
 vi.mock("@/lib/use-library-navigation", () => ({

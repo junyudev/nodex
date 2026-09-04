@@ -12,7 +12,7 @@ import { requestPageCreate } from "@/lib/page-create-workflow";
 import { BOARD_PRIORITY_OPTIONS } from "@/lib/board-options";
 import { estimateStyles } from "@/lib/types";
 import { __resetNodexToastStoreForTests, NodexToastProvider } from "@/components/ui/toast";
-import { renderWithMaitai } from "@/test/dom";
+import { renderWithMaitai } from "@/test/thread-maitai";
 
 const commandState = vi.hoisted(() => ({
   create: vi.fn(),

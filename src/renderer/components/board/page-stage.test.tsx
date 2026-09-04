@@ -11,7 +11,8 @@ import type { DatabasePage } from "@/lib/types";
 import { projectPageDetailToStageModel, type PageStagePageModel } from "@/lib/page-stage-page";
 import { readPageStageSemanticProperties } from "@/lib/page-stage-properties";
 import type { PageStageDocumentAuthority, PageStageProps } from "./page-stage/types";
-import { renderWithMaitai as render, settleAsyncRender } from "@/test/dom";
+import { renderWithMaitai as render } from "@/test/thread-maitai";
+import { settleAsyncRender } from "@/test/dom";
 import {
   PAGE_DOCUMENT_SCHEMA_VERSION,
   createPageDocument,

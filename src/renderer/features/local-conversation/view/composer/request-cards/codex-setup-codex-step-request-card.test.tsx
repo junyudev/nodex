@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, test } from "vite-plus/test";
 import { NodexTooltipProvider as TooltipProvider } from "@/components/ui/tooltip";
 import { clearPersistedAtomStoreForTests } from "@/lib/persisted-atom-store";
 import type { CodexCanonicalSetupCodexStepResponse, CodexSetupCodexStepRequest } from "@/lib/types";
-import { render, renderWithMaitai, settleAsyncRender } from "@/test/dom";
+import { renderWithMaitai } from "@/test/thread-maitai";
+import { render, settleAsyncRender } from "@/test/dom";
 import type { CodexSetupContextSource } from "../../../setup-codex-context-sources";
 import {
   CodexSetupCodexStepRequestCard,

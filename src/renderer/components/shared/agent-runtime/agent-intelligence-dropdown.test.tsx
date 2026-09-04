@@ -2,7 +2,7 @@ import { fireEvent, within } from "@testing-library/react";
 import { act } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import { renderWithMaitai } from "@/test/dom";
+import { renderWithMaitai } from "@/test/thread-maitai";
 import type { CodexModelOption } from "../../../../shared/types";
 import { AgentIntelligenceDropdown } from "./agent-intelligence-dropdown";
 

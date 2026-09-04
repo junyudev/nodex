@@ -1,8 +1,9 @@
-import type { IpcApi } from "../../shared/ipc-api";
+import type { IpcApi, IpcArgs } from "../../shared/ipc-api";
 import type { CoreErrorDetail } from "../../shared/core-result";
 import type {
   CoreLocalCommitCommandChannel as PolicyCoreLocalCommitCommandChannel,
   IpcCommandChannelFor,
+  IpcAcknowledgement,
   IpcControlChannel,
   IpcQueryChannel,
   MainRevisionCommandChannel,
@@ -166,10 +167,6 @@ export const defineLocalCommitRendererCommand = <
 ): LocalCommitRendererCommandDefinition<Key, Channel, Protocol> =>
   definition as LocalCommitRendererCommandDefinition<Key, Channel, Protocol>;
 
-type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"] extends readonly unknown[]
-  ? IpcApi[Channel]["args"]
-  : never;
-
 export function invokeRendererQuery<Channel extends IpcQueryChannel>(
   channel: Channel,
   ...args: IpcArgs<Channel>
@@ -215,14 +212,33 @@ const beginSubmittedTrace = (
   return context;
 };
 
-export async function invokePlainCommand<
-  const Key extends string,
-  const Authority extends RendererCommandAuthority,
-  const Protocol extends RendererVisibilityProtocol,
-  const Channel extends PlainResultCommandChannel &
-    IpcCommandChannelFor<AllowedAcknowledgement<Authority, Protocol>>,
->(
-  definition: RendererCommandDefinition<Key, Authority, Protocol, Channel>,
+type VisibilityProof<
+  Acknowledgement extends IpcAcknowledgement,
+  Authority extends RendererCommandAuthority,
+  Protocol extends RendererVisibilityProtocol = RendererVisibilityProtocol,
+> = Protocol extends RendererVisibilityProtocol
+  ? Acknowledgement extends AllowedAcknowledgement<Authority, Protocol>
+    ? { readonly authority: Authority; readonly protocol: Protocol }
+    : never
+  : never;
+
+type AcknowledgementProof<Acknowledgement extends IpcAcknowledgement> = {
+  [Authority in RendererCommandAuthority]: VisibilityProof<Acknowledgement, Authority>;
+}[RendererCommandAuthority];
+
+// Resolve the finite visibility policy once. Invocation infers only the channel,
+// while this discriminated proof still rejects invalid authority/protocol pairs.
+type AcknowledgedRendererCommand<
+  Acknowledgement extends IpcAcknowledgement,
+  Channel extends IpcCommandChannelFor<Acknowledgement>,
+> = Omit<
+  RendererCommandDefinition<string, RendererCommandAuthority, RendererVisibilityProtocol, Channel>,
+  "authority" | "protocol"
+> &
+  AcknowledgementProof<Acknowledgement>;
+
+export async function invokePlainCommand<const Channel extends PlainResultCommandChannel>(
+  definition: AcknowledgedRendererCommand<"plain_result", Channel>,
   ...args: IpcArgs<Channel>
 ): Promise<IpcApi[Channel]["result"]> {
   return await invokePlainCommandThrough(definition, resolveInvokeTransport(), ...args);
@@ -232,14 +248,8 @@ export async function invokePlainCommand<
  * Uses an owning Module's lifecycle context so local presentation and transport
  * evidence describe one operation even when its wire payload has no identity field.
  */
-export async function invokePlainCommandWithTrace<
-  const Key extends string,
-  const Authority extends RendererCommandAuthority,
-  const Protocol extends RendererVisibilityProtocol,
-  const Channel extends PlainResultCommandChannel &
-    IpcCommandChannelFor<AllowedAcknowledgement<Authority, Protocol>>,
->(
-  definition: RendererCommandDefinition<Key, Authority, Protocol, Channel>,
+export async function invokePlainCommandWithTrace<const Channel extends PlainResultCommandChannel>(
+  definition: AcknowledgedRendererCommand<"plain_result", Channel>,
   trace: RendererCausalTraceContext | null,
   ...args: IpcArgs<Channel>
 ): Promise<IpcApi[Channel]["result"]> {
@@ -247,28 +257,16 @@ export async function invokePlainCommandWithTrace<
   return await invokePlainCommandThroughTrace(definition, resolveInvokeTransport(), trace, ...args);
 }
 
-export async function invokePlainCommandThrough<
-  const Key extends string,
-  const Authority extends RendererCommandAuthority,
-  const Protocol extends RendererVisibilityProtocol,
-  const Channel extends PlainResultCommandChannel &
-    IpcCommandChannelFor<AllowedAcknowledgement<Authority, Protocol>>,
->(
-  definition: RendererCommandDefinition<Key, Authority, Protocol, Channel>,
+export async function invokePlainCommandThrough<const Channel extends PlainResultCommandChannel>(
+  definition: AcknowledgedRendererCommand<"plain_result", Channel>,
   transport: RendererCommandInvokePort,
   ...args: IpcArgs<Channel>
 ): Promise<IpcApi[Channel]["result"]> {
   return await invokePlainCommandThroughTrace(definition, transport, null, ...args);
 }
 
-const invokePlainCommandThroughTrace = async <
-  const Key extends string,
-  const Authority extends RendererCommandAuthority,
-  const Protocol extends RendererVisibilityProtocol,
-  const Channel extends PlainResultCommandChannel &
-    IpcCommandChannelFor<AllowedAcknowledgement<Authority, Protocol>>,
->(
-  definition: RendererCommandDefinition<Key, Authority, Protocol, Channel>,
+const invokePlainCommandThroughTrace = async <const Channel extends PlainResultCommandChannel>(
+  definition: AcknowledgedRendererCommand<"plain_result", Channel>,
   transport: RendererCommandInvokePort,
   trace: RendererCausalTraceContext | null,
   ...args: IpcArgs<Channel>
@@ -320,25 +318,17 @@ type CompatibleMainRevisionCommandChannel = {
 }[MainRevisionCommandChannel];
 
 export async function invokeRevisionedCommand<
-  const Key extends string,
-  const Authority extends "main" | "renderer",
-  const Protocol extends Extract<
-    RendererVisibilityProtocol,
-    { readonly kind: "revision_fenced_local" }
-  >,
-  const Channel extends CompatibleMainRevisionCommandChannel &
-    IpcCommandChannelFor<AllowedAcknowledgement<Authority, Protocol>>,
+  const Channel extends CompatibleMainRevisionCommandChannel,
 >(
-  definition: RendererCommandDefinition<Key, Authority, Protocol, Channel>,
+  definition: AcknowledgedRendererCommand<"main_revision", Channel> & {
+    readonly protocol: { readonly kind: "revision_fenced_local" };
+  },
   ...args: IpcArgs<Channel>
 ): Promise<IpcApi[Channel]["result"]> {
   const trace = beginSubmittedTrace(definition, args);
   let result: unknown;
   try {
-    result = await resolveInvokeTransport().invoke(
-      definition.channel,
-      ...(args as unknown as readonly unknown[]),
-    );
+    result = await resolveInvokeTransport().invoke(definition.channel, ...args);
   } catch (cause) {
     recordRendererCommandTrace(trace, { kind: "failed", reason: "transport_failure" });
     throw cause;
@@ -383,11 +373,9 @@ export class RendererCommandRejectedError<Result extends { readonly ok: false }>
  * preserving typed domain failures for provider-owned retry state machines.
  */
 export async function invokeLocalCommitCommandResultThrough<
-  const Key extends string,
   const Channel extends CoreLocalCommitCommandChannel,
-  const Protocol extends LocalCommitVisibilityProtocol,
 >(
-  definition: LocalCommitRendererCommandDefinition<Key, Channel, Protocol>,
+  definition: LocalCommitRendererCommandDefinition<string, Channel, LocalCommitVisibilityProtocol>,
   transport: LocalCommitCommandInvokePort,
   ...args: IpcArgs<Channel>
 ): Promise<AdmittedLocalCommitCommandResult<Channel>> {
@@ -436,11 +424,9 @@ export async function invokeLocalCommitCommandResultThrough<
 }
 
 export async function invokeLocalCommitCommandResult<
-  const Key extends string,
   const Channel extends CoreLocalCommitCommandChannel,
-  const Protocol extends LocalCommitVisibilityProtocol,
 >(
-  definition: LocalCommitRendererCommandDefinition<Key, Channel, Protocol>,
+  definition: LocalCommitRendererCommandDefinition<string, Channel, LocalCommitVisibilityProtocol>,
   ...args: IpcArgs<Channel>
 ): Promise<AdmittedLocalCommitCommandResult<Channel>> {
   return await invokeLocalCommitCommandResultThrough(definition, resolveInvokeTransport(), ...args);
@@ -450,12 +436,8 @@ export async function invokeLocalCommitCommandResult<
  * Invokes one registered Core command and admits its exact apply evidence
  * before the owning renderer Module can observe a successful result.
  */
-export async function invokeLocalCommitCommand<
-  const Key extends string,
-  const Channel extends CoreLocalCommitCommandChannel,
-  const Protocol extends LocalCommitVisibilityProtocol,
->(
-  definition: LocalCommitRendererCommandDefinition<Key, Channel, Protocol>,
+export async function invokeLocalCommitCommand<const Channel extends CoreLocalCommitCommandChannel>(
+  definition: LocalCommitRendererCommandDefinition<string, Channel, LocalCommitVisibilityProtocol>,
   ...args: IpcArgs<Channel>
 ): Promise<AdmittedLocalCommitResult<LocalCommitCommandValue<Channel>>> {
   const result = await invokeLocalCommitCommandResult(definition, ...args);

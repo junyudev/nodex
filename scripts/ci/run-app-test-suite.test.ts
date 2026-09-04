@@ -22,7 +22,11 @@ const plan = (overrides: Partial<CiGatePlan>): CiGatePlan => ({
 
 describe("application CI suite execution", () => {
   test("runs a canonical full suite without path arguments", () => {
-    expect(commandForAppTestSuite("renderer", plan({}))).toEqual(["pnpm", "run", "test:renderer"]);
+    expect(commandForAppTestSuite("renderer", plan({}))).toEqual([
+      process.platform === "win32" ? "vp.cmd" : "vp",
+      "run",
+      "test:renderer",
+    ]);
   });
 
   test("passes changed paths after an argument boundary for related selection", () => {
@@ -35,7 +39,7 @@ describe("application CI suite execution", () => {
         }),
       ),
     ).toEqual([
-      "pnpm",
+      process.platform === "win32" ? "vp.cmd" : "vp",
       "run",
       "test:browser:related",
       "./src/renderer/lib/example.ts",

@@ -1,4 +1,4 @@
-import type { IpcApi } from "../../shared/ipc-api";
+import type { IpcArgs } from "../../shared/ipc-api";
 import type {
   PageOccurrenceActionInput,
   PageOccurrenceCompleteInput,
@@ -6,10 +6,6 @@ import type {
 } from "../../shared/types";
 import type { DatabasePage } from "./types";
 import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
-
-type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"] extends readonly unknown[]
-  ? IpcApi[Channel]["args"]
-  : never;
 
 const occurrenceCommandDefinitions = {
   complete: defineRendererCommand({

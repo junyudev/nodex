@@ -30,6 +30,7 @@ jobs:
         group: ${{ fromJSON(inputs.groups_json) }}
     runs-on: ubuntu-latest
     env:
+      CI_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
       CI_TIMING_JOB: ${{ inputs.timing_prefix }}-${{ matrix.group }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,9 +48,17 @@ jobs:
           if [[ "${STATIC_GROUP}" == "types" ]]; then
             vp exec tsx scripts/ci/run-timed.ts \
               --name "static-${STATIC_GROUP}" \
-              -- vp check
+              -- vp run check
             exit 0
           fi
           vp exec tsx scripts/ci/run-timed.ts \
             --name "static-${STATIC_GROUP}" \
             -- vp exec tsx scripts/ci/verify-static.ts --group "${STATIC_GROUP}"
+      - name: Upload static timings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: timings-${{ inputs.timing_prefix }}-${{ matrix.group }}-${{ github.run_attempt }}
+          path: .generated/ci-timings/
+          if-no-files-found: ignore
+          retention-days: 14

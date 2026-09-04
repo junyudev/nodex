@@ -1,3 +1,4 @@
+import { createCommandKeymapState } from "../../../../shared/command-keybindings";
 import { useState, type ReactNode } from "react";
 import { describe, expect, vi, test } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
@@ -32,6 +33,7 @@ let hostMessageListener: ((message: CodexHostMessage) => void) | null = null;
 
 function createConnectedThreadStageQueryClient() {
   const client = createTestQueryClient();
+  client.setQueryData(queryKeys.settings.commandKeymap(), createCommandKeymapState({}, "macOS"));
   client.setQueryData(queryKeys.codexComposerPlugins.list(["/tmp/project"]), []);
   client.setQueryData(queryKeys.codexComposerSkills.list(["/tmp/project"]), []);
   client.setQueryData(queryKeys.codexComposerSites.list(), {
@@ -363,6 +365,7 @@ async function renderPrimaryAndAuxiliaryThread(auxiliaryMode: "background-detail
     actions: buildActions(),
   };
 
+  const { dispatchCodexAppServerMessage } = await import("../app-server-message-bus");
   const view = render(
     <ConnectedThreadStageQueryProvider>
       <ThreadStageScope>
@@ -393,8 +396,9 @@ async function renderPrimaryAndAuxiliaryThread(auxiliaryMode: "background-detail
       </ThreadStageScope>
     </ConnectedThreadStageQueryProvider>,
   );
-  const { dispatchCodexAppServerMessage } = await import("../app-server-message-bus");
   await act(async () => {
+    // Let initial authority subscriptions settle before delivering their snapshots.
+    await settleAsyncRender();
     for (const threadId of [rootSummary.threadId, childSummary.threadId]) {
       dispatchTestThreadStreamSnapshot(dispatchCodexAppServerMessage, {
         hostId: "default",
@@ -422,6 +426,7 @@ async function renderNewThreadHome(overrides?: {
   __resetLocalConversationStoreForTests();
   installWindowApi({
     invoke: async (channel: string) => {
+      if (channel === "codex-command-keymap-state") return createCommandKeymapState({}, "macOS");
       if (channel === "branch-metadata") {
         return {
           currentBranch: "dev-redesign",

@@ -5,7 +5,8 @@ import type { OwnedDocumentDescriptor } from "../../../shared/block-documents/co
 import { PAGE_DOCUMENT_SCHEMA_VERSION } from "../../../shared/block-documents/page-document";
 import type { DocumentVersionDetail } from "../../../shared/block-documents/document-history";
 import type { PageHistoryEntry, PageHistoryPage } from "../../../shared/page-history";
-import { renderWithMaitai as render, textContent } from "../../test/dom";
+import { renderWithMaitai as render } from "../../test/thread-maitai";
+import { textContent } from "../../test/dom";
 import { mergePageHistoryEntries } from "./page-history-view-model";
 import { HistoryPanel } from "./history-panel";
 

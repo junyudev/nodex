@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, vi, test } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
 import { useState } from "react";
-import { renderWithMaitai, settleAsyncRender } from "../../test/dom";
+import { renderWithMaitai } from "../../test/thread-maitai";
+import { settleAsyncRender } from "../../test/dom";
 import { installWindowApi } from "../../test/browser-globals";
 import { TestQueryProvider } from "../../test/query";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";

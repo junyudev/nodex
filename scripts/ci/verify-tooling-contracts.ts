@@ -1,3 +1,4 @@
+import { verifySemanticTaskCache, verifyTypedSemanticPolicy } from "./verify-semantic-tooling";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { relative, resolve } from "node:path";
@@ -20,7 +21,6 @@ interface ExpectedDiagnostic {
 
 interface RunLintOptions {
   readonly quiet?: boolean;
-  readonly reportUnusedDisableDirectives?: boolean;
 }
 
 const projectRoot = resolve(import.meta.dirname, "../..");
@@ -64,14 +64,7 @@ function runLint(
 ): { readonly report: LintReport; readonly status: number } {
   const result = spawnSync(
     vpExecutable,
-    [
-      "lint",
-      ...(options.quiet === false ? [] : ["--quiet"]),
-      ...(options.reportUnusedDisableDirectives ? ["--report-unused-disable-directives"] : []),
-      "--format",
-      "json",
-      ...paths,
-    ],
+    ["lint", ...(options.quiet === false ? [] : ["--quiet"]), "--format", "json", ...paths],
     {
       cwd: projectRoot,
       encoding: "utf8",
@@ -151,7 +144,7 @@ function verifyAdvisoryPolicy(): void {
   const result = runLint(
     ["scripts/fixtures/tooling/advisory-warning.tsx", "scripts/fixtures/tooling/unused-disable.ts"],
     {},
-    { quiet: false, reportUnusedDisableDirectives: true },
+    { quiet: false },
   );
   if (result.status !== 0) {
     throw new Error(`Advisory tooling fixtures blocked Oxlint: ${JSON.stringify(result.report)}`);
@@ -174,7 +167,7 @@ function verifyAdvisoryPolicy(): void {
 }
 
 function verifyWorkspaceTaskGraph(): void {
-  const result = spawnSync(vpExecutable, ["run", "--workspace-root", "version-surfaces:audit"], {
+  const result = spawnSync(vpExecutable, ["run", "--workspace-root", "fmt:check", "package.json"], {
     cwd: projectRoot,
     encoding: "utf8",
     env: process.env,
@@ -259,7 +252,9 @@ verifyInvalidFixtures(
 verifyValidFixtures(["scripts/fixtures/tooling/tailwind-valid.tsx"], tailwindEnvironment);
 
 verifyWorkspaceTaskGraph();
+verifySemanticTaskCache();
+verifyTypedSemanticPolicy();
 
 console.log(
-  "Tooling contracts verified: package scripts, Oxlint rules, and the Vite+ workspace task graph.",
+  "Tooling contracts verified: package scripts, typed diagnostic policy, shared task cache, and the Vite+ workspace task graph.",
 );

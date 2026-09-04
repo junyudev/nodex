@@ -8,8 +8,8 @@ import type {
 } from "../../../../../lib/types";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../../components/ui/tooltip";
 import { installWindowApi } from "../../../../../test/browser-globals";
+import { renderWithMaitai as render } from "../../../../../test/thread-maitai";
 import {
-  renderWithMaitai as render,
   settleAsyncRender,
   textContent,
   textContentIncludingShadowRoots,

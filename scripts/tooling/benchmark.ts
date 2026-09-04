@@ -1,15 +1,16 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runTimedCommand, type TimedCommandRecord } from "../ci/run-timed";
 import { withCommandSignal } from "./process";
+import { compareBenchmarks } from "./compare-benchmarks";
 
 const scenarios = [
   "static-cache-hit",
   "semantic-execute",
-  "incremental-leaf",
   "renderer-cohort",
   "tests-warm",
   "tests-cold-native",
@@ -78,8 +79,6 @@ export function benchmarkCommand(options: BenchmarkOptions): readonly string[] {
       return ["run", "typecheck"];
     case "semantic-execute":
       return ["check", "--no-fmt"];
-    case "incremental-leaf":
-      return ["run", "types:incremental"];
     case "renderer-cohort":
       return [
         "test",
@@ -115,8 +114,23 @@ export async function benchmark(options: BenchmarkOptions, signal: AbortSignal):
   const directory = await mkdtemp(path.join(base, options.label + "-" + options.scenario + "-"));
   const command = process.platform === "win32" ? "vp.cmd" : "vp";
   const records: TimedCommandRecord[] = [];
+  const diff = execFileSync("git", ["diff", "HEAD", "--binary"], { cwd: root, encoding: "utf8" });
+  const fingerprint = createHash("sha256").update(diff);
+  const untracked = execFileSync("git", ["ls-files", "--others", "--exclude-standard", "-z"], {
+    cwd: root,
+    encoding: "utf8",
+  })
+    .split("\0")
+    .filter(Boolean)
+    .sort();
+  for (const file of untracked)
+    fingerprint.update(file).update(await readFile(path.join(root, file)));
   const metadata = {
-    version: 1,
+    version: 2,
+    changesSha256: fingerprint.digest("hex"),
+    dependencyLockSha256: createHash("sha256")
+      .update(await readFile(path.join(root, "pnpm-lock.yaml")))
+      .digest("hex"),
     options,
     head: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
     dirty: execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim(),
@@ -124,6 +138,10 @@ export async function benchmark(options: BenchmarkOptions, signal: AbortSignal):
       platform: process.platform,
       arch: process.arch,
       cpus: os.cpus().length,
+      cpuModel: os.cpus()[0]?.model,
+      availableParallelism: os.availableParallelism(),
+      loadAverage: os.loadavg(),
+      freeMemoryBytes: os.freemem(),
       memoryBytes: os.totalmem(),
     },
     versions: {
@@ -138,22 +156,48 @@ export async function benchmark(options: BenchmarkOptions, signal: AbortSignal):
     rendererCohort: options.scenario === "renderer-cohort" ? rendererCohort : undefined,
   };
   await writeFile(path.join(directory, "metadata.json"), JSON.stringify(metadata, null, 2) + "\n");
-  if (options.scenario === "incremental-leaf") {
-    throw new Error(
-      "Incremental leaf measurement requires the validated compiler experiment; no source was modified.",
-    );
+  if (options.scenario === "static-cache-hit") {
+    const priming = await runTimedCommand({
+      name: "cache-prime",
+      command,
+      commandArguments: benchmarkCommand(options),
+      cwd: root,
+      signal,
+      logFile: path.join(directory, "prime.log"),
+      timingDirectory: directory,
+    });
+    if (priming.exitCode !== 0) return priming.exitCode;
   }
   for (let sample = 1; sample <= options.samples; sample += 1) {
     if (signal.aborted) return 130;
     const sampleDirectory = path.join(directory, String(sample));
-    const environment: NodeJS.ProcessEnv = { ...process.env, NODEX_TEST_TIMINGS: sampleDirectory };
+    const environment: NodeJS.ProcessEnv = {
+      ...process.env,
+      NODEX_TEST_TIER: "default",
+      NODEX_TEST_TIMINGS: sampleDirectory,
+    };
     if (options.scenario === "tests-cold-native") {
       const nativeRoot = path.join(root, ".generated");
       await mkdir(nativeRoot, { recursive: true });
       environment.CARGO_TARGET_DIR = await mkdtemp(path.join(nativeRoot, "tooling-native-"));
     }
+    await mkdir(sampleDirectory, { recursive: true });
+    await writeFile(
+      path.join(sampleDirectory, "environment.json"),
+      JSON.stringify(
+        {
+          startedAt: new Date().toISOString(),
+          loadAverage: os.loadavg(),
+          freeMemoryBytes: os.freemem(),
+          cargoTargetDirectory: environment.CARGO_TARGET_DIR ?? null,
+        },
+        null,
+        2,
+      ) + "\n",
+    );
     const record = await runTimedCommand({
       name: options.scenario + "-" + sample,
+      measureResources: true,
       command,
       commandArguments: benchmarkCommand(options),
       cwd: root,
@@ -182,9 +226,14 @@ export async function benchmark(options: BenchmarkOptions, signal: AbortSignal):
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  withCommandSignal((signal) =>
-    benchmark(parseBenchmarkArguments(process.argv.slice(2)), signal),
-  ).catch((error: unknown) => {
+  withCommandSignal(async (signal) => {
+    const args = process.argv.slice(2);
+    if (args[0] !== "--compare") return benchmark(parseBenchmarkArguments(args), signal);
+    if (args.length !== 3)
+      throw new Error("Expected --compare <before-directory> <after-directory>.");
+    await compareBenchmarks(args[1], args[2]);
+    return 0;
+  }).catch((error: unknown) => {
     process.stderr.write(String(error) + "\n");
     process.exitCode = 1;
   });

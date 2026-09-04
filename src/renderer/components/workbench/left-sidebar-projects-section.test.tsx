@@ -4,7 +4,8 @@ import type { Project } from "../../lib/types";
 import { NodexHoverCardProvider } from "@/components/ui/hover-card";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { NodexModalHost } from "@/lib/modal-registry";
-import { openNodexMenu, renderWithMaitai, textContent } from "../../test/dom";
+import { renderWithMaitai } from "../../test/thread-maitai";
+import { openNodexMenu, textContent } from "../../test/dom";
 import { TestQueryProvider } from "../../test/query";
 import type {
   NativeContextMenuItem,

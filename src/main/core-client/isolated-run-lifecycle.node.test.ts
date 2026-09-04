@@ -1,3 +1,4 @@
+import { requiredNativeExecutable } from "../../../scripts/testing/native-artifacts";
 import { accessSync, constants, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -12,7 +13,7 @@ import {
 import { connectOrStartCore } from "./core-launcher";
 import { cleanupIsolatedCore } from "../../../scripts/isolated-run-supervisor";
 
-const CORE_BINARY = path.resolve("target/debug/nodex-core");
+const CORE_BINARY = requiredNativeExecutable("core-server");
 const RUN_A = "11111111-1111-4111-8111-111111111111";
 const RUN_B = "22222222-2222-4222-8222-222222222222";
 
@@ -27,7 +28,7 @@ const waitUntil = async (predicate: () => boolean, message: string): Promise<voi
 
 describe("isolated run Core lifecycle", () => {
   test("gracefully stops the authenticated generation before releasing the lease", async () => {
-    expect(existsSync(CORE_BINARY), "run pnpm run core:test:client").toBe(true);
+    expect(existsSync(CORE_BINARY), "run vp run test:core-client").toBe(true);
     accessSync(CORE_BINARY, constants.X_OK);
     const nodexHome = mkdtempSync(path.join(tmpdir(), "nodex-isolated-lifecycle-"));
     const launched = await connectOrStartCore({
@@ -85,7 +86,7 @@ describe("isolated run Core lifecycle", () => {
   });
 
   test("does not stop a Core when the leased run never became primary host", async () => {
-    expect(existsSync(CORE_BINARY), "run pnpm run core:test:client").toBe(true);
+    expect(existsSync(CORE_BINARY), "run vp run test:core-client").toBe(true);
     accessSync(CORE_BINARY, constants.X_OK);
     const nodexHome = mkdtempSync(path.join(tmpdir(), "nodex-isolated-non-owner-"));
     const launched = await connectOrStartCore({

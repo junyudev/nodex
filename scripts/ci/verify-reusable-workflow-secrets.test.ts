@@ -133,7 +133,7 @@ test("rejects reusable workflow permission escalation before GitHub startup", ()
     on: { workflow_dispatch: {} },
     permissions: { contents: "read" },
   };
-  const workflows = new Map([
+  const workflows = new Map<string, Record<string, unknown>>([
     [callerPath, callerWorkflow],
     [calledPath, calledWorkflow],
   ]);

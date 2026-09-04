@@ -3,7 +3,7 @@ import { act, useState, type ComponentProps } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { NodexModalHost } from "@/lib/modal-registry";
-import { renderWithMaitai } from "@/test/dom";
+import { renderWithMaitai } from "@/test/thread-maitai";
 import { PermissionModeDropdown } from "./permission-mode-dropdown";
 
 type PermissionModeDropdownProps = ComponentProps<typeof PermissionModeDropdown>;

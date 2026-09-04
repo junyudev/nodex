@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { LibraryCatalogEntry } from "../../../shared/library-module";
 import { AUTHORIZED_READ_STAMP_EXAMPLE } from "../../../shared/testing/authorized-read-stamp-example";
@@ -57,15 +57,21 @@ describe("PagesTabPicker", () => {
       </QueryClientProvider>,
     );
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Open Page, Database, or Canvas",
-      }),
-    );
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Open Page, Database, or Canvas",
+        }),
+      );
+      await Promise.resolve();
+    });
     const input = await screen.findByRole("combobox", { name: "Search Pages" });
     expect(screen.getByRole("option", { name: /Page One/ })).toBeDefined();
     expect(screen.getByRole("button", { name: "New Page" })).toBeDefined();
-    fireEvent.keyDown(input, { key: "Enter" });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
 
     expect(onOpenTarget).toHaveBeenCalledWith(page.target, "Page One");
   });
@@ -76,16 +82,25 @@ describe("PagesTabPicker", () => {
         <PagesTabPicker dataSource={dataSource} onOpenTarget={() => undefined} />
       </QueryClientProvider>,
     );
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Open Page, Database, or Canvas",
-      }),
-    );
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Open Page, Database, or Canvas",
+        }),
+      );
+      await Promise.resolve();
+    });
     const input = await screen.findByRole("combobox", { name: "Search Pages" });
-    fireEvent.change(input, { target: { value: "x".repeat(300) } });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "x".repeat(300) } });
+      await Promise.resolve();
+    });
     expect((input as HTMLInputElement).value).toHaveLength(256);
 
-    fireEvent.keyDown(input, { key: "Escape" });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Escape" });
+      await Promise.resolve();
+    });
     expect(
       screen.queryByRole("dialog", {
         name: "Open Page, Database, or Canvas",
@@ -128,14 +143,20 @@ describe("PagesTabPicker", () => {
           <PagesTabPicker dataSource={multiDataSource} onOpenTarget={() => undefined} />
         </QueryClientProvider>,
       );
-      fireEvent.click(
-        screen.getByRole("button", {
-          name: "Open Page, Database, or Canvas",
-        }),
-      );
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", {
+            name: "Open Page, Database, or Canvas",
+          }),
+        );
+        await Promise.resolve();
+      });
       const input = await screen.findByRole("combobox", { name: "Search Pages" });
       scrollIntoView.mockClear();
-      fireEvent.keyDown(input, { key: "ArrowDown" });
+      await act(async () => {
+        fireEvent.keyDown(input, { key: "ArrowDown" });
+        await Promise.resolve();
+      });
 
       await waitFor(() =>
         expect(scrollIntoView).toHaveBeenCalledWith({

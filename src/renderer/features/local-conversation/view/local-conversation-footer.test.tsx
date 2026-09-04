@@ -5,7 +5,8 @@ import {
   installMotionPreferenceForTest,
 } from "../../../test/browser-globals";
 import { NodexTooltipProvider as TooltipProvider } from "../../../components/ui/tooltip";
-import { renderWithMaitai, settleAsyncRender } from "../../../test/dom";
+import { renderWithMaitai } from "../../../test/thread-maitai";
+import { settleAsyncRender } from "../../../test/dom";
 import { TestQueryProvider } from "../../../test/query";
 import type { ThreadFooterModel, ThreadStageActions } from "../thread-stage-types";
 import type { CodexConversationItem, CodexConversationTurn } from "../../../lib/types";

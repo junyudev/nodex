@@ -8,7 +8,8 @@ import type {
   CodexPlanImplementationRequest,
   CodexSetupCodexStepRequest,
 } from "@/lib/types";
-import { renderWithMaitai as render, settleAsyncRender } from "@/test/dom";
+import { renderWithMaitai as render } from "@/test/thread-maitai";
+import { settleAsyncRender } from "@/test/dom";
 import type {
   ThreadComposerShellPendingRequestModel,
   ThreadStageActions,

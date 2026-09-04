@@ -38,7 +38,7 @@ describe("Vite+ CI command ownership", () => {
       verifyStaticCheckSteps("workflow.static-contracts", [
         {
           run: [
-            "vp exec tsx scripts/ci/run-timed.ts -- vp check",
+            "vp exec tsx scripts/ci/run-timed.ts -- vp run check",
             "vp exec tsx scripts/ci/verify-static.ts --group types",
           ].join("\n"),
         },
@@ -49,12 +49,12 @@ describe("Vite+ CI command ownership", () => {
       verifyStaticCheckSteps("workflow.static-contracts", [
         { run: "vp exec tsx scripts/ci/verify-static.ts --group types" },
       ]),
-    ).toThrow(/must run vp check directly/u);
+    ).toThrow(/canonical vp run check task/u);
 
     expect(() =>
       verifyStaticCheckSteps("workflow.static-contracts", [
         { run: "vp exec tsx scripts/ci/verify-static.ts --group types" },
-        { run: "vp check" },
+        { run: "vp run check" },
       ]),
     ).toThrow(/before grouped static contracts/u);
   });

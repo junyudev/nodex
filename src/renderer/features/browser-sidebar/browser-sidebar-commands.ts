@@ -2,7 +2,7 @@ import type {
   BrowserSidebarCommand,
   BrowserSidebarCommandResult,
 } from "../../../shared/browser-sidebar";
-import type { IpcApi } from "../../../shared/ipc-api";
+import type { IpcArgs } from "../../../shared/ipc-api";
 import type { IpcOperationDefinitionMap } from "../../../shared/ipc-endpoint-policy";
 import {
   defineRendererCommand,
@@ -10,10 +10,6 @@ import {
   invokeRendererControl,
   invokeRendererQuery,
 } from "@/lib/renderer-command";
-
-type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"] extends readonly unknown[]
-  ? IpcApi[Channel]["args"]
-  : never;
 
 const defineBrowserSidebarCommand = <const Type extends BrowserSidebarCommand["type"]>(
   type: Type,

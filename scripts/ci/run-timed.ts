@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runCommand } from "../tooling/process";
+import { runCommand, withCommandSignal, type CommandResult } from "../tooling/process";
 
 export interface TimedCommandArguments {
   readonly name: string;
@@ -18,6 +18,7 @@ export interface TimedCommandRecord {
   readonly startedAt: string;
   readonly finishedAt: string;
   readonly durationMs: number;
+  readonly resources?: CommandResult["resources"];
   readonly exitCode: number;
 }
 
@@ -32,6 +33,8 @@ export interface RunTimedOptions {
   readonly now?: () => Date;
   readonly signal?: AbortSignal;
   readonly logFile?: string;
+  readonly onStdout?: (chunk: string) => void;
+  readonly measureResources?: boolean;
 }
 
 const readOption = (args: readonly string[], name: string): string | undefined => {
@@ -118,10 +121,11 @@ export const runTimedCommand = async (options: RunTimedOptions): Promise<TimedCo
     job: optionalText(environment.CI_TIMING_JOB ?? environment.GITHUB_JOB),
     name: options.name,
     runId: optionalText(environment.GITHUB_RUN_ID),
-    sha: optionalText(environment.GITHUB_SHA),
+    sha: optionalText(environment.CI_SOURCE_SHA ?? environment.GITHUB_SHA),
     startedAt: started.toISOString(),
     finishedAt: finished.toISOString(),
     durationMs: result.durationMs,
+    ...(result.resources ? { resources: result.resources } : {}),
     exitCode: result.exitCode,
   };
   const timingDirectory =
@@ -137,18 +141,19 @@ export const runTimedCommand = async (options: RunTimedOptions): Promise<TimedCo
   return record;
 };
 
-const main = async (): Promise<void> => {
+const main = async (signal: AbortSignal): Promise<number> => {
   const parsed = parseRunTimedArguments(process.argv.slice(2));
   const record = await runTimedCommand({
+    signal,
     name: parsed.name,
     command: parsed.command,
     commandArguments: parsed.commandArguments,
   });
-  process.exitCode = record.exitCode;
+  return record.exitCode;
 };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch((error: unknown) => {
+  withCommandSignal(main).catch((error: unknown) => {
     process.stderr.write(
       `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
     );

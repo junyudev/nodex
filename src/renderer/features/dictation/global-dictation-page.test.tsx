@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { GlobalDictationBar, GlobalDictationRoot } from "./global-dictation-page";
 
@@ -106,12 +106,15 @@ describe("GlobalDictationRoot", () => {
     });
     try {
       render(<GlobalDictationRoot />);
-      await vi.waitFor(() => expect(sendEvent).toHaveBeenCalledWith({ type: "ready" }));
+      await waitFor(() => expect(sendEvent).toHaveBeenCalledWith({ type: "ready" }));
       expect(screen.queryByText("Dictation ready")).toBeNull();
-      commandHandlers[0]?.({
-        type: "idle",
-        configuredHotkey: "Fn",
-        configuredToggleHotkey: "Command+Shift+D",
+      await act(async () => {
+        commandHandlers[0]?.({
+          type: "idle",
+          configuredHotkey: "Fn",
+          configuredToggleHotkey: "Command+Shift+D",
+        });
+        await Promise.resolve();
       });
       await screen.findByText("Dictation ready");
     } finally {

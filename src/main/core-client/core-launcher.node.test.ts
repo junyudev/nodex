@@ -1,3 +1,4 @@
+import { requiredNativeExecutable } from "../../../scripts/testing/native-artifacts";
 import {
   accessSync,
   chmodSync,
@@ -19,7 +20,7 @@ import {
   resolveCoreExecutable,
 } from "./core-launcher";
 
-const CORE_BINARY = path.resolve("target/debug/nodex-core");
+const CORE_BINARY = requiredNativeExecutable("core-server");
 
 const waitUntil = async (
   predicate: () => boolean | Promise<boolean>,
@@ -93,6 +94,7 @@ describe("native Core launcher", () => {
     ).toBe("/opt/nodex/bin/nodex-core");
     expect(
       resolveCoreExecutable({
+        environment: {},
         appResourcesPath: "/Applications/Nodex.app/Contents/Resources",
         isPackaged: true,
       }),
@@ -101,6 +103,7 @@ describe("native Core launcher", () => {
       resolveCoreExecutable({
         isPackaged: false,
         repositoryRoot: "/work/nodex",
+        environment: {},
       }),
     ).toBe("/work/nodex/target/debug/nodex-core");
     expect(() =>
@@ -112,7 +115,7 @@ describe("native Core launcher", () => {
   });
 
   test("starts one detached Core and reuses the validated runtime", async () => {
-    expect(existsSync(CORE_BINARY), "run pnpm run core:test:client").toBe(true);
+    expect(existsSync(CORE_BINARY), "run vp run test:core-client").toBe(true);
     accessSync(CORE_BINARY, constants.X_OK);
     const nodexHome = mkdtempSync(path.join(tmpdir(), "nodex-core-launcher-"));
     const input = {

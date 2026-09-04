@@ -9,9 +9,19 @@ runs:
     - uses: ./.github/actions/setup-rust-ci
     - uses: ./.github/actions/setup-playwright
     - name: Run stress suites
+      env:
+        NODEX_TEST_TIMINGS: .generated/ci-timings
       shell: bash
       run: vp exec tsx scripts/ci/run-timed.ts --name stress-tests -- xvfb-run --auto-servernum vp run test:stress
     - name: Show Rust compiler cache statistics
       if: always()
       shell: bash
       run: sccache --show-stats || true
+    - name: Upload stress timings
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: timings-stress-${{ github.job }}-${{ github.run_attempt }}
+        path: .generated/ci-timings/
+        if-no-files-found: ignore
+        retention-days: 14

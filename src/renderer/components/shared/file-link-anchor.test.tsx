@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
-import { renderWithMaitai as render, settleAsyncRender } from "../../test/dom";
+import { renderWithMaitai as render } from "../../test/thread-maitai";
+import { settleAsyncRender } from "../../test/dom";
 import { FileLinkAnchor } from "./file-link-anchor";
 import { FileReferenceRouterProvider } from "@/lib/file-reference-router";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
