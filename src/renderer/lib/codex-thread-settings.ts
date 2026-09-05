@@ -34,7 +34,7 @@ const REASONING_EFFORT_LABELS: Partial<Record<CodexReasoningEffort, string>> = {
   medium: "Medium",
   high: "High",
   xhigh: "Extra High",
-  max: "Maximum",
+  max: "Max",
   ultra: "Ultra",
 };
 
@@ -228,9 +228,12 @@ export function formatCodexModelLabel(
 
   const selectedModel = models.find((model) => model.id === modelId);
   const displayName = selectedModel?.displayName.trim();
-  if (displayName && displayName !== modelId) return displayName;
-
-  return formatCodexModelLabelFromId(modelId);
+  const label =
+    displayName && displayName !== modelId ? displayName : formatCodexModelLabelFromId(modelId);
+  return label.replace(
+    /^(GPT-\d[\d.]*)(.*)$/u,
+    (_match, family: string, variant: string) => family + variant.replaceAll("-", " "),
+  );
 }
 
 export function formatCodexReasoningEffortLabel(effort: CodexReasoningEffort | undefined): string {

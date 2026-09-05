@@ -73,6 +73,8 @@ const elapsedMs = (startedAt: bigint): number =>
   Number(process.hrtime.bigint() - startedAt) / 1_000_000;
 
 const protocolThread = (threadId: string, overrides: Partial<Thread> = {}): Thread => ({
+  model: null,
+  reasoningEffort: null,
   id: threadId,
   extra: null,
   sessionId: `session-${threadId}`,

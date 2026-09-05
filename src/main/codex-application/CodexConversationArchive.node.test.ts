@@ -749,6 +749,7 @@ it.effect("fills a missing local archive side from bounded history without repla
                 content: [{ type: "text", text: "latest request", text_elements: [] }],
               },
               {
+                questions: null,
                 type: "agentMessage",
                 id: "assistant-latest",
                 text: "older history response",

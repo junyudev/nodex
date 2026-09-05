@@ -285,6 +285,7 @@ it.effect("replays bounded lifecycle metadata after its local materialization co
         });
         const boundedTurnItems = [
           {
+            questions: null,
             id: "giant-turn-item",
             type: "agentMessage",
             text: "bounded live output",

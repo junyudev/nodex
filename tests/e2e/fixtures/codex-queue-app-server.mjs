@@ -57,6 +57,8 @@ const turn = (id, status, timestamps = {}, items = []) => ({
 });
 
 const thread = (includeTurns = false) => ({
+  model: null,
+  reasoningEffort: null,
   id: state.thread?.id ?? "01900000-0000-7000-8000-000000000001",
   extra: null,
   sessionId: state.thread?.sessionId ?? "queue-parity-session",

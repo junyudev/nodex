@@ -29,7 +29,7 @@ const threadStartDelayMs = Number.parseInt(
   process.env.NODEX_FAKE_CODEX_THREAD_START_DELAY_MS ?? "",
   10,
 );
-const initialUserAgent = process.env.NODEX_FAKE_CODEX_USER_AGENT ?? "codex-app-server/0.152.0";
+const initialUserAgent = process.env.NODEX_FAKE_CODEX_USER_AGENT ?? "codex-app-server/0.153.4";
 const reconnectUserAgent = process.env.NODEX_FAKE_CODEX_RECONNECT_USER_AGENT ?? initialUserAgent;
 const selectedDeleteDelayMs = Number.parseInt(
   process.env.NODEX_FAKE_SUBAGENT_DELETE_SELECTED_MS ?? "",
@@ -207,6 +207,8 @@ const topologyTurn = () => ({
 });
 
 const rootThread = (includeTurns = false) => ({
+  model: null,
+  reasoningEffort: null,
   id: rootThreadId,
   extra: null,
   sessionId: "subagent-parity-session",
@@ -306,6 +308,8 @@ const childThread = (definition, includeTurns = false) => {
   const status = childStatus(definition);
   const agentRole = status.type === "idle" ? "reviewer" : "explorer";
   return {
+    model: null,
+    reasoningEffort: null,
     id: definition.id,
     extra: null,
     sessionId: "subagent-parity-session",

@@ -21,6 +21,8 @@ import {
 const threadId = "thread-canonical-projection";
 
 const thread: Thread = {
+  model: null,
+  reasoningEffort: null,
   id: threadId,
   extra: null,
   sessionId: "session-canonical-projection",
@@ -263,6 +265,7 @@ it("invalidates a stale item-window digest before hashing live text and command 
   for (const mutationCase of cases) {
     const aggregate = makeConversationEntityStateRegistry().acquire(threadId);
     const agentItem = {
+      questions: null,
       type: "agentMessage",
       id: "agent-live",
       text: "",
@@ -319,6 +322,7 @@ it("bounds cumulative live deltas in canonical state, snapshots, and dormant rep
     status: "inProgress",
     items: [
       {
+        questions: null,
         type: "agentMessage",
         id: "agent-live-overflow",
         text: "",
@@ -383,6 +387,7 @@ it("prevents a terminal item payload from restoring oversized live output", () =
     status: "inProgress",
     items: [
       {
+        questions: null,
         type: "agentMessage",
         id: "agent-terminal-overflow",
         text: "",
@@ -403,6 +408,7 @@ it("prevents a terminal item payload from restoring oversized live output", () =
         threadId,
         turnId: liveTurn.id,
         item: {
+          questions: null,
           type: "agentMessage",
           id: "agent-terminal-overflow",
           text: "z".repeat(CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES + 1_024),

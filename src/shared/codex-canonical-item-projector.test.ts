@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
+import { parseCodexProtocolThreadItem } from "./codex-protocol-thread-item";
 import { createCodexQueuedFollowUp } from "./codex-queued-follow-up-state";
 import {
   agentActivityV2DynamicGenericActiveItem,
@@ -60,6 +61,7 @@ function generatedItems(): readonly CodexCanonicalItem[] {
       fragments: [{ text: "Hook feedback", hookRunId: "hook-run" }],
     },
     {
+      questions: null,
       type: "agentMessage",
       id: "assistant",
       text: "Answer",
@@ -209,8 +211,35 @@ function buildCanonicalTurn(
 }
 
 describe("projectCodexCanonicalTurnItemViews", () => {
+  test("preserves structured async questions and renders their replyable message during a turn", () => {
+    const message = {
+      type: "agentMessage",
+      id: "async-question",
+      text: "Which scope?\n- Project\n- Library",
+      phase: "final_answer",
+      memoryCitation: null,
+      delivery: "async",
+      questions: [{ title: "Which scope?", options: ["Project", "Library"] }],
+    } satisfies ThreadItem;
+    const parsed = parseCodexProtocolThreadItem(message);
+    expect(parsed).toEqual(message);
+    if (!parsed) throw new Error("Async question must cross the protocol boundary");
+
+    const views = project([materializeCodexCanonicalProtocolItem(parsed)], {
+      turnStatus: "inProgress",
+      lifecycleStatusByItemId: { "async-question": "completed" },
+    });
+    expect(views).toHaveLength(1);
+    expect(views[0]).toMatchObject({
+      normalizedKind: "assistantMessage",
+      markdownText: message.text,
+      status: "completed",
+    });
+  });
+
   test("uses explicit lifecycle status for statusless items regardless of sibling order", () => {
     const assistant = materializeCodexCanonicalProtocolItem({
+      questions: null,
       type: "agentMessage",
       id: "assistant-live",
       text: "partial",
@@ -675,6 +704,7 @@ describe("projectCodexCanonicalTurnViews", () => {
       content: [{ type: "text", text: "Server-normalized prompt", text_elements: [] }],
     });
     const assistant = materializeCodexCanonicalProtocolItem({
+      questions: null,
       type: "agentMessage",
       id: "assistant",
       text: "Answer",

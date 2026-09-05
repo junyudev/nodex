@@ -97,7 +97,7 @@ test("accepts the canonical no-patch runtime lock", () => {
   );
   expect(lock.schemaVersion).toBe(1);
   expect(lock.requiredArtifacts).toEqual(CODEX_APP_SERVER_REQUIRED_ARTIFACTS);
-  expect(lock.upstream.tag).toBe(TAG);
+  expect(lock.upstream.tag).toBe(`rust-v${lock.appServerRuntimeVersion}`);
 });
 
 test("rejects runtime assets and checksum manifests outside the official release", () => {

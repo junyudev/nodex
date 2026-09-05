@@ -99,6 +99,14 @@ Upgrade runtime provenance separately from protocol or product changes:
    tool, review the schema diff, and update the Browser exact-pair manifest.
 8. Stage and run the basic, multi-agent, handoff, and Browser conformance gates
    for both target packages before merging.
+   Review the basic probe's model IDs and visible default, and verify that loaded
+   Thread metadata agrees with its configured model and reasoning effort.
+
+Model availability belongs to the running app-server's `model/list` response.
+For authenticated comparisons, use the same account and client initialization,
+record the actual runtime versions, and allow the online catalog to refresh.
+A disk cache can differ from a running process's catalog and is not sufficient
+evidence of the models available in that process.
 
 `agent-runtime:relock` never builds source, downloads an unreviewed replacement,
 overwrites the canonical lock, or publishes assets. If a future release omits

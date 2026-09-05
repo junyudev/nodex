@@ -30,6 +30,7 @@ const completedTurn = (id: string): Turn => ({
 });
 
 const agentItem = (id: string): ThreadItem => ({
+  questions: null,
   type: "agentMessage",
   id,
   text: id,

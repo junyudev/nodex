@@ -35,6 +35,7 @@ This spec does not cover:
 
 ## Canonical Model
 
+- Thread metadata carries the current configured model and reasoning effort when available. Metadata-only reads update those settings without loading history; unavailable model metadata preserves known settings, and explicit settings remain authoritative. These fields describe configuration, not the model that executed each past Turn.
 - The visible transcript is one canonical ordered array of `CodexTranscriptEntry` values for durable/read-model history. Live active-thread prose is reduced by the current renderer owner and shared through revisioned conversation patches; main remains the app-server transport, persistence, and fallback snapshot authority.
 - Renderer surfaces consume canonical conversation snapshots and owner-published patches; JSX components do not reconstruct chat rows from raw runtime payloads or sort rows independently by timestamp.
 - Renderer derives turn-scoped view models from that canonical transcript (`thread detail -> turn buckets -> render blocks`), but transcript merge/reconciliation stays outside the JSX layer.
@@ -134,6 +135,7 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 
 ## Request User Input
 
+- Asynchronous questions appear as ordinary assistant messages containing the question text and suggested answers. Users reply through Composer while the Agent continues working. Structured questions and asynchronous delivery remain attached to the canonical message across history reconciliation; they do not create a blocking server request.
 - `item/tool/requestUserInput` presents a questionnaire in UI; selecting a preset answer is itself an explicit submission action rather than the first half of a select-then-confirm flow.
 - While unanswered, `request_user_input` does not render inline in the scroll body. It appears in the composer shell above the input editor.
 - After resolution, answered `request_user_input` remains visible as a compact `Asked N question(s)` disclosure row.

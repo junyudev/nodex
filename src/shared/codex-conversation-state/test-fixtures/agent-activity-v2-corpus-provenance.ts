@@ -43,6 +43,8 @@ export function buildAgentActivityV2CorpusThread(
   items: readonly ThreadItem[] = [],
 ): Thread {
   return {
+    model: null,
+    reasoningEffort: null,
     id: AGENT_ACTIVITY_V2_CORPUS_THREAD_ID,
     extra: null,
     sessionId: "session-activity-v2-corpus",

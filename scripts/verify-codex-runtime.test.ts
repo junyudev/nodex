@@ -79,6 +79,6 @@ test("binds final runtime verification to the complete canonical metadata digest
     ),
   };
   expect(() => assertCodexRuntimeMatchesReleaseLock(tampered, fixtureLock)).toThrow(
-    "canonical rust-v0.152.0 release lock",
+    `canonical ${lock.upstream.tag} release lock`,
   );
 });

@@ -1043,6 +1043,7 @@ function mergeCodexCanonicalHydratedItems(
           id: existing.id,
           memoryCitation: incoming.memoryCitation ?? existing.memoryCitation,
           delivery: incoming.delivery ?? existing.delivery,
+          questions: incoming.questions ?? existing.questions,
         } satisfies Extract<ThreadItem, { type: "agentMessage" }>;
         items = existingItems.map((item) => (item === existing ? merged : item));
       }

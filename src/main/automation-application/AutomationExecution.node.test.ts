@@ -569,6 +569,7 @@ it.effect("fills a missing local Automation archive side through bounded history
                   content: [{ type: "text", text: "latest request", text_elements: [] }],
                 },
                 {
+                  questions: null,
                   type: "agentMessage",
                   id: "assistant-latest",
                   text: "older history response",

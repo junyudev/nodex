@@ -1064,6 +1064,7 @@ function buildAssistantMessage(
     role: "assistant",
     markdownText,
     rawItem: {
+      questions: null,
       id: itemId,
       type: "agentMessage",
       text: markdownText,
@@ -2927,6 +2928,7 @@ describe("local-conversation-store", () => {
             threadId: "thread-1",
             turnId: "turn-replacement",
             item: {
+              questions: null,
               id: "assistant-replacement",
               type: "agentMessage",
               text: "",
@@ -3018,6 +3020,7 @@ describe("local-conversation-store", () => {
             threadId: "thread-1",
             turnId: "turn-replacement",
             item: {
+              questions: null,
               id: "assistant-replacement",
               type: "agentMessage",
               text: "partial final",
@@ -4942,6 +4945,7 @@ describe("local-conversation-store", () => {
             threadId: "thread-1",
             turnId: "turn-1",
             item: {
+              questions: null,
               id: "assistant-1",
               type: "agentMessage",
               text: "",
@@ -4973,6 +4977,7 @@ describe("local-conversation-store", () => {
             threadId: "thread-1",
             turnId: "turn-1",
             item: {
+              questions: null,
               id: "assistant-1",
               type: "agentMessage",
               text: "done",
@@ -5413,6 +5418,7 @@ describe("local-conversation-store", () => {
             turnId: "turn-after-hidden-placeholder",
             startedAtMs: 200,
             item: {
+              questions: null,
               id: "assistant-after-hidden-placeholder",
               type: "agentMessage",
               text: "",
@@ -5651,6 +5657,7 @@ describe("local-conversation-store", () => {
             threadId: "thread-1",
             turnId: "turn-1",
             item: {
+              questions: null,
               id: "assistant-1",
               type: "agentMessage",
               text: delta,
@@ -6181,6 +6188,8 @@ describe("local-conversation-store", () => {
           method: "thread/started",
           params: {
             thread: {
+              model: null,
+              reasoningEffort: null,
               id: "thread-1",
               extra: null,
               sessionId: "thread-1",
@@ -10039,6 +10048,7 @@ describe("local-conversation-store", () => {
             threadId: "thread-1",
             turnId: "turn-1",
             item: {
+              questions: null,
               id: "assistant-1",
               type: "agentMessage",
               text: delta,
@@ -10791,6 +10801,7 @@ describe("local-conversation-store", () => {
               threadId: "thread-1",
               turnId: "turn-1",
               item: {
+                questions: null,
                 id: "assistant-1",
                 type: "agentMessage",
                 text: delta,
@@ -11676,6 +11687,7 @@ describe("local-conversation-store", () => {
             threadId: "thread-1",
             turnId: "turn-1",
             item: {
+              questions: null,
               id: "assistant-1",
               type: "agentMessage",
               text: "",
@@ -11749,6 +11761,7 @@ describe("local-conversation-store", () => {
             threadId: "thread-1",
             turnId: "turn-1",
             item: {
+              questions: null,
               id: "assistant-1",
               type: "agentMessage",
               text: "",
@@ -13705,6 +13718,7 @@ describe("local-conversation-store", () => {
             threadId: "thread-1",
             turnId: "turn-owner-start",
             item: {
+              questions: null,
               id: "assistant-streaming",
               type: "agentMessage",
               text: "",
@@ -13786,6 +13800,7 @@ describe("local-conversation-store", () => {
               threadId: "thread-1",
               turnId: "turn-owner-start",
               item: {
+                questions: null,
                 id: "assistant-streaming",
                 type: "agentMessage",
                 text: "",

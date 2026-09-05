@@ -147,6 +147,8 @@ const coreThread = (): CoreThread =>
   }) satisfies CoreThread;
 
 const appThread = (): Thread => ({
+  model: null,
+  reasoningEffort: null,
   id: THREAD_ID,
   extra: null,
   sessionId: `session-${THREAD_ID}`,
@@ -188,6 +190,7 @@ const completedTurn = (index: number): Turn => ({
 });
 
 const largeAgentItem = (turnId: string, index: number): ThreadItem => ({
+  questions: null,
   type: "agentMessage",
   id: `${turnId}:item-${index}`,
   text: `${LARGE_ITEM_TEXT}:${turnId}:${index}`,
@@ -1013,6 +1016,7 @@ it.effect("rejects one oversized partial-Turn item page at its exact cursor boun
               {
                 turnId: "turn-oversized",
                 item: {
+                  questions: null,
                   type: "agentMessage",
                   id: "item-oversized",
                   text: oversizedText,

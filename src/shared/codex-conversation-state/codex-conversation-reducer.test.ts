@@ -54,6 +54,8 @@ function buildTurnParams(threadId = THREAD_ID): CodexCanonicalTurnParams {
 
 function buildThread(items: ThreadItem[] = [], turnId = TURN_ID): Thread {
   return {
+    model: null,
+    reasoningEffort: null,
     id: THREAD_ID,
     extra: null,
     sessionId: "session_c03",
@@ -397,6 +399,7 @@ describe("canonical item lifecycle reducer", () => {
   test("completion requires the same ID and protocol type", () => {
     const command = buildCommand("shared-id");
     const agentMessage = {
+      questions: null,
       type: "agentMessage",
       id: "shared-id",
       text: "final",
@@ -539,6 +542,7 @@ describe("canonical item lifecycle reducer", () => {
 
   test("agent start uses independent wall-clock sites and completion does not refresh them", () => {
     const started = {
+      questions: null,
       type: "agentMessage",
       id: "agent-message",
       text: "",
@@ -670,6 +674,7 @@ describe("canonical item lifecycle reducer", () => {
       },
     };
     const assistant = {
+      questions: null,
       type: "agentMessage",
       id: "assistant-before-turn-started",
       text: "",
@@ -1313,6 +1318,7 @@ describe("canonical item lifecycle reducer", () => {
       ],
     };
     const agent = {
+      questions: null,
       type: "agentMessage",
       id: "terminal-turn-agent",
       text: "",

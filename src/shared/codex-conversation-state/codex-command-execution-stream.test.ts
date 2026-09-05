@@ -69,6 +69,8 @@ function buildTurnParams(): CodexCanonicalTurnParams {
 
 function buildState(items: ThreadItem[] = []): CodexCanonicalConversationState {
   const thread: Thread = {
+    model: null,
+    reasoningEffort: null,
     id: THREAD_ID,
     extra: null,
     sessionId: "session_c05",
@@ -124,6 +126,7 @@ describe("canonical command-execution stream reduction", () => {
       aggregatedOutput: "new-last",
     });
     const wrongTypeAfterTarget = {
+      questions: null,
       type: "agentMessage",
       id: "shared",
       text: "must not mask the command",

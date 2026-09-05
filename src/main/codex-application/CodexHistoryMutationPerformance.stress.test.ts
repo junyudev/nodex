@@ -78,6 +78,7 @@ const projectedTurn = (turnId: string, onItemsRead?: () => void): CodexConversat
     get: () => {
       onItemsRead?.();
       return Array.from({ length: ITEMS_PER_PAGE_TURN }, (_, index) => ({
+        questions: null,
         type: "agentMessage",
         id: `${turnId}:item-${index}`,
         text: `${ITEM_TEXT}:${index}`,
@@ -109,6 +110,7 @@ const canonicalTurn = (turnId: string, onItemsRead?: () => void): CodexCanonical
       onItemsRead?.();
       return Array.from({ length: ITEMS_PER_PAGE_TURN }, (_, index) => ({
         protocol: {
+          questions: null,
           type: "agentMessage",
           id: `${turnId}:item-${index}`,
           text: `${ITEM_TEXT}:${index}`,

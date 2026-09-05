@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
+import { readCodexAppServerReleaseLock } from "./agent-runtime-release-lock";
 import {
   projectBrowserPeerRuntimeIdentity,
   projectBundledAppServerRuntimeIdentity,
@@ -420,12 +421,13 @@ describe("packaged build provenance", () => {
     });
 
     expect(verified.provenanceId).toBe(written.provenanceId);
+    const lock = readCodexAppServerReleaseLock(fixture.lockPath);
     expect(verified.agentRuntime).toMatchObject({
       lockSha256: sha256(fs.readFileSync(fixture.lockPath, "utf8")),
       signingTeamId: "2DC432GLL2",
-      sourceTag: "rust-v0.152.0",
+      sourceTag: lock.upstream.tag,
       targetTriple: "aarch64-apple-darwin",
-      version: "0.152.0",
+      version: lock.appServerRuntimeVersion,
     });
   });
 

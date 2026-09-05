@@ -192,7 +192,7 @@ describe("codex-thread-settings", () => {
   });
 
   test("formats fallback labels for the composer controls", () => {
-    expect(formatCodexModelLabel("gpt-5.3-codex", MODELS)).toBe("GPT-5.3-Codex");
+    expect(formatCodexModelLabel("gpt-5.3-codex", MODELS)).toBe("GPT-5.3 Codex");
     expect(formatCodexModelLabel(undefined, MODELS)).toBe("Default model");
     expect(
       formatCodexModelLabel("gpt-5.1-codex-max", [
@@ -212,7 +212,14 @@ describe("codex-thread-settings", () => {
           isDefault: false,
         },
       ]),
-    ).toBe("GPT-5.1-Codex-Max");
+    ).toBe("GPT-5.1 Codex Max");
+    expect(formatCodexModelLabel("gpt-6-astra", [])).toBe("GPT-6 Astra");
+    expect(
+      formatCodexModelLabel("gpt-6-astra", [
+        { ...MODELS[0]!, id: "gpt-6-astra", displayName: "GPT-6-Astra" },
+      ]),
+    ).toBe("GPT-6 Astra");
+    expect(formatCodexReasoningEffortLabel("max")).toBe("Max");
     expect(formatCodexReasoningEffortLabel("low")).toBe("Light");
     expect(formatCodexReasoningEffortLabel("xhigh")).toBe("Extra High");
     expect(formatCodexReasoningEffortLabel("future_effort")).toBe("Future Effort");

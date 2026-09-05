@@ -157,6 +157,8 @@ it.effect("collapses an individually over-budget pressure delta before it become
     (runtime, conversations) =>
       Effect.sync(() => {
         const protocol: Thread = {
+          model: null,
+          reasoningEffort: null,
           id: "thread-1",
           extra: null,
           sessionId: "session-1",
@@ -194,6 +196,7 @@ it.effect("collapses an individually over-budget pressure delta before it become
               durationMs: null,
               items: [
                 {
+                  questions: null,
                   type: "agentMessage",
                   id: "item-1",
                   text: "",

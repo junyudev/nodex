@@ -239,6 +239,7 @@ describe("CodexReadThreadHistory", () => {
     expect(
       serializeCodexReadThreadProtocolItem(
         {
+          questions: null,
           type: "agentMessage",
           id: "item-1",
           text: "abcdefghij",

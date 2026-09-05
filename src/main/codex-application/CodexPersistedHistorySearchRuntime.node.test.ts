@@ -69,6 +69,8 @@ it("bounds the hydration navigation index without letting stale completion cance
 
 const canonicalTurns = (turns: readonly Turn[]): readonly CodexCanonicalTurnState[] => {
   const thread: Thread = {
+    model: null,
+    reasoningEffort: null,
     id: "thread-search-placement",
     extra: null,
     sessionId: "session-search-placement",
@@ -136,6 +138,8 @@ const selectedOccurrence: ThreadSearchOccurrence = {
 };
 
 const runtimeThread = (turns: readonly Turn[]): Thread => ({
+  model: null,
+  reasoningEffort: null,
   id: runtimeThreadId,
   extra: null,
   sessionId: "session-search-runtime",

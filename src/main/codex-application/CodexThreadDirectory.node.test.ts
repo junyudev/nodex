@@ -25,6 +25,10 @@ import { makeCodexRendererConversationRegistryState } from "./CodexRendererConve
 import { CodexRendererConversationRegistry } from "./CodexRendererConversationRegistry";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { make as makeDirectory } from "./CodexThreadDirectory";
+import {
+  projectCodexThreadDirectoryMaterialization,
+  projectCoreWorkspaceThread,
+} from "./CodexThreadDirectoryProjection";
 import { CodexHistoryPageAdapter, make as makeHistoryPageAdapter } from "./CodexHistoryPageAdapter";
 
 type CoreThread = Extract<
@@ -71,6 +75,8 @@ const coreThread = (threadId: string, overrides: Partial<CoreThread> = {}): Core
   }) satisfies CoreThread;
 
 const appThread = (threadId: string, turns: Thread["turns"] = []): Thread => ({
+  model: null,
+  reasoningEffort: null,
   id: threadId,
   extra: null,
   sessionId: `session-${threadId}`,
@@ -98,6 +104,41 @@ const appThread = (threadId: string, turns: Thread["turns"] = []): Thread => ({
   gitInfo: null,
   name: "Hydrated Thread",
   turns: [...turns],
+});
+
+it("preserves explicit settings and known settings when model metadata is unavailable", () => {
+  const existing = projectCoreWorkspaceThread(coreThread("thread-a", { service_tier: "priority" }));
+  const input = {
+    thread: appThread("thread-a"),
+    existing,
+    parent: null,
+    nowMs: 120_000,
+  };
+  const unavailable = projectCodexThreadDirectoryMaterialization(input);
+  assert.strictEqual(unavailable?.patch.model_id, "gpt-test");
+  assert.strictEqual(unavailable?.patch.reasoning_effort, "high");
+  assert.strictEqual(unavailable?.patch.service_tier, "priority");
+
+  const explicit = projectCodexThreadDirectoryMaterialization({
+    ...input,
+    thread: { ...input.thread, model: "gpt-observed", reasoningEffort: "low" },
+    executionProfile: { modelId: "gpt-explicit", reasoningEffort: "max", serviceTier: null },
+  });
+  assert.strictEqual(explicit?.patch.model_id, "gpt-explicit");
+  assert.strictEqual(explicit?.patch.reasoning_effort, "max");
+  assert.isNull(explicit?.patch.service_tier);
+});
+
+it("uses configured model metadata and treats null effort as unset without changing service tier", () => {
+  const materialized = projectCodexThreadDirectoryMaterialization({
+    thread: { ...appThread("thread-a"), model: "gpt-observed", reasoningEffort: null },
+    existing: projectCoreWorkspaceThread(coreThread("thread-a", { service_tier: "priority" })),
+    parent: null,
+    nowMs: 120_000,
+  });
+  assert.strictEqual(materialized?.patch.model_id, "gpt-observed");
+  assert.isNull(materialized?.patch.reasoning_effort);
+  assert.strictEqual(materialized?.patch.service_tier, "priority");
 });
 
 const notFound = (threadId: string) =>
@@ -306,6 +347,7 @@ it.effect("accepts a concrete paginated start contract without trusting the vers
       const poisonTurn: Turn = {
         id: "turn-poison",
         items: Array.from({ length: 1_000 }, (_, index) => ({
+          questions: null,
           type: "agentMessage",
           id: `poison-${index}`,
           text: "must not become resident",
@@ -503,6 +545,7 @@ it.effect("accepts a metadata-only import shell and hydrates only a bounded tail
                 {
                   turnId: "turn-tail",
                   item: {
+                    questions: null,
                     type: "agentMessage",
                     id: "item-tail",
                     text: "bounded tail",
@@ -864,7 +907,9 @@ it.effect("resolves remote metadata without reading or materializing the transcr
         assert.strictEqual(hostId, "remote-a");
         assert.strictEqual(method, "thread/read");
         assert.deepEqual(params as unknown, { threadId: "thread-a", includeTurns: false });
-        return Effect.succeed({ thread: appThread("thread-a") });
+        return Effect.succeed({
+          thread: { ...appThread("thread-a"), model: "gpt-observed", reasoningEffort: "medium" },
+        });
       }) as RequestOnHost);
       const directory = yield* directoryFoundations.pipe(
         Effect.provideService(CodexApplicationEventHub, eventHub),
@@ -878,6 +923,8 @@ it.effect("resolves remote metadata without reading or materializing the transcr
 
       assert.strictEqual(resolved?.fidelity, "metadata");
       assert.strictEqual(resolved?.durable.threadName, "Hydrated Thread");
+      assert.strictEqual(resolved?.durable.executionProfile?.modelId, "gpt-observed");
+      assert.strictEqual(resolved?.durable.executionProfile?.reasoningEffort, "medium");
       assert.isNull(resolved?.canonical ?? null);
       assert.isNull(resolved?.snapshot ?? null);
       assert.isTrue(events.length > 0);
@@ -1510,6 +1557,7 @@ it.effect(
                 ...turn("oversized-turn"),
                 items: [
                   {
+                    questions: null,
                     type: "agentMessage",
                     id: "oversized-item",
                     text: "x".repeat(3 * 1024 * 1024),

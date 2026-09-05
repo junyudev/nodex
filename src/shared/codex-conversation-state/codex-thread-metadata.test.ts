@@ -43,6 +43,8 @@ function buildState(): CodexCanonicalConversationState {
 
 function buildThread(name: string | null): CodexCanonicalConversationState["protocol"] {
   return {
+    model: null,
+    reasoningEffort: null,
     id: "thread-token",
     extra: null,
     sessionId: "session-1",
@@ -155,6 +157,8 @@ describe("Codex 30751 thread metadata", () => {
     expect(configured.sidecar.latestThreadSettings).toEqual(settings);
     expect(configured.protocol.cwd).toBe("/new");
     expect(configured.protocol.modelProvider).toBe("openai-new");
+    expect(configured.protocol.model).toBe("gpt-new");
+    expect(configured.protocol.reasoningEffort).toBe("high");
 
     const idle = reduceCodexConversationThreadStatus(configured, "thread-token", { type: "idle" });
     expect(idle.state.protocol.status.type).toBe("idle");

@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
-import type { ThreadStartResponse } from "@nodex/codex-app-server-protocol/v2";
+import type { ModelListResponse, ThreadStartResponse } from "@nodex/codex-app-server-protocol/v2";
 import { ScopedCallbackRuntime } from "../src/main/app/ScopedCallbackRuntime";
 import { CodexRpcError } from "../src/main/codex-runtime/CodexRpcError";
 import { resolveCodexRuntime } from "../src/main/codex/codex-runtime";
@@ -34,6 +34,7 @@ export type AgentRuntimeConformanceReport = {
     invalidMethod: "pass";
     modelList: "pass";
     paginatedThreadStart: "pass";
+    threadModelMetadata: "pass";
   };
   generatedAt: string;
   initialize: {
@@ -43,6 +44,8 @@ export type AgentRuntimeConformanceReport = {
     userAgent: string;
   };
   modelCount: number;
+  modelIds: string[];
+  defaultModel: string;
   protocolSchemaFingerprint: string;
   sourceCommit: string;
   sourceTag: string;
@@ -99,17 +102,27 @@ async function probeAgentRuntimePromise(
 
   const first = await withProbeClient(callbacks, input.binaryPath, stateHome, async (client) => {
     const initialize = client.getInitializeResponse();
-    const models = readData(
-      await client.request("model/list", { cursor: null, limit: 100 }),
-      "model/list",
-    );
+    const { data: models } = await client.request<ModelListResponse>("model/list", {
+      cursor: null,
+      limit: 100,
+    });
     if (models.length === 0) throw new Error("Codex app-server returned an empty model catalog");
+    const defaultModel = models.find((model) => model.isDefault);
+    if (!defaultModel || models.some((model) => model.hidden)) {
+      throw new Error("Codex app-server must return a visible default in its picker model catalog");
+    }
     const started = await client.request<ThreadStartResponse>("thread/start", {
       cwd: projectRoot,
       historyMode: "paginated",
     });
     if (started.thread.historyMode !== "paginated" || started.thread.turns.length !== 0) {
       throw new Error("Codex app-server did not honor the paginated Thread metadata contract");
+    }
+    if (
+      started.thread.model !== started.model ||
+      started.thread.reasoningEffort !== started.reasoningEffort
+    ) {
+      throw new Error("Codex Thread metadata does not match its configured model settings");
     }
     const threads = readData(
       await client.request("thread/list", {
@@ -126,7 +139,13 @@ async function probeAgentRuntimePromise(
     } catch (error) {
       if (!(error instanceof CodexRpcError)) throw error;
     }
-    return { initialize, modelCount: models.length, threadCount: threads.length };
+    return {
+      initialize,
+      modelCount: models.length,
+      modelIds: models.map((model) => model.model),
+      defaultModel: defaultModel.model,
+      threadCount: threads.length,
+    };
   });
   const restartedThreadCount = await withProbeClient(
     callbacks,
@@ -154,6 +173,7 @@ async function probeAgentRuntimePromise(
       invalidMethod: "pass",
       modelList: "pass",
       paginatedThreadStart: "pass",
+      threadModelMetadata: "pass",
     },
     generatedAt: new Date().toISOString(),
     initialize: {
@@ -163,6 +183,8 @@ async function probeAgentRuntimePromise(
       userAgent: first.initialize.userAgent,
     },
     modelCount: first.modelCount,
+    modelIds: first.modelIds,
+    defaultModel: first.defaultModel,
     protocolSchemaFingerprint: lock.protocolSchema.sha256,
     sourceCommit: lock.upstream.commit,
     sourceTag: lock.upstream.tag,

@@ -35,6 +35,8 @@ export const sanitizedCommandLifecycleFixture = {
     ],
   },
   initialThread: {
+    model: null,
+    reasoningEffort: null,
     id: THREAD_ID,
     extra: null,
     sessionId: "session_fixture",

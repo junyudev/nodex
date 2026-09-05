@@ -66,6 +66,7 @@ export const CLIENT_REQUEST_METHODS = {
   "plugin/list": "plugin/list",
   "plugin/search": "plugin/search",
   "plugin/installed": "plugin/installed",
+  "plugin/reconcile": "plugin/reconcile",
   "plugin/read": "plugin/read",
   "plugin/skill/read": "plugin/skill/read",
   "plugin/share/save": "plugin/share/save",
@@ -335,6 +336,7 @@ export interface ClientRequestParamsByMethod {
   readonly "plugin/list": CodexSchema.V2PluginListParams;
   readonly "plugin/search": CodexSchema.V2PluginSearchParams;
   readonly "plugin/installed": CodexSchema.V2PluginInstalledParams;
+  readonly "plugin/reconcile": CodexSchema.V2PluginReconcileParams;
   readonly "plugin/read": CodexSchema.V2PluginReadParams;
   readonly "plugin/skill/read": CodexSchema.V2PluginSkillReadParams;
   readonly "plugin/share/save": CodexSchema.V2PluginShareSaveParams;
@@ -497,6 +499,7 @@ export interface ClientRequestResponsesByMethod {
   readonly "plugin/list": CodexSchema.V2PluginListResponse;
   readonly "plugin/search": CodexSchema.V2PluginSearchResponse;
   readonly "plugin/installed": CodexSchema.V2PluginInstalledResponse;
+  readonly "plugin/reconcile": CodexSchema.V2PluginReconcileResponse;
   readonly "plugin/read": CodexSchema.V2PluginReadResponse;
   readonly "plugin/skill/read": CodexSchema.V2PluginSkillReadResponse;
   readonly "plugin/share/save": CodexSchema.V2PluginShareSaveResponse;
@@ -775,6 +778,7 @@ export const CLIENT_REQUEST_PARAMS = {
   "plugin/list": CodexSchema.V2PluginListParams,
   "plugin/search": CodexSchema.V2PluginSearchParams,
   "plugin/installed": CodexSchema.V2PluginInstalledParams,
+  "plugin/reconcile": CodexSchema.V2PluginReconcileParams,
   "plugin/read": CodexSchema.V2PluginReadParams,
   "plugin/skill/read": CodexSchema.V2PluginSkillReadParams,
   "plugin/share/save": CodexSchema.V2PluginShareSaveParams,
@@ -942,6 +946,7 @@ export const CLIENT_REQUEST_RESPONSES = {
   "plugin/list": CodexSchema.V2PluginListResponse,
   "plugin/search": CodexSchema.V2PluginSearchResponse,
   "plugin/installed": CodexSchema.V2PluginInstalledResponse,
+  "plugin/reconcile": CodexSchema.V2PluginReconcileResponse,
   "plugin/read": CodexSchema.V2PluginReadResponse,
   "plugin/skill/read": CodexSchema.V2PluginSkillReadResponse,
   "plugin/share/save": CodexSchema.V2PluginShareSaveResponse,

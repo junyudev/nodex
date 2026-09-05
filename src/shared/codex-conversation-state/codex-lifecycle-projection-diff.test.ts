@@ -507,6 +507,7 @@ describe("scoped canonical lifecycle projection diff", () => {
 
   test("stabilizes a display alias by explicit canonical raw owner type and id", () => {
     const started = {
+      questions: null,
       type: "agentMessage",
       id: "assistant-alias",
       text: "",
@@ -580,6 +581,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       source: "manual",
     } satisfies CodexCanonicalItem;
     const assistant = {
+      questions: null,
       type: "agentMessage",
       id: "assistant-1",
       text: "",
@@ -706,6 +708,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       rationale: null,
     } satisfies CodexCanonicalItem;
     const assistant = {
+      questions: null,
       type: "agentMessage",
       id: "last-assistant",
       text: "Done",

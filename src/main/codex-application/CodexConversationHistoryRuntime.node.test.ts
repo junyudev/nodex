@@ -44,6 +44,8 @@ const historyTurn = (id: string): Turn => ({
 });
 
 const historyThread = (turns: Turn[]): Thread => ({
+  model: null,
+  reasoningEffort: null,
   id: "thread-history",
   extra: null,
   sessionId: "session-history",
@@ -212,6 +214,7 @@ it.effect("loads one exact partial-Turn page without advancing the Turn boundary
   Effect.scoped(
     Effect.gen(function* () {
       const latestItem = {
+        questions: null,
         type: "agentMessage",
         id: "item-latest",
         text: "latest answer",

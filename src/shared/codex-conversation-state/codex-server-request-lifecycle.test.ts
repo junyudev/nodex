@@ -282,7 +282,7 @@ describe("Codex 30751 server-request lifecycle", () => {
       context(),
     );
     const item = pending.state.turns[0]?.items[0];
-    const question = item && "questions" in item ? item.questions[0] : undefined;
+    const question = item?.type === "userInputResponse" ? item.questions[0] : undefined;
 
     expect(pending.state.turns[0]?.protocol.id).toBe(TURN_ID);
     expect(pending.state.turns[0]?.protocol.status).toBe("inProgress");

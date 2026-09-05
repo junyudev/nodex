@@ -37,6 +37,7 @@ const userItem = (id: string, text: string): ThreadItem => ({
 });
 
 const assistantItem = (id: string, text: string): ThreadItem => ({
+  questions: null,
   type: "agentMessage",
   id,
   text,

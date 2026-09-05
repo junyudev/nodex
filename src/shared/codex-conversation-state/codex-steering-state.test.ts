@@ -14,6 +14,8 @@ import { createCodexCanonicalHydratedConversationState } from "./codex-conversat
 function buildState(): CodexCanonicalConversationState {
   return createCodexCanonicalHydratedConversationState(
     {
+      model: null,
+      reasoningEffort: null,
       id: "thread-a",
       extra: null,
       sessionId: "session-a",

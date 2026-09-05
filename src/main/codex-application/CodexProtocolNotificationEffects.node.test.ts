@@ -234,6 +234,7 @@ it.effect("drains frame text before terminal turn consequences", () =>
           turnId: "turn-a",
           startedAtMs: 3,
           item: {
+            questions: null,
             type: "agentMessage",
             id: "giant-item",
             text: "x".repeat(2 * 1_024 * 1_024 + 1),

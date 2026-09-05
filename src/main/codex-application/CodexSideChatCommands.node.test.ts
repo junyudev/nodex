@@ -40,6 +40,8 @@ const sideThreadId = "side-a";
 const remoteHostId = "remote-a";
 
 const protocolThread = (threadId: string): Thread => ({
+  model: null,
+  reasoningEffort: null,
   id: threadId,
   extra: null,
   sessionId: `session-${threadId}`,

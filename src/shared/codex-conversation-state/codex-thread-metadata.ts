@@ -90,6 +90,8 @@ export function reduceCodexConversationThreadSettings(
       ...state.protocol,
       cwd: canonicalSettings.cwd,
       modelProvider: canonicalSettings.modelProvider,
+      model: canonicalSettings.model,
+      reasoningEffort: canonicalSettings.effort,
     },
     sidecar: {
       ...state.sidecar,

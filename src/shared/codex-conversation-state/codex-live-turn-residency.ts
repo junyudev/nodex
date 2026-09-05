@@ -75,6 +75,7 @@ const lifecycleItemStatus = (value: unknown): CodexLifecycleItemStatus | null =>
 const overflowLifecycleItem = (item: ThreadItem): ThreadItem => {
   const status = "status" in item ? lifecycleItemStatus(item.status) : null;
   const marker = {
+    questions: null,
     type: "agentMessage" as const,
     id: item.id,
     text: CODEX_LIVE_TURN_OVERFLOW_MESSAGE,
@@ -89,6 +90,7 @@ const overflowLifecycleTurn = (turn: Turn): Turn => ({
   id: turn.id,
   items: [
     {
+      questions: null,
       type: "agentMessage",
       id: CODEX_LIVE_TURN_OVERFLOW_ITEM_ID,
       text: CODEX_LIVE_TURN_OVERFLOW_MESSAGE,
@@ -157,6 +159,7 @@ const overflowTurn = (turn: CodexCanonicalTurnState): CodexCanonicalTurnState =>
   protocol: { ...turn.protocol, error: null },
   items: [
     {
+      questions: null,
       type: "agentMessage",
       id: CODEX_LIVE_TURN_OVERFLOW_ITEM_ID,
       text: CODEX_LIVE_TURN_OVERFLOW_MESSAGE,

@@ -20,7 +20,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function createArchive(root: string, target: string): string {
+function createArchive(root: string, target: string, version: string): string {
   const packageRoot = path.join(root, `package-${target}`);
   mkdirSync(packageRoot, { recursive: true });
   writeFileSync(
@@ -32,7 +32,7 @@ function createArchive(root: string, target: string): string {
       resourcesDir: "codex-resources",
       target,
       variant: "codex-app-server",
-      version: "0.152.0",
+      version,
     })}\n`,
   );
   for (const artifact of [
@@ -73,8 +73,16 @@ function fixture() {
   ) as CodexAppServerReleaseLock;
   lock.notices.licenseSha256 = sha256("license\n");
   lock.notices.noticeSha256 = sha256("notice\n");
-  const arm64ArchivePath = createArchive(projectRoot, "aarch64-apple-darwin");
-  const x64ArchivePath = createArchive(projectRoot, "x86_64-apple-darwin");
+  const arm64ArchivePath = createArchive(
+    projectRoot,
+    "aarch64-apple-darwin",
+    lock.appServerRuntimeVersion,
+  );
+  const x64ArchivePath = createArchive(
+    projectRoot,
+    "x86_64-apple-darwin",
+    lock.appServerRuntimeVersion,
+  );
   const manifestBody =
     `${sha256(readFileSync(arm64ArchivePath))}  ${path.basename(arm64ArchivePath)}\n` +
     `${sha256(readFileSync(x64ArchivePath))}  ${path.basename(x64ArchivePath)}\n`;
@@ -85,6 +93,7 @@ function fixture() {
   mkdirSync(path.dirname(lockPath), { recursive: true });
   writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
   return {
+    lock,
     arm64ArchivePath,
     lockPath,
     projectRoot,
@@ -102,7 +111,7 @@ test("relocks both official archives and produces stageable metadata", async () 
   });
 
   expect(candidate.schemaVersion).toBe(1);
-  expect(candidate.upstream).toMatchObject({ repository: "openai/codex", tag: "rust-v0.152.0" });
+  expect(candidate.upstream).toEqual(input.lock.upstream);
   expect(candidate.builds["darwin-arm64"].archiveSha256).toBe(
     sha256(readFileSync(input.arm64ArchivePath)),
   );
@@ -125,7 +134,10 @@ test("relocks both official archives and produces stageable metadata", async () 
       targetArch: "arm64",
       targetPlatform: "darwin",
     }),
-  ).resolves.toMatchObject({ appServerRuntimeVersion: "0.152.0", targetArch: "arm64" });
+  ).resolves.toMatchObject({
+    appServerRuntimeVersion: input.lock.appServerRuntimeVersion,
+    targetArch: "arm64",
+  });
 });
 
 test("requires explicit archives, base lock, and non-canonical output", () => {

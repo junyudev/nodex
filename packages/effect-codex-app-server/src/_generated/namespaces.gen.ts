@@ -165,6 +165,8 @@ export const v2 = {
   PluginListResponse: CodexSchema.V2PluginListResponse,
   PluginReadParams: CodexSchema.V2PluginReadParams,
   PluginReadResponse: CodexSchema.V2PluginReadResponse,
+  PluginReconcileParams: CodexSchema.V2PluginReconcileParams,
+  PluginReconcileResponse: CodexSchema.V2PluginReconcileResponse,
   PluginSearchParams: CodexSchema.V2PluginSearchParams,
   PluginSearchResponse: CodexSchema.V2PluginSearchResponse,
   PluginShareCheckoutParams: CodexSchema.V2PluginShareCheckoutParams,

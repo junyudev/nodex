@@ -138,7 +138,16 @@ export const projectCodexThreadDirectoryMaterialization = (input: {
   const threadSource = parseThreadSourceValue(candidate.threadSource ?? candidate.thread_source);
   const serviceName = candidate.serviceName ?? candidate.service_name;
   const agentPath = metadata.agentPath;
-  const executionProfile = input.executionProfile ?? existing?.executionProfile ?? null;
+  const configuredModel = readText(candidate, "model")?.trim();
+  const executionProfile =
+    input.executionProfile ??
+    (configuredModel
+      ? {
+          modelId: configuredModel,
+          reasoningEffort: readText(candidate, "reasoningEffort"),
+          serviceTier: existing?.executionProfile?.serviceTier ?? null,
+        }
+      : (existing?.executionProfile ?? null));
 
   return {
     threadId,

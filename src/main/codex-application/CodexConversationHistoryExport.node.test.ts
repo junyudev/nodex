@@ -31,6 +31,8 @@ const turn = (
 });
 
 const thread = (turns: Turn[]): Thread => ({
+  model: null,
+  reasoningEffort: null,
   id: "thread-export",
   extra: null,
   sessionId: "session-export",
@@ -152,6 +154,7 @@ it.effect("streams complete Turns oldest-first without installing them in reside
       content: [{ type: "text", text: "question", text_elements: [] }],
     } satisfies ThreadItem;
     const answer = {
+      questions: null,
       type: "agentMessage",
       id: "answer",
       text: "answer",
@@ -251,6 +254,7 @@ it.effect("deduplicates inclusive item-page anchors without skipping export item
       content: [{ type: "text", text: "oldest", text_elements: [] }],
     } satisfies ThreadItem;
     const middle = {
+      questions: null,
       type: "agentMessage",
       id: "middle",
       text: "middle",
@@ -259,6 +263,7 @@ it.effect("deduplicates inclusive item-page anchors without skipping export item
       delivery: null,
     } satisfies ThreadItem;
     const newest = {
+      questions: null,
       type: "agentMessage",
       id: "newest",
       text: "newest",
@@ -346,6 +351,7 @@ it.effect("requests at most one physical item page and rejects oversized respons
         requestedLimits.push(input.limit ?? -1);
         return Effect.succeed({
           items: Array.from({ length: 101 }, (_, index) => ({
+            questions: null,
             type: "agentMessage" as const,
             id: `item-${index}`,
             text: `item-${index}`,
@@ -379,6 +385,7 @@ it.effect("rejects an advancing duplicate-only item cursor chain", () =>
   Effect.gen(function* () {
     const fixture = makeFixture();
     const newest = {
+      questions: null,
       type: "agentMessage",
       id: "newest",
       text: "newest",

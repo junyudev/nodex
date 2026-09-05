@@ -10,6 +10,8 @@ import { makeConversationEntityStateRegistry } from "./internal/ConversationEnti
 const threadId = "thread-materialization";
 
 const thread: Thread = {
+  model: null,
+  reasoningEffort: null,
   id: threadId,
   extra: null,
   sessionId: "session-materialization",

@@ -57,6 +57,8 @@ const coreThread = (overrides: Partial<CoreThread> = {}): CoreThread =>
   }) satisfies CoreThread;
 
 const appThread = (turns: readonly Turn[]): Thread => ({
+  model: null,
+  reasoningEffort: null,
   id: "thread-a",
   extra: null,
   sessionId: "session-a",
@@ -380,6 +382,7 @@ it.effect("never treats thread/started as a history transport", () =>
     const poisonTurn: Turn = {
       id: "turn-poison",
       items: Array.from({ length: 1_000 }, (_, index) => ({
+        questions: null,
         type: "agentMessage",
         id: `poison-${index}`,
         text: "must not become resident",

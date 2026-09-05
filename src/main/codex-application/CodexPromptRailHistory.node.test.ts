@@ -310,6 +310,7 @@ it.effect("resolves one shell offset and hydrates only the selected Turn", () =>
       content: [{ type: "text", text: "question 😀", text_elements: [] }],
     };
     const response: ThreadItem = {
+      questions: null,
       type: "agentMessage",
       id: "response",
       text: "answer",

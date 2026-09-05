@@ -19,6 +19,7 @@ const turn = (text: string): Turn => ({
   durationMs: null,
   items: [
     {
+      questions: null,
       type: "agentMessage",
       id: "agent-live",
       text,
@@ -31,6 +32,8 @@ const turn = (text: string): Turn => ({
 
 const state = (liveTurn: Turn) => {
   const thread: Thread = {
+    model: null,
+    reasoningEffort: null,
     id: "thread-live",
     extra: null,
     sessionId: "session-live",

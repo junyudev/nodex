@@ -21,6 +21,8 @@ const THREAD_ID = "thread-turn-metadata";
 function buildState(): CodexCanonicalConversationState {
   return createCodexCanonicalHydratedConversationState(
     {
+      model: null,
+      reasoningEffort: null,
       id: THREAD_ID,
       extra: null,
       sessionId: "session-turn-metadata",

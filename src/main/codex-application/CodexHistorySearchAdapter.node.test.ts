@@ -35,6 +35,7 @@ const completedTurn = (id: string): Turn => ({
 });
 
 const agentItem = (id: string, text = id): ThreadItem => ({
+  questions: null,
   type: "agentMessage",
   id,
   text,

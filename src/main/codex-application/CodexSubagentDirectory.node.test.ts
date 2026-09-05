@@ -51,6 +51,8 @@ const capability: CodexAppServerCapabilitySnapshot = {
 };
 
 const child = {
+  model: null,
+  reasoningEffort: null,
   id: "child-a",
   extra: null,
   sessionId: "session-child-a",
@@ -1803,6 +1805,7 @@ it.effect(
                   itemsView: "full",
                   items: [
                     {
+                      questions: null,
                       type: "agentMessage",
                       id: "oversized-message",
                       text: oversizedText,

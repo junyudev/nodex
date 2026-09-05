@@ -4369,7 +4369,11 @@ describe("ThreadComposer speed menu", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      fireEvent.click(within(view.container.ownerDocument.body).getByText("GPT-5.3 Codex"));
+      fireEvent.click(
+        within(view.container.ownerDocument.body).getByRole("menuitem", {
+          name: "GPT-5.3 Codex",
+        }),
+      );
       await Promise.resolve();
     });
 
@@ -4686,11 +4690,11 @@ describe("ThreadComposer speed menu", () => {
       view.container.ownerDocument.body.querySelectorAll<HTMLElement>(
         '[data-slot="dropdown-submenu-content"]',
       ),
-    ).find((content) => content.textContent?.includes("GPT-5.3 Codex-Mini"));
+    ).find((content) => content.textContent?.includes("GPT-5.3 Codex Mini"));
     if (!modelMenu) throw new Error("Expected the Model flyout content.");
     const modelMenuText = modelMenu.textContent ?? "";
-    expect(Boolean(modelMenuText.includes("GPT-5.3 Codex-Mini"))).toBe(true);
-    expect(Boolean(modelMenuText.includes("GPT-5.3-Codex-Spark"))).toBe(true);
+    expect(Boolean(modelMenuText.includes("GPT-5.3 Codex Mini"))).toBe(true);
+    expect(Boolean(modelMenuText.includes("GPT-5.3 Codex Spark"))).toBe(true);
     expect(Boolean(modelMenuText.includes("Other models"))).toBe(false);
     expect(Boolean(modelMenuText.includes("Latest Codex model"))).toBe(false);
     expect(Boolean(modelMenuText.includes("Previous stable Codex model"))).toBe(false);
@@ -4702,14 +4706,14 @@ describe("ThreadComposer speed menu", () => {
         (label) =>
           label === "GPT-5.5" ||
           label === "GPT-5.3 Codex" ||
-          label === "GPT-5.3 Codex-Mini" ||
-          label === "GPT-5.3-Codex-Spark",
+          label === "GPT-5.3 Codex Mini" ||
+          label === "GPT-5.3 Codex Spark",
       );
     expect(visibleModelLabels).toEqual([
       "GPT-5.5",
       "GPT-5.3 Codex",
-      "GPT-5.3 Codex-Mini",
-      "GPT-5.3-Codex-Spark",
+      "GPT-5.3 Codex Mini",
+      "GPT-5.3 Codex Spark",
     ]);
   });
 

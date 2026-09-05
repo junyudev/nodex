@@ -14,6 +14,8 @@ const THREAD_ID = "thread-turn-lifecycle";
 function buildState() {
   return createCodexCanonicalHydratedConversationState(
     {
+      model: null,
+      reasoningEffort: null,
       id: THREAD_ID,
       extra: null,
       sessionId: "session-turn-lifecycle",

@@ -57,6 +57,8 @@ function buildTurnParams(): CodexCanonicalTurnParams {
 
 function buildState(items: ThreadItem[] = []): CodexCanonicalConversationState {
   const thread: Thread = {
+    model: null,
+    reasoningEffort: null,
     id: THREAD_ID,
     extra: null,
     sessionId: "session_c06",
@@ -400,6 +402,7 @@ describe("Codex canonical file-change stream", () => {
   test("updates the reverse-last exact file item while preserving terminal state and extensions", () => {
     const first = fileChange("shared", [change("first.ts")]);
     const wrongType: ThreadItem = {
+      questions: null,
       type: "agentMessage",
       id: "shared",
       text: "must not mask the exact item",
@@ -445,6 +448,7 @@ describe("Codex canonical file-change stream", () => {
 
   test("replaces the first same-ID wrong type when no exact file item exists", () => {
     const firstWrongType: ThreadItem = {
+      questions: null,
       type: "agentMessage",
       id: "shared",
       text: "replace this slot",
@@ -512,6 +516,7 @@ describe("Codex canonical file-change stream", () => {
     const first = mcpToolCall("mcp-item");
     const last = { ...mcpToolCall("mcp-item"), tool: "newest-tool" };
     const wrongType: ThreadItem = {
+      questions: null,
       type: "agentMessage",
       id: "mcp-item",
       text: "does not mask MCP",

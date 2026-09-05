@@ -21,6 +21,8 @@ const goal: ThreadGoal = {
 function buildState(): CodexCanonicalConversationState {
   return {
     protocol: {
+      model: null,
+      reasoningEffort: null,
       id: "thread-goal",
       extra: null,
       sessionId: "session-goal",

@@ -16,6 +16,8 @@ import {
 function buildState() {
   return createCodexCanonicalHydratedConversationState(
     {
+      model: null,
+      reasoningEffort: null,
       id: "thread-created",
       extra: null,
       sessionId: "session-created",
@@ -142,6 +144,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
       id: "turn-server",
       items: [
         {
+          questions: null,
           type: "agentMessage",
           id: "response-only-item",
           text: "must arrive through lifecycle",
@@ -235,6 +238,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
     const placeholder = optimistic.turns[0];
     if (!placeholder) throw new Error("Expected optimistic turn");
     const assistant = {
+      questions: null,
       type: "agentMessage" as const,
       id: "assistant-streaming",
       text: "partial",

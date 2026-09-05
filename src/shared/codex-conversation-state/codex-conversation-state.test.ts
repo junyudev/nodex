@@ -878,15 +878,16 @@ describe("protocol-backed canonical conversation state", () => {
     });
   });
 
-  test("preserves async agent-message delivery while reconciling a shorter hydrated turn", () => {
+  test("preserves async questions and delivery while reconciling a shorter hydrated turn", () => {
     const template = buildAgentActivityV2CorpusThread([]).turns[0];
     if (!template) throw new Error("Canonical turn fixture is missing");
     const base = hydrateCanonicalFixtureTurns([template]).turns[0];
     if (!base) throw new Error("Canonical turn fixture is missing");
     const existingMessage = {
+      questions: [{ title: "Which scope?", options: ["Project", "Library"] }],
       type: "agentMessage",
       id: "live-final",
-      text: "Delivered asynchronously",
+      text: "Which scope?\n- Project\n- Library",
       phase: "final_answer",
       memoryCitation: null,
       delivery: "async",
@@ -895,6 +896,7 @@ describe("protocol-backed canonical conversation state", () => {
       ...existingMessage,
       id: "hydrated-final",
       delivery: null,
+      questions: null,
     } satisfies ThreadItem;
 
     const merged = mergeCodexCanonicalTurnState(
@@ -909,6 +911,7 @@ describe("protocol-backed canonical conversation state", () => {
       id: "live-final",
       type: "agentMessage",
       delivery: "async",
+      questions: existingMessage.questions,
     });
   });
 

@@ -187,6 +187,7 @@ describe("codex conversation replay", () => {
             turnId: "turn_fixture",
             completedAtMs: 2_000,
             item: {
+              questions: null,
               type: "agentMessage",
               id: "item_fixture_agent",
               text: "authoritative fixture text",

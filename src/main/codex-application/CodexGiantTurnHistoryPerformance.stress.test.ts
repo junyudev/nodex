@@ -101,6 +101,7 @@ const newerCursor = (index: number): string => `items:newer:${index}`;
 
 const trackedAgentItem = (index: number, onPayloadRead: () => void): ThreadItem => {
   const value = {
+    questions: null,
     type: "agentMessage",
     id: itemId(index),
     phase: "final_answer",
@@ -118,6 +119,7 @@ const trackedAgentItem = (index: number, onPayloadRead: () => void): ThreadItem 
 };
 
 const pageAgentItem = (index: number): ThreadItem => ({
+  questions: null,
   type: "agentMessage",
   id: itemId(index),
   text: `${ITEM_TEXT}:${itemId(index)}`,
@@ -127,6 +129,8 @@ const pageAgentItem = (index: number): ThreadItem => ({
 });
 
 const appThread = (items: readonly ThreadItem[]): Thread => ({
+  model: null,
+  reasoningEffort: null,
   id: THREAD_ID,
   extra: null,
   sessionId: `session-${THREAD_ID}`,

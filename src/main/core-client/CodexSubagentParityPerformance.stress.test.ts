@@ -203,6 +203,8 @@ const makeThread = (
   const threadId = `${rootThreadId}-child-${index.toString().padStart(4, "0")}`;
   const createdAt = 1_800_000_000 + index;
   return {
+    model: null,
+    reasoningEffort: null,
     id: threadId,
     extra: null,
     sessionId: `session-${threadId}`,

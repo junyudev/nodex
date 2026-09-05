@@ -354,6 +354,8 @@ const projectStartedSubagentThreadShell = (input: {
     .filter(Boolean);
   const agentName = pathSegments.at(-1) ?? null;
   return {
+    model: null,
+    reasoningEffort: null,
     id: input.threadId,
     extra: null,
     sessionId: input.parent.durable.threadId,

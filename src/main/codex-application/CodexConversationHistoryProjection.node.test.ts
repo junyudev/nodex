@@ -59,6 +59,7 @@ describe("projectCodexConversationOlderTurns", () => {
 
   it("preserves the exact cursor pair for every cold physical item page", () => {
     const items: ThreadItem[] = ["a", "b", "c", "d"].map((id) => ({
+      questions: null,
       type: "agentMessage",
       id,
       text: id,

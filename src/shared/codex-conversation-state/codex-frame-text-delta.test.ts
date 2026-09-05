@@ -52,6 +52,8 @@ function buildState(
   status: "inProgress" | "completed" = "inProgress",
 ): CodexCanonicalConversationState {
   const thread: Thread = {
+    model: null,
+    reasoningEffort: null,
     id: THREAD_ID,
     extra: null,
     sessionId: "session_c04",
@@ -158,6 +160,7 @@ describe("canonical frame-text delta reduction", () => {
   test("updates the reverse-last same-ID exact raw protocol type", () => {
     const items: ThreadItem[] = [
       {
+        questions: null,
         type: "agentMessage",
         id: "shared-item",
         text: "first",
@@ -167,6 +170,7 @@ describe("canonical frame-text delta reduction", () => {
       },
       { type: "plan", id: "shared-item", text: "plan" },
       {
+        questions: null,
         type: "agentMessage",
         id: "shared-item",
         text: "last",
@@ -342,6 +346,7 @@ describe("canonical frame-text delta reduction", () => {
   test("applies all four targets in batch without changing lifecycle timing or status", () => {
     const items: ThreadItem[] = [
       {
+        questions: null,
         type: "agentMessage",
         id: "agent",
         text: "",

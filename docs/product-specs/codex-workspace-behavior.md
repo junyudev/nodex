@@ -190,7 +190,9 @@ durable Codex profile.
 The composer exposes one catalog-driven intelligence selector with Model,
 Effort, and Speed submenus. It does not split model selection into simplified
 and advanced modes, so the same hierarchy remains valid as backend catalogs and
-capabilities vary.
+capabilities vary. The trigger keeps the full model name followed by the active
+reasoning effort, such as `GPT-6 Astra Medium`. Model IDs without a distinct
+catalog display name become readable names; the `max` effort is labeled `Max`.
 The selected execution profile is authoritative for both creation and the first
 Turn. Thread creation, durable metadata, and first-Turn preparation consume that
 same compound selection; scalar draft defaults are fallback only when no profile

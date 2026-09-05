@@ -65,14 +65,6 @@ const SERVICE_TIER_OPTIONS: readonly {
   { value: "fast", label: "Fast", description: "1.5x speed · More usage" },
 ];
 
-function compactModelLabel(modelId: string, models: readonly CodexModelOption[]): string {
-  const label = formatCodexModelLabel(modelId, models).trim();
-  if (!label) return modelId;
-  const withoutGptPrefix = label.replace(/^GPT(?:[-\s])?/i, "");
-  const withoutCodexSuffix = withoutGptPrefix.replace(/(?:[-\s])?Codex.*$/i, "");
-  return withoutCodexSuffix.trim() || label;
-}
-
 export function resolveReasoningEffortForModelChange(input: {
   currentReasoningEffort: CodexReasoningEffort;
   nextModelId: string;
@@ -136,8 +128,7 @@ export function AgentIntelligenceDropdown({
   );
   const visibleModels = matchingModels.slice(0, 50);
   const hiddenMatchCount = matchingModels.length - visibleModels.length;
-  const modelLabel = compactModelLabel(selection.model, models);
-  const fullModelLabel = formatCodexModelLabel(selection.model, models);
+  const modelLabel = formatCodexModelLabel(selection.model, models);
   const reasoningLabel = formatCodexReasoningEffortLabel(selection.reasoningEffort);
   const reasoningOptions = resolveCodexReasoningEffortOptions(selection.model, models);
   const labelCandidates = useMemo<readonly IntelligenceSelectorLabelCandidate[]>(
@@ -149,7 +140,7 @@ export function AgentIntelligenceDropdown({
             : [candidate.defaultReasoningEffort ?? selection.reasoningEffort];
         return efforts.map((effort) => ({
           id: `${candidate.id}:${effort}`,
-          modelLabel: compactModelLabel(candidate.id, models),
+          modelLabel: formatCodexModelLabel(candidate.id, models),
           reasoningLabel: formatCodexReasoningEffortLabel(effort),
         }));
       }),
@@ -170,7 +161,7 @@ export function AgentIntelligenceDropdown({
   );
   const triggerGeometry = useIntelligenceSelectorTriggerGeometry(labelCandidates);
   const settingsLabel =
-    inheritance === "inherited" ? "Use current/default" : `${fullModelLabel} · ${reasoningLabel}`;
+    inheritance === "inherited" ? "Use current/default" : `${modelLabel} · ${reasoningLabel}`;
 
   return (
     <NodexDropdownMenu
@@ -222,9 +213,9 @@ export function AgentIntelligenceDropdown({
       ) : null}
 
       <NodexDropdownSummarySubmenuItem
-        ariaLabel={`Model ${fullModelLabel}`}
+        ariaLabel={`Model ${modelLabel}`}
         label="Model"
-        value={fullModelLabel}
+        value={modelLabel}
         contentClassName="w-[280px]"
       >
         <NodexDropdownSection className="flex w-full min-w-0 flex-col overflow-hidden">

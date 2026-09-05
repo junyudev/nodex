@@ -50,6 +50,8 @@ const params = (threadId: string): CodexCanonicalTurnParams => ({
 const state = (turns: readonly Turn[]) => {
   const threadId = "thread-background";
   const thread: Thread = {
+    model: null,
+    reasoningEffort: null,
     id: threadId,
     extra: null,
     sessionId: "session-background",

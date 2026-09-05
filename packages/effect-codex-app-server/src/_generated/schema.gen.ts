@@ -1116,6 +1116,18 @@ export const ClientRequest__PluginSearchScope = Schema.Literals([
   "personal",
 ]).annotate({ identifier: "ClientRequest__PluginSearchScope" });
 
+export type ClientRequest__PluginReconcileParams = { readonly reason?: string | null };
+export const ClientRequest__PluginReconcileParams = Schema.Struct({
+  reason: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description: "Optional client-provided reason recorded with the reconciliation attempt.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+}).annotate({ identifier: "ClientRequest__PluginReconcileParams" });
+
 export type ClientRequest__PluginSkillReadParams = {
   readonly remoteMarketplaceName: string;
   readonly remotePluginId: string;
@@ -2693,6 +2705,16 @@ export const ServerNotification__ThreadHistoryMode = Schema.Literals([
   "paginated",
 ]).annotate({ identifier: "ServerNotification__ThreadHistoryMode" });
 
+export type ServerNotification__ReasoningEffort = string;
+export const ServerNotification__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "ServerNotification__ReasoningEffort",
+  }),
+);
+
 export type ServerNotification__ThreadSectionAppearance = {
   readonly color?: string | null;
   readonly icon?: string | null;
@@ -2800,6 +2822,15 @@ export const ServerNotification__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "ServerNotification__MessagePhase",
 });
+
+export type ServerNotification__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const ServerNotification__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "ServerNotification__AsyncUserInputQuestion" });
 
 export type ServerNotification__LegacyAppPathString = string;
 export const ServerNotification__LegacyAppPathString = Schema.String.annotate({
@@ -2952,16 +2983,6 @@ export const ServerNotification__CollabAgentStatus = Schema.Literals([
   "shutdown",
   "notFound",
 ]).annotate({ identifier: "ServerNotification__CollabAgentStatus" });
-
-export type ServerNotification__ReasoningEffort = string;
-export const ServerNotification__ReasoningEffort = Schema.String.annotate({
-  description: "A non-empty reasoning effort value advertised by the model.",
-}).check(
-  Schema.isMinLength(1).annotate({
-    expected: "a value with a length of at least 1",
-    identifier: "ServerNotification__ReasoningEffort",
-  }),
-);
 
 export type ServerNotification__CollabAgentToolCallStatus =
   | "inProgress"
@@ -5314,6 +5335,15 @@ export const V2ConfigReadResponse__AbsolutePathBuf = Schema.String.annotate({
   identifier: "V2ConfigReadResponse__AbsolutePathBuf",
 });
 
+export type V2ConfigReadResponse__AppLinksConfig = { readonly [x: string]: never };
+export const V2ConfigReadResponse__AppLinksConfig = Schema.Record(
+  Schema.String,
+  Schema.Never,
+).annotate({
+  description: "Account settings for a single app.",
+  identifier: "V2ConfigReadResponse__AppLinksConfig",
+});
+
 export type V2ConfigReadResponse__AppToolsConfig = { readonly [x: string]: never };
 export const V2ConfigReadResponse__AppToolsConfig = Schema.Record(
   Schema.String,
@@ -6751,6 +6781,15 @@ export const V2ItemCompletedNotification__MessagePhase = Schema.Union(
   identifier: "V2ItemCompletedNotification__MessagePhase",
 });
 
+export type V2ItemCompletedNotification__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ItemCompletedNotification__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ItemCompletedNotification__AsyncUserInputQuestion" });
+
 export type V2ItemCompletedNotification__LegacyAppPathString = string;
 export const V2ItemCompletedNotification__LegacyAppPathString = Schema.String.annotate({
   identifier: "V2ItemCompletedNotification__LegacyAppPathString",
@@ -7282,6 +7321,15 @@ export const V2ItemStartedNotification__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ItemStartedNotification__MessagePhase",
 });
+
+export type V2ItemStartedNotification__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ItemStartedNotification__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ItemStartedNotification__AsyncUserInputQuestion" });
 
 export type V2ItemStartedNotification__LegacyAppPathString = string;
 export const V2ItemStartedNotification__LegacyAppPathString = Schema.String.annotate({
@@ -8312,6 +8360,30 @@ export const V2PluginReadResponse__PluginSharePrincipalRole = Schema.Literals([
   "owner",
 ]).annotate({ identifier: "V2PluginReadResponse__PluginSharePrincipalRole" });
 
+export type V2PluginReconcileResponse__PluginReconcileChangedPlugin = {
+  readonly hasApps: boolean;
+  readonly hasHooks: boolean;
+  readonly hasMcps: boolean;
+  readonly hasSkills: boolean;
+  readonly id: string;
+};
+export const V2PluginReconcileResponse__PluginReconcileChangedPlugin = Schema.Struct({
+  hasApps: Schema.Boolean,
+  hasHooks: Schema.Boolean,
+  hasMcps: Schema.Boolean,
+  hasSkills: Schema.Boolean.annotate({
+    description:
+      "Whether either bundle declares skill roots; not a validated inventory of enabled skills.",
+  }),
+  id: Schema.String.annotate({
+    description: "Local plugin ID (`name@marketplace`), matching `PluginSummary.id`.",
+  }),
+}).annotate({
+  description:
+    "Runtime categories affected by this change, not just capabilities currently present. Flags describe declarations before runtime policy filtering. Updates OR the old and new bundle flags; enablement changes and cached reinstalls use the cached bundle; removals retain the old bundle's flags.",
+  identifier: "V2PluginReconcileResponse__PluginReconcileChangedPlugin",
+});
+
 export type V2PluginSearchParams__AbsolutePathBuf = string;
 export const V2PluginSearchParams__AbsolutePathBuf = Schema.String.annotate({
   description:
@@ -8751,9 +8823,11 @@ export const V2RawResponseCompletedNotification__TokenUsageBreakdown = Schema.St
 
 export type V2RawResponseCompletedNotification__ResponseUsageMetadata = {
   readonly amount?: string | null;
+  readonly metadata?: Schema.Json;
 };
 export const V2RawResponseCompletedNotification__ResponseUsageMetadata = Schema.Struct({
   amount: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  metadata: Schema.optionalKey(Schema.Json.annotate({ expected: "JSON value" })),
 }).annotate({
   description: "Usage metadata reported for one upstream response.",
   identifier: "V2RawResponseCompletedNotification__ResponseUsageMetadata",
@@ -9160,6 +9234,15 @@ export const V2ReviewStartResponse__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ReviewStartResponse__MessagePhase",
 });
+
+export type V2ReviewStartResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ReviewStartResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ReviewStartResponse__AsyncUserInputQuestion" });
 
 export type V2ReviewStartResponse__LegacyAppPathString = string;
 export const V2ReviewStartResponse__LegacyAppPathString = Schema.String.annotate({
@@ -9905,6 +9988,15 @@ export const V2ThreadForkResponse__MessagePhase = Schema.Union(
   identifier: "V2ThreadForkResponse__MessagePhase",
 });
 
+export type V2ThreadForkResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadForkResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadForkResponse__AsyncUserInputQuestion" });
+
 export type V2ThreadForkResponse__CommandExecutionSource =
   | "agent"
   | "userShell"
@@ -10328,6 +10420,15 @@ export const V2ThreadItemsListResponse__MessagePhase = Schema.Union(
   identifier: "V2ThreadItemsListResponse__MessagePhase",
 });
 
+export type V2ThreadItemsListResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadItemsListResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadItemsListResponse__AsyncUserInputQuestion" });
+
 export type V2ThreadItemsListResponse__LegacyAppPathString = string;
 export const V2ThreadItemsListResponse__LegacyAppPathString = Schema.String.annotate({
   identifier: "V2ThreadItemsListResponse__LegacyAppPathString",
@@ -10683,6 +10784,16 @@ export const V2ThreadListResponse__ThreadHistoryMode = Schema.Literals([
   "paginated",
 ]).annotate({ identifier: "V2ThreadListResponse__ThreadHistoryMode" });
 
+export type V2ThreadListResponse__ReasoningEffort = string;
+export const V2ThreadListResponse__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "V2ThreadListResponse__ReasoningEffort",
+  }),
+);
+
 export type V2ThreadListResponse__ThreadSectionAppearance = {
   readonly color?: string | null;
   readonly icon?: string | null;
@@ -10801,6 +10912,15 @@ export const V2ThreadListResponse__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadListResponse__MessagePhase",
 });
+
+export type V2ThreadListResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadListResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadListResponse__AsyncUserInputQuestion" });
 
 export type V2ThreadListResponse__LegacyAppPathString = string;
 export const V2ThreadListResponse__LegacyAppPathString = Schema.String.annotate({
@@ -10953,16 +11073,6 @@ export const V2ThreadListResponse__CollabAgentStatus = Schema.Literals([
   "shutdown",
   "notFound",
 ]).annotate({ identifier: "V2ThreadListResponse__CollabAgentStatus" });
-
-export type V2ThreadListResponse__ReasoningEffort = string;
-export const V2ThreadListResponse__ReasoningEffort = Schema.String.annotate({
-  description: "A non-empty reasoning effort value advertised by the model.",
-}).check(
-  Schema.isMinLength(1).annotate({
-    expected: "a value with a length of at least 1",
-    identifier: "V2ThreadListResponse__ReasoningEffort",
-  }),
-);
 
 export type V2ThreadListResponse__CollabAgentToolCallStatus =
   | "inProgress"
@@ -11170,6 +11280,16 @@ export const V2ThreadMetadataUpdateResponse__ThreadHistoryMode = Schema.Literals
   "paginated",
 ]).annotate({ identifier: "V2ThreadMetadataUpdateResponse__ThreadHistoryMode" });
 
+export type V2ThreadMetadataUpdateResponse__ReasoningEffort = string;
+export const V2ThreadMetadataUpdateResponse__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "V2ThreadMetadataUpdateResponse__ReasoningEffort",
+  }),
+);
+
 export type V2ThreadMetadataUpdateResponse__ThreadSectionAppearance = {
   readonly color?: string | null;
   readonly icon?: string | null;
@@ -11293,6 +11413,15 @@ export const V2ThreadMetadataUpdateResponse__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadMetadataUpdateResponse__MessagePhase",
 });
+
+export type V2ThreadMetadataUpdateResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadMetadataUpdateResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadMetadataUpdateResponse__AsyncUserInputQuestion" });
 
 export type V2ThreadMetadataUpdateResponse__LegacyAppPathString = string;
 export const V2ThreadMetadataUpdateResponse__LegacyAppPathString = Schema.String.annotate({
@@ -11451,16 +11580,6 @@ export const V2ThreadMetadataUpdateResponse__CollabAgentStatus = Schema.Literals
   "shutdown",
   "notFound",
 ]).annotate({ identifier: "V2ThreadMetadataUpdateResponse__CollabAgentStatus" });
-
-export type V2ThreadMetadataUpdateResponse__ReasoningEffort = string;
-export const V2ThreadMetadataUpdateResponse__ReasoningEffort = Schema.String.annotate({
-  description: "A non-empty reasoning effort value advertised by the model.",
-}).check(
-  Schema.isMinLength(1).annotate({
-    expected: "a value with a length of at least 1",
-    identifier: "V2ThreadMetadataUpdateResponse__ReasoningEffort",
-  }),
-);
 
 export type V2ThreadMetadataUpdateResponse__CollabAgentToolCallStatus =
   | "inProgress"
@@ -11748,6 +11867,15 @@ export const V2ThreadQueueStartResponse__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadQueueStartResponse__MessagePhase",
 });
+
+export type V2ThreadQueueStartResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadQueueStartResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadQueueStartResponse__AsyncUserInputQuestion" });
 
 export type V2ThreadQueueStartResponse__LegacyAppPathString = string;
 export const V2ThreadQueueStartResponse__LegacyAppPathString = Schema.String.annotate({
@@ -12133,6 +12261,16 @@ export const V2ThreadReadResponse__ThreadHistoryMode = Schema.Literals([
   "paginated",
 ]).annotate({ identifier: "V2ThreadReadResponse__ThreadHistoryMode" });
 
+export type V2ThreadReadResponse__ReasoningEffort = string;
+export const V2ThreadReadResponse__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "V2ThreadReadResponse__ReasoningEffort",
+  }),
+);
+
 export type V2ThreadReadResponse__ThreadSectionAppearance = {
   readonly color?: string | null;
   readonly icon?: string | null;
@@ -12251,6 +12389,15 @@ export const V2ThreadReadResponse__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadReadResponse__MessagePhase",
 });
+
+export type V2ThreadReadResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadReadResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadReadResponse__AsyncUserInputQuestion" });
 
 export type V2ThreadReadResponse__LegacyAppPathString = string;
 export const V2ThreadReadResponse__LegacyAppPathString = Schema.String.annotate({
@@ -12403,16 +12550,6 @@ export const V2ThreadReadResponse__CollabAgentStatus = Schema.Literals([
   "shutdown",
   "notFound",
 ]).annotate({ identifier: "V2ThreadReadResponse__CollabAgentStatus" });
-
-export type V2ThreadReadResponse__ReasoningEffort = string;
-export const V2ThreadReadResponse__ReasoningEffort = Schema.String.annotate({
-  description: "A non-empty reasoning effort value advertised by the model.",
-}).check(
-  Schema.isMinLength(1).annotate({
-    expected: "a value with a length of at least 1",
-    identifier: "V2ThreadReadResponse__ReasoningEffort",
-  }),
-);
 
 export type V2ThreadReadResponse__CollabAgentToolCallStatus =
   | "inProgress"
@@ -13311,6 +13448,15 @@ export const V2ThreadResumeResponse__MessagePhase = Schema.Union(
   identifier: "V2ThreadResumeResponse__MessagePhase",
 });
 
+export type V2ThreadResumeResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadResumeResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadResumeResponse__AsyncUserInputQuestion" });
+
 export type V2ThreadResumeResponse__LegacyAppPathString = string;
 export const V2ThreadResumeResponse__LegacyAppPathString = Schema.String.annotate({
   identifier: "V2ThreadResumeResponse__LegacyAppPathString",
@@ -13719,6 +13865,16 @@ export const V2ThreadRevertResponse__ThreadHistoryMode = Schema.Literals([
   "paginated",
 ]).annotate({ identifier: "V2ThreadRevertResponse__ThreadHistoryMode" });
 
+export type V2ThreadRevertResponse__ReasoningEffort = string;
+export const V2ThreadRevertResponse__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "V2ThreadRevertResponse__ReasoningEffort",
+  }),
+);
+
 export type V2ThreadRevertResponse__ThreadSectionAppearance = {
   readonly color?: string | null;
   readonly icon?: string | null;
@@ -13837,6 +13993,15 @@ export const V2ThreadRevertResponse__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadRevertResponse__MessagePhase",
 });
+
+export type V2ThreadRevertResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadRevertResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadRevertResponse__AsyncUserInputQuestion" });
 
 export type V2ThreadRevertResponse__LegacyAppPathString = string;
 export const V2ThreadRevertResponse__LegacyAppPathString = Schema.String.annotate({
@@ -13989,16 +14154,6 @@ export const V2ThreadRevertResponse__CollabAgentStatus = Schema.Literals([
   "shutdown",
   "notFound",
 ]).annotate({ identifier: "V2ThreadRevertResponse__CollabAgentStatus" });
-
-export type V2ThreadRevertResponse__ReasoningEffort = string;
-export const V2ThreadRevertResponse__ReasoningEffort = Schema.String.annotate({
-  description: "A non-empty reasoning effort value advertised by the model.",
-}).check(
-  Schema.isMinLength(1).annotate({
-    expected: "a value with a length of at least 1",
-    identifier: "V2ThreadRevertResponse__ReasoningEffort",
-  }),
-);
 
 export type V2ThreadRevertResponse__CollabAgentToolCallStatus =
   | "inProgress"
@@ -14165,6 +14320,16 @@ export const V2ThreadRollbackResponse__ThreadHistoryMode = Schema.Literals([
   "paginated",
 ]).annotate({ identifier: "V2ThreadRollbackResponse__ThreadHistoryMode" });
 
+export type V2ThreadRollbackResponse__ReasoningEffort = string;
+export const V2ThreadRollbackResponse__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "V2ThreadRollbackResponse__ReasoningEffort",
+  }),
+);
+
 export type V2ThreadRollbackResponse__ThreadSectionAppearance = {
   readonly color?: string | null;
   readonly icon?: string | null;
@@ -14283,6 +14448,15 @@ export const V2ThreadRollbackResponse__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadRollbackResponse__MessagePhase",
 });
+
+export type V2ThreadRollbackResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadRollbackResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadRollbackResponse__AsyncUserInputQuestion" });
 
 export type V2ThreadRollbackResponse__LegacyAppPathString = string;
 export const V2ThreadRollbackResponse__LegacyAppPathString = Schema.String.annotate({
@@ -14435,16 +14609,6 @@ export const V2ThreadRollbackResponse__CollabAgentStatus = Schema.Literals([
   "shutdown",
   "notFound",
 ]).annotate({ identifier: "V2ThreadRollbackResponse__CollabAgentStatus" });
-
-export type V2ThreadRollbackResponse__ReasoningEffort = string;
-export const V2ThreadRollbackResponse__ReasoningEffort = Schema.String.annotate({
-  description: "A non-empty reasoning effort value advertised by the model.",
-}).check(
-  Schema.isMinLength(1).annotate({
-    expected: "a value with a length of at least 1",
-    identifier: "V2ThreadRollbackResponse__ReasoningEffort",
-  }),
-);
 
 export type V2ThreadRollbackResponse__CollabAgentToolCallStatus =
   | "inProgress"
@@ -14673,6 +14837,16 @@ export const V2ThreadSearchResponse__ThreadHistoryMode = Schema.Literals([
   "paginated",
 ]).annotate({ identifier: "V2ThreadSearchResponse__ThreadHistoryMode" });
 
+export type V2ThreadSearchResponse__ReasoningEffort = string;
+export const V2ThreadSearchResponse__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "V2ThreadSearchResponse__ReasoningEffort",
+  }),
+);
+
 export type V2ThreadSearchResponse__ThreadSectionAppearance = {
   readonly color?: string | null;
   readonly icon?: string | null;
@@ -14791,6 +14965,15 @@ export const V2ThreadSearchResponse__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadSearchResponse__MessagePhase",
 });
+
+export type V2ThreadSearchResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadSearchResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadSearchResponse__AsyncUserInputQuestion" });
 
 export type V2ThreadSearchResponse__LegacyAppPathString = string;
 export const V2ThreadSearchResponse__LegacyAppPathString = Schema.String.annotate({
@@ -14943,16 +15126,6 @@ export const V2ThreadSearchResponse__CollabAgentStatus = Schema.Literals([
   "shutdown",
   "notFound",
 ]).annotate({ identifier: "V2ThreadSearchResponse__CollabAgentStatus" });
-
-export type V2ThreadSearchResponse__ReasoningEffort = string;
-export const V2ThreadSearchResponse__ReasoningEffort = Schema.String.annotate({
-  description: "A non-empty reasoning effort value advertised by the model.",
-}).check(
-  Schema.isMinLength(1).annotate({
-    expected: "a value with a length of at least 1",
-    identifier: "V2ThreadSearchResponse__ReasoningEffort",
-  }),
-);
 
 export type V2ThreadSearchResponse__CollabAgentToolCallStatus =
   | "inProgress"
@@ -15428,6 +15601,16 @@ export const V2ThreadStartedNotification__ThreadHistoryMode = Schema.Literals([
   "paginated",
 ]).annotate({ identifier: "V2ThreadStartedNotification__ThreadHistoryMode" });
 
+export type V2ThreadStartedNotification__ReasoningEffort = string;
+export const V2ThreadStartedNotification__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "V2ThreadStartedNotification__ReasoningEffort",
+  }),
+);
+
 export type V2ThreadStartedNotification__ThreadSectionAppearance = {
   readonly color?: string | null;
   readonly icon?: string | null;
@@ -15551,6 +15734,15 @@ export const V2ThreadStartedNotification__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadStartedNotification__MessagePhase",
 });
+
+export type V2ThreadStartedNotification__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadStartedNotification__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadStartedNotification__AsyncUserInputQuestion" });
 
 export type V2ThreadStartedNotification__LegacyAppPathString = string;
 export const V2ThreadStartedNotification__LegacyAppPathString = Schema.String.annotate({
@@ -15706,16 +15898,6 @@ export const V2ThreadStartedNotification__CollabAgentStatus = Schema.Literals([
   "shutdown",
   "notFound",
 ]).annotate({ identifier: "V2ThreadStartedNotification__CollabAgentStatus" });
-
-export type V2ThreadStartedNotification__ReasoningEffort = string;
-export const V2ThreadStartedNotification__ReasoningEffort = Schema.String.annotate({
-  description: "A non-empty reasoning effort value advertised by the model.",
-}).check(
-  Schema.isMinLength(1).annotate({
-    expected: "a value with a length of at least 1",
-    identifier: "V2ThreadStartedNotification__ReasoningEffort",
-  }),
-);
 
 export type V2ThreadStartedNotification__CollabAgentToolCallStatus =
   | "inProgress"
@@ -16246,6 +16428,15 @@ export const V2ThreadStartResponse__MessagePhase = Schema.Union(
   identifier: "V2ThreadStartResponse__MessagePhase",
 });
 
+export type V2ThreadStartResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadStartResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadStartResponse__AsyncUserInputQuestion" });
+
 export type V2ThreadStartResponse__CommandExecutionSource =
   | "agent"
   | "userShell"
@@ -16610,6 +16801,15 @@ export const V2ThreadTimelineListResponse__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadTimelineListResponse__MessagePhase",
 });
+
+export type V2ThreadTimelineListResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadTimelineListResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadTimelineListResponse__AsyncUserInputQuestion" });
 
 export type V2ThreadTimelineListResponse__LegacyAppPathString = string;
 export const V2ThreadTimelineListResponse__LegacyAppPathString = Schema.String.annotate({
@@ -17095,6 +17295,15 @@ export const V2ThreadTurnsListResponse__MessagePhase = Schema.Union(
   identifier: "V2ThreadTurnsListResponse__MessagePhase",
 });
 
+export type V2ThreadTurnsListResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadTurnsListResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadTurnsListResponse__AsyncUserInputQuestion" });
+
 export type V2ThreadTurnsListResponse__LegacyAppPathString = string;
 export const V2ThreadTurnsListResponse__LegacyAppPathString = Schema.String.annotate({
   identifier: "V2ThreadTurnsListResponse__LegacyAppPathString",
@@ -17432,6 +17641,16 @@ export const V2ThreadUnarchiveResponse__ThreadHistoryMode = Schema.Literals([
   "paginated",
 ]).annotate({ identifier: "V2ThreadUnarchiveResponse__ThreadHistoryMode" });
 
+export type V2ThreadUnarchiveResponse__ReasoningEffort = string;
+export const V2ThreadUnarchiveResponse__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "V2ThreadUnarchiveResponse__ReasoningEffort",
+  }),
+);
+
 export type V2ThreadUnarchiveResponse__ThreadSectionAppearance = {
   readonly color?: string | null;
   readonly icon?: string | null;
@@ -17552,6 +17771,15 @@ export const V2ThreadUnarchiveResponse__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2ThreadUnarchiveResponse__MessagePhase",
 });
+
+export type V2ThreadUnarchiveResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2ThreadUnarchiveResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2ThreadUnarchiveResponse__AsyncUserInputQuestion" });
 
 export type V2ThreadUnarchiveResponse__LegacyAppPathString = string;
 export const V2ThreadUnarchiveResponse__LegacyAppPathString = Schema.String.annotate({
@@ -17707,16 +17935,6 @@ export const V2ThreadUnarchiveResponse__CollabAgentStatus = Schema.Literals([
   "shutdown",
   "notFound",
 ]).annotate({ identifier: "V2ThreadUnarchiveResponse__CollabAgentStatus" });
-
-export type V2ThreadUnarchiveResponse__ReasoningEffort = string;
-export const V2ThreadUnarchiveResponse__ReasoningEffort = Schema.String.annotate({
-  description: "A non-empty reasoning effort value advertised by the model.",
-}).check(
-  Schema.isMinLength(1).annotate({
-    expected: "a value with a length of at least 1",
-    identifier: "V2ThreadUnarchiveResponse__ReasoningEffort",
-  }),
-);
 
 export type V2ThreadUnarchiveResponse__CollabAgentToolCallStatus =
   | "inProgress"
@@ -17948,6 +18166,15 @@ export const V2TurnCompletedNotification__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2TurnCompletedNotification__MessagePhase",
 });
+
+export type V2TurnCompletedNotification__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2TurnCompletedNotification__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2TurnCompletedNotification__AsyncUserInputQuestion" });
 
 export type V2TurnCompletedNotification__LegacyAppPathString = string;
 export const V2TurnCompletedNotification__LegacyAppPathString = Schema.String.annotate({
@@ -18263,6 +18490,20 @@ export const V2TurnPlanUpdatedNotification__TurnPlanStepStatus = Schema.Literals
   "completed",
 ]).annotate({ identifier: "V2TurnPlanUpdatedNotification__TurnPlanStepStatus" });
 
+export type V2TurnSettingsUpdateParams__ApprovalsReviewer =
+  | "user"
+  | "auto_review"
+  | "guardian_subagent";
+export const V2TurnSettingsUpdateParams__ApprovalsReviewer = Schema.Literals([
+  "user",
+  "auto_review",
+  "guardian_subagent",
+]).annotate({
+  description:
+    "Configures who approval requests are routed to for review. Examples include sandbox escapes, blocked network access, MCP approval prompts, and ARC escalations. Defaults to `user`. `auto_review` uses a carefully prompted subagent to gather relevant context and apply a risk-based decision framework before approving or denying the request. The legacy value `guardian_subagent` is accepted for compatibility.",
+  identifier: "V2TurnSettingsUpdateParams__ApprovalsReviewer",
+});
+
 export type V2TurnSettingsUpdateParams__ReasoningEffort = string;
 export const V2TurnSettingsUpdateParams__ReasoningEffort = Schema.String.annotate({
   description: "A non-empty reasoning effort value advertised by the model.",
@@ -18387,6 +18628,15 @@ export const V2TurnStartedNotification__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2TurnStartedNotification__MessagePhase",
 });
+
+export type V2TurnStartedNotification__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2TurnStartedNotification__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2TurnStartedNotification__AsyncUserInputQuestion" });
 
 export type V2TurnStartedNotification__LegacyAppPathString = string;
 export const V2TurnStartedNotification__LegacyAppPathString = Schema.String.annotate({
@@ -18925,6 +19175,15 @@ export const V2TurnStartResponse__MessagePhase = Schema.Union(
     'Classifies an assistant message as interim commentary or final answer text.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
   identifier: "V2TurnStartResponse__MessagePhase",
 });
+
+export type V2TurnStartResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+};
+export const V2TurnStartResponse__AsyncUserInputQuestion = Schema.Struct({
+  options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+  title: Schema.String,
+}).annotate({ identifier: "V2TurnStartResponse__AsyncUserInputQuestion" });
 
 export type V2TurnStartResponse__LegacyAppPathString = string;
 export const V2TurnStartResponse__LegacyAppPathString = Schema.String.annotate({
@@ -20022,6 +20281,7 @@ export const ClientRequest__SandboxPolicy = Schema.Union(
 ).annotate({ identifier: "ClientRequest__SandboxPolicy" });
 
 export type ClientRequest__TurnSettingsUpdateParams = {
+  readonly approvalsReviewer?: ClientRequest__ApprovalsReviewer | null;
   readonly effort?: ClientRequest__ReasoningEffort | null;
   readonly model?: string | null;
   readonly serviceTier?: string | null;
@@ -20030,6 +20290,12 @@ export type ClientRequest__TurnSettingsUpdateParams = {
   readonly turnId: string;
 };
 export const ClientRequest__TurnSettingsUpdateParams = Schema.Struct({
+  approvalsReviewer: Schema.optionalKey(
+    Schema.Union([ClientRequest__ApprovalsReviewer, Schema.Null]).annotate({
+      description:
+        "Changes the active turn's reviewer without changing future thread settings. Already captured steps and pending approvals retain their original reviewer.",
+    }),
+  ),
   effort: Schema.optionalKey(
     Schema.Union([ClientRequest__ReasoningEffort, Schema.Null]).annotate({
       description: "Omission or `null` leaves the effort unchanged.",
@@ -21573,6 +21839,22 @@ export const ServerNotification__FsChangedNotification = Schema.Struct({
   identifier: "ServerNotification__FsChangedNotification",
 });
 
+export type ServerNotification__Settings = {
+  readonly developer_instructions?: string | null;
+  readonly model: string;
+  readonly reasoning_effort?: ServerNotification__ReasoningEffort | null;
+};
+export const ServerNotification__Settings = Schema.Struct({
+  developer_instructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  model: Schema.String,
+  reasoning_effort: Schema.optionalKey(
+    Schema.Union([ServerNotification__ReasoningEffort, Schema.Null]),
+  ),
+}).annotate({
+  description: "Settings for a collaboration mode.",
+  identifier: "ServerNotification__Settings",
+});
+
 export type ServerNotification__ThreadSection = {
   readonly appearance?: ServerNotification__ThreadSectionAppearance | null;
   readonly id: string;
@@ -21830,22 +22112,6 @@ export const ServerNotification__CollabAgentState = Schema.Struct({
   message: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   status: ServerNotification__CollabAgentStatus,
 }).annotate({ identifier: "ServerNotification__CollabAgentState" });
-
-export type ServerNotification__Settings = {
-  readonly developer_instructions?: string | null;
-  readonly model: string;
-  readonly reasoning_effort?: ServerNotification__ReasoningEffort | null;
-};
-export const ServerNotification__Settings = Schema.Struct({
-  developer_instructions: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  model: Schema.String,
-  reasoning_effort: Schema.optionalKey(
-    Schema.Union([ServerNotification__ReasoningEffort, Schema.Null]),
-  ),
-}).annotate({
-  description: "Settings for a collaboration mode.",
-  identifier: "ServerNotification__Settings",
-});
 
 export type ServerNotification__ThreadGoal = {
   readonly createdAt: number;
@@ -34815,6 +35081,18 @@ export const ServerNotification__TurnError = Schema.Struct({
   ),
 }).annotate({ identifier: "ServerNotification__TurnError" });
 
+export type ServerNotification__CollaborationMode = {
+  readonly mode: ServerNotification__ModeKind;
+  readonly settings: ServerNotification__Settings;
+};
+export const ServerNotification__CollaborationMode = Schema.Struct({
+  mode: ServerNotification__ModeKind,
+  settings: ServerNotification__Settings,
+}).annotate({
+  description: "Collaboration mode for a Codex session.",
+  identifier: "ServerNotification__CollaborationMode",
+});
+
 export type ServerNotification__SessionSource =
   | "cli"
   | "vscode"
@@ -34949,18 +35227,6 @@ export const ServerNotification__FileChangePatchUpdatedNotification = Schema.Str
   threadId: Schema.String,
   turnId: Schema.String,
 }).annotate({ identifier: "ServerNotification__FileChangePatchUpdatedNotification" });
-
-export type ServerNotification__CollaborationMode = {
-  readonly mode: ServerNotification__ModeKind;
-  readonly settings: ServerNotification__Settings;
-};
-export const ServerNotification__CollaborationMode = Schema.Struct({
-  mode: ServerNotification__ModeKind,
-  settings: ServerNotification__Settings,
-}).annotate({
-  description: "Collaboration mode for a Codex session.",
-  identifier: "ServerNotification__CollaborationMode",
-});
 
 export type ServerNotification__ThreadGoalUpdatedNotification = {
   readonly goal: ServerNotification__ThreadGoal;
@@ -39717,6 +39983,46 @@ export const ServerNotification__ErrorNotification = Schema.Struct({
   willRetry: Schema.Boolean,
 }).annotate({ identifier: "ServerNotification__ErrorNotification" });
 
+export type ServerNotification__ThreadSettings = {
+  readonly activePermissionProfile?: ServerNotification__ActivePermissionProfile | null;
+  readonly approvalPolicy: ServerNotification__AskForApproval;
+  readonly approvalsReviewer: ServerNotification__ApprovalsReviewer;
+  readonly collaborationMode: ServerNotification__CollaborationMode;
+  readonly cwd: ServerNotification__AbsolutePathBuf;
+  readonly effort?: ServerNotification__ReasoningEffort | null;
+  readonly model: string;
+  readonly modelProvider: string;
+  readonly multiAgentMode?: ServerNotification__MultiAgentMode;
+  readonly personality?: ServerNotification__Personality | null;
+  readonly sandboxPolicy: ServerNotification__SandboxPolicy;
+  readonly serviceTier?: string | null;
+  readonly summary?: ServerNotification__ReasoningSummary | null;
+};
+export const ServerNotification__ThreadSettings = Schema.Struct({
+  activePermissionProfile: Schema.optionalKey(
+    Schema.Union([ServerNotification__ActivePermissionProfile, Schema.Null]),
+  ),
+  approvalPolicy: ServerNotification__AskForApproval,
+  approvalsReviewer: ServerNotification__ApprovalsReviewer,
+  collaborationMode: ServerNotification__CollaborationMode,
+  cwd: ServerNotification__AbsolutePathBuf,
+  effort: Schema.optionalKey(Schema.Union([ServerNotification__ReasoningEffort, Schema.Null])),
+  model: Schema.String,
+  modelProvider: Schema.String,
+  multiAgentMode: Schema.optionalKey(
+    Schema.suspend(
+      (): Schema.Codec<ServerNotification__MultiAgentMode> => ServerNotification__MultiAgentMode,
+    ).annotate({
+      description: "@deprecated Always `explicitRequestOnly`. Use `effort` for Ultra behavior.",
+      default: "explicitRequestOnly",
+    }),
+  ),
+  personality: Schema.optionalKey(Schema.Union([ServerNotification__Personality, Schema.Null])),
+  sandboxPolicy: ServerNotification__SandboxPolicy,
+  serviceTier: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  summary: Schema.optionalKey(Schema.Union([ServerNotification__ReasoningSummary, Schema.Null])),
+}).annotate({ identifier: "ServerNotification__ThreadSettings" });
+
 export type ServerNotification__ThreadItem =
   | {
       readonly clientId?: string | null;
@@ -39734,6 +40040,7 @@ export type ServerNotification__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: ServerNotification__MemoryCitation | null;
       readonly phase?: ServerNotification__MessagePhase | null;
+      readonly questions?: ReadonlyArray<ServerNotification__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -39865,6 +40172,9 @@ export const ServerNotification__ThreadItem = Schema.Union(
         Schema.Union([ServerNotification__MemoryCitation, Schema.Null]),
       ),
       phase: Schema.optionalKey(Schema.Union([ServerNotification__MessagePhase, Schema.Null])),
+      questions: Schema.optionalKey(
+        Schema.Union([Schema.Array(ServerNotification__AsyncUserInputQuestion), Schema.Null]),
+      ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
     }).annotate({ title: "AgentMessageThreadItem" }),
@@ -40165,46 +40475,6 @@ export const ServerNotification__FileSystemSandboxEntry = Schema.Struct({
   path: ServerNotification__FileSystemPath,
 }).annotate({ identifier: "ServerNotification__FileSystemSandboxEntry" });
 
-export type ServerNotification__ThreadSettings = {
-  readonly activePermissionProfile?: ServerNotification__ActivePermissionProfile | null;
-  readonly approvalPolicy: ServerNotification__AskForApproval;
-  readonly approvalsReviewer: ServerNotification__ApprovalsReviewer;
-  readonly collaborationMode: ServerNotification__CollaborationMode;
-  readonly cwd: ServerNotification__AbsolutePathBuf;
-  readonly effort?: ServerNotification__ReasoningEffort | null;
-  readonly model: string;
-  readonly modelProvider: string;
-  readonly multiAgentMode?: ServerNotification__MultiAgentMode;
-  readonly personality?: ServerNotification__Personality | null;
-  readonly sandboxPolicy: ServerNotification__SandboxPolicy;
-  readonly serviceTier?: string | null;
-  readonly summary?: ServerNotification__ReasoningSummary | null;
-};
-export const ServerNotification__ThreadSettings = Schema.Struct({
-  activePermissionProfile: Schema.optionalKey(
-    Schema.Union([ServerNotification__ActivePermissionProfile, Schema.Null]),
-  ),
-  approvalPolicy: ServerNotification__AskForApproval,
-  approvalsReviewer: ServerNotification__ApprovalsReviewer,
-  collaborationMode: ServerNotification__CollaborationMode,
-  cwd: ServerNotification__AbsolutePathBuf,
-  effort: Schema.optionalKey(Schema.Union([ServerNotification__ReasoningEffort, Schema.Null])),
-  model: Schema.String,
-  modelProvider: Schema.String,
-  multiAgentMode: Schema.optionalKey(
-    Schema.suspend(
-      (): Schema.Codec<ServerNotification__MultiAgentMode> => ServerNotification__MultiAgentMode,
-    ).annotate({
-      description: "@deprecated Always `explicitRequestOnly`. Use `effort` for Ultra behavior.",
-      default: "explicitRequestOnly",
-    }),
-  ),
-  personality: Schema.optionalKey(Schema.Union([ServerNotification__Personality, Schema.Null])),
-  sandboxPolicy: ServerNotification__SandboxPolicy,
-  serviceTier: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  summary: Schema.optionalKey(Schema.Union([ServerNotification__ReasoningSummary, Schema.Null])),
-}).annotate({ identifier: "ServerNotification__ThreadSettings" });
-
 export type ServerNotification__HookStartedNotification = {
   readonly run: ServerNotification__HookRunSummary;
   readonly threadId: string;
@@ -40338,6 +40608,7 @@ export type V2ItemCompletedNotification__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ItemCompletedNotification__MemoryCitation | null;
       readonly phase?: V2ItemCompletedNotification__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ItemCompletedNotification__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -40472,6 +40743,12 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
       ),
       phase: Schema.optionalKey(
         Schema.Union([V2ItemCompletedNotification__MessagePhase, Schema.Null]),
+      ),
+      questions: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(V2ItemCompletedNotification__AsyncUserInputQuestion),
+          Schema.Null,
+        ]),
       ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
@@ -40810,6 +41087,7 @@ export type V2ItemStartedNotification__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ItemStartedNotification__MemoryCitation | null;
       readonly phase?: V2ItemStartedNotification__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ItemStartedNotification__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -40942,6 +41220,12 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
       ),
       phase: Schema.optionalKey(
         Schema.Union([V2ItemStartedNotification__MessagePhase, Schema.Null]),
+      ),
+      questions: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(V2ItemStartedNotification__AsyncUserInputQuestion),
+          Schema.Null,
+        ]),
       ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
@@ -42099,6 +42383,7 @@ export type V2ReviewStartResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ReviewStartResponse__MemoryCitation | null;
       readonly phase?: V2ReviewStartResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ReviewStartResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -42230,6 +42515,9 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
         Schema.Union([V2ReviewStartResponse__MemoryCitation, Schema.Null]),
       ),
       phase: Schema.optionalKey(Schema.Union([V2ReviewStartResponse__MessagePhase, Schema.Null])),
+      questions: Schema.optionalKey(
+        Schema.Union([Schema.Array(V2ReviewStartResponse__AsyncUserInputQuestion), Schema.Null]),
+      ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
     }).annotate({ title: "AgentMessageThreadItem" }),
@@ -42553,6 +42841,7 @@ export type V2ThreadForkResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadForkResponse__MemoryCitation | null;
       readonly phase?: V2ThreadForkResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadForkResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -42684,6 +42973,9 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
         Schema.Union([V2ThreadForkResponse__MemoryCitation, Schema.Null]),
       ),
       phase: Schema.optionalKey(Schema.Union([V2ThreadForkResponse__MessagePhase, Schema.Null])),
+      questions: Schema.optionalKey(
+        Schema.Union([Schema.Array(V2ThreadForkResponse__AsyncUserInputQuestion), Schema.Null]),
+      ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
     }).annotate({ title: "AgentMessageThreadItem" }),
@@ -42996,6 +43288,7 @@ export type V2ThreadItemsListResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadItemsListResponse__MemoryCitation | null;
       readonly phase?: V2ThreadItemsListResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadItemsListResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -43128,6 +43421,12 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
       ),
       phase: Schema.optionalKey(
         Schema.Union([V2ThreadItemsListResponse__MessagePhase, Schema.Null]),
+      ),
+      questions: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(V2ThreadItemsListResponse__AsyncUserInputQuestion),
+          Schema.Null,
+        ]),
       ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
@@ -43442,6 +43741,7 @@ export type V2ThreadListResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadListResponse__MemoryCitation | null;
       readonly phase?: V2ThreadListResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadListResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -43573,6 +43873,9 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
         Schema.Union([V2ThreadListResponse__MemoryCitation, Schema.Null]),
       ),
       phase: Schema.optionalKey(Schema.Union([V2ThreadListResponse__MessagePhase, Schema.Null])),
+      questions: Schema.optionalKey(
+        Schema.Union([Schema.Array(V2ThreadListResponse__AsyncUserInputQuestion), Schema.Null]),
+      ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
     }).annotate({ title: "AgentMessageThreadItem" }),
@@ -43885,6 +44188,7 @@ export type V2ThreadMetadataUpdateResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadMetadataUpdateResponse__MemoryCitation | null;
       readonly phase?: V2ThreadMetadataUpdateResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadMetadataUpdateResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -44019,6 +44323,12 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
       ),
       phase: Schema.optionalKey(
         Schema.Union([V2ThreadMetadataUpdateResponse__MessagePhase, Schema.Null]),
+      ),
+      questions: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(V2ThreadMetadataUpdateResponse__AsyncUserInputQuestion),
+          Schema.Null,
+        ]),
       ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
@@ -44355,6 +44665,7 @@ export type V2ThreadQueueStartResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadQueueStartResponse__MemoryCitation | null;
       readonly phase?: V2ThreadQueueStartResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadQueueStartResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -44487,6 +44798,12 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
       ),
       phase: Schema.optionalKey(
         Schema.Union([V2ThreadQueueStartResponse__MessagePhase, Schema.Null]),
+      ),
+      questions: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(V2ThreadQueueStartResponse__AsyncUserInputQuestion),
+          Schema.Null,
+        ]),
       ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
@@ -44812,6 +45129,7 @@ export type V2ThreadReadResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadReadResponse__MemoryCitation | null;
       readonly phase?: V2ThreadReadResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadReadResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -44943,6 +45261,9 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
         Schema.Union([V2ThreadReadResponse__MemoryCitation, Schema.Null]),
       ),
       phase: Schema.optionalKey(Schema.Union([V2ThreadReadResponse__MessagePhase, Schema.Null])),
+      questions: Schema.optionalKey(
+        Schema.Union([Schema.Array(V2ThreadReadResponse__AsyncUserInputQuestion), Schema.Null]),
+      ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
     }).annotate({ title: "AgentMessageThreadItem" }),
@@ -45562,6 +45883,7 @@ export type V2ThreadResumeResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadResumeResponse__MemoryCitation | null;
       readonly phase?: V2ThreadResumeResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadResumeResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -45693,6 +46015,9 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
         Schema.Union([V2ThreadResumeResponse__MemoryCitation, Schema.Null]),
       ),
       phase: Schema.optionalKey(Schema.Union([V2ThreadResumeResponse__MessagePhase, Schema.Null])),
+      questions: Schema.optionalKey(
+        Schema.Union([Schema.Array(V2ThreadResumeResponse__AsyncUserInputQuestion), Schema.Null]),
+      ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
     }).annotate({ title: "AgentMessageThreadItem" }),
@@ -46005,6 +46330,7 @@ export type V2ThreadRevertResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadRevertResponse__MemoryCitation | null;
       readonly phase?: V2ThreadRevertResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadRevertResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -46136,6 +46462,9 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
         Schema.Union([V2ThreadRevertResponse__MemoryCitation, Schema.Null]),
       ),
       phase: Schema.optionalKey(Schema.Union([V2ThreadRevertResponse__MessagePhase, Schema.Null])),
+      questions: Schema.optionalKey(
+        Schema.Union([Schema.Array(V2ThreadRevertResponse__AsyncUserInputQuestion), Schema.Null]),
+      ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
     }).annotate({ title: "AgentMessageThreadItem" }),
@@ -46448,6 +46777,7 @@ export type V2ThreadRollbackResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadRollbackResponse__MemoryCitation | null;
       readonly phase?: V2ThreadRollbackResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadRollbackResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -46580,6 +46910,9 @@ export const V2ThreadRollbackResponse__ThreadItem = Schema.Union(
       ),
       phase: Schema.optionalKey(
         Schema.Union([V2ThreadRollbackResponse__MessagePhase, Schema.Null]),
+      ),
+      questions: Schema.optionalKey(
+        Schema.Union([Schema.Array(V2ThreadRollbackResponse__AsyncUserInputQuestion), Schema.Null]),
       ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
@@ -46894,6 +47227,7 @@ export type V2ThreadSearchResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadSearchResponse__MemoryCitation | null;
       readonly phase?: V2ThreadSearchResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadSearchResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -47025,6 +47359,9 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
         Schema.Union([V2ThreadSearchResponse__MemoryCitation, Schema.Null]),
       ),
       phase: Schema.optionalKey(Schema.Union([V2ThreadSearchResponse__MessagePhase, Schema.Null])),
+      questions: Schema.optionalKey(
+        Schema.Union([Schema.Array(V2ThreadSearchResponse__AsyncUserInputQuestion), Schema.Null]),
+      ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
     }).annotate({ title: "AgentMessageThreadItem" }),
@@ -47384,6 +47721,7 @@ export type V2ThreadStartedNotification__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadStartedNotification__MemoryCitation | null;
       readonly phase?: V2ThreadStartedNotification__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadStartedNotification__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -47518,6 +47856,12 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
       ),
       phase: Schema.optionalKey(
         Schema.Union([V2ThreadStartedNotification__MessagePhase, Schema.Null]),
+      ),
+      questions: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(V2ThreadStartedNotification__AsyncUserInputQuestion),
+          Schema.Null,
+        ]),
       ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
@@ -47832,6 +48176,7 @@ export type V2ThreadStartResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadStartResponse__MemoryCitation | null;
       readonly phase?: V2ThreadStartResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadStartResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -47963,6 +48308,9 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
         Schema.Union([V2ThreadStartResponse__MemoryCitation, Schema.Null]),
       ),
       phase: Schema.optionalKey(Schema.Union([V2ThreadStartResponse__MessagePhase, Schema.Null])),
+      questions: Schema.optionalKey(
+        Schema.Union([Schema.Array(V2ThreadStartResponse__AsyncUserInputQuestion), Schema.Null]),
+      ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
     }).annotate({ title: "AgentMessageThreadItem" }),
@@ -48275,6 +48623,7 @@ export type V2ThreadTimelineListResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadTimelineListResponse__MemoryCitation | null;
       readonly phase?: V2ThreadTimelineListResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadTimelineListResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -48409,6 +48758,12 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
       ),
       phase: Schema.optionalKey(
         Schema.Union([V2ThreadTimelineListResponse__MessagePhase, Schema.Null]),
+      ),
+      questions: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(V2ThreadTimelineListResponse__AsyncUserInputQuestion),
+          Schema.Null,
+        ]),
       ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
@@ -48723,6 +49078,7 @@ export type V2ThreadTurnsListResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadTurnsListResponse__MemoryCitation | null;
       readonly phase?: V2ThreadTurnsListResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadTurnsListResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -48855,6 +49211,12 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
       ),
       phase: Schema.optionalKey(
         Schema.Union([V2ThreadTurnsListResponse__MessagePhase, Schema.Null]),
+      ),
+      questions: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(V2ThreadTurnsListResponse__AsyncUserInputQuestion),
+          Schema.Null,
+        ]),
       ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
@@ -49169,6 +49531,7 @@ export type V2ThreadUnarchiveResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2ThreadUnarchiveResponse__MemoryCitation | null;
       readonly phase?: V2ThreadUnarchiveResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadUnarchiveResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -49301,6 +49664,12 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
       ),
       phase: Schema.optionalKey(
         Schema.Union([V2ThreadUnarchiveResponse__MessagePhase, Schema.Null]),
+      ),
+      questions: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(V2ThreadUnarchiveResponse__AsyncUserInputQuestion),
+          Schema.Null,
+        ]),
       ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
@@ -49615,6 +49984,7 @@ export type V2TurnCompletedNotification__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2TurnCompletedNotification__MemoryCitation | null;
       readonly phase?: V2TurnCompletedNotification__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2TurnCompletedNotification__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -49749,6 +50119,12 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
       ),
       phase: Schema.optionalKey(
         Schema.Union([V2TurnCompletedNotification__MessagePhase, Schema.Null]),
+      ),
+      questions: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(V2TurnCompletedNotification__AsyncUserInputQuestion),
+          Schema.Null,
+        ]),
       ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
@@ -50063,6 +50439,7 @@ export type V2TurnStartedNotification__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2TurnStartedNotification__MemoryCitation | null;
       readonly phase?: V2TurnStartedNotification__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2TurnStartedNotification__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -50195,6 +50572,12 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
       ),
       phase: Schema.optionalKey(
         Schema.Union([V2TurnStartedNotification__MessagePhase, Schema.Null]),
+      ),
+      questions: Schema.optionalKey(
+        Schema.Union([
+          Schema.Array(V2TurnStartedNotification__AsyncUserInputQuestion),
+          Schema.Null,
+        ]),
       ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
@@ -50520,6 +50903,7 @@ export type V2TurnStartResponse__ThreadItem =
       readonly id: string;
       readonly memoryCitation?: V2TurnStartResponse__MemoryCitation | null;
       readonly phase?: V2TurnStartResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2TurnStartResponse__AsyncUserInputQuestion> | null;
       readonly text: string;
       readonly type: "agentMessage";
     }
@@ -50651,6 +51035,9 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
         Schema.Union([V2TurnStartResponse__MemoryCitation, Schema.Null]),
       ),
       phase: Schema.optionalKey(Schema.Union([V2TurnStartResponse__MessagePhase, Schema.Null])),
+      questions: Schema.optionalKey(
+        Schema.Union([Schema.Array(V2TurnStartResponse__AsyncUserInputQuestion), Schema.Null]),
+      ),
       text: Schema.String,
       type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
     }).annotate({ title: "AgentMessageThreadItem" }),
@@ -51364,6 +51751,15 @@ export const PermissionsRequestApprovalResponse__AdditionalFileSystemPermissions
   ),
 }).annotate({ identifier: "PermissionsRequestApprovalResponse__AdditionalFileSystemPermissions" });
 
+export type ServerNotification__ThreadSettingsUpdatedNotification = {
+  readonly threadId: string;
+  readonly threadSettings: ServerNotification__ThreadSettings;
+};
+export const ServerNotification__ThreadSettingsUpdatedNotification = Schema.Struct({
+  threadId: Schema.String,
+  threadSettings: ServerNotification__ThreadSettings,
+}).annotate({ identifier: "ServerNotification__ThreadSettingsUpdatedNotification" });
+
 export type ServerNotification__Turn = {
   readonly completedAt?: number | null;
   readonly durationMs?: number | null;
@@ -51495,15 +51891,6 @@ export const ServerNotification__AdditionalFileSystemPermissions = Schema.Struct
     ]),
   ),
 }).annotate({ identifier: "ServerNotification__AdditionalFileSystemPermissions" });
-
-export type ServerNotification__ThreadSettingsUpdatedNotification = {
-  readonly threadId: string;
-  readonly threadSettings: ServerNotification__ThreadSettings;
-};
-export const ServerNotification__ThreadSettingsUpdatedNotification = Schema.Struct({
-  threadId: Schema.String,
-  threadSettings: ServerNotification__ThreadSettings,
-}).annotate({ identifier: "ServerNotification__ThreadSettingsUpdatedNotification" });
 
 export type ServerRequest__AdditionalFileSystemPermissions = {
   readonly entries?: ReadonlyArray<ServerRequest__FileSystemSandboxEntry> | null;
@@ -53190,12 +53577,14 @@ export type ServerNotification__Thread = {
   readonly gitInfo?: ServerNotification__GitInfo | null;
   readonly historyMode?: ServerNotification__ThreadHistoryMode;
   readonly id: string;
+  readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
   readonly projectId: string | null;
+  readonly reasoningEffort?: ServerNotification__ReasoningEffort | null;
   readonly recencyAt?: number | null;
   readonly section?: ServerNotification__ThreadSection | null;
   readonly sectionEnteredAt?: number | null;
@@ -53276,6 +53665,15 @@ export const ServerNotification__Thread = Schema.Struct({
   id: Schema.String.annotate({
     description: "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
   }),
+  model: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Current configured model when loaded, otherwise the latest persisted model. Null when unavailable. This is not per-turn execution telemetry.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   modelProvider: Schema.String.annotate({
     description: "Model provider used for this thread (for example, 'openai').",
   }),
@@ -53309,6 +53707,12 @@ export const ServerNotification__Thread = Schema.Struct({
     }),
     Schema.Null,
   ]),
+  reasoningEffort: Schema.optionalKey(
+    Schema.Union([ServerNotification__ReasoningEffort, Schema.Null]).annotate({
+      description:
+        "Current configured reasoning effort when loaded, otherwise the latest persisted effort. Null when unset or unavailable. This is not per-turn execution telemetry.",
+    }),
+  ),
   recencyAt: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -53486,12 +53890,14 @@ export type V2ThreadForkResponse__Thread = {
   readonly gitInfo?: V2ThreadForkResponse__GitInfo | null;
   readonly historyMode?: V2ThreadForkResponse__ThreadHistoryMode;
   readonly id: string;
+  readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
   readonly projectId: string | null;
+  readonly reasoningEffort?: V2ThreadForkResponse__ReasoningEffort | null;
   readonly recencyAt?: number | null;
   readonly section?: V2ThreadForkResponse__ThreadSection | null;
   readonly sectionEnteredAt?: number | null;
@@ -53573,6 +53979,15 @@ export const V2ThreadForkResponse__Thread = Schema.Struct({
   id: Schema.String.annotate({
     description: "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
   }),
+  model: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Current configured model when loaded, otherwise the latest persisted model. Null when unavailable. This is not per-turn execution telemetry.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   modelProvider: Schema.String.annotate({
     description: "Model provider used for this thread (for example, 'openai').",
   }),
@@ -53606,6 +54021,12 @@ export const V2ThreadForkResponse__Thread = Schema.Struct({
     }),
     Schema.Null,
   ]),
+  reasoningEffort: Schema.optionalKey(
+    Schema.Union([V2ThreadForkResponse__ReasoningEffort, Schema.Null]).annotate({
+      description:
+        "Current configured reasoning effort when loaded, otherwise the latest persisted effort. Null when unset or unavailable. This is not per-turn execution telemetry.",
+    }),
+  ),
   recencyAt: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -53668,12 +54089,14 @@ export type V2ThreadListResponse__Thread = {
   readonly gitInfo?: V2ThreadListResponse__GitInfo | null;
   readonly historyMode?: V2ThreadListResponse__ThreadHistoryMode;
   readonly id: string;
+  readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
   readonly projectId: string | null;
+  readonly reasoningEffort?: V2ThreadListResponse__ReasoningEffort | null;
   readonly recencyAt?: number | null;
   readonly section?: V2ThreadListResponse__ThreadSection | null;
   readonly sectionEnteredAt?: number | null;
@@ -53755,6 +54178,15 @@ export const V2ThreadListResponse__Thread = Schema.Struct({
   id: Schema.String.annotate({
     description: "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
   }),
+  model: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Current configured model when loaded, otherwise the latest persisted model. Null when unavailable. This is not per-turn execution telemetry.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   modelProvider: Schema.String.annotate({
     description: "Model provider used for this thread (for example, 'openai').",
   }),
@@ -53788,6 +54220,12 @@ export const V2ThreadListResponse__Thread = Schema.Struct({
     }),
     Schema.Null,
   ]),
+  reasoningEffort: Schema.optionalKey(
+    Schema.Union([V2ThreadListResponse__ReasoningEffort, Schema.Null]).annotate({
+      description:
+        "Current configured reasoning effort when loaded, otherwise the latest persisted effort. Null when unset or unavailable. This is not per-turn execution telemetry.",
+    }),
+  ),
   recencyAt: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -53850,12 +54288,14 @@ export type V2ThreadMetadataUpdateResponse__Thread = {
   readonly gitInfo?: V2ThreadMetadataUpdateResponse__GitInfo | null;
   readonly historyMode?: V2ThreadMetadataUpdateResponse__ThreadHistoryMode;
   readonly id: string;
+  readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
   readonly projectId: string | null;
+  readonly reasoningEffort?: V2ThreadMetadataUpdateResponse__ReasoningEffort | null;
   readonly recencyAt?: number | null;
   readonly section?: V2ThreadMetadataUpdateResponse__ThreadSection | null;
   readonly sectionEnteredAt?: number | null;
@@ -53937,6 +54377,15 @@ export const V2ThreadMetadataUpdateResponse__Thread = Schema.Struct({
   id: Schema.String.annotate({
     description: "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
   }),
+  model: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Current configured model when loaded, otherwise the latest persisted model. Null when unavailable. This is not per-turn execution telemetry.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   modelProvider: Schema.String.annotate({
     description: "Model provider used for this thread (for example, 'openai').",
   }),
@@ -53970,6 +54419,12 @@ export const V2ThreadMetadataUpdateResponse__Thread = Schema.Struct({
     }),
     Schema.Null,
   ]),
+  reasoningEffort: Schema.optionalKey(
+    Schema.Union([V2ThreadMetadataUpdateResponse__ReasoningEffort, Schema.Null]).annotate({
+      description:
+        "Current configured reasoning effort when loaded, otherwise the latest persisted effort. Null when unset or unavailable. This is not per-turn execution telemetry.",
+    }),
+  ),
   recencyAt: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -54034,12 +54489,14 @@ export type V2ThreadReadResponse__Thread = {
   readonly gitInfo?: V2ThreadReadResponse__GitInfo | null;
   readonly historyMode?: V2ThreadReadResponse__ThreadHistoryMode;
   readonly id: string;
+  readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
   readonly projectId: string | null;
+  readonly reasoningEffort?: V2ThreadReadResponse__ReasoningEffort | null;
   readonly recencyAt?: number | null;
   readonly section?: V2ThreadReadResponse__ThreadSection | null;
   readonly sectionEnteredAt?: number | null;
@@ -54121,6 +54578,15 @@ export const V2ThreadReadResponse__Thread = Schema.Struct({
   id: Schema.String.annotate({
     description: "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
   }),
+  model: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Current configured model when loaded, otherwise the latest persisted model. Null when unavailable. This is not per-turn execution telemetry.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   modelProvider: Schema.String.annotate({
     description: "Model provider used for this thread (for example, 'openai').",
   }),
@@ -54154,6 +54620,12 @@ export const V2ThreadReadResponse__Thread = Schema.Struct({
     }),
     Schema.Null,
   ]),
+  reasoningEffort: Schema.optionalKey(
+    Schema.Union([V2ThreadReadResponse__ReasoningEffort, Schema.Null]).annotate({
+      description:
+        "Current configured reasoning effort when loaded, otherwise the latest persisted effort. Null when unset or unavailable. This is not per-turn execution telemetry.",
+    }),
+  ),
   recencyAt: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -54227,12 +54699,14 @@ export type V2ThreadResumeResponse__Thread = {
   readonly gitInfo?: V2ThreadResumeResponse__GitInfo | null;
   readonly historyMode?: V2ThreadResumeResponse__ThreadHistoryMode;
   readonly id: string;
+  readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
   readonly projectId: string | null;
+  readonly reasoningEffort?: V2ThreadResumeResponse__ReasoningEffort | null;
   readonly recencyAt?: number | null;
   readonly section?: V2ThreadResumeResponse__ThreadSection | null;
   readonly sectionEnteredAt?: number | null;
@@ -54314,6 +54788,15 @@ export const V2ThreadResumeResponse__Thread = Schema.Struct({
   id: Schema.String.annotate({
     description: "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
   }),
+  model: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Current configured model when loaded, otherwise the latest persisted model. Null when unavailable. This is not per-turn execution telemetry.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   modelProvider: Schema.String.annotate({
     description: "Model provider used for this thread (for example, 'openai').",
   }),
@@ -54347,6 +54830,12 @@ export const V2ThreadResumeResponse__Thread = Schema.Struct({
     }),
     Schema.Null,
   ]),
+  reasoningEffort: Schema.optionalKey(
+    Schema.Union([V2ThreadResumeResponse__ReasoningEffort, Schema.Null]).annotate({
+      description:
+        "Current configured reasoning effort when loaded, otherwise the latest persisted effort. Null when unset or unavailable. This is not per-turn execution telemetry.",
+    }),
+  ),
   recencyAt: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -54410,12 +54899,14 @@ export type V2ThreadRevertResponse__Thread = {
   readonly gitInfo?: V2ThreadRevertResponse__GitInfo | null;
   readonly historyMode?: V2ThreadRevertResponse__ThreadHistoryMode;
   readonly id: string;
+  readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
   readonly projectId: string | null;
+  readonly reasoningEffort?: V2ThreadRevertResponse__ReasoningEffort | null;
   readonly recencyAt?: number | null;
   readonly section?: V2ThreadRevertResponse__ThreadSection | null;
   readonly sectionEnteredAt?: number | null;
@@ -54497,6 +54988,15 @@ export const V2ThreadRevertResponse__Thread = Schema.Struct({
   id: Schema.String.annotate({
     description: "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
   }),
+  model: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Current configured model when loaded, otherwise the latest persisted model. Null when unavailable. This is not per-turn execution telemetry.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   modelProvider: Schema.String.annotate({
     description: "Model provider used for this thread (for example, 'openai').",
   }),
@@ -54530,6 +55030,12 @@ export const V2ThreadRevertResponse__Thread = Schema.Struct({
     }),
     Schema.Null,
   ]),
+  reasoningEffort: Schema.optionalKey(
+    Schema.Union([V2ThreadRevertResponse__ReasoningEffort, Schema.Null]).annotate({
+      description:
+        "Current configured reasoning effort when loaded, otherwise the latest persisted effort. Null when unset or unavailable. This is not per-turn execution telemetry.",
+    }),
+  ),
   recencyAt: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -54593,12 +55099,14 @@ export type V2ThreadRollbackResponse__Thread = {
   readonly gitInfo?: V2ThreadRollbackResponse__GitInfo | null;
   readonly historyMode?: V2ThreadRollbackResponse__ThreadHistoryMode;
   readonly id: string;
+  readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
   readonly projectId: string | null;
+  readonly reasoningEffort?: V2ThreadRollbackResponse__ReasoningEffort | null;
   readonly recencyAt?: number | null;
   readonly section?: V2ThreadRollbackResponse__ThreadSection | null;
   readonly sectionEnteredAt?: number | null;
@@ -54680,6 +55188,15 @@ export const V2ThreadRollbackResponse__Thread = Schema.Struct({
   id: Schema.String.annotate({
     description: "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
   }),
+  model: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Current configured model when loaded, otherwise the latest persisted model. Null when unavailable. This is not per-turn execution telemetry.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   modelProvider: Schema.String.annotate({
     description: "Model provider used for this thread (for example, 'openai').",
   }),
@@ -54713,6 +55230,12 @@ export const V2ThreadRollbackResponse__Thread = Schema.Struct({
     }),
     Schema.Null,
   ]),
+  reasoningEffort: Schema.optionalKey(
+    Schema.Union([V2ThreadRollbackResponse__ReasoningEffort, Schema.Null]).annotate({
+      description:
+        "Current configured reasoning effort when loaded, otherwise the latest persisted effort. Null when unset or unavailable. This is not per-turn execution telemetry.",
+    }),
+  ),
   recencyAt: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -54777,12 +55300,14 @@ export type V2ThreadSearchResponse__Thread = {
   readonly gitInfo?: V2ThreadSearchResponse__GitInfo | null;
   readonly historyMode?: V2ThreadSearchResponse__ThreadHistoryMode;
   readonly id: string;
+  readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
   readonly projectId: string | null;
+  readonly reasoningEffort?: V2ThreadSearchResponse__ReasoningEffort | null;
   readonly recencyAt?: number | null;
   readonly section?: V2ThreadSearchResponse__ThreadSection | null;
   readonly sectionEnteredAt?: number | null;
@@ -54864,6 +55389,15 @@ export const V2ThreadSearchResponse__Thread = Schema.Struct({
   id: Schema.String.annotate({
     description: "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
   }),
+  model: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Current configured model when loaded, otherwise the latest persisted model. Null when unavailable. This is not per-turn execution telemetry.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   modelProvider: Schema.String.annotate({
     description: "Model provider used for this thread (for example, 'openai').",
   }),
@@ -54897,6 +55431,12 @@ export const V2ThreadSearchResponse__Thread = Schema.Struct({
     }),
     Schema.Null,
   ]),
+  reasoningEffort: Schema.optionalKey(
+    Schema.Union([V2ThreadSearchResponse__ReasoningEffort, Schema.Null]).annotate({
+      description:
+        "Current configured reasoning effort when loaded, otherwise the latest persisted effort. Null when unset or unavailable. This is not per-turn execution telemetry.",
+    }),
+  ),
   recencyAt: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -54960,12 +55500,14 @@ export type V2ThreadStartedNotification__Thread = {
   readonly gitInfo?: V2ThreadStartedNotification__GitInfo | null;
   readonly historyMode?: V2ThreadStartedNotification__ThreadHistoryMode;
   readonly id: string;
+  readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
   readonly projectId: string | null;
+  readonly reasoningEffort?: V2ThreadStartedNotification__ReasoningEffort | null;
   readonly recencyAt?: number | null;
   readonly section?: V2ThreadStartedNotification__ThreadSection | null;
   readonly sectionEnteredAt?: number | null;
@@ -55047,6 +55589,15 @@ export const V2ThreadStartedNotification__Thread = Schema.Struct({
   id: Schema.String.annotate({
     description: "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
   }),
+  model: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Current configured model when loaded, otherwise the latest persisted model. Null when unavailable. This is not per-turn execution telemetry.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   modelProvider: Schema.String.annotate({
     description: "Model provider used for this thread (for example, 'openai').",
   }),
@@ -55080,6 +55631,12 @@ export const V2ThreadStartedNotification__Thread = Schema.Struct({
     }),
     Schema.Null,
   ]),
+  reasoningEffort: Schema.optionalKey(
+    Schema.Union([V2ThreadStartedNotification__ReasoningEffort, Schema.Null]).annotate({
+      description:
+        "Current configured reasoning effort when loaded, otherwise the latest persisted effort. Null when unset or unavailable. This is not per-turn execution telemetry.",
+    }),
+  ),
   recencyAt: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -55144,12 +55701,14 @@ export type V2ThreadStartResponse__Thread = {
   readonly gitInfo?: V2ThreadStartResponse__GitInfo | null;
   readonly historyMode?: V2ThreadStartResponse__ThreadHistoryMode;
   readonly id: string;
+  readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
   readonly projectId: string | null;
+  readonly reasoningEffort?: V2ThreadStartResponse__ReasoningEffort | null;
   readonly recencyAt?: number | null;
   readonly section?: V2ThreadStartResponse__ThreadSection | null;
   readonly sectionEnteredAt?: number | null;
@@ -55231,6 +55790,15 @@ export const V2ThreadStartResponse__Thread = Schema.Struct({
   id: Schema.String.annotate({
     description: "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
   }),
+  model: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Current configured model when loaded, otherwise the latest persisted model. Null when unavailable. This is not per-turn execution telemetry.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   modelProvider: Schema.String.annotate({
     description: "Model provider used for this thread (for example, 'openai').",
   }),
@@ -55264,6 +55832,12 @@ export const V2ThreadStartResponse__Thread = Schema.Struct({
     }),
     Schema.Null,
   ]),
+  reasoningEffort: Schema.optionalKey(
+    Schema.Union([V2ThreadStartResponse__ReasoningEffort, Schema.Null]).annotate({
+      description:
+        "Current configured reasoning effort when loaded, otherwise the latest persisted effort. Null when unset or unavailable. This is not per-turn execution telemetry.",
+    }),
+  ),
   recencyAt: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -55326,12 +55900,14 @@ export type V2ThreadUnarchiveResponse__Thread = {
   readonly gitInfo?: V2ThreadUnarchiveResponse__GitInfo | null;
   readonly historyMode?: V2ThreadUnarchiveResponse__ThreadHistoryMode;
   readonly id: string;
+  readonly model?: string | null;
   readonly modelProvider: string;
   readonly name?: string | null;
   readonly parentThreadId?: string | null;
   readonly path?: string | null;
   readonly preview: string;
   readonly projectId: string | null;
+  readonly reasoningEffort?: V2ThreadUnarchiveResponse__ReasoningEffort | null;
   readonly recencyAt?: number | null;
   readonly section?: V2ThreadUnarchiveResponse__ThreadSection | null;
   readonly sectionEnteredAt?: number | null;
@@ -55413,6 +55989,15 @@ export const V2ThreadUnarchiveResponse__Thread = Schema.Struct({
   id: Schema.String.annotate({
     description: "Identifier for this thread. Codex-generated thread IDs are UUIDv7.",
   }),
+  model: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description:
+          "Current configured model when loaded, otherwise the latest persisted model. Null when unavailable. This is not per-turn execution telemetry.",
+      }),
+      Schema.Null,
+    ]),
+  ),
   modelProvider: Schema.String.annotate({
     description: "Model provider used for this thread (for example, 'openai').",
   }),
@@ -55446,6 +56031,12 @@ export const V2ThreadUnarchiveResponse__Thread = Schema.Struct({
     }),
     Schema.Null,
   ]),
+  reasoningEffort: Schema.optionalKey(
+    Schema.Union([V2ThreadUnarchiveResponse__ReasoningEffort, Schema.Null]).annotate({
+      description:
+        "Current configured reasoning effort when loaded, otherwise the latest persisted effort. Null when unset or unavailable. This is not per-turn execution telemetry.",
+    }),
+  ),
   recencyAt: Schema.optionalKey(
     Schema.Union([
       Schema.Number.annotate({
@@ -56644,6 +57235,11 @@ export type ClientRequest =
     }
   | {
       readonly id: ClientRequest__RequestId;
+      readonly method: "plugin/reconcile";
+      readonly params: ClientRequest__PluginReconcileParams;
+    }
+  | {
+      readonly id: ClientRequest__RequestId;
       readonly method: "plugin/read";
       readonly params: ClientRequest__PluginReadParams;
     }
@@ -57499,6 +58095,13 @@ export const ClientRequest = Schema.Union(
       }),
       params: ClientRequest__PluginInstalledParams,
     }).annotate({ title: "Plugin/installedRequest" }),
+    Schema.Struct({
+      id: ClientRequest__RequestId,
+      method: Schema.Literal("plugin/reconcile").annotate({
+        title: "Plugin/reconcileRequestMethod",
+      }),
+      params: ClientRequest__PluginReconcileParams,
+    }).annotate({ title: "Plugin/reconcileRequest" }),
     Schema.Struct({
       id: ClientRequest__RequestId,
       method: Schema.Literal("plugin/read").annotate({ title: "Plugin/readRequestMethod" }),
@@ -60833,6 +61436,7 @@ export type V2ConfigReadResponse__AppConfig = {
   readonly default_tools_enabled?: boolean | null;
   readonly destructive_enabled?: boolean | null;
   readonly enabled?: boolean;
+  readonly links?: V2ConfigReadResponse__AppLinksConfig | null;
   readonly open_world_enabled?: boolean | null;
   readonly tools?: V2ConfigReadResponse__AppToolsConfig | null;
 };
@@ -60846,9 +61450,27 @@ export const V2ConfigReadResponse__AppConfig = Schema.Struct({
   default_tools_enabled: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
   destructive_enabled: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
   enabled: Schema.optionalKey(Schema.Boolean.annotate({ default: true })),
+  links: Schema.optionalKey(
+    Schema.Union([V2ConfigReadResponse__AppLinksConfig, Schema.Null]).annotate({
+      description: "Per-account approval settings keyed by link ID.",
+    }),
+  ),
   open_world_enabled: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
   tools: Schema.optionalKey(Schema.Union([V2ConfigReadResponse__AppToolsConfig, Schema.Null])),
 });
+
+export type V2ConfigReadResponse__AppLinkConfig = {
+  readonly approvals_reviewer?: V2ConfigReadResponse__ApprovalsReviewer | null;
+  readonly default_tools_approval_mode?: V2ConfigReadResponse__AppToolApproval | null;
+};
+export const V2ConfigReadResponse__AppLinkConfig = Schema.Struct({
+  approvals_reviewer: Schema.optionalKey(
+    Schema.Union([V2ConfigReadResponse__ApprovalsReviewer, Schema.Null]),
+  ),
+  default_tools_approval_mode: Schema.optionalKey(
+    Schema.Union([V2ConfigReadResponse__AppToolApproval, Schema.Null]),
+  ),
+}).annotate({ description: "Approval settings for a connected account within an app." });
 
 export type V2ConfigReadResponse__AppToolConfig = {
   readonly approval_mode?: V2ConfigReadResponse__AppToolApproval | null;
@@ -62718,6 +63340,41 @@ export type V2PluginReadResponse = { readonly plugin: V2PluginReadResponse__Plug
 export const V2PluginReadResponse = Schema.Struct({
   plugin: V2PluginReadResponse__PluginDetail,
 }).annotate({ title: "PluginReadResponse" });
+
+export type V2PluginReconcileParams = { readonly reason?: string | null };
+export const V2PluginReconcileParams = Schema.Struct({
+  reason: Schema.optionalKey(
+    Schema.Union([
+      Schema.String.annotate({
+        description: "Optional client-provided reason recorded with the reconciliation attempt.",
+      }),
+      Schema.Null,
+    ]),
+  ),
+}).annotate({ title: "PluginReconcileParams" });
+
+export type V2PluginReconcileResponse = {
+  readonly changedPlugins: ReadonlyArray<V2PluginReconcileResponse__PluginReconcileChangedPlugin>;
+  readonly failedMaterializationRemotePluginIds: ReadonlyArray<string>;
+  readonly failedRemotePluginIds: ReadonlyArray<string>;
+};
+export const V2PluginReconcileResponse = Schema.Struct({
+  changedPlugins: Schema.Array(V2PluginReconcileResponse__PluginReconcileChangedPlugin).annotate({
+    description:
+      "Plugins affected by bundle changes, enablement changes, or removals. Installed-state changes compare against the previous cached snapshot, including cached reinstalls. Removal hints survive cache cleanup failures; unchanged plugins are omitted.",
+  }),
+  failedMaterializationRemotePluginIds: Schema.Array(Schema.String).annotate({
+    description:
+      "Subset of failures for which the requested bundle could not be materialized. A previously cached version may still be available.",
+  }),
+  failedRemotePluginIds: Schema.Array(Schema.String).annotate({
+    description: "Backend remote plugin IDs whose bundle or identity update failed.",
+  }),
+}).annotate({
+  title: "PluginReconcileResponse",
+  description:
+    "Bundle and installed-state changes observed by this pass, not a runtime-readiness acknowledgement or a cumulative diff since the client's last request. Other metadata-only changes are not listed.",
+});
 
 export type V2PluginSearchParams = {
   readonly cursor?: string | null;
@@ -66124,6 +66781,7 @@ export const V2TurnPlanUpdatedNotification = Schema.Struct({
 }).annotate({ title: "TurnPlanUpdatedNotification" });
 
 export type V2TurnSettingsUpdateParams = {
+  readonly approvalsReviewer?: V2TurnSettingsUpdateParams__ApprovalsReviewer | null;
   readonly effort?: V2TurnSettingsUpdateParams__ReasoningEffort | null;
   readonly model?: string | null;
   readonly serviceTier?: string | null;
@@ -66132,6 +66790,12 @@ export type V2TurnSettingsUpdateParams = {
   readonly turnId: string;
 };
 export const V2TurnSettingsUpdateParams = Schema.Struct({
+  approvalsReviewer: Schema.optionalKey(
+    Schema.Union([V2TurnSettingsUpdateParams__ApprovalsReviewer, Schema.Null]).annotate({
+      description:
+        "Changes the active turn's reviewer without changing future thread settings. Already captured steps and pending approvals retain their original reviewer.",
+    }),
+  ),
   effort: Schema.optionalKey(
     Schema.Union([V2TurnSettingsUpdateParams__ReasoningEffort, Schema.Null]).annotate({
       description: "Omission or `null` leaves the effort unchanged.",
