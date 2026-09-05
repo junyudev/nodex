@@ -241,4 +241,37 @@ describe("Codex thread notification handler", () => {
       requestId: "q-side",
     });
   });
+  test("opens an async question without a blocking request or reply action, then dismisses the same occurrence", () => {
+    const runtime = setup();
+    runtime.source.eventListener?.({
+      type: "async-question-requested",
+      hostId: "default",
+      conversation: conversation(),
+      turnId: "turn",
+      questionId: "question",
+    });
+    expect(runtime.shown[0]).toMatchObject({
+      kind: "question",
+      body: "Nodex has a question",
+      asyncQuestion: { turnId: "turn", questionId: "question" },
+    });
+    expect(runtime.shown[0]?.replyPlaceholder).toBeUndefined();
+    runtime.actions[0]?.({
+      notificationId: runtime.shown[0]!.id,
+      actionId: null,
+      actionType: "open",
+    });
+    expect(runtime.dispatched[0]).toMatchObject({
+      requestId: null,
+      asyncQuestion: { turnId: "turn", questionId: "question" },
+    });
+    runtime.source.eventListener?.({
+      type: "async-question-resolved",
+      hostId: "default",
+      conversationId: "thread-1",
+      turnId: "turn",
+      questionId: "question",
+    });
+    expect(runtime.dismissed).toContainEqual({ notificationId: runtime.shown[0]!.id });
+  });
 });

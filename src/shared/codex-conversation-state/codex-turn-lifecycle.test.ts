@@ -1,3 +1,4 @@
+import { encodeCodexAsyncQuestionReplies } from "../codex-async-user-input";
 import { describe, expect, test } from "vite-plus/test";
 import { createCodexQueuedFollowUp } from "../codex-queued-follow-up-state";
 import {
@@ -273,6 +274,12 @@ describe("Codex 30751 turn lifecycle", () => {
             steer("first", "pending"),
             steer("accepted", "accepted"),
             steer("second", "pending"),
+            steer(
+              encodeCodexAsyncQuestionReplies([
+                { questionItemId: "q", question: "Scope?", answer: "Local" },
+              ]),
+              "pending",
+            ),
           ],
         },
       ],

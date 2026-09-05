@@ -8,6 +8,10 @@ import * as Schema from "effect/Schema";
 import { parseAssetSource } from "../../shared/assets";
 import { dedupeCodexLiveFileAttachments } from "../../shared/codex-live-file-attachments";
 import { prepareCodexPrompt } from "../../shared/codex-prompt-preparation";
+import {
+  decodeCodexAsyncQuestionReplies,
+  expandCodexAsyncQuestions,
+} from "../../shared/codex-async-user-input";
 import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
 import {
   parseCodexReasoningSummary,
@@ -71,6 +75,7 @@ export interface CodexTurnSteerPlan {
   readonly steerId: string;
   readonly request: TurnSteerParams;
   readonly item: CodexCanonicalSteeringUserMessageItem;
+  /** Question replies may correct the active Turn identity but cannot start new work. */
   readonly fallbackStart: {
     readonly prompt: string;
     readonly overrides: {
@@ -80,7 +85,7 @@ export interface CodexTurnSteerPlan {
       readonly promptInput?: CodexPromptInput;
       readonly clientUserMessageId?: string;
     };
-  };
+  } | null;
 }
 
 export class CodexTurnPreparationError extends Schema.TaggedError<CodexTurnPreparationError>()(
@@ -494,6 +499,18 @@ export const make: Effect.Effect<
         : state.canonical.turns.findLast((turn) => turn.protocol.status === "inProgress");
       const expectedTurnId = input.command.expectedTurnId ?? activeTurn?.protocol.id ?? null;
       if (!expectedTurnId) return yield* fail(new Error("No active Turn is available to steer"));
+      const questionReplies = decodeCodexAsyncQuestionReplies(input.command.prompt);
+      if (questionReplies) {
+        const questionIds = new Set(
+          activeTurn?.items.flatMap(expandCodexAsyncQuestions).map((question) => question.id),
+        );
+        if (
+          !input.command.expectedTurnId ||
+          activeTurn?.protocol.status !== "inProgress" ||
+          questionReplies.some((reply) => !questionIds.has(reply.questionItemId))
+        )
+          return yield* fail(new Error("The question's Turn is no longer available to answer"));
+      }
       prepared = yield* inputAssets.retainPrepared(
         threadId,
         input.recoveryRow.clientUserMessageId,
@@ -531,21 +548,23 @@ export const make: Effect.Effect<
         steerId: input.steerId,
         request,
         item,
-        fallbackStart: {
-          prompt: input.command.prompt,
-          overrides: {
-            clientUserMessageId: input.recoveryRow.clientUserMessageId,
-            ...(input.command.collaborationMode
-              ? { collaborationMode: input.command.collaborationMode }
-              : {}),
-            ...(Object.hasOwn(input.command, "serviceTier") &&
-            input.command.serviceTier !== undefined
-              ? { serviceTier: normalizeCodexServiceTier(input.command.serviceTier) }
-              : {}),
-            ...(input.command.summary !== undefined ? { summary: input.command.summary } : {}),
-            ...(input.command.promptInput ? { promptInput: input.command.promptInput } : {}),
-          },
-        },
+        fallbackStart: questionReplies
+          ? null
+          : {
+              prompt: input.command.prompt,
+              overrides: {
+                clientUserMessageId: input.recoveryRow.clientUserMessageId,
+                ...(input.command.collaborationMode
+                  ? { collaborationMode: input.command.collaborationMode }
+                  : {}),
+                ...(Object.hasOwn(input.command, "serviceTier") &&
+                input.command.serviceTier !== undefined
+                  ? { serviceTier: normalizeCodexServiceTier(input.command.serviceTier) }
+                  : {}),
+                ...(input.command.summary !== undefined ? { summary: input.command.summary } : {}),
+                ...(input.command.promptInput ? { promptInput: input.command.promptInput } : {}),
+              },
+            },
       } satisfies CodexTurnSteerPlan;
     }).pipe(
       Effect.mapError((cause) =>

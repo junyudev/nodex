@@ -237,8 +237,8 @@ it.effect("serially commits archive and delete observations before scheduling si
     });
 
     assert.deepEqual(operations, [
-      "codex:notification:local:1:inbox-a:41:thread/archived:thread-a",
-      "codex:notification:local:1:inbox-a:42:thread/deleted:thread-a",
+      "codex:notification:thread/archived:thread-a:local:1:inbox-a:41",
+      "codex:notification:thread/deleted:thread-a:local:1:inbox-a:42",
     ]);
     assert.deepEqual(sidebar, ["thread/archived", "thread/deleted"]);
     assert.isNull(stored);

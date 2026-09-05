@@ -610,7 +610,10 @@ Codex has four distinct authorities that must not collapse into one another:
   through one causal lane.
 - The active renderer owner is the sole visible conversation writer. Renderer-local editing and
   presentation remain renderer concerns; Main retains only a validated relay and recovery replica,
-  and followers render validated copies.
+  and followers render validated copies. Asynchronous question drafts and panel selection belong
+  to that host-scoped renderer conversation manager; accepted canonical messages remain the answer
+  authority. Questions steer the existing Turn through the ordinary command lane and never acquire
+  a blocking request or durable follow-up lifecycle. See [Request User Input](product-specs/codex-thread-transcript-behavior.md#request-user-input).
 
 Main's Thread-history feature Module derives optional persisted-history availability from that
 canonical Entity's concrete history mode together with the exact current endpoint-generation

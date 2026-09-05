@@ -1,3 +1,4 @@
+import { createAsyncQuestionRuntime } from "./async-question-runtime";
 import {
   createContext,
   createElement,
@@ -108,6 +109,7 @@ import type {
   CodexSideChatStartInput,
   CodexSideChatStartResult,
   CodexSteerTurnInput,
+  CodexSteerTurnResult,
   CodexThreadActionResult,
   CodexThreadGoalSetActionInput,
   CodexThreadOwnerHistoryMutationResult,
@@ -145,6 +147,7 @@ import { buildCodexSteeringCompareKey } from "../../../shared/codex-conversation
 import {
   removeCodexCanonicalSteeringItem,
   retargetCodexCanonicalSteeringItem,
+  acknowledgeCodexCanonicalSteeringItem,
   upsertCodexCanonicalSteeringItem,
 } from "../../../shared/codex-conversation-state/codex-steering-state";
 import { replaceCodexCanonicalRollbackThread } from "../../../shared/codex-conversation-state/codex-rollback-state";
@@ -3880,6 +3883,7 @@ function selectedSubagentErrorMessage(cause: unknown, fallback: string): string 
 }
 
 export class CodexAppServerManager {
+  readonly asyncQuestions = createAsyncQuestionRuntime();
   private connection: CodexConnectionState = INITIAL_CONNECTION;
   private account: CodexAccountSnapshot | null = null;
   private dictationState: CodexDictationStateSnapshot = DEFAULT_CODEX_DICTATION_STATE;
@@ -4103,6 +4107,7 @@ export class CodexAppServerManager {
   }
 
   destroy(): void {
+    this.asyncQuestions.clear();
     this.cancelPendingNodexAgentAuthorizations();
     this.ownerTextDeltaQueue.dispose();
     this.ownerTextDeltaSequenceTracker.clear();
@@ -6812,7 +6817,7 @@ export class CodexAppServerManager {
       ),
     ];
 
-    let result: { turnId: string } | null = null;
+    let result: CodexSteerTurnResult | null = null;
     let targetTurnId = expectedTurnId;
     let streamRevision = this.streamState.getRevision(input.threadId) ?? 0;
     try {
@@ -6854,25 +6859,27 @@ export class CodexAppServerManager {
           ),
         );
       }
+      if (result?.outcome === "unknown") throw new Error("Message delivery is not yet confirmed");
     } finally {
       const completionPublication = this.publishOwnerActionSnapshotMutation(
         input.threadId,
         "pending steer clear",
         (currentConversation) => {
-          const canonicalState =
-            typeof result?.turnId === "string"
-              ? currentConversation.canonicalState
-              : currentConversation.canonicalState
-                ? removeCodexCanonicalSteeringItem(
+          let canonicalState = currentConversation.canonicalState;
+          if (canonicalState && result?.outcome !== "unknown") {
+            canonicalState =
+              typeof result?.turnId === "string"
+                ? acknowledgeCodexCanonicalSteeringItem(canonicalState, pendingSteer.steerId)
+                : removeCodexCanonicalSteeringItem(
                     removeCodexCanonicalSteeringItem(
-                      currentConversation.canonicalState,
+                      canonicalState,
                       expectedTurnId,
                       pendingSteer.steerId,
                     ),
                     targetTurnId,
                     pendingSteer.steerId,
-                  )
-                : currentConversation.canonicalState;
+                  );
+          }
           return {
             ...currentConversation,
             canonicalState,
@@ -7674,6 +7681,7 @@ export class CodexAppServerManager {
     this.attachmentStateByThreadId.clear();
     this.interruptedTurnResumesInFlightByThreadId.clear();
     this.conversationsById.clear();
+    this.asyncQuestions.clear();
     this.followerAcceptedReplicasByConversationId.clear();
     this.ownerHiddenLifecycleItemTypesByConversationId.clear();
     this.conversationVersionById.clear();
@@ -8754,6 +8762,7 @@ export class CodexAppServerManager {
     });
 
     this.applyOwnerItemLifecycleNotification(method, payload, event.sequence);
+    if (method === "item/started") this.asyncQuestions.receive(payload.threadId, payload.item.id);
   }
 
   private applyOwnerItemLifecycleNotification(
@@ -10396,6 +10405,20 @@ export class CodexAppServerManager {
         checkpoint,
         sourceClientId,
       });
+      if (event.change.type === "patches") {
+        // Only contiguous live owner patches admit arrivals; snapshots and history pages do not.
+        const questions = this.asyncQuestions.read(event.conversationId);
+        const previousItemIds = new Set(
+          currentPresentation?.canonicalState?.turns
+            .find((turn) => turn.protocol.id === questions.activeTurnId)
+            ?.items.map((item) => item.id),
+        );
+        for (const question of Object.values(questions.questions)) {
+          if (!previousItemIds.has(question.sourceItemId)) {
+            this.asyncQuestions.receive(event.conversationId, question.sourceItemId);
+          }
+        }
+      }
       this.setConversationAttachmentState(event.conversationId, {
         status: "attached",
       });
@@ -10619,6 +10642,7 @@ export class CodexAppServerManager {
 
     this.threadSummariesById.delete(normalizedThreadId);
     this.conversationsById.delete(normalizedThreadId);
+    this.asyncQuestions.clear(normalizedThreadId);
     this.attachmentStateByThreadId.delete(normalizedThreadId);
     for (const listener of this.attachmentCallbacks.get(normalizedThreadId) ?? []) listener();
     this.childMembershipsByParentThreadId.delete(normalizedThreadId);
@@ -10861,6 +10885,7 @@ export class CodexAppServerManager {
       return;
     }
 
+    this.asyncQuestions.reconcile(conversation);
     const callbacks = this.conversationCallbacks.get(threadId);
     const notifyConversation = () => {
       if (!callbacks) return;

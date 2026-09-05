@@ -232,7 +232,9 @@ describe("projectCodexCanonicalTurnItemViews", () => {
     expect(views).toHaveLength(1);
     expect(views[0]).toMatchObject({
       normalizedKind: "assistantMessage",
-      markdownText: message.text,
+      markdownText: "Which scope?",
+      assistantPhase: "commentary",
+      asyncQuestion: { title: "Which scope?", options: ["Project", "Library"] },
       status: "completed",
     });
   });

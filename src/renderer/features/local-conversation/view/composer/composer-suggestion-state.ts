@@ -274,17 +274,26 @@ function applyComposerSuggestionTransaction(
   });
 }
 
-export function createComposerSuggestionPlugin(): Plugin<ComposerSuggestionState> {
+export function createComposerSuggestionPlugin(
+  options: { allowSlashCommands?: boolean } = {},
+): Plugin<ComposerSuggestionState> {
+  const admitted = (suggestion: ComposerSuggestionState) =>
+    options.allowSlashCommands === false && suggestion.kind === "slash-command"
+      ? inactiveComposerSuggestionState()
+      : suggestion;
   return new Plugin<ComposerSuggestionState>({
     key: composerSuggestionPluginKey,
     state: {
       init: (_config, state) =>
-        deriveTypedSuggestionState({
-          doc: state.doc,
-          selection: state.selection,
-          dismissedMatch: null,
-        }),
-      apply: applyComposerSuggestionTransaction,
+        admitted(
+          deriveTypedSuggestionState({
+            doc: state.doc,
+            selection: state.selection,
+            dismissedMatch: null,
+          }),
+        ),
+      apply: (transaction, previous) =>
+        admitted(applyComposerSuggestionTransaction(transaction, previous)),
     },
     props: {
       handleDOMEvents: {

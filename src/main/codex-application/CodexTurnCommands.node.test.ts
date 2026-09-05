@@ -1,4 +1,4 @@
-import type { TurnStartResponse } from "@nodex/codex-app-server-protocol/v2";
+import type { TurnStartResponse, TurnSteerResponse } from "@nodex/codex-app-server-protocol/v2";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
@@ -15,7 +15,11 @@ import { CodexConversationMaterialization } from "./CodexConversationMaterializa
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexTurnAuthority } from "./CodexTurnAuthority";
 import { make, type CodexTurnCommandsService } from "./CodexTurnCommands";
-import { CodexTurnPreparation, type CodexTurnStartPlan } from "./CodexTurnPreparation";
+import {
+  CodexTurnPreparation,
+  type CodexTurnStartPlan,
+  type CodexTurnSteerPlan,
+} from "./CodexTurnPreparation";
 import {
   ConversationEntityMap,
   live as conversationRuntimeMapLive,
@@ -64,6 +68,10 @@ const makeHarness = (input: {
     attempt: number,
   ) => Effect.Effect<TurnStartResponse, ReturnType<typeof missingThread>>;
   readonly failAcceptedProjection?: boolean;
+  readonly steerPlan?: CodexTurnSteerPlan;
+  readonly steerRequest?: (
+    expectedTurnId: string,
+  ) => Effect.Effect<TurnSteerResponse, ReturnType<typeof missingThread>>;
 }) =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
@@ -73,7 +81,15 @@ const makeHarness = (input: {
     const gateway = CodexGateway.of({
       localHostId: "local",
       requestRawOnHost: () => Effect.die("unused"),
-      requestForThread: ((_threadId: string, method: string) => {
+      requestForThread: ((
+        _threadId: string,
+        method: string,
+        params: { expectedTurnId?: string },
+      ) => {
+        if (method === "turn/steer" && input.steerRequest) {
+          events.push(`steer:${params.expectedTurnId}`);
+          return input.steerRequest(params.expectedTurnId!);
+        }
         if (method !== "turn/start") return Effect.die(`unexpected method: ${method}`);
         requests += 1;
         events.push(`request:${requests}`);
@@ -91,9 +107,15 @@ const makeHarness = (input: {
           events.push(`prepare:${preparations}`);
           return plan(preparations);
         }),
-      steer: () => Effect.die("unused"),
+      steer: () => (input.steerPlan ? Effect.succeed(input.steerPlan) : Effect.die("unused")),
     });
     const projection = CodexConversationProjection.of({
+      admitSteer: ({ turnId }: { turnId: string }) =>
+        Effect.sync(() => events.push(`admit-steer:${turnId}`)),
+      retargetSteer: ({ fromTurnId, toTurnId }: { fromTurnId: string; toTurnId: string }) =>
+        Effect.sync(() => events.push(`retarget-steer:${fromTurnId}:${toTurnId}`)),
+      rejectSteer: ({ turnId }: { turnId: string }) =>
+        Effect.sync(() => events.push(`reject-steer:${turnId}`)),
       configureTurn: () => Effect.sync(() => events.push("configure")),
       admitTurn: () => Effect.sync(() => events.push("admit")),
       markThreadActive: () => Effect.sync(() => events.push("active")),
@@ -242,6 +264,151 @@ it.effect("starts a system Automation turn without accepting its inbox run", () 
     assert.strictEqual(result?.turnId, "turn-accepted");
     assert.isFalse(harness.events.includes("automation:accept"));
     assert.isTrue(harness.events.includes("accept"));
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
+const questionSteerPlan = (): CodexTurnSteerPlan => ({
+  threadId: "thread-a",
+  expectedTurnId: "question-turn",
+  steerId: "steer-question",
+  request: { threadId: "thread-a", expectedTurnId: "question-turn", input: [] },
+  item: {
+    id: "steer-question",
+    type: "steeringUserMessage",
+    targetTurnId: "question-turn",
+  } as CodexTurnSteerPlan["item"],
+  fallbackStart: null,
+});
+
+for (const message of ["SteerTurnInactiveError: active turn not steerable"]) {
+  it.effect(`does not redirect a question reply after ${message}`, () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        request: () => Effect.succeed(response()),
+        steerPlan: questionSteerPlan(),
+        steerRequest: () =>
+          Effect.fail(
+            codexRuntimeError({
+              operation: "gateway.request",
+              reason: "request",
+              retryable: false,
+              hostId: "local",
+              method: "turn/steer",
+              cause: new CodexAppServerRequestError({ code: -32600, errorMessage: message }),
+            }),
+          ),
+      });
+      const result = yield* Effect.exit(
+        harness.commands.steer({
+          threadId: "thread-a",
+          expectedTurnId: "question-turn",
+          prompt: "answer",
+        }),
+      );
+      assert.isTrue(Exit.isFailure(result));
+      assert.strictEqual(harness.requests(), 0);
+      assert.deepEqual(harness.events, [
+        "admit-steer:question-turn",
+        "steer:question-turn",
+        "reject-steer:question-turn",
+      ]);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+  );
+}
+
+it.effect("accepts a question reply only in its originating Turn", () =>
+  Effect.gen(function* () {
+    const harness = yield* makeHarness({
+      request: () => Effect.succeed(response()),
+      steerPlan: questionSteerPlan(),
+      steerRequest: (turnId) => Effect.succeed({ turnId }),
+    });
+    assert.deepEqual(
+      yield* harness.commands.steer({
+        threadId: "thread-a",
+        expectedTurnId: "question-turn",
+        prompt: "answer",
+      }),
+      { turnId: "question-turn" },
+    );
+    assert.strictEqual(harness.requests(), 0);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
+for (const mismatchMessage of [
+  "expected active turn id 'question-turn' but found 'corrected-turn'",
+  'ExpectedTurnMismatch { expected: "question-turn", actual: "corrected-turn" }',
+])
+  it.effect(`retries a question reply once after ${mismatchMessage}`, () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        request: () => Effect.succeed(response()),
+        steerPlan: questionSteerPlan(),
+        steerRequest: (turnId) =>
+          turnId === "corrected-turn"
+            ? Effect.succeed({ turnId })
+            : Effect.fail(
+                codexRuntimeError({
+                  operation: "gateway.request",
+                  reason: "request",
+                  retryable: false,
+                  hostId: "local",
+                  method: "turn/steer",
+                  cause: new CodexAppServerRequestError({
+                    code: -32600,
+                    errorMessage: mismatchMessage,
+                  }),
+                }),
+              ),
+      });
+      assert.deepEqual(
+        yield* harness.commands.steer({
+          threadId: "thread-a",
+          expectedTurnId: "question-turn",
+          prompt: "answer",
+        }),
+        { turnId: "corrected-turn" },
+      );
+      assert.strictEqual(harness.requests(), 0);
+      assert.deepEqual(harness.events, [
+        "admit-steer:question-turn",
+        "steer:question-turn",
+        "retarget-steer:question-turn:corrected-turn",
+        "steer:corrected-turn",
+      ]);
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+  );
+
+it.effect("retains a dispatched question reply when its outcome is unknown", () =>
+  Effect.gen(function* () {
+    const harness = yield* makeHarness({
+      request: () => Effect.succeed(response()),
+      steerPlan: questionSteerPlan(),
+      steerRequest: () =>
+        Effect.fail(
+          codexRuntimeError({
+            operation: "scheduler.execution",
+            reason: "outcome-unknown",
+            retryable: false,
+            hostId: "local",
+            method: "turn/steer",
+          }),
+        ),
+    });
+    assert.deepEqual(
+      yield* harness.commands.steer({
+        threadId: "thread-a",
+        expectedTurnId: "question-turn",
+        prompt: "answer",
+      }),
+      { turnId: "question-turn", outcome: "unknown" },
+    );
+    assert.deepEqual(harness.events, ["admit-steer:question-turn", "steer:question-turn"]);
+    assert.strictEqual(harness.requests(), 0);
     yield* Scope.close(harness.scope, Exit.void);
   }),
 );

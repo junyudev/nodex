@@ -642,6 +642,8 @@ interface ComposerPromptEditorProps {
   placeholder: string;
   disabled: boolean;
   singleLine?: boolean;
+  compact?: boolean;
+  allowSlashCommands?: boolean;
   onChange: (value: string) => void;
   onKeyDown: (event: KeyboardEvent) => boolean;
   onLargeTextPaste?: (text: string) => boolean;
@@ -679,9 +681,11 @@ export function measureComposerPromptIntrinsicWidth(element: HTMLElement): numbe
 function buildPromptEditorAttributes({
   placeholder,
   singleLine,
+  compact = false,
 }: {
   placeholder: string;
   singleLine: boolean;
+  compact?: boolean;
 }) {
   return {
     "aria-label": placeholder,
@@ -693,7 +697,7 @@ function buildPromptEditorAttributes({
       "font-size: var(--codex-chat-font-size)",
       "height: auto",
       "resize: none",
-      `min-height: ${singleLine ? "1.25rem" : "2.75rem"}`,
+      `min-height: ${compact ? "0" : singleLine ? "1.25rem" : "2.75rem"}`,
     ].join("; "),
   };
 }
@@ -937,7 +941,11 @@ function createPromptPlaceholderPlugin(placeholderRef: { current: string }): Plu
   });
 }
 
-function createPromptEditorState(value: string, placeholderRef: { current: string }): EditorState {
+function createPromptEditorState(
+  value: string,
+  placeholderRef: { current: string },
+  allowSlashCommands = true,
+): EditorState {
   const doc = buildPromptDoc(value);
   return EditorState.create({
     schema: promptSchema,
@@ -946,7 +954,7 @@ function createPromptEditorState(value: string, placeholderRef: { current: strin
     // Direct EditorView handlers own composer shortcuts first. Unconsumed
     // editing keys fall through to ProseMirror's structural commands.
     plugins: [
-      createComposerSuggestionPlugin(),
+      createComposerSuggestionPlugin({ allowSlashCommands }),
       promptEditingKeymapPlugin,
       promptClipboardPlugin,
       createPromptPlaceholderPlugin(placeholderRef),
@@ -963,6 +971,8 @@ export const ComposerPromptEditor = forwardRef<
     placeholder,
     disabled,
     singleLine = false,
+    compact = false,
+    allowSlashCommands = true,
     onChange,
     onKeyDown,
     onLargeTextPaste,
@@ -987,6 +997,8 @@ export const ComposerPromptEditor = forwardRef<
   const onIntrinsicContentWidthChangeRef = useRef(onIntrinsicContentWidthChange);
   const placeholderRef = useRef(placeholder);
   const singleLineRef = useRef(singleLine);
+  const compactRef = useRef(compact);
+  const allowSlashCommandsRef = useRef(allowSlashCommands);
   const disabledRef = useRef(disabled);
   valueRef.current = value;
   onChangeRef.current = onChange;
@@ -998,6 +1010,8 @@ export const ComposerPromptEditor = forwardRef<
   onIntrinsicContentWidthChangeRef.current = onIntrinsicContentWidthChange;
   placeholderRef.current = placeholder;
   singleLineRef.current = singleLine;
+  compactRef.current = compact;
+  allowSlashCommandsRef.current = allowSlashCommands;
   disabledRef.current = disabled;
 
   const emitSuggestionState = useCallback((view: EditorView | null) => {
@@ -1307,11 +1321,16 @@ export const ComposerPromptEditor = forwardRef<
     if (!mount || viewRef.current) return;
 
     const view = new EditorView(mount, {
-      state: createPromptEditorState(valueRef.current, placeholderRef),
+      state: createPromptEditorState(
+        valueRef.current,
+        placeholderRef,
+        allowSlashCommandsRef.current,
+      ),
       editable: () => !disabledRef.current,
       attributes: buildPromptEditorAttributes({
         placeholder: placeholderRef.current,
         singleLine: singleLineRef.current,
+        compact: compactRef.current,
       }),
       handleKeyDown: (currentView, event) =>
         handleSuggestionKeyDown(currentView, event) || onKeyDownRef.current(event),
@@ -1353,13 +1372,13 @@ export const ComposerPromptEditor = forwardRef<
     if (!view) return;
     view.setProps({
       editable: () => !disabled,
-      attributes: buildPromptEditorAttributes({ placeholder, singleLine }),
+      attributes: buildPromptEditorAttributes({ placeholder, singleLine, compact }),
       handleKeyDown: (currentView, event) =>
         handleSuggestionKeyDown(currentView, event) || onKeyDownRef.current(event),
       handlePaste: (_currentView, event) =>
         handleComposerPaste(event, onPasteFilesRef.current, onLargeTextPasteRef.current),
     });
-  }, [disabled, dispatchSuggestionMeta, handleSuggestionKeyDown, placeholder, singleLine]);
+  }, [disabled, dispatchSuggestionMeta, handleSuggestionKeyDown, placeholder, singleLine, compact]);
 
   useLayoutEffect(() => {
     const view = viewRef.current;
@@ -1367,7 +1386,9 @@ export const ComposerPromptEditor = forwardRef<
 
     const currentValue = readPromptDocText(view.state.doc);
     if (currentValue !== value) {
-      view.updateState(createPromptEditorState(value, placeholderRef));
+      view.updateState(
+        createPromptEditorState(value, placeholderRef, allowSlashCommandsRef.current),
+      );
       emitSuggestionState(view);
       reportIntrinsicContentWidth();
       return;

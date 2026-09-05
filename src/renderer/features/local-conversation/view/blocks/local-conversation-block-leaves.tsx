@@ -784,7 +784,26 @@ export function UserMessageBubble({
       data-thread-selected-text-target="true"
       className={THREAD_VISUAL_TOKENS.userBubble}
     >
-      <UserMessageText text={content} cwd={threadCwd} projectWorkspacePath={projectWorkspacePath} />
+      {block.entry.questionReplies ? (
+        <div className="flex flex-col gap-3">
+          {block.entry.questionReplies.map((reply) => (
+            <div key={reply.questionItemId} className="flex flex-col gap-1">
+              <div className="truncate text-sm text-token-text-secondary">{reply.question}</div>
+              <UserMessageText
+                text={reply.answer}
+                cwd={threadCwd}
+                projectWorkspacePath={projectWorkspacePath}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <UserMessageText
+          text={content}
+          cwd={threadCwd}
+          projectWorkspacePath={projectWorkspacePath}
+        />
+      )}
     </div>
   );
 

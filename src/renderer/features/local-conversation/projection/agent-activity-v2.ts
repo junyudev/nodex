@@ -630,7 +630,10 @@ export function resolveThreadAgentActivityIdentityCandidates(
 ): ThreadAgentActivityIdentityCandidates {
   const entry = "entry" in item ? item.entry : null;
   const rawItem = asRecord(entry?.rawItem);
-  const id = PROJECTED_ID_ACTIVITY_TYPES.has(item.type) ? rawItem?.id : undefined;
+  // A single Agent message can project several independently interactive questions.
+  const id =
+    entry?.asyncQuestion?.id ??
+    (PROJECTED_ID_ACTIVITY_TYPES.has(item.type) ? rawItem?.id : undefined);
   let callId: unknown;
 
   switch (item.type) {

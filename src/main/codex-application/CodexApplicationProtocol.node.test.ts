@@ -99,6 +99,7 @@ const withProtocol = <A, E>(
     readonly appliedTurnStartedItems: (readonly unknown[])[];
     readonly protocol: CodexApplicationProtocol["Service"];
     readonly threadStarts: ThreadCreationRuntime["Service"];
+    readonly autoResolution: CodexUserInputAutoResolution["Service"];
   }) => Effect.Effect<A, E>,
 ) =>
   Effect.gen(function* () {
@@ -218,6 +219,7 @@ const withProtocol = <A, E>(
     );
 
     const result = yield* run({
+      autoResolution,
       appliedNotifications,
       appliedThreadStartedTurns,
       appliedTurnStartedItems,
@@ -555,6 +557,34 @@ it.effect("commits a request before the following resolution notification in the
         assert.strictEqual(settlement.value.occurrence, request);
         assert.strictEqual(settlement.value.outcome.kind, "result");
       }
+      yield* Scope.close(generationScope, Exit.void);
+    }),
+  ),
+);
+
+it.effect("clears an earlier optional request countdown when a blocking question arrives", () =>
+  withProtocol(({ inbox, autoResolution }) =>
+    Effect.gen(function* () {
+      const generationScope = yield* Scope.make();
+      const generation = yield* inbox
+        .openGeneration("local", 12)
+        .pipe(Effect.provideService(Scope.Scope, generationScope));
+      yield* generation.admit({
+        requestId: "optional",
+        protocol: "generated",
+        method: "item/tool/requestUserInput",
+        params: { ...userInputParams("thread-a"), isBlocking: false },
+      });
+      while ((yield* autoResolution.snapshot).length === 0) yield* Effect.yieldNow;
+      assert.strictEqual((yield* autoResolution.snapshot)[0]?.requestId, "optional");
+      yield* generation.admit({
+        requestId: "blocking",
+        protocol: "generated",
+        method: "item/tool/requestUserInput",
+        params: userInputParams("thread-a"),
+      });
+      while ((yield* autoResolution.snapshot).length !== 0) yield* Effect.yieldNow;
+      assert.deepEqual(yield* autoResolution.snapshot, []);
       yield* Scope.close(generationScope, Exit.void);
     }),
   ),

@@ -1,3 +1,7 @@
+import {
+  expandCodexAsyncQuestions,
+  readCodexAsyncQuestionReplies,
+} from "../../shared/codex-async-user-input";
 import { randomUUID } from "node:crypto";
 import type { RequestId } from "@nodex/codex-app-server-protocol";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2";
@@ -469,6 +473,54 @@ export const make: Effect.Effect<
     if (committed) yield* consumeReducerEffects(threadId, ownerRouted, committed.effects);
     if (notification.method === "item/started" || notification.method === "item/completed") {
       yield* remoteHostedPip.observeCodexOccurrence({ ...input, notification });
+    }
+    if (notification.method === "item/started") {
+      const firstQuestion = expandCodexAsyncQuestions(notification.params.item)[0];
+      const alreadyKnown = before?.turns.some((turn) =>
+        turn.items.some((item) => item.id === notification.params.item.id),
+      );
+      if (firstQuestion && !alreadyKnown)
+        events.publish({
+          kind: "threadNotification",
+          value: {
+            type: "async-question-requested",
+            hostId: input.hostId,
+            conversation: conversationFacts(threadId),
+            turnId: notification.params.turnId,
+            questionId: firstQuestion.id,
+          },
+        });
+    }
+    if (notification.method === "item/completed") {
+      for (const reply of readCodexAsyncQuestionReplies(notification.params.item) ?? []) {
+        events.publish({
+          kind: "threadNotification",
+          value: {
+            type: "async-question-resolved",
+            hostId: input.hostId,
+            conversationId: threadId,
+            turnId: notification.params.turnId,
+            questionId: reply.questionItemId,
+          },
+        });
+      }
+    }
+    if (notification.method === "turn/completed") {
+      const turn = before?.turns.find(
+        (candidate) => candidate.protocol.id === notification.params.turn.id,
+      );
+      for (const question of turn?.items.flatMap(expandCodexAsyncQuestions) ?? []) {
+        events.publish({
+          kind: "threadNotification",
+          value: {
+            type: "async-question-resolved",
+            hostId: input.hostId,
+            conversationId: threadId,
+            turnId: notification.params.turn.id,
+            questionId: question.id,
+          },
+        });
+      }
     }
     if (committed?.stateChanged && !ownerRouted) {
       const after = aggregate?.readCanonicalState();

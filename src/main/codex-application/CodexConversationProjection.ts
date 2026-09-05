@@ -124,6 +124,13 @@ export interface CodexConversationProjectionService {
     readonly item: CodexCanonicalSteeringUserMessageItem;
     readonly observedAtMs: number;
   }) => Effect.Effect<void, CodexConversationProjectionError>;
+  readonly retargetSteer: (input: {
+    readonly threadId: string;
+    readonly fromTurnId: string;
+    readonly toTurnId: string;
+    readonly itemId: string;
+    readonly observedAtMs: number;
+  }) => Effect.Effect<void, CodexConversationProjectionError>;
   readonly rejectSteer: (input: {
     readonly threadId: string;
     readonly turnId: string;
@@ -499,6 +506,13 @@ export const make: Effect.Effect<
           turnId: input.turnId,
           item: input.item,
           observedAtMs: input.observedAtMs,
+          projectReplica: projectReplica(input.threadId),
+        }),
+      ),
+    retargetSteer: (input) =>
+      requireChanged("retarget-steer", input.threadId, (conversation) =>
+        conversation.retargetSteeringItem({
+          ...input,
           projectReplica: projectReplica(input.threadId),
         }),
       ),

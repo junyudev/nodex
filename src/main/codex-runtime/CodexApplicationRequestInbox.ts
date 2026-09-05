@@ -255,7 +255,6 @@ export const makeWithCapacities = (
       positiveInteger(capacities.singleOccurrenceBytes, DEFAULT_SINGLE_OCCURRENCE_BYTE_CAPACITY),
     );
     const occurrences = yield* Queue.dropping<BufferedOccurrence>(occurrenceCapacity);
-    const inboxId = createUuidV7();
     const state = yield* SynchronizedRef.make<InboxState>({
       closed: false,
       nextOccurrenceToken: 1,
@@ -505,7 +504,7 @@ export const makeWithCapacities = (
                 protocol: input.protocol,
                 hostId,
                 generation,
-                occurrenceId: `${hostId}:${generation}:${inboxId}:${occurrenceToken}`,
+                occurrenceId: createUuidV7(),
                 occurrenceToken,
                 requestId: input.requestId,
                 method: input.method,
@@ -756,7 +755,7 @@ export const makeWithCapacities = (
         const occurrence: CodexApplicationNotificationOccurrence = {
           kind: "notification",
           ...input,
-          occurrenceId: `${input.hostId}:${input.generation}:${inboxId}:${occurrenceToken}`,
+          occurrenceId: createUuidV7(),
           occurrenceToken,
         };
         const approximateBytes = occurrenceBytes(occurrence);

@@ -66,6 +66,8 @@ export function projectCodexItemViewToTranscriptEntry(
     acceptedUserMessageItemId: item.acceptedUserMessageItemId,
     additionalDetails: item.additionalDetails,
     willRetry: item.willRetry,
+    asyncQuestion: item.asyncQuestion,
+    questionReplies: item.questionReplies,
     userInputQuestions: item.userInputQuestions,
     userInputAnswers: item.userInputAnswers,
     rawItem: item.rawItem,

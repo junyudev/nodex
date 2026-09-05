@@ -58,6 +58,7 @@ import type {
   UserInput as CodexAppServerUserInput,
   ToolRequestUserInputOption as CodexAppServerUserInputOption,
   TurnStatus as CodexAppServerTurnStatus,
+  TurnSteerResponse as CodexAppServerTurnSteerResponse,
 } from "@nodex/codex-app-server-protocol/v2";
 import type { WorkbenchReviewConfig } from "./workbench-review";
 import type { WorkbenchImageEditorSurfaceConfig } from "./workbench-image-editor";
@@ -1911,6 +1912,7 @@ export interface DesktopNotificationPayload {
   requestId?: CodexAppServerRequestId;
   actions?: DesktopNotificationAction[];
   replyPlaceholder?: string;
+  asyncQuestion?: { turnId: string; questionId: string };
 }
 
 export type DesktopNotificationHideSelector =
@@ -1941,6 +1943,7 @@ export interface DesktopNotificationActionPayload {
 }
 
 export interface DesktopNotificationActionInvocation extends DesktopNotificationActionPayload {
+  asyncQuestion?: { turnId: string; questionId: string };
   hostId: string;
   conversationId: string | null;
   navigationPath: string | null;
@@ -2828,6 +2831,11 @@ export interface CodexSteeringRestoreMessage {
   summary?: CodexAppServerReasoningSummary | null;
 }
 
+/** Host delivery evidence supplements the generated response; an unknown outcome is not acceptance. */
+export type CodexSteerTurnResult = CodexAppServerTurnSteerResponse & {
+  readonly outcome?: "unknown";
+};
+
 export interface CodexSteerTurnInput {
   threadId: string;
   expectedTurnId?: string;
@@ -3416,6 +3424,8 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   acceptedUserMessageItemId?: string;
   additionalDetails?: string | null;
   willRetry?: boolean;
+  asyncQuestion?: import("./codex-async-user-input").CodexAsyncQuestion;
+  questionReplies?: import("./codex-async-user-input").CodexAsyncQuestionReply[];
   userInputQuestions?: CodexUserInputQuestion[];
   userInputAnswers?: Record<string, string[]>;
   rawItem?: unknown;
@@ -3467,6 +3477,8 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   acceptedUserMessageItemId?: string;
   additionalDetails?: string | null;
   willRetry?: boolean;
+  asyncQuestion?: import("./codex-async-user-input").CodexAsyncQuestion;
+  questionReplies?: import("./codex-async-user-input").CodexAsyncQuestionReply[];
   userInputQuestions?: CodexUserInputQuestion[];
   userInputAnswers?: Record<string, string[]>;
   rawItem?: unknown;

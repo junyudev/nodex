@@ -59,7 +59,7 @@ const turn = (id, status, timestamps = {}, items = []) => ({
 const thread = (includeTurns = false) => ({
   model: null,
   reasoningEffort: null,
-  id: state.thread?.id ?? "01900000-0000-7000-8000-000000000001",
+  id: state.thread?.id ?? (process.env.NODEX_FAKE_CODEX_THREAD_ID ?? "01900000-0000-7000-8000-000000000001"),
   extra: null,
   sessionId: state.thread?.sessionId ?? "queue-parity-session",
   forkedFromId: null,
@@ -155,6 +155,23 @@ const startTurn = (params) => {
       threadId: thread().id,
       status: { type: "active", activeFlags: [] },
     });
+    record("async-question-mode", { enabled: process.env.NODEX_FAKE_CODEX_ASYNC_QUESTIONS === "1" });
+    if (process.env.NODEX_FAKE_CODEX_ASYNC_QUESTIONS === "1") {
+      setTimeout(() => {
+        const currentTurn = state.turns.find((entry) => entry.id === next.id);
+        if (!currentTurn || currentTurn.status !== "inProgress") return;
+        const item = { type: "agentMessage", id: `question-${next.id}`, text: "Which scope?\nWhat name?", phase: "final_answer", delivery: "async", memoryCitation: null, questions: [{ title: "Which scope should I use?", options: ["Project", "Library"] }, { title: "What should I call it?", options: null }] };
+        currentTurn.items.push(item);
+        persist();
+        notify("item/started", { startedAtMs: Date.now(), threadId: thread().id, turnId: next.id, item });
+        notify("item/completed", { completedAtMs: Date.now(), threadId: thread().id, turnId: next.id, item });
+        const progress = { type: "agentMessage", id: `progress-${next.id}`, text: "I am checking the available files while you answer.", phase: "commentary", delivery: null, memoryCitation: null, questions: null };
+        currentTurn.items.push(progress);
+        persist();
+        notify("item/started", { startedAtMs: Date.now(), threadId: thread().id, turnId: next.id, item: progress });
+        notify("item/completed", { completedAtMs: Date.now(), threadId: thread().id, turnId: next.id, item: progress });
+      }, 600);
+    }
     if (shouldAutoComplete) scheduleAutomaticCompletion(next.id);
   }, 0);
   return next;
@@ -266,11 +283,11 @@ const handle = (message) => {
       respond(id, { requirements: null });
       return;
     case "thread/list":
-      respond(id, { data: state.thread ? [thread()] : [], nextCursor: null, backwardsCursor: null });
+      respond(id, { data: state.thread && !params.parentThreadId ? [thread()] : [], nextCursor: null, backwardsCursor: null });
       return;
     case "thread/start": {
       state.thread = {
-        id: "01900000-0000-7000-8000-000000000001",
+        id: (process.env.NODEX_FAKE_CODEX_THREAD_ID ?? "01900000-0000-7000-8000-000000000001"),
         sessionId: "queue-parity-session",
         cwd: params.cwd ?? process.cwd(),
         runtimeWorkspaceRoots: params.runtimeWorkspaceRoots ?? [params.cwd ?? process.cwd()],
@@ -348,7 +365,31 @@ const handle = (message) => {
       return;
     case "turn/steer":
       record(method, params);
+      if (process.env.NODEX_FAKE_CODEX_ASYNC_STEER_FAILURE === "mismatch-once" && params.expectedTurnId !== "replacement-turn") {
+        const activeTurn = state.turns.find((entry) => entry.id === params.expectedTurnId);
+        if (activeTurn) activeTurn.id = "replacement-turn";
+        persist();
+        write({ id, error: { code: -32600, message: `expected active turn id '${params.expectedTurnId}' but found 'replacement-turn'` } });
+        return;
+      }
+      if (["inactive", "mismatch"].includes(process.env.NODEX_FAKE_CODEX_ASYNC_STEER_FAILURE)) {
+        const message = process.env.NODEX_FAKE_CODEX_ASYNC_STEER_FAILURE === "inactive"
+          ? "SteerTurnInactiveError: active turn not steerable"
+          : `expected active turn id '${params.expectedTurnId}' but found 'replacement-turn'`;
+        write({ id, error: { code: -32600, message } });
+        return;
+      }
       respond(id, { turnId: params.expectedTurnId });
+      if (process.env.NODEX_FAKE_CODEX_ASYNC_QUESTIONS === "1") {
+        const currentTurn = state.turns.find((entry) => entry.id === params.expectedTurnId);
+        if (currentTurn) setTimeout(() => {
+          const item = { type: "userMessage", id: `reply-${Date.now()}`, clientId: params.clientUserMessageId ?? null, content: params.input };
+          currentTurn.items.push(item);
+          persist();
+          notify("item/started", { startedAtMs: Date.now(), threadId: thread().id, turnId: currentTurn.id, item });
+          notify("item/completed", { completedAtMs: Date.now(), threadId: thread().id, turnId: currentTurn.id, item });
+        }, Number(process.env.NODEX_FAKE_CODEX_ASYNC_ECHO_DELAY_MS ?? 20));
+      }
       return;
     case "turn/interrupt": {
       record(method, params);

@@ -364,7 +364,7 @@ function isMatchingPendingSteer(
   content: readonly UserInput[],
   turn: CodexCanonicalTurnState,
 ): item is CodexCanonicalSteeringUserMessageItem {
-  if (item.type !== "steeringUserMessage" || item.status !== "pending") {
+  if (item.type !== "steeringUserMessage" || item.serverUserMessageId != null) {
     return false;
   }
 
@@ -372,12 +372,13 @@ function isMatchingPendingSteer(
     item.targetTurnId === null
       ? item.targetTurnStartedAtMs !== null &&
         item.targetTurnStartedAtMs === turn.sidecar.turnStartedAtMs
-      : item.targetTurnId === turn.protocol.id;
+      : item.targetTurnId === turn.protocol.id ||
+        /^(.*)-berry-display-\d+$/.exec(turn.protocol.id ?? "")?.[1] === item.targetTurnId;
   if (!matchesTurn) {
     return false;
   }
 
-  if (clientUserMessageId) {
+  if (clientUserMessageId !== null && item.clientUserMessageId !== null) {
     return item.clientUserMessageId === clientUserMessageId;
   }
 
@@ -397,6 +398,15 @@ function findMatchingPendingSteerIndex(
   content: readonly UserInput[],
   turn: CodexCanonicalTurnState,
 ): number {
+  if (clientUserMessageId !== null) {
+    const exactIndex = items.findIndex(
+      (item) =>
+        item.type === "steeringUserMessage" &&
+        item.clientUserMessageId === clientUserMessageId &&
+        isMatchingPendingSteer(item, clientUserMessageId, content, turn),
+    );
+    if (exactIndex >= 0) return exactIndex;
+  }
   return items.findIndex((item) =>
     isMatchingPendingSteer(item, clientUserMessageId, content, turn),
   );
@@ -523,7 +533,7 @@ export function reduceCodexItemLifecycleMetadata(
       };
     }
 
-    if (item.type === "agentMessage") {
+    if (item.type === "agentMessage" && item.delivery !== "async") {
       finalAssistantStartedAtMs = context.now();
     }
     if (isCodexLifecycleFirstTurnWorkItem(item) && firstTurnWorkItemStartedAtMs == null) {
@@ -718,6 +728,7 @@ function acceptPendingSteer(
   itemsWithAcceptedSteer[pendingIndex] = {
     ...pending,
     status: "accepted",
+    serverUserMessageId: completedItemId,
   } satisfies CodexCanonicalSteeringUserMessageItem;
   const steeredItem = {
     type: "steered",

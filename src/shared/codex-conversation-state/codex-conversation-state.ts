@@ -300,6 +300,8 @@ export interface CodexCanonicalSteeringUserMessageItem {
   readonly targetTurnId: string | null;
   readonly targetTurnStartedAtMs: number | null;
   readonly status: "pending" | "accepted";
+  /** Correlation established by the completed server echo, independent of the command ACK. */
+  readonly serverUserMessageId?: string | null;
   readonly clientUserMessageId: string | null;
   readonly input: readonly UserInput[];
   readonly attachments: readonly unknown[];
@@ -574,6 +576,8 @@ export interface CodexCanonicalSafetyBufferingState {
  * Optional collections preserve the exact unknown/absent merge semantics.
  */
 export interface CodexCanonicalTurnSidecar {
+  /** Stable local Turn identity when the server corrects its protocol ID during steering. */
+  readonly entityKey?: string;
   readonly params: CodexCanonicalTurnParams;
   readonly diff: string | null;
   readonly turnStartedAtMs: number | null;
@@ -1032,7 +1036,9 @@ function mergeCodexCanonicalHydratedItems(
         (item): item is Extract<ThreadItem, { type: "agentMessage" }> =>
           item.type === "agentMessage" &&
           (item.id === incoming.id ||
-            (item.phase === "final_answer" && item.text === incoming.text)),
+            (incoming.delivery !== "async" &&
+              item.phase === "final_answer" &&
+              item.text === incoming.text)),
       );
       if (!existing) {
         items = [...existingItems, incoming];
@@ -1113,6 +1119,7 @@ export function mergeCodexCanonicalTurnState(
     items: mergeCodexCanonicalHydratedItems(existing.items, incoming.items),
     sidecar: {
       ...incoming.sidecar,
+      entityKey: existing.sidecar.entityKey ?? incoming.sidecar.entityKey,
       params: mergeCodexCanonicalTurnParams(existing.sidecar.params, incoming.sidecar.params),
       hookRuns: existing.sidecar.hookRuns?.length
         ? existing.sidecar.hookRuns

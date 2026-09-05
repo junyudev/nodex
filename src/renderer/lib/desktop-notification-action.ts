@@ -6,6 +6,10 @@ import type {
 } from "../../shared/types";
 
 export interface DesktopNotificationActionManager {
+  asyncQuestions?: {
+    open(threadId: string, questionId: string): void;
+    read(threadId: string): { activeTurnId: string | null };
+  };
   readConversation(conversationId: string): {
     canonicalRequests?: readonly CodexCanonicalServerRequest[];
   } | null;
@@ -78,6 +82,14 @@ export async function executeDesktopNotificationAction(
   invocation: DesktopNotificationActionInvocation,
   manager: DesktopNotificationActionManager,
 ): Promise<DesktopNotificationActionResult> {
+  if (invocation.asyncQuestion) {
+    if (invocation.actionType !== "open" || !invocation.conversationId) return "ignored";
+    const runtime = manager.asyncQuestions;
+    if (runtime?.read(invocation.conversationId).activeTurnId !== invocation.asyncQuestion.turnId)
+      return "ignored";
+    runtime.open(invocation.conversationId, invocation.asyncQuestion.questionId);
+    return "opened";
+  }
   if (invocation.actionType === "open") return "opened";
 
   const conversationId = invocation.conversationId;

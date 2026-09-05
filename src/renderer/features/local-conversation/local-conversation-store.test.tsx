@@ -2446,6 +2446,88 @@ describe("local-conversation-store", () => {
     }
   });
 
+  test("followers open live questions from validated owner patches but never from hydration", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    const manager = new CodexAppServerManager("default");
+    try {
+      const base = withCanonicalState({
+        ...buildConversation("thread-1", "project-1"),
+        turns: [
+          { threadId: "thread-1", turnId: "turn-1", status: "inProgress", itemIds: [], items: [] },
+        ],
+      });
+      const canonical = base.canonicalState!;
+      const turn = canonical.turns[0]!;
+      const withQuestion = (id: string) => ({
+        ...base,
+        canonicalState: {
+          ...canonical,
+          turns: [
+            {
+              ...turn,
+              items: [
+                {
+                  type: "agentMessage" as const,
+                  id,
+                  delivery: "async" as const,
+                  phase: "final_answer" as const,
+                  text: "Which scope?",
+                  memoryCitation: null,
+                  questions: [{ title: "Which scope?", options: null }],
+                },
+              ],
+            },
+          ],
+        },
+      });
+      const hydrated = withQuestion("history-question");
+      await act(async () => {
+        dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
+          hostId: "default",
+          conversationId: "thread-1",
+          sourceClientId: "owner-a",
+          version: 1,
+          change: { type: "snapshot", revision: 1, conversationState: hydrated },
+        });
+      });
+      expect(manager.asyncQuestions.read("thread-1").openIds).toEqual([]);
+      const live = withQuestion("live-question");
+      await act(async () => {
+        dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
+          hostId: "default",
+          conversationId: "thread-1",
+          sourceClientId: "owner-a",
+          version: 2,
+          change: {
+            type: "patches",
+            baseRevision: 1,
+            revision: 2,
+            patches: buildCodexConversationStateUpdates(hydrated, live),
+          },
+        });
+      });
+      expect(manager.asyncQuestions.read("thread-1").selectedId).toBe(
+        '["request_user_input_async","live-question",0]',
+      );
+      manager.asyncQuestions.close("thread-1");
+      await act(async () => {
+        dispatchTestThreadStreamStateChanged(dispatchCodexAppServerMessage, {
+          hostId: "default",
+          conversationId: "thread-1",
+          sourceClientId: "owner-a",
+          version: 3,
+          change: { type: "snapshot", revision: 3, conversationState: live },
+        });
+      });
+      expect(manager.asyncQuestions.read("thread-1").openIds).toEqual([]);
+    } finally {
+      manager.destroy();
+    }
+  });
+
   test("two managers share owner stream state and recover owner loss from bundle 40400-40680", async () => {
     invokeCalls = [];
     invokeRecords = [];
@@ -14278,6 +14360,78 @@ describe("local-conversation-store", () => {
         id: requests[0]?.intent?.steerId,
         clientUserMessageId: requests[0]?.intent?.recoveryRow?.clientUserMessageId,
         targetTurnId: "turn-actual",
+      });
+    } finally {
+      ownerTurnSteerHandler = null;
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
+  test("an unknown steer outcome retains its pending message until a late server echo accepts it", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    rendererClientRequestListener = null;
+    threadListByProject = {};
+    resumeThreadResult = withCanonicalState({
+      ...buildConversation("thread-1", "project-1"),
+      statusType: "active",
+      turns: [
+        {
+          threadId: "thread-1",
+          turnId: "turn-active",
+          status: "inProgress",
+          itemIds: [],
+          items: [],
+        },
+      ],
+    });
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    const manager = new CodexAppServerManager("default");
+    try {
+      await manager.requestThreadStreamResume("thread-1");
+      ownerTurnSteerHandler = () => ({ turnId: "turn-active", outcome: "unknown" });
+      await expect(
+        manager.steerTurn({
+          threadId: "thread-1",
+          expectedTurnId: "turn-active",
+          prompt: "Delayed answer",
+        }),
+      ).rejects.toThrow("not yet confirmed");
+      const pending = manager
+        .readConversation("thread-1")
+        ?.canonicalState?.turns[0]?.items.find((item) => item.type === "steeringUserMessage");
+      expect(pending).toMatchObject({ status: "pending" });
+      if (pending?.type !== "steeringUserMessage") throw new Error("Missing pending steer");
+      dispatchCodexAppServerMessage("thread-owner-notification", {
+        hostId: "default",
+        sequence: 1,
+        notification: {
+          method: "item/completed",
+          params: {
+            completedAtMs: 1,
+            threadId: "thread-1",
+            turnId: "turn-active",
+            item: {
+              id: "late-echo",
+              type: "userMessage",
+              clientId: pending.clientUserMessageId,
+              content: [{ type: "text", text: "Delayed answer", text_elements: [] }],
+            },
+          },
+        },
+      });
+      await flushAsyncWork();
+      const accepted = manager
+        .readConversation("thread-1")
+        ?.canonicalState?.turns[0]?.items.find((item) => item.id === pending.id);
+      expect(accepted).toMatchObject({
+        status: "accepted",
+        clientUserMessageId: pending.clientUserMessageId,
       });
     } finally {
       ownerTurnSteerHandler = null;

@@ -193,9 +193,10 @@ export const make: Effect.Effect<
     if (!materialization) {
       return yield* error("materialize", id, new Error("Thread observation has no identity"));
     }
+    // Core reads the final UUID issue time: the fresh occurrence must follow the target identity.
     yield* core.workspace
       .apply({
-        operationId: `codex:notification:${input.occurrenceId}:thread/started:${id}`,
+        operationId: `codex:notification:thread/started:${id}:${input.occurrenceId}`,
         intent: { kind: "upsert_thread", thread_id: id, patch: materialization.patch },
       })
       .pipe(Effect.mapError((cause) => error("materialize", id, cause)));
@@ -259,7 +260,7 @@ export const make: Effect.Effect<
       const subagentRootThreadId = before ? yield* resolveSubagentRootThreadId(before) : null;
       yield* core.workspace
         .apply({
-          operationId: `codex:notification:${input.occurrenceId}:thread/deleted:${id}`,
+          operationId: `codex:notification:thread/deleted:${id}:${input.occurrenceId}`,
           intent: { kind: "delete_thread", thread_id: id },
         })
         .pipe(
@@ -281,7 +282,7 @@ export const make: Effect.Effect<
       const archived = notification.method === "thread/archived";
       yield* core.workspace
         .apply({
-          operationId: `codex:notification:${input.occurrenceId}:${notification.method}:${id}`,
+          operationId: `codex:notification:${notification.method}:${id}:${input.occurrenceId}`,
           intent: { kind: "set_thread_archived", thread_id: id, archived },
         })
         .pipe(Effect.mapError((cause) => error("archive", id, cause)));
@@ -296,7 +297,7 @@ export const make: Effect.Effect<
       const observedAtMs = yield* Clock.currentTimeMillis;
       yield* core.workspace
         .apply({
-          operationId: `codex:notification:${input.occurrenceId}:thread/status/changed:${id}`,
+          operationId: `codex:notification:thread/status/changed:${id}:${input.occurrenceId}`,
           intent: {
             kind: "update_thread",
             thread_id: id,
@@ -316,7 +317,7 @@ export const make: Effect.Effect<
       const observedAtMs = yield* Clock.currentTimeMillis;
       yield* core.workspace
         .apply({
-          operationId: `codex:notification:${input.occurrenceId}:thread/name/updated:${id}`,
+          operationId: `codex:notification:thread/name/updated:${id}:${input.occurrenceId}`,
           intent: {
             kind: "update_thread",
             thread_id: id,

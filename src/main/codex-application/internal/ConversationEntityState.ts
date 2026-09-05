@@ -74,6 +74,7 @@ import {
   failCodexCanonicalOptimisticTurn,
 } from "../../../shared/codex-conversation-state/codex-optimistic-turn";
 import {
+  retargetCodexCanonicalSteeringItem,
   removeCodexCanonicalSteeringItem,
   upsertCodexCanonicalSteeringItem,
 } from "../../../shared/codex-conversation-state/codex-steering-state";
@@ -487,6 +488,14 @@ export interface ConversationEntityState {
   readonly admitSteeringItem: (input: {
     readonly turnId: string;
     readonly item: CodexCanonicalSteeringUserMessageItem;
+    readonly observedAtMs: number;
+    readonly projectReplica: boolean;
+  }) => boolean;
+  /** Corrects the active Turn identity while preserving its pending message. */
+  readonly retargetSteeringItem: (input: {
+    readonly fromTurnId: string;
+    readonly toTurnId: string;
+    readonly itemId: string;
     readonly observedAtMs: number;
     readonly projectReplica: boolean;
   }) => boolean;
@@ -2799,6 +2808,15 @@ export function makeConversationEntityStateRegistry(
         if (!before) return false;
         return projectCanonicalState(
           upsertCodexCanonicalSteeringItem(before, turnId, item),
+          observedAtMs,
+          projectReplica,
+        );
+      },
+      retargetSteeringItem: ({ fromTurnId, toTurnId, itemId, observedAtMs, projectReplica }) => {
+        const before = aggregate.canonicalState;
+        if (!before) return false;
+        return projectCanonicalState(
+          retargetCodexCanonicalSteeringItem(before, fromTurnId, toTurnId, itemId),
           observedAtMs,
           projectReplica,
         );

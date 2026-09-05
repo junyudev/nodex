@@ -1,3 +1,4 @@
+import { AsyncQuestionComposer } from "./async-question-surface";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import {
   closestCenter,
@@ -1260,7 +1261,7 @@ function ScopedLocalConversationComposerShell({
   return (
     <div
       data-local-conversation-composer-shell="true"
-      className="relative flex w-full flex-col gap-2 pb-0"
+      className="group/async-questions relative flex w-full flex-col gap-2 pb-0"
       onFocusCapture={() => markContextualKeyboardActionTargetActive(selectorSurfaceId)}
       onPointerDownCapture={() => markContextualKeyboardActionTargetActive(selectorSurfaceId)}
     >
@@ -1285,6 +1286,9 @@ function ScopedLocalConversationComposerShell({
             contextRailLeadingContent={contextRailLeadingContent}
           />
         </ComposerContextRailSlot>
+      ) : null}
+      {replacementOwner === "normal" && model.threadId ? (
+        <AsyncQuestionComposer threadId={model.threadId} model={model} />
       ) : null}
       {replacementOwner === "autoReviewNudge" && model.threadId ? (
         <AutoReviewApprovalNudge threadId={model.threadId} actions={actions} />

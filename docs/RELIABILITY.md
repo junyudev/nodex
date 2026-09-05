@@ -78,7 +78,7 @@ for its frozen Turn and call rather than silently executing again.
 
 A state-idempotent request with no durable retry owner instead receives a fresh
 bounded identity at admission and keeps it only for that request's retry
-episode. It never uses the target entity's age as the issue time. After a crash,
+episode. It never uses the target entity's age as the issue time. App-server request and notification admissions mint a fresh occurrence identity for each event, including in a long-running host; derived Core mutations retain that occurrence as their final issue coordinate, after any Thread or other target identity. After a crash,
 the owner reads authoritative state first and starts a new episode only when the
 earlier mutation is known not to have committed.
 

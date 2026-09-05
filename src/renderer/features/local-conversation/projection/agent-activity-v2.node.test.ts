@@ -677,6 +677,32 @@ describe("agent activity v2 type boundary", () => {
     ).toBe("handoff-only");
   });
 
+  test("questions from one message retain distinct stable activity identities", () => {
+    const questions = [0, 1].map((questionIndex) => {
+      const id = JSON.stringify(["request_user_input_async", "ask", questionIndex]);
+      return buildClassifiableBlock("assistantMessage", {
+        entry: buildConversationItem(id, {
+          rawItem: { id: "ask" },
+          asyncQuestion: {
+            id,
+            sourceItemId: "ask",
+            questionIndex,
+            title: "Question",
+            options: [],
+          },
+        }),
+      });
+    });
+    const identities = questions.map((question, index) =>
+      resolveThreadAgentActivityIdentity(
+        createThreadAgentActivityItem(question, "standalone"),
+        index,
+      ),
+    );
+    expect(new Set(identities).size).toBe(2);
+    expect(identities).toEqual(questions.map((question) => question.entry.asyncQuestion?.id));
+  });
+
   test("uses first group identity and keeps keys stable across streaming changes", () => {
     const active = buildClassifiableBlock("exec", {
       entry: buildConversationItem("command-local", {

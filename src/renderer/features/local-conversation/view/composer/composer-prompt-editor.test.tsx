@@ -13,6 +13,7 @@ import {
 function renderPromptEditor({
   value,
   singleLine = false,
+  allowSlashCommands = true,
   onKeyDown = vi.fn(() => false),
   onLargeTextPaste,
   onPasteFiles,
@@ -21,6 +22,7 @@ function renderPromptEditor({
 }: {
   value: string;
   singleLine?: boolean;
+  allowSlashCommands?: boolean;
   onKeyDown?: (event: KeyboardEvent) => boolean;
   onLargeTextPaste?: (text: string) => boolean;
   onPasteFiles?: Parameters<typeof ComposerPromptEditor>[0]["onPasteFiles"];
@@ -36,6 +38,7 @@ function renderPromptEditor({
       placeholder="Ask Codex"
       disabled={false}
       singleLine={singleLine}
+      allowSlashCommands={allowSlashCommands}
       onChange={onChange}
       onKeyDown={onKeyDown}
       onLargeTextPaste={onLargeTextPaste}
@@ -663,5 +666,25 @@ describe("ComposerPromptEditor", () => {
 
     expect(onSuggestionAction).toHaveBeenCalledWith("next");
     expect(onKeyDown).toHaveBeenCalledOnce();
+  });
+  test("question editors keep mention suggestions while disabling slash commands", async () => {
+    const { editorRef } = renderPromptEditor({ value: "/plan", allowSlashCommands: false });
+    expect(editorRef.current?.getSuggestionState().active).toBe(false);
+    await act(async () => {
+      editorRef.current?.setText("@readme");
+      await Promise.resolve();
+    });
+    expect(editorRef.current?.getSuggestionState()).toMatchObject({
+      active: true,
+      kind: "at-mention",
+    });
+    await act(async () => {
+      editorRef.current?.setText("$review");
+      await Promise.resolve();
+    });
+    expect(editorRef.current?.getSuggestionState()).toMatchObject({
+      active: true,
+      kind: "skill-mention",
+    });
   });
 });

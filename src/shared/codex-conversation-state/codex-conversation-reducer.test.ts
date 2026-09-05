@@ -168,6 +168,38 @@ function reduceLifecycle(
 }
 
 describe("canonical item lifecycle reducer", () => {
+  test("async question delivery never starts final-answer timing while the Agent continues", () => {
+    const item = {
+      type: "agentMessage",
+      id: "question",
+      text: "Which scope?",
+      phase: "final_answer",
+      delivery: "async",
+      questions: [{ title: "Which scope?", options: null }],
+      memoryCitation: null,
+    } satisfies ThreadItem;
+    const clock = buildClock(100, 200);
+    const started = reduceLifecycle(
+      buildState([]),
+      {
+        method: "item/started",
+        params: { threadId: THREAD_ID, turnId: TURN_ID, item, startedAtMs: 100 },
+      },
+      clock.context,
+    );
+    const completed = reduceLifecycle(
+      started,
+      {
+        method: "item/completed",
+        params: { threadId: THREAD_ID, turnId: TURN_ID, item, completedAtMs: 200 },
+      },
+      clock.context,
+    );
+    expect(completed.turns[0]?.sidecar.finalAssistantStartedAtMs).toBeNull();
+    expect(completed.turns[0]?.protocol.status).toBe("inProgress");
+    expect(completed.turns[0]?.items).toContainEqual(item);
+  });
+
   test("keeps first-arrival order and replaces completed raw items in their original slots", () => {
     const startedA = buildCommand("command-a");
     const startedB = buildCommand("command-b");
@@ -1064,68 +1096,77 @@ describe("canonical item lifecycle reducer", () => {
     expect(next.turns[0]?.items[1]?.id).toBe("accepted-user-id");
   });
 
-  test("matches identical pending steers by app-server client identity", () => {
-    const initial = buildState();
-    const content = [
-      {
-        type: "text" as const,
-        text: "same text",
-        text_elements: [],
-      },
-    ];
-    const buildPending = (id: string): CodexCanonicalSteeringUserMessageItem => ({
-      type: "steeringUserMessage",
-      id,
-      targetTurnId: TURN_ID,
-      targetTurnStartedAtMs: null,
-      status: "pending",
-      clientUserMessageId: id,
-      input: content,
-      attachments: [],
-      restoreMessage: {
-        queueRow: restoreQueueRow(id, "same text"),
-        context: { commentAttachments: [] },
-      },
-      compareKey: { rawText: "same text", imageCount: 0 },
-    });
-    const state = {
-      ...initial,
-      turns: [
+  for (const initialStatus of ["pending", "accepted"] as const)
+    test(`matches identical ${initialStatus} steers by app-server client identity`, () => {
+      const initial = buildState();
+      const content = [
         {
-          ...initial.turns[0]!,
-          items: [buildPending("steer-first"), buildPending("steer-second")],
+          type: "text" as const,
+          text: "same text",
+          text_elements: [],
         },
-      ],
-    };
-    const next = reduceLifecycle(
-      state,
-      {
-        method: "item/completed",
-        params: {
-          threadId: THREAD_ID,
-          turnId: TURN_ID,
-          completedAtMs: 11_000,
-          item: {
-            type: "userMessage",
-            id: "server-second",
-            clientId: "steer-second",
-            content,
+      ];
+      const buildPending = (id: string): CodexCanonicalSteeringUserMessageItem => ({
+        type: "steeringUserMessage",
+        id,
+        targetTurnId: TURN_ID,
+        targetTurnStartedAtMs: null,
+        status: initialStatus,
+        clientUserMessageId: id,
+        input: content,
+        attachments: [],
+        restoreMessage: {
+          queueRow: restoreQueueRow(id, "same text"),
+          context: { commentAttachments: [] },
+        },
+        compareKey: { rawText: "same text", imageCount: 0 },
+      });
+      const state = {
+        ...initial,
+        turns: [
+          {
+            ...initial.turns[0]!,
+            items: [
+              {
+                ...buildPending("steer-first"),
+                clientUserMessageId: initialStatus === "accepted" ? null : "steer-first",
+              },
+              buildPending("steer-second"),
+            ],
+          },
+        ],
+      };
+      const next = reduceLifecycle(
+        state,
+        {
+          method: "item/completed",
+          params: {
+            threadId: THREAD_ID,
+            turnId: TURN_ID,
+            completedAtMs: 11_000,
+            item: {
+              type: "userMessage",
+              id: "server-second",
+              clientId: "steer-second",
+              content,
+            },
           },
         },
-      },
-      buildClock().context,
-    );
+        buildClock().context,
+      );
 
-    expect(
-      next.turns[0]?.items.slice(0, 2).map((item) => ({
-        id: item.id,
-        status: item.type === "steeringUserMessage" ? item.status : null,
-      })),
-    ).toEqual([
-      { id: "steer-first", status: "pending" },
-      { id: "steer-second", status: "accepted" },
-    ]);
-  });
+      expect(
+        next.turns[0]?.items.slice(0, 2).map((item) => ({
+          id: item.id,
+          status: item.type === "steeringUserMessage" ? item.status : null,
+        })),
+      ).toEqual([
+        { id: "steer-first", status: initialStatus },
+        { id: "steer-second", status: "accepted" },
+      ]);
+      expect(next.turns[0]?.items[1]).toMatchObject({ serverUserMessageId: "server-second" });
+      expect(next.turns[0]?.items[2]).toMatchObject({ type: "steered", id: "server-second" });
+    });
 
   test("steer matching excludes exact comment-attachment labels but keeps image count", () => {
     const initial = buildState();

@@ -82,7 +82,7 @@ it.effect("commits Automation inbox directives with the request occurrence ident
     ]);
     assert.strictEqual(
       (applied[0] as { operationId: string }).operationId,
-      "codex:inbox-item:local:1:inbox-a:42:0:thread-a",
+      "codex:inbox-item:0:thread-a:local:1:inbox-a:42",
     );
     assert.strictEqual(routing.length, 1);
     assert.deepEqual(events, [

@@ -137,3 +137,49 @@ describe("canonical steering state", () => {
     });
   });
 });
+
+test("corrects an unknown active Turn ID without losing its items or timestamps", () => {
+  const pending = upsertCodexCanonicalSteeringItem(buildState(), "turn-a", buildSteer());
+  const next = retargetCodexCanonicalSteeringItem(pending, "turn-a", "corrected", "steer-a");
+  expect(next.turns).toHaveLength(1);
+  expect(next.turns[0]?.protocol.id).toBe("corrected");
+  expect(next.turns[0]?.sidecar).toEqual({ ...pending.turns[0]?.sidecar, entityKey: "turn-a" });
+  expect(next.turns[0]?.items[0]).toMatchObject({ id: "steer-a", targetTurnId: "corrected" });
+});
+
+test("removes a failed reply after the active Turn ID has been corrected", () => {
+  const pending = upsertCodexCanonicalSteeringItem(buildState(), "turn-a", buildSteer());
+  const corrected = retargetCodexCanonicalSteeringItem(pending, "turn-a", "corrected", "steer-a");
+  expect(removeCodexCanonicalSteeringItem(corrected, "turn-a", "steer-a").turns[0]?.items).toEqual(
+    [],
+  );
+  expect(
+    removeCodexCanonicalSteeringItem(corrected, "corrected", "steer-a").turns[0]?.items,
+  ).toEqual([]);
+});
+
+test("retains a display Turn identity while targeting its protocol Turn", () => {
+  const initial = buildState();
+  const display = {
+    ...initial,
+    turns: initial.turns.map((turn) => ({
+      ...turn,
+      protocol: { ...turn.protocol, id: "turn-a-berry-display-1" },
+    })),
+  };
+  const pending = upsertCodexCanonicalSteeringItem(display, "turn-a-berry-display-1", {
+    ...buildSteer(),
+    targetTurnId: "turn-a-berry-display-1",
+  });
+  const corrected = retargetCodexCanonicalSteeringItem(
+    pending,
+    "turn-a-berry-display-1",
+    "turn-a",
+    "steer-a",
+  );
+  expect(corrected.turns[0]?.protocol.id).toBe("turn-a-berry-display-1");
+  expect(corrected.turns[0]?.items[0]).toMatchObject({ targetTurnId: "turn-a" });
+  expect(removeCodexCanonicalSteeringItem(corrected, "turn-a", "steer-a").turns[0]?.items).toEqual(
+    [],
+  );
+});

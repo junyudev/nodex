@@ -72,7 +72,7 @@ export const live: Layer.Layer<
       if (!current) return;
       const committed = yield* core.automation.apply(
         {
-          operationId: `codex:inbox-item:${identity.occurrenceId}:${index}:${item.threadId}`,
+          operationId: `codex:inbox-item:${index}:${item.threadId}:${identity.occurrenceId}`,
           intent: {
             kind: "set_run_inbox_item",
             thread_id: item.threadId,

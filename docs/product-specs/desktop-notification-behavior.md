@@ -17,7 +17,7 @@ Nodex has three task notification families:
 - `turn-complete`: a local-host top-level task turn reached `completed`,
   `failed`, or `interrupted`.
 - `permission`: a command, file-change, or permissions request became pending.
-- `question`: a user-input request became pending, including ordinary
+- `question`: an asynchronous question arrived or a user-input request became pending, including ordinary
   questions and supported option/onboarding/setup inputs with no question
   rows.
 
@@ -247,3 +247,16 @@ then opens the real Nodex bundle settings page. Windows opens
 Main logs structured suppression reasons, dropped occurrences with no live
 target, OS permission status/failure, and native permission-request failure.
 These logs must not contain prompt bodies, approval commands, or user replies.
+
+## Asynchronous Question Actions
+
+A live asynchronous Agent message produces one question notification for its first question,
+scoped by host, Thread, Turn, and question identity. Its body is `Nodex has a question`.
+It uses the ordinary question preference and foreground-presentation suppression rules.
+History loading and repeated item completion do not produce another notification.
+
+Opening the notification first navigates to its Thread, then opens the question panel only
+if its Turn is still running. It has no inline reply or blocking-request identity. A stale
+notification cannot send text or start another Turn. Accepted answers and Turn completion
+dismiss the corresponding question notifications; foreground presentation also dismisses
+notifications through the ordinary visibility boundary.

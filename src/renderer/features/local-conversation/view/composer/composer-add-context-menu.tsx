@@ -1051,28 +1051,9 @@ const ComposerAddContextRootMenuContent = forwardRef<
           active: false,
         }))
       : [];
-    const fileSuggestions = fileSearch.matches.map((file): ComposerContextItemView => ({
-      candidate: {
-        id: `file:${file.path}`,
-        section: "Files and chats",
-        label: file.path.split(/[\\/]/u).at(-1) ?? file.path,
-        description: file.path,
-        searchTerms: [file.path],
-        sourceRanked: true,
-        value: {
-          kind: "mention",
-          mention: {
-            kind: "file",
-            name: file.path.split(/[\\/]/u).at(-1) ?? file.path,
-            path: file.path,
-            fsPath: workspaceRoot ? joinWorkspacePath(workspaceRoot, file.path) : file.path,
-            description: file.path,
-          },
-        },
-      },
-      icon: <FileIcon className="size-4 shrink-0" />,
-      active: false,
-    }));
+    const fileSuggestions = fileSearch.matches.map((file) =>
+      buildComposerFileItem(file, workspaceRoot),
+    );
     return [
       ...addItems,
       ...pluginItems,
@@ -1331,7 +1312,7 @@ const ComposerProjectMenuContent = forwardRef<
 
 const ComposerSkillMentionMenuContent = forwardRef<
   ComposerAddContextMenuHandle,
-  ComposerAddContextMenuProps
+  ComposerMentionMenuProps & Pick<ComposerAddContextMenuProps, "isHomeMenu">
 >(function ComposerSkillMentionMenuContent(
   {
     suggestion,
@@ -1469,4 +1450,105 @@ export function ComposerAddContextTrigger({
       </button>
     </NodexTooltip>
   );
+}
+
+type ComposerMentionMenuProps = Pick<
+  ComposerAddContextMenuProps,
+  | "suggestion"
+  | "skills"
+  | "skillsLoading"
+  | "apps"
+  | "appsLoading"
+  | "workspaceRoot"
+  | "onDismiss"
+  | "onInsertMention"
+>;
+
+/** Restricted question-editor suggestions: references only, with no Composer mode actions. */
+export const ComposerMentionMenu = forwardRef<
+  ComposerAddContextMenuHandle,
+  ComposerMentionMenuProps
+>(function ComposerMentionMenu(props, ref) {
+  if (!props.suggestion.active) return null;
+  if (props.suggestion.kind === "skill-mention")
+    return <ComposerSkillMentionMenuContent {...props} ref={ref} />;
+  if (props.suggestion.kind !== "at-mention") return null;
+  return <ComposerFileMentionMenuContent {...props} ref={ref} />;
+});
+
+const ComposerFileMentionMenuContent = forwardRef<
+  ComposerAddContextMenuHandle,
+  ComposerMentionMenuProps
+>(function ComposerFileMentionMenuContent({ suggestion, workspaceRoot, onInsertMention }, ref) {
+  const search = useComposerWorkspaceFileSearch({
+    enabled: true,
+    query: suggestion.query,
+    workspaceRoot,
+  });
+  const items = search.matches.map((file) => buildComposerFileItem(file, workspaceRoot));
+  const selectItem = (item: ComposerContextItemView) => {
+    if (item.candidate.value.kind !== "mention") return;
+    onInsertMention(item.candidate.value.mention);
+  };
+  const { highlightedId, setHighlightedId } = useComposerMenuNavigation({
+    items,
+    onSelect: selectItem,
+    ref,
+  });
+  return (
+    <ComposerSuggestionSurface
+      kind="add-context"
+      ariaLabel="Files"
+      maxHeightClassName="max-h-[240px]"
+    >
+      <div className="vertical-scroll-fade-mask flex w-full flex-1 flex-col overflow-y-auto">
+        {items.map((item) => (
+          <ComposerContextRow
+            key={item.candidate.id}
+            item={item}
+            highlighted={item.candidate.id === highlightedId}
+            onHighlight={() => setHighlightedId(item.candidate.id)}
+            onSelect={() => selectItem(item)}
+          />
+        ))}
+        {!items.length ? (
+          <div className="px-row-x py-row-y text-sm text-token-input-placeholder-foreground">
+            {search.loading
+              ? "Searching files…"
+              : suggestion.query.trim()
+                ? "No files found"
+                : "Type to search files"}
+          </div>
+        ) : null}
+      </div>
+    </ComposerSuggestionSurface>
+  );
+});
+
+function buildComposerFileItem(
+  file: WorkspaceFileSearchMatch,
+  workspaceRoot: string | null,
+): ComposerContextItemView {
+  return {
+    candidate: {
+      id: `file:${file.path}`,
+      section: "Files and chats",
+      label: file.path.split(/[\\/]/u).at(-1) ?? file.path,
+      description: file.path,
+      searchTerms: [file.path],
+      sourceRanked: true,
+      value: {
+        kind: "mention",
+        mention: {
+          kind: "file",
+          name: file.path.split(/[\\/]/u).at(-1) ?? file.path,
+          path: file.path,
+          fsPath: workspaceRoot ? joinWorkspacePath(workspaceRoot, file.path) : file.path,
+          description: file.path,
+        },
+      },
+    },
+    icon: <FileIcon className="size-4 shrink-0" />,
+    active: false,
+  };
 }

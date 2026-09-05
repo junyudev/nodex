@@ -915,6 +915,28 @@ describe("protocol-backed canonical conversation state", () => {
     });
   });
 
+  test("keeps distinct asynchronous calls with identical question text when hydrating a shorter tail", () => {
+    const template = buildAgentActivityV2CorpusThread([]).turns[0]!;
+    const base = hydrateCanonicalFixtureTurns([template]).turns[0]!;
+    const first: ThreadItem = {
+      type: "agentMessage",
+      id: "ask-first",
+      text: "Which scope?",
+      phase: "final_answer",
+      delivery: "async",
+      memoryCitation: null,
+      questions: [{ title: "Which scope?", options: null }],
+    };
+    const second = { ...first, id: "ask-second" };
+    const merged = mergeCodexCanonicalTurnState(
+      { ...base, items: [first, { type: "plan", id: "plan", text: "Working" }] },
+      { ...base, items: [second] },
+    );
+    expect(
+      merged.items.filter((item) => item.type === "agentMessage").map((item) => item.id),
+    ).toEqual(["ask-first", "ask-second"]);
+  });
+
   test("rejects hydration when exact app-side turn context is unavailable", () => {
     const thread = buildAgentActivityV2CorpusThread([]);
     let error: unknown = null;

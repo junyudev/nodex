@@ -1,3 +1,8 @@
+import {
+  expandCodexAsyncQuestions,
+  decodeCodexAsyncQuestionReplies,
+  formatCodexAsyncQuestionReplies,
+} from "./codex-async-user-input";
 import type { TurnStatus } from "@nodex/codex-app-server-protocol/v2/TurnStatus";
 import {
   buildCodexFileChangeFromProtocol,
@@ -428,7 +433,10 @@ function projectSteeringUserMessage(
   item: CodexCanonicalSteeringUserMessageItem,
   context: ItemProjectionContext,
 ): CodexItemView[] {
-  const markdownText = projectUserMessageText(item.input);
+  const rawText = projectUserMessageText(item.input);
+  const questionReplies =
+    item.input.length === 1 ? (decodeCodexAsyncQuestionReplies(rawText) ?? undefined) : undefined;
+  const markdownText = questionReplies ? formatCodexAsyncQuestionReplies(questionReplies) : rawText;
   const contentAttachments = buildCodexUserAttachmentsFromContent(item.input, item.id);
   if (markdownText.trim().length === 0 && contentAttachments.length === 0) return [];
 
@@ -440,6 +448,7 @@ function projectSteeringUserMessage(
       role: "user",
       status: "completed",
       markdownText,
+      questionReplies,
       steeringStatus: item.status,
       steeringInput: [...item.input],
       steeringCompareKey: JSON.stringify(item.compareKey),
@@ -765,6 +774,20 @@ function projectCanonicalItemViews(
       ];
     }
     case "agentMessage": {
+      const questions = expandCodexAsyncQuestions(item);
+      if (questions.length)
+        return questions.map((question) => ({
+          ...buildBaseView(item, context),
+          itemId: question.id,
+          rawItemId: item.id,
+          normalizedKind: "assistantMessage",
+          semanticKind: "assistantMessage",
+          role: "assistant",
+          assistantPhase: "commentary",
+          markdownText: question.title,
+          asyncQuestion: question,
+          status: resolveCanonicalItemStatus(item, context),
+        }));
       const status = resolveCanonicalItemStatus(item, context);
       const markdownText = projectAssistantText(item.text, status === "inProgress");
       if (markdownText === null) return [];
@@ -1052,7 +1075,14 @@ function projectCanonicalItemViews(
         },
       ];
     case "userMessage": {
-      const markdownText = projectUserMessageText(item.content);
+      const rawText = projectUserMessageText(item.content);
+      const questionReplies =
+        item.content.length === 1
+          ? (decodeCodexAsyncQuestionReplies(rawText) ?? undefined)
+          : undefined;
+      const markdownText = questionReplies
+        ? formatCodexAsyncQuestionReplies(questionReplies)
+        : rawText;
       const userAttachments = buildCodexUserAttachmentsFromContent(item.content, item.id);
       if (markdownText.trim().length === 0 && userAttachments.length === 0) return [];
       return [
@@ -1063,6 +1093,7 @@ function projectCanonicalItemViews(
           role: "user",
           status: "completed",
           markdownText,
+          questionReplies,
           ...(userAttachments.length === 0 ? {} : { userAttachments }),
         },
       ];

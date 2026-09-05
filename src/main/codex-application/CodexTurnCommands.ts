@@ -17,6 +17,7 @@ import type {
   CodexCanonicalWorktreeInitItem,
   CodexPreparedPrompt,
   CodexSteerTurnInput,
+  CodexSteerTurnResult,
   CodexTurnStartOptions,
   CodexTurnSummary,
 } from "../../shared/types";
@@ -90,7 +91,7 @@ export interface CodexTurnCommandsService {
   ) => Effect.Effect<TurnStartResponse, CodexTurnCommandsError>;
   readonly steer: (
     input: CodexSteerTurnInput,
-  ) => Effect.Effect<{ readonly turnId: string } | null, CodexTurnCommandsError>;
+  ) => Effect.Effect<CodexSteerTurnResult | null, CodexTurnCommandsError>;
   /** Starts the next autonomous goal turn without projecting a synthetic user message. */
   readonly continueGoal: (threadId: string) => Effect.Effect<void, CodexTurnCommandsError>;
 }
@@ -146,7 +147,9 @@ const parseSteerTurnMismatchActualTurnId = (error: unknown): string | null => {
   return (
     /expected active turn id [`']?[^`'\s]+[`']? but found [`']?([^`'\s]+)[`']?/iu.exec(
       message,
-    )?.[1] ?? null
+    )?.[1] ??
+    /ExpectedTurnMismatch\s*\{[^}]*actual:\s*"([^"]+)"/u.exec(message)?.[1] ??
+    null
   );
 };
 
@@ -469,7 +472,6 @@ export const make: Effect.Effect<
   const runSteerTransaction = (plan: CodexTurnSteerPlan) => {
     let optimisticAdmitted = false;
     let targetTurnId = plan.expectedTurnId;
-    let item = plan.item;
     const rollback = () =>
       Clock.currentTimeMillis.pipe(
         Effect.flatMap((observedAtMs) =>
@@ -487,17 +489,11 @@ export const make: Effect.Effect<
       Effect.gen(function* () {
         if (nextTurnId === targetTurnId) return;
         const observedAtMs = yield* Clock.currentTimeMillis;
-        yield* projection.rejectSteer({
+        yield* projection.retargetSteer({
           threadId: plan.threadId,
-          turnId: targetTurnId,
+          fromTurnId: targetTurnId,
+          toTurnId: nextTurnId,
           itemId: plan.steerId,
-          observedAtMs,
-        });
-        item = { ...item, targetTurnId: nextTurnId };
-        yield* projection.admitSteer({
-          threadId: plan.threadId,
-          turnId: nextTurnId,
-          item,
           observedAtMs,
         });
         targetTurnId = nextTurnId;
@@ -536,9 +532,14 @@ export const make: Effect.Effect<
       yield* retarget(response.turnId);
       return { turnId: response.turnId };
     }).pipe(
+      Effect.catch((error) =>
+        error._tag === "CodexRuntimeError" && error.reason === "outcome-unknown"
+          ? Effect.succeed<CodexSteerTurnResult>({ turnId: targetTurnId, outcome: "unknown" })
+          : Effect.fail(error),
+      ),
       Effect.onExit((exit) => (Exit.isFailure(exit) ? rollback() : Effect.void)),
       Effect.catch((error) => {
-        if (!isSteerTurnInactive(error)) return Effect.fail(error);
+        if (!plan.fallbackStart || !isSteerTurnInactive(error)) return Effect.fail(error);
         return rollback().pipe(
           Effect.andThen(
             startInLane(

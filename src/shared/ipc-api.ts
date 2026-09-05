@@ -332,6 +332,7 @@ import type {
   CodexProjectlessThreadCwdInput,
   CodexProjectlessWorkspace,
   CodexSteerTurnInput,
+  CodexSteerTurnResult,
   CodexSideChatStartInput,
   CodexSideChatStartResult,
   CodexThreadStartForSessionInput,
@@ -2397,7 +2398,7 @@ export interface IpcApi {
   };
   "codex:turn:steer": {
     args: [input: CodexSteerTurnInput];
-    result: { turnId: string } | null;
+    result: CodexSteerTurnResult | null;
   };
   "codex:turn:interrupt": {
     args: [threadId: string, turnId?: string];

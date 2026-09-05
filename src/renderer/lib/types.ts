@@ -167,6 +167,7 @@ export type {
   CodexLiveFileAttachment,
   CodexPastedTextAttachment,
   CodexSteerTurnInput,
+  CodexSteerTurnResult,
   CodexSteeringStatus,
   CodexUserAttachment,
   CodexUserFileAttachment,

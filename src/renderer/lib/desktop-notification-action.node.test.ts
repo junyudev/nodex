@@ -102,4 +102,28 @@ describe("desktop notification action boundary", () => {
       "Use Array<T> and **keep markdown**",
     );
   });
+  it("reopens only a question in the same running Turn and never starts a Turn from an async notification", async () => {
+    const manager = makeManager([]);
+    const open = vi.fn();
+    manager.asyncQuestions = { open, read: () => ({ activeTurnId: "turn" }) };
+    const invocation = makeInvocation({
+      actionType: "open",
+      asyncQuestion: { turnId: "turn", questionId: "question" },
+    });
+    expect(await executeDesktopNotificationAction(invocation, manager)).toBe("opened");
+    expect(open).toHaveBeenCalledWith("child-thread", "question");
+    expect(
+      await executeDesktopNotificationAction(
+        { ...invocation, asyncQuestion: { turnId: "old-turn", questionId: "question" } },
+        manager,
+      ),
+    ).toBe("ignored");
+    expect(
+      await executeDesktopNotificationAction(
+        { ...invocation, actionType: "reply", reply: "answer" },
+        manager,
+      ),
+    ).toBe("ignored");
+    expect(manager.startTurn).not.toHaveBeenCalled();
+  });
 });

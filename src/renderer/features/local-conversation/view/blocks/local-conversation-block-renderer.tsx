@@ -1,3 +1,4 @@
+import { AsyncQuestionTranscript } from "../composer/async-question-surface";
 import {
   ThreadAutomaticApprovalReviewBlock,
   ThreadAgentActivityGroupBlock,
@@ -294,6 +295,16 @@ export function ThreadBlockRenderer({
         alwaysShowAssistantMessageActions={alwaysShowAssistantMessageActions}
       />
     );
+
+    if (block.entry.asyncQuestion)
+      return (
+        <AsyncQuestionTranscript
+          threadId={block.entry.threadId}
+          questionId={block.entry.asyncQuestion.id}
+        >
+          {body}
+        </AsyncQuestionTranscript>
+      );
 
     if (block.assistantMessageActions || assistantAfter) {
       return (

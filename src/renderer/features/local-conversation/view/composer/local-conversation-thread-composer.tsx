@@ -3704,6 +3704,7 @@ function HydratedThreadComposer({
           (browserImageDrag || isFileDragActive) &&
             "rounded-[20px] ring-2 ring-token-focus-border ring-offset-2 ring-offset-transparent",
         )}
+        data-composer-context-suggestions={contextSuggestionOpen ? "true" : undefined}
         data-browser-image-drop-active={browserImageDrag ? "true" : "false"}
         data-file-drop-active={isFileDragActive ? "true" : "false"}
         onDragEnter={handleComposerDragEnter}

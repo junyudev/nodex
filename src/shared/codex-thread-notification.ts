@@ -58,7 +58,34 @@ export interface CodexRequestResolvedNotificationEvent {
   requestId: CodexAppServerRequestId;
 }
 
+export interface CodexAsyncQuestionNotificationEvent {
+  type: "async-question-requested";
+  hostId: string;
+  conversation: CodexNotificationConversationFacts;
+  turnId: string;
+  questionId: string;
+}
+
+export interface CodexAsyncQuestionResolvedNotificationEvent {
+  type: "async-question-resolved";
+  hostId: string;
+  conversationId: string;
+  turnId: string;
+  questionId: string;
+}
+
+export function buildCodexAsyncQuestionNotificationId(
+  hostId: string,
+  threadId: string,
+  turnId: string,
+  questionId: string,
+): string {
+  return JSON.stringify(["async-question", hostId, threadId, turnId, questionId]);
+}
+
 export type CodexThreadNotificationEvent =
+  | CodexAsyncQuestionNotificationEvent
+  | CodexAsyncQuestionResolvedNotificationEvent
   | CodexTurnCompletedNotificationEvent
   | CodexApprovalRequestedNotificationEvent
   | CodexUserInputRequestedNotificationEvent

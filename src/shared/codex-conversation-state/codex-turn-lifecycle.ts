@@ -1,3 +1,4 @@
+import { decodeCodexAsyncQuestionReplies } from "../codex-async-user-input";
 import type { Turn } from "@nodex/codex-app-server-protocol/v2";
 import { buildPlanImplementationRequestId } from "../codex-conversation-request";
 import {
@@ -260,14 +261,18 @@ export function reduceCodexConversationTurnLifecycle(
   if (!completed) {
     return { state, disposition: "missingTurn", stateChanged: false, effects: [] };
   }
+  // A question reply belongs only to this Turn; ordinary steering can be recovered as follow-up work.
+  const recoveryRows = completed.pendingSteers
+    .map((item) => item.restoreMessage.queueRow)
+    .filter((row) => decodeCodexAsyncQuestionReplies(row.prompt) === null);
   const effects: readonly CodexTurnLifecycleEffect[] =
-    completed.pendingSteers.length === 0
+    recoveryRows.length === 0
       ? []
       : [
           {
             type: "restoreUnacceptedSteers",
             terminalStatus: update.turn.status,
-            rows: completed.pendingSteers.map((item) => item.restoreMessage.queueRow),
+            rows: recoveryRows,
           },
         ];
   return {

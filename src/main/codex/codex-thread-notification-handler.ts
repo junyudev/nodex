@@ -8,6 +8,7 @@ import type {
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import {
   buildCodexApprovalNotificationId,
+  buildCodexAsyncQuestionNotificationId,
   buildCodexQuestionNotificationId,
   buildCodexRequestNotificationOccurrenceId,
   buildCodexTurnNotificationId,
@@ -49,7 +50,10 @@ export interface CodexThreadNotificationHandlerOptions {
 }
 
 function resolveNavigation(
-  event: Exclude<CodexThreadNotificationEvent, { type: "request-resolved" }>,
+  event: Exclude<
+    CodexThreadNotificationEvent,
+    { type: "request-resolved" | "async-question-resolved" }
+  >,
 ): {
   navigationPath: string;
   activateTabId: string | null;
@@ -69,7 +73,10 @@ function resolveNavigation(
 
 function showNotification(
   options: CodexThreadNotificationHandlerOptions,
-  event: Exclude<CodexThreadNotificationEvent, { type: "request-resolved" }>,
+  event: Exclude<
+    CodexThreadNotificationEvent,
+    { type: "request-resolved" | "async-question-resolved" }
+  >,
   copy: Pick<
     DesktopNotificationPayload,
     "id" | "occurrenceId" | "kind" | "title" | "body" | "actions" | "replyPlaceholder"
@@ -88,6 +95,9 @@ function showNotification(
   const navigation = resolveNavigation(event);
   const notification: DesktopNotificationPayload = {
     ...copy,
+    ...(event.type === "async-question-requested"
+      ? { asyncQuestion: { turnId: event.turnId, questionId: event.questionId } }
+      : {}),
     hostId: event.hostId,
     conversationId,
     navigationPath: navigation.navigationPath,
@@ -103,6 +113,9 @@ function showNotification(
     }
     const dispatched = options.dispatchAction(targetClientId, {
       ...action,
+      ...(event.type === "async-question-requested"
+        ? { asyncQuestion: { turnId: event.turnId, questionId: event.questionId } }
+        : {}),
       hostId: event.hostId,
       conversationId,
       navigationPath: navigation.navigationPath,
@@ -128,6 +141,17 @@ export const makeCodexThreadNotificationHandler =
     options: CodexThreadNotificationHandlerOptions,
   ): ((event: CodexThreadNotificationEvent) => void) =>
   (event) => {
+    if (event.type === "async-question-resolved") {
+      options.dismissNotification({
+        notificationId: buildCodexAsyncQuestionNotificationId(
+          event.hostId,
+          event.conversationId,
+          event.turnId,
+          event.questionId,
+        ),
+      });
+      return;
+    }
     if (event.type === "request-resolved") {
       options.dismissNotification({
         occurrenceId: buildCodexRequestNotificationOccurrenceId(
@@ -191,6 +215,23 @@ export const makeCodexThreadNotificationHandler =
         type: event.type,
         conversationId: event.conversation.conversationId,
         reason: decision.reason,
+      });
+      return;
+    }
+
+    if (event.type === "async-question-requested") {
+      const id = buildCodexAsyncQuestionNotificationId(
+        event.hostId,
+        event.conversation.conversationId,
+        event.turnId,
+        event.questionId,
+      );
+      showNotification(options, event, {
+        id,
+        occurrenceId: id,
+        kind: "question",
+        title: resolveCodexQuestionNotificationTitle(event.conversation.title),
+        body: "Nodex has a question",
       });
       return;
     }
