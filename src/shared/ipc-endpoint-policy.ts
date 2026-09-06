@@ -254,6 +254,7 @@ type ControlEndpointPolicy =
   | "codex:dictation:transcribe:cancel"
   | "codex:dictation:history:append"
   | "codex:dictation:history:finalize"
+  | "codex:dictation:history:set-diagnostics"
   | "codex:dynamic-tool-call:respond"
   | "codex:fork-side-panel-transfer:consume"
   | "codex:mcp-elicitation:respond"

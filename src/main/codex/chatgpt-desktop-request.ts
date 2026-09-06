@@ -27,6 +27,8 @@ export interface ChatGptDesktopRequestInput {
   refreshOn401?: boolean;
   missingAuthErrorMessage?: string;
   signal?: AbortSignal;
+  /** Local-only observation; callers must select safe fields rather than retain credentials. */
+  onRequestHeaders?: (headers: Headers) => void;
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

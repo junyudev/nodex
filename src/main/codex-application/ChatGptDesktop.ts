@@ -66,13 +66,15 @@ export const live: Layer.Layer<ChatGptDesktop, never, CodexGateway | ElectronNet
       token: string,
     ) {
       const prepared = prepareChatGptDesktopBody(input);
+      const headers = buildChatGptDesktopHeaders(
+        token,
+        { ...input, headers: prepared.headers },
+        () => electron.appVersion,
+      );
+      input.onRequestHeaders?.(headers);
       return yield* electron.fetch(resolveChatGptDesktopRequestUrl(input.baseUrl, input.path), {
         method: input.method,
-        headers: buildChatGptDesktopHeaders(
-          token,
-          { ...input, headers: prepared.headers },
-          () => electron.appVersion,
-        ),
+        headers,
         body: toChatGptDesktopFetchBody(prepared.body),
       });
     });

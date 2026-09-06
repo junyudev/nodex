@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { GlobalDictationBar, GlobalDictationRoot } from "./global-dictation-page";
@@ -74,26 +75,29 @@ describe("GlobalDictationBar", () => {
 });
 
 describe("GlobalDictationRoot", () => {
-  it("announces readiness through the restricted bridge", async () => {
+  it("accepts capture commands after Strict Mode effect replay through the restricted bridge", async () => {
     const sendEvent = vi.fn(async () => true);
     const commandHandlers: Array<
       (command: import("../../../shared/global-dictation").GlobalDictationRendererCommand) => void
     > = [];
+    const acquireLease = vi.fn(async () => false);
     const descriptor = Object.getOwnPropertyDescriptor(window, "globalDictation");
     Object.defineProperty(window, "globalDictation", {
       configurable: true,
       value: {
         invoke: async (channel: string) =>
-          channel === "codex:dictation:settings:read"
-            ? {
-                microphoneInputDeviceId: null,
-                keepGlobalBarVisible: false,
-                playStartSound: true,
-                playStopSound: true,
-                globalShortcutNudgeDismissed: false,
-                dictionary: [],
-              }
-            : null,
+          channel === "codex:dictation:microphone-lease:acquire"
+            ? acquireLease()
+            : channel === "codex:dictation:settings:read"
+              ? {
+                  microphoneInputDeviceId: null,
+                  keepGlobalBarVisible: false,
+                  playStartSound: true,
+                  playStopSound: true,
+                  globalShortcutNudgeDismissed: false,
+                  dictionary: [],
+                }
+              : null,
         onCommand: (callback: (typeof commandHandlers)[number]) => {
           commandHandlers.push(callback);
           return () => {
@@ -105,7 +109,11 @@ describe("GlobalDictationRoot", () => {
       },
     });
     try {
-      render(<GlobalDictationRoot />);
+      const { unmount } = render(
+        <StrictMode>
+          <GlobalDictationRoot />
+        </StrictMode>,
+      );
       await waitFor(() => expect(sendEvent).toHaveBeenCalledWith({ type: "ready" }));
       expect(screen.queryByText("Dictation ready")).toBeNull();
       await act(async () => {
@@ -117,6 +125,21 @@ describe("GlobalDictationRoot", () => {
         await Promise.resolve();
       });
       await screen.findByText("Dictation ready");
+      await act(async () => {
+        commandHandlers[0]?.({
+          type: "start",
+          sessionId: "global-session",
+          requestId: "capture-request",
+          deadlineAtMs: Date.now() + 5000,
+          gesture: "toggle",
+        });
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(acquireLease).toHaveBeenCalledOnce());
+      await act(async () => {
+        unmount();
+        await Promise.resolve();
+      });
     } finally {
       if (descriptor) Object.defineProperty(window, "globalDictation", descriptor);
       else Reflect.deleteProperty(window, "globalDictation");

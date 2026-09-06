@@ -1,4 +1,9 @@
 import {
+  DictationStreamDiagnosticsSchema,
+  emptyDictationStreamDiagnostics,
+  type DictationStreamDiagnostics,
+} from "../../../shared/dictation-diagnostics";
+import {
   DICTATION_STREAM_MAX_OUTSTANDING_AUDIO_BYTES,
   DICTATION_STREAMING_WINDOW_MESSAGE,
   type DictationStreamingHostMessage,
@@ -25,20 +30,24 @@ class MainDictationStreamingAttempt implements DictationStreamingAttempt {
   #finishRequested = false;
   #finishTimer: ReturnType<typeof setTimeout> | null = null;
   #failed = false;
+  #diagnostics = emptyDictationStreamDiagnostics();
+  diagnostics(): DictationStreamDiagnostics {
+    return { ...this.#diagnostics };
+  }
   #finalText = "";
   #finishPromise: Promise<string | null>;
   #resolveFinish: (text: string | null) => void = () => undefined;
   readonly #handleHostPortMessage = (event: MessageEvent): void => {
     this.#onHostMessage(event.data);
   };
-  readonly #handleHostPortMessageError = (): void => this.#markFailed();
+  readonly #handleHostPortMessageError = (): void => this.#markFailed("port-failed");
   readonly #handleWorkletMessage = (event: MessageEvent<{ readonly pcm16?: unknown }>): void => {
     if (this.#finishRequested || this.#failed) return;
     const pcm16 = event.data.pcm16;
     if (!(pcm16 instanceof ArrayBuffer) || pcm16.byteLength === 0) return;
     const byteLength = pcm16.byteLength;
     if (this.#outstandingBytes + byteLength > DICTATION_STREAM_MAX_OUTSTANDING_AUDIO_BYTES) {
-      this.#markFailed();
+      this.#markFailed("backpressure-overflow");
       return;
     }
     this.#outstandingBytes += byteLength;
@@ -89,7 +98,7 @@ class MainDictationStreamingAttempt implements DictationStreamingAttempt {
         this.#port.postMessage({ type: "finish" });
       }
     } catch (error) {
-      this.#markFailed();
+      this.#markFailed("audio-worklet-failed");
       throw error;
     }
   }
@@ -99,18 +108,26 @@ class MainDictationStreamingAttempt implements DictationStreamingAttempt {
     this.#stopAudioGraph();
     if (this.#failed) return Promise.resolve(null);
     this.#port?.postMessage({ type: "finish" });
-    this.#finishTimer ??= setTimeout(() => this.#markFailed(), RENDERER_STREAM_FINISH_TIMEOUT_MS);
+    this.#finishTimer ??= setTimeout(
+      () => this.#markFailed("renderer-finish-timeout"),
+      RENDERER_STREAM_FINISH_TIMEOUT_MS,
+    );
     return this.#finishPromise;
   }
 
   abort(): void {
     if (!this.#failed) this.#port?.postMessage({ type: "abort" });
-    this.#markFailed();
+    this.#markFailed("aborted");
   }
 
   #onHostMessage(input: unknown): void {
     if (!isHostMessage(input) || this.#failed) return;
     switch (input.type) {
+      case "diagnostics": {
+        const parsed = DictationStreamDiagnosticsSchema.safeParse(input.diagnostics);
+        if (parsed.success) this.#diagnostics = parsed.data;
+        return;
+      }
       case "audio-ack":
         this.#outstandingBytes = Math.max(0, input.outstandingBytes);
         return;
@@ -118,7 +135,7 @@ class MainDictationStreamingAttempt implements DictationStreamingAttempt {
         this.#finalText = input.text.trim();
         return;
       case "failed":
-        this.#markFailed();
+        this.#markFailed(input.error.code);
         return;
       case "closed":
         if (input.outcome.kind === "completed") {
@@ -133,8 +150,9 @@ class MainDictationStreamingAttempt implements DictationStreamingAttempt {
     }
   }
 
-  #markFailed(): void {
+  #markFailed(code: DictationStreamDiagnostics["failureCode"] = "port-failed"): void {
     if (this.#failed) return;
+    this.#diagnostics.failureCode ??= code;
     this.#failed = true;
     if (this.#finishTimer) clearTimeout(this.#finishTimer);
     this.#finishTimer = null;

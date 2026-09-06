@@ -73,6 +73,12 @@ export const globalDictationTransport = {
       "codex:dictation:history:finalize",
       input,
     ),
+  setHistoryDiagnostics: (input: FirstArg<"codex:dictation:history:set-diagnostics">) =>
+    invokeRendererControlThrough(
+      globalDictationInvokePort,
+      "codex:dictation:history:set-diagnostics",
+      input,
+    ),
   setHistoryTranscript: (input: FirstArg<"codex:dictation:history:set-transcript">) =>
     invokePlainCommandThrough(setHistoryTranscriptCommand, globalDictationInvokePort, input),
   transcribe: (input: FirstArg<"codex:dictation:transcribe">) =>

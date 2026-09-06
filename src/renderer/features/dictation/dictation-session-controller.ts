@@ -1,3 +1,10 @@
+import {
+  emptyDictationStreamDiagnostics,
+  type DictationDiagnostics,
+  type DictationHttpDiagnostics,
+  type DictationStreamDiagnostics,
+} from "../../../shared/dictation-diagnostics";
+import { DictationDiagnosticsRecorder } from "./dictation-diagnostics-recorder";
 import type {
   DictationError,
   DictationGesture,
@@ -66,6 +73,7 @@ export interface DictationWaveformSession {
 }
 
 export interface DictationStreamingAttempt {
+  diagnostics?(): DictationStreamDiagnostics;
   start(stream: MediaStream): Promise<void>;
   finish(): Promise<string | null>;
   abort(): void;
@@ -93,12 +101,24 @@ export interface DictationControllerPorts {
     prepare(sessionId: string): Promise<DictationStreamingAttempt>;
   };
   readonly buffered: {
-    transcribe(blob: Blob, signal: AbortSignal, sessionId: string): Promise<string>;
+    transcribe(
+      blob: Blob,
+      signal: AbortSignal,
+      sessionId: string,
+      onDiagnostics: (value: DictationHttpDiagnostics) => void,
+    ): Promise<string>;
   };
   readonly cleanup: {
-    transcript(transcript: string, signal: AbortSignal, sessionId: string): Promise<string>;
+    readonly enabled: boolean;
+    transcript(
+      transcript: string,
+      signal: AbortSignal,
+      sessionId: string,
+      onDiagnostics: (value: DictationHttpDiagnostics) => void,
+    ): Promise<string>;
   };
   readonly history: {
+    diagnostics(sessionId: string, diagnostics: DictationDiagnostics): Promise<void>;
     create(input: {
       readonly sessionId: string;
       readonly surface: DictationSurface;
@@ -116,9 +136,10 @@ export interface DictationControllerPorts {
   readonly completion: {
     apply(input: {
       readonly sessionId: string;
+      readonly signal: AbortSignal;
       readonly action: Exclude<DictationStopAction, "abort">;
       readonly transcript: string;
-    }): Promise<void> | void;
+    }): Promise<{ readonly clipboardRestoreMs: number } | void> | void;
   };
   readonly clock: {
     now(): number;
@@ -139,12 +160,17 @@ interface ActiveSession {
   waveform: DictationWaveformSession | null;
   streaming: DictationStreamingAttempt | null;
   startedAtMs: number | null;
+  stoppedAtMs: number | null;
+  diagnostics: DictationDiagnosticsRecorder;
+  finishRecordingPhase: (() => void) | null;
+  finishStopPhase: (() => void) | null;
   stopAction: Exclude<DictationStopAction, "abort">;
   durationTimer: Timer | null;
   maximumTimer: Timer | null;
   transcriptAbort: AbortController | null;
   historyQueue: Promise<void>;
   retainedAudio: Blob | null;
+  retainedTranscript: string | null;
   completed: boolean;
   captureError: DictationError | null;
   leaseAcquired: boolean;
@@ -216,12 +242,17 @@ export class DictationSessionController {
       waveform: null,
       streaming: null,
       startedAtMs: null,
+      stoppedAtMs: null,
+      diagnostics: new DictationDiagnosticsRecorder(this.#ports.clock.now, input.surface),
+      finishRecordingPhase: null,
+      finishStopPhase: null,
       stopAction: "insert",
       durationTimer: null,
       maximumTimer: null,
       transcriptAbort: null,
       historyQueue: Promise.resolve(),
       retainedAudio: null,
+      retainedTranscript: null,
       completed: false,
       captureError: null,
       leaseAcquired: false,
@@ -259,7 +290,9 @@ export class DictationSessionController {
     const streamingPromise = this.#ports.streaming.prepare(session.id).catch(() => null);
     let permission: MicrophoneAccessResult;
     try {
-      permission = await this.#ports.permissions.request();
+      permission = await session.diagnostics.measure("permission", () =>
+        this.#ports.permissions.request(),
+      );
     } catch (error) {
       if (!this.#isCurrent(session)) return;
       void streamingPromise.then((attempt) => attempt?.abort());
@@ -294,7 +327,7 @@ export class DictationSessionController {
     this.#publish({ kind: "acquiring-stream", sessionId: session.id });
     let stream: MediaStream;
     try {
-      stream = await this.#ports.devices.acquire();
+      stream = await session.diagnostics.measure("microphone", () => this.#ports.devices.acquire());
     } catch (error) {
       if (!this.#isCurrent(session)) return;
       void streamingPromise.then((attempt) => attempt?.abort());
@@ -321,6 +354,7 @@ export class DictationSessionController {
       });
       session.recorder = recorder;
       session.startedAtMs = this.#ports.clock.now();
+      session.finishRecordingPhase = session.diagnostics.phase("recording");
       session.waveform = this.#ports.waveform.start(stream, (waveform) => {
         if (!this.#isCurrent(session) || this.#snapshot.kind !== "recording") return;
         this.#publish({ ...this.#snapshot, waveform: [...waveform] });
@@ -335,7 +369,7 @@ export class DictationSessionController {
         .catch(() => undefined);
       void session.streaming?.start(stream).catch(() => {
         session.streaming?.abort();
-        session.streaming = null;
+        // Keep the terminal attempt so its failure evidence survives buffered recovery.
       });
       recorder.start(DICTATION_HISTORY_CHUNK_INTERVAL_MS);
       this.#publish({ kind: "recording", sessionId: session.id, durationMs: 0, waveform: [] });
@@ -367,6 +401,7 @@ export class DictationSessionController {
     }
     if (this.#snapshot.kind === "stopping" || this.#snapshot.kind === "transcribing") return;
     if (this.#snapshot.kind !== "recording") return;
+    this.#markStopped(session);
     const durationMs = this.#duration(session);
     this.#publish({
       kind: "stopping",
@@ -397,6 +432,12 @@ export class DictationSessionController {
     ) {
       return;
     }
+    session.diagnostics = new DictationDiagnosticsRecorder(
+      this.#ports.clock.now,
+      session.surface,
+      "retry",
+      session.diagnostics.attempt + 1,
+    );
     await this.#transcribe(session, session.retainedAudio);
   }
 
@@ -441,6 +482,8 @@ export class DictationSessionController {
   async #onRecorderStopped(session: ActiveSession): Promise<void> {
     if (!this.#isCurrent(session) || session.completed) return;
     session.completed = true;
+    this.#markStopped(session);
+    session.finishStopPhase?.();
     const durationMs = this.#duration(session);
     const recorder = session.recorder;
     const mimeType = recorder?.mimeType || session.chunks[0]?.type || "application/octet-stream";
@@ -454,6 +497,7 @@ export class DictationSessionController {
       await this.#ports.history
         .finalize({ sessionId: session.id, status: "cancelled", durationMs })
         .catch(() => undefined);
+      void this.#saveDiagnostics(session, "cancelled");
       if (this.#isCurrent(session)) {
         this.#active = null;
         this.#publish(IDLE);
@@ -470,6 +514,7 @@ export class DictationSessionController {
     session.retainedAudio = audio;
     if (session.captureError) {
       session.streaming?.abort();
+      void this.#saveDiagnostics(session, "failed");
       this.#publish({
         kind: "retryable-error",
         sessionId: session.id,
@@ -495,19 +540,46 @@ export class DictationSessionController {
     session.transcriptAbort = abortController;
     const attemptGeneration = session.generation;
     try {
-      let transcript = (await session.streaming?.finish().catch(() => null))?.trim() ?? "";
+      let transcript =
+        session.retainedTranscript ??
+        (session.diagnostics.attempt === 1
+          ? ((
+              await session.diagnostics
+                .measure("stream-finalize", async () => (await session.streaming?.finish()) ?? null)
+                .catch(() => null)
+            )?.trim() ?? "")
+          : "");
+      if (transcript)
+        session.diagnostics.useTransport(session.retainedTranscript ? "retained" : "websocket");
       if (!transcript) {
         transcript = (
-          await this.#ports.buffered.transcribe(audio, abortController.signal, session.id)
+          await session.diagnostics.measure("buffered", () =>
+            this.#ports.buffered.transcribe(
+              audio,
+              abortController.signal,
+              session.id,
+              session.diagnostics.request,
+            ),
+          )
         ).trim();
+        if (transcript) session.diagnostics.useTransport("buffered");
       }
-      if (transcript) {
+      if (transcript && !session.retainedTranscript && this.#ports.cleanup.enabled) {
         transcript = (
-          await this.#ports.cleanup
-            .transcript(transcript, abortController.signal, session.id)
+          await session.diagnostics
+            .measure("cleanup", () =>
+              this.#ports.cleanup.transcript(
+                transcript,
+                abortController.signal,
+                session.id,
+                session.diagnostics.request,
+              ),
+            )
             .catch(() => transcript)
         ).trim();
       }
+      if (!this.#ports.cleanup.enabled || session.retainedTranscript)
+        session.diagnostics.phase("cleanup")("skipped");
       if (
         !this.#isCurrent(session) ||
         session.generation !== attemptGeneration ||
@@ -517,37 +589,78 @@ export class DictationSessionController {
       }
       if (!transcript)
         throw Object.assign(new Error("Empty dictation transcript"), { status: 502 });
-      await session.historyQueue;
-      await this.#ports.history
-        .finalize({
-          sessionId: session.id,
-          status: "completed",
-          durationMs,
-          transcript,
-        })
-        .catch(() => undefined);
+      if (!session.retainedTranscript)
+        await session.diagnostics
+          .measure("history", async () => {
+            await session.historyQueue;
+            await this.#ports.history.finalize({
+              sessionId: session.id,
+              status: "completed",
+              durationMs,
+              transcript,
+            });
+          })
+          .catch(() => undefined);
       if (!this.#isCurrent(session) || abortController.signal.aborted) return;
-      await this.#ports.completion.apply({
-        sessionId: session.id,
-        action: session.stopAction,
-        transcript,
-      });
+      session.retainedTranscript = transcript;
+      const delivery = await session.diagnostics.measure(
+        "delivery",
+        async () =>
+          await this.#ports.completion.apply({
+            sessionId: session.id,
+            signal: abortController.signal,
+            action: session.stopAction,
+            transcript,
+          }),
+      );
+      session.diagnostics.delivered(delivery?.clipboardRestoreMs);
+      void this.#saveDiagnostics(session, "completed");
       if (!this.#isCurrent(session)) return;
       session.retainedAudio = null;
       this.#active = null;
       this.#publish(IDLE);
     } catch (error) {
       if (!this.#isCurrent(session) || abortController.signal.aborted) return;
-      session.completed = false;
+      if (error instanceof DOMException && error.name === "AbortError") {
+        this.#invalidateAndRelease(session, "cancelled");
+        return;
+      }
+      void this.#saveDiagnostics(session, "failed");
       this.#publish({
         kind: "retryable-error",
         sessionId: session.id,
-        error: classifyDictationTranscriptionError(error),
+        error: session.retainedTranscript
+          ? { kind: "paste-failed", operation: "paste", retryable: true }
+          : classifyDictationTranscriptionError(error),
         canRetryRecording: true,
       });
     } finally {
       if (session.transcriptAbort === abortController) session.transcriptAbort = null;
     }
+  }
+
+  #markStopped(session: ActiveSession): void {
+    if (session.stoppedAtMs !== null) return;
+    session.stoppedAtMs = this.#ports.clock.now();
+    session.diagnostics.stopped();
+    session.finishRecordingPhase?.();
+    session.finishStopPhase = session.diagnostics.phase("recorder-stop");
+  }
+
+  async #saveDiagnostics(
+    session: ActiveSession,
+    outcome: DictationDiagnostics["outcome"],
+  ): Promise<void> {
+    const streaming =
+      session.diagnostics.attempt === 1
+        ? (session.streaming?.diagnostics?.() ?? {
+            ...emptyDictationStreamDiagnostics(),
+            failureCode: "stream-unavailable" as const,
+          })
+        : undefined;
+    const report = session.diagnostics.snapshot(outcome, streaming);
+    await session.historyQueue;
+    await this.#ports.history.diagnostics(session.id, report).catch(() => undefined);
   }
 
   #scheduleDuration(session: ActiveSession): void {
@@ -561,7 +674,7 @@ export class DictationSessionController {
   #duration(session: ActiveSession): number {
     return session.startedAtMs === null
       ? 0
-      : Math.max(0, this.#ports.clock.now() - session.startedAtMs);
+      : Math.max(0, (session.stoppedAtMs ?? this.#ports.clock.now()) - session.startedAtMs);
   }
 
   #failWithoutAudio(session: ActiveSession, error: DictationError): void {
@@ -577,21 +690,23 @@ export class DictationSessionController {
 
   #invalidateAndRelease(session: ActiveSession, historyStatus: "cancelled"): void {
     ++this.#generation;
+    this.#markStopped(session);
     session.transcriptAbort?.abort();
     session.streaming?.abort();
     this.#releaseCapture(session);
     this.#releaseMicrophoneLease(session);
     this.#active = null;
     this.#publish(IDLE);
-    void session.historyQueue.then(() =>
-      this.#ports.history
+    void session.historyQueue.then(async () => {
+      await this.#ports.history
         .finalize({
           sessionId: session.id,
           status: historyStatus,
           durationMs: this.#duration(session),
         })
-        .catch(() => undefined),
-    );
+        .catch(() => undefined);
+      await this.#saveDiagnostics(session, "cancelled");
+    });
   }
 
   #releaseCapture(session: ActiveSession): void {
@@ -643,4 +758,5 @@ export const createNoopDictationHistoryPort = (): DictationControllerPorts["hist
   create: async () => undefined,
   append: async () => undefined,
   finalize: async () => undefined,
+  diagnostics: async () => undefined,
 });

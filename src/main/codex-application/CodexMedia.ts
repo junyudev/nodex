@@ -20,6 +20,9 @@ import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexAccount } from "./CodexAccount";
 import { CodexConnection } from "./CodexConnection";
 import { ChatGptDesktop } from "./ChatGptDesktop";
+import type { DictationTextResult } from "../../shared/dictation-diagnostics";
+import { DictationRequestDiagnostics } from "../dictation/dictation-request-diagnostics";
+import { buildDictationStreamConnectInfo } from "../dictation/dictation-stream-connect-info";
 
 const CODEX_DICTATION_SHORTCUT_LABEL = "Ctrl+M";
 const CODEX_DICTATION_BASE64_HEADER = "X-Codex-Base64";
@@ -64,13 +67,15 @@ export class CodexMedia extends Context.Service<
   {
     readonly dictationState: Effect.Effect<CodexDictationStateSnapshot>;
     readonly transcribe: (input: {
+      readonly requestId: string;
       readonly contentType: string;
       readonly base64Payload: string;
-    }) => Effect.Effect<string, CodexMediaError>;
+    }) => Effect.Effect<DictationTextResult>;
     readonly cleanupTranscript: (input: {
+      readonly requestId: string;
       readonly transcript: string;
       readonly surroundingText: string | null;
-    }) => Effect.Effect<string>;
+    }) => Effect.Effect<DictationTextResult>;
     readonly prepareStreamingConnectInfo: Effect.Effect<
       DictationStreamingConnectInfo,
       CodexMediaError
@@ -246,12 +251,16 @@ export const live: Layer.Layer<
       ),
     );
 
-    const transcribe: CodexMedia["Service"]["transcribe"] = (input) =>
+    const requestTranscription = (
+      input: Parameters<CodexMedia["Service"]["transcribe"]>[0],
+      diagnostics: DictationRequestDiagnostics,
+    ) =>
       Effect.gen(function* () {
         const baseUrl = yield* readBaseUrl;
         const response = yield* chatgpt
           .request({
             action: "transcribe audio",
+            onRequestHeaders: diagnostics.sentHeaders,
             baseUrl,
             path: "/transcribe",
             method: "POST",
@@ -273,6 +282,7 @@ export const live: Layer.Layer<
                 }),
             ),
           );
+        diagnostics.response(response);
         const body = yield* responseText(response);
         if (!response.ok) {
           yield* Effect.logWarning("Dictation transcribe proxy failed").pipe(
@@ -291,8 +301,23 @@ export const live: Layer.Layer<
         }).pipe(Effect.orElseSucceed(() => body.trim()));
       });
 
+    const transcribe: CodexMedia["Service"]["transcribe"] = (input) =>
+      Effect.gen(function* () {
+        const diagnostics = new DictationRequestDiagnostics("transcription", input.requestId);
+        return yield* requestTranscription(input, diagnostics).pipe(
+          Effect.map((text) => ({
+            text,
+            diagnostics: diagnostics.finish(text.trim() ? "completed" : "empty"),
+          })),
+          Effect.catch(() =>
+            Effect.succeed({ text: "", diagnostics: diagnostics.finish("failed") }),
+          ),
+        );
+      });
+
     const requestCleanupTranscript = Effect.fn("CodexMedia.requestCleanupTranscript")(function* (
       input: Parameters<CodexMedia["Service"]["cleanupTranscript"]>[0],
+      diagnostics: DictationRequestDiagnostics,
     ) {
       const original = input.transcript.trim();
       if (!original) return "";
@@ -300,6 +325,7 @@ export const live: Layer.Layer<
       const baseUrl = yield* readBaseUrl;
       const response = yield* chatgpt.request({
         action: "clean up a dictation transcript",
+        onRequestHeaders: diagnostics.sentHeaders,
         baseUrl,
         path: "/codex/responses",
         method: "POST",
@@ -337,6 +363,7 @@ export const live: Layer.Layer<
         refreshOn401: true,
         missingAuthErrorMessage: "ChatGPT authentication is required for dictation.",
       });
+      diagnostics.response(response);
       if (!response.ok) {
         return yield* new CodexMediaError({
           operation: "cleanup-response",
@@ -345,12 +372,24 @@ export const live: Layer.Layer<
         });
       }
       const cleaned = yield* parseCleanupStreamResponse(yield* responseText(response));
-      return cleaned ?? original;
+      return cleaned ?? "";
     });
     const cleanupTranscript: CodexMedia["Service"]["cleanupTranscript"] = (input) =>
-      requestCleanupTranscript(input).pipe(
-        Effect.catch(() => Effect.succeed(input.transcript.trim())),
-      );
+      Effect.gen(function* () {
+        const diagnostics = new DictationRequestDiagnostics("cleanup", input.requestId);
+        return yield* requestCleanupTranscript(input, diagnostics).pipe(
+          Effect.map((text) => ({
+            text: text.trim() || input.transcript.trim(),
+            diagnostics: diagnostics.finish(text.trim() ? "completed" : "empty"),
+          })),
+          Effect.catch(() =>
+            Effect.succeed({
+              text: input.transcript.trim(),
+              diagnostics: diagnostics.finish("failed"),
+            }),
+          ),
+        );
+      });
 
     const makeDictationState = Effect.fn("CodexMedia.makeDictationState")(function* (
       method: CodexDictationStateSnapshot["authMethod"],
@@ -455,72 +494,39 @@ export const live: Layer.Layer<
           status: 401,
         });
       }
-      if ((yield* SubscriptionRef.get(streamingAvailability)) === "unavailable") {
+      const auth = yield* chatgpt.authStatus(true, false).pipe(
+        Effect.mapError(
+          (cause) =>
+            new CodexMediaError({
+              operation: "streaming-auth",
+              message: "Unable to prepare dictation authentication",
+              cause,
+            }),
+        ),
+      );
+      const token = auth.authToken?.trim();
+      if (
+        normalizeAuthMethod(typeof auth.authMethod === "string" ? auth.authMethod : null) !==
+          "chatgpt" ||
+        !token
+      ) {
         return yield* new CodexMediaError({
-          operation: "streaming-unavailable",
-          message: "Streaming dictation is unavailable",
-          status: 404,
+          operation: "streaming-auth",
+          message: "ChatGPT authentication is required for dictation",
+          status: 401,
         });
       }
       const baseUrl = yield* readBaseUrl;
-      const response = yield* chatgpt
-        .request({
-          action: "prepare streaming dictation",
-          baseUrl,
-          path: "/codex/dictation-stream-connect-info",
-          method: "POST",
-          refreshOn401: true,
-          missingAuthErrorMessage: "ChatGPT authentication is required for dictation.",
-        })
-        .pipe(
-          Effect.mapError(
-            (cause) =>
-              new CodexMediaError({
-                operation: "streaming-connect-info-request",
-                message: "Unable to prepare streaming dictation",
-                cause,
-              }),
-          ),
-        );
-      if (!response.ok) {
-        if (response.status === 404 || response.status === 410 || response.status === 501) {
-          yield* setStreamingAvailability("unavailable");
-        }
-        return yield* new CodexMediaError({
-          operation: "streaming-connect-info-response",
-          message: "Unable to prepare streaming dictation",
-          status: response.status,
-        });
-      }
-      const body = yield* Effect.tryPromise({
-        try: () => response.json(),
-        catch: (cause) =>
+      const info = yield* Effect.try({
+        try: () => buildDictationStreamConnectInfo(baseUrl, token),
+        catch: () =>
           new CodexMediaError({
-            operation: "streaming-connect-info-decode",
-            message: "Invalid streaming dictation response",
-            cause,
+            operation: "streaming-connect-info",
+            message: "Unable to prepare the dictation stream",
           }),
       });
-      if (
-        typeof body !== "object" ||
-        body === null ||
-        !("websocketUrl" in body) ||
-        typeof body.websocketUrl !== "string" ||
-        !("protocols" in body) ||
-        !Array.isArray(body.protocols) ||
-        !body.protocols.every((protocol: unknown) => typeof protocol === "string")
-      ) {
-        return yield* new CodexMediaError({
-          operation: "streaming-connect-info-decode",
-          message: "Invalid streaming dictation response",
-          status: 502,
-        });
-      }
       yield* setStreamingAvailability("available");
-      return {
-        websocketUrl: body.websocketUrl,
-        protocols: body.protocols,
-      } satisfies DictationStreamingConnectInfo;
+      return info;
     });
 
     const resolveImage: CodexMedia["Service"]["resolveImage"] = (input) => {

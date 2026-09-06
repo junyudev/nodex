@@ -19,7 +19,7 @@ import {
 interface BuildStamp {
   readonly architecture: NativeRuntimeArchitecture;
   readonly minimumMacOS: "15.0";
-  readonly protocolVersion: 2;
+  readonly protocolVersion: 3;
   readonly sourceSha256: string;
 }
 
@@ -57,7 +57,7 @@ const main = (): void => {
   const stamp: BuildStamp = {
     architecture: resolveArchitecture(),
     minimumMacOS: "15.0",
-    protocolVersion: 2,
+    protocolVersion: 3,
     sourceSha256: createHash("sha256").update(readFileSync(sourcePath)).digest("hex"),
   };
   const stampPath = `${outputPath}.build.json`;

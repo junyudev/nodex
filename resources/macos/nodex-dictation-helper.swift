@@ -4,7 +4,7 @@ import CoreAudio
 import CoreGraphics
 import Foundation
 
-private let protocolVersion = 2
+private let protocolVersion = 3
 private let maximumMessageBytes = 64 * 1024
 private let maximumPasteboardFormatBytes = 8 * 1024 * 1024
 private let maximumPasteboardSnapshotBytes = 32 * 1024 * 1024
@@ -178,13 +178,17 @@ private func handle(_ request: [String: Any]) {
                 emitError(id: id, code: "paste-failed")
                 return
             }
+            let pasteDispatchedAt = DispatchTime.now().uptimeNanoseconds
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
                 restorePasteboardIfUnchanged(
                     snapshot,
                     insertedText: text,
                     expectedChangeCount: dictationChangeCount
                 )
-                emitResponse(id: id, value: ["pasted": true])
+                emitResponse(id: id, value: [
+                    "pasted": true,
+                    "clipboardRestoreMs": Double(DispatchTime.now().uptimeNanoseconds - pasteDispatchedAt) / 1_000_000,
+                ])
             }
         }
     case "queryBuiltInMic":

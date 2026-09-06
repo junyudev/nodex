@@ -18,6 +18,7 @@ import {
   type DictationRecordingFinalizeInput,
   type DictationRecordingMetadata,
   type DictationRecordingSetTranscriptInput,
+  type DictationRecordingSetDiagnosticsInput,
 } from "../../shared/dictation-history";
 import { isMissingPathError, syncDirectory, writeDurableJson } from "../durable-json-file";
 
@@ -51,6 +52,7 @@ export interface DictationRecordingStore {
   create(input: DictationRecordingCreateInput): Promise<DictationRecordingMetadata>;
   append(input: DictationRecordingAppendInput): Promise<DictationRecordingMetadata>;
   finalize(input: DictationRecordingFinalizeInput): Promise<DictationRecordingMetadata>;
+  setDiagnostics(input: DictationRecordingSetDiagnosticsInput): Promise<DictationRecordingMetadata>;
   setTranscript(input: DictationRecordingSetTranscriptInput): Promise<DictationRecordingMetadata>;
   list(): Promise<DictationRecordingMetadata[]>;
   readAudio(id: string): Promise<DictationRecordingAudio>;
@@ -238,6 +240,29 @@ export class FileDictationRecordingStore implements DictationRecordingStore {
     });
     await this.enforceRetention();
     return metadata;
+  }
+
+  async setDiagnostics(
+    input: DictationRecordingSetDiagnosticsInput,
+  ): Promise<DictationRecordingMetadata> {
+    const id = parseRecordingId(input.id);
+    await this.ensureInitialized();
+    return await this.serializeSession(id, async () => {
+      const current = await this.readStoredRecording(id);
+      if (
+        current.metadata.diagnostics &&
+        current.metadata.diagnostics.attempt > input.diagnostics.attempt
+      )
+        return cloneMetadata(current.metadata);
+      const metadata = parseInputMetadata({
+        ...current.metadata,
+        diagnostics: input.diagnostics,
+        updatedAtMs: this.nextUpdatedAt(current.metadata),
+      });
+      await this.writeMetadata(current.directoryPath, metadata);
+      this.recordings.set(id, { ...current, metadata });
+      return cloneMetadata(metadata);
+    });
   }
 
   async setTranscript(
@@ -854,7 +879,7 @@ function hashRecordingId(id: string): string {
 }
 
 function cloneMetadata(metadata: DictationRecordingMetadata): DictationRecordingMetadata {
-  return { ...metadata };
+  return structuredClone(metadata);
 }
 
 function compareNewestRecording(

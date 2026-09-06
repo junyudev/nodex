@@ -1,3 +1,4 @@
+import { dictationTextResult } from "../../../../tests/fixtures/dictation-diagnostics";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -102,8 +103,9 @@ it.effect("registers application channels directly against their owning modules"
           auth: "chatgpt",
         },
       }),
-      transcribe: () => Effect.succeed("hello"),
-      cleanupTranscript: (input) => Effect.succeed(input.transcript),
+      transcribe: () => Effect.succeed(dictationTextResult("hello")),
+      cleanupTranscript: (input) =>
+        Effect.succeed(dictationTextResult(input.transcript, "cleanup")),
       prepareStreamingConnectInfo: Effect.die("unused"),
       resolveImage: () => Effect.succeed({ ok: false, message: "not available", status: null }),
     });

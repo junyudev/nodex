@@ -18,6 +18,8 @@ import {
 } from "./dictation-streaming-session-service";
 
 class ManualClock implements DictationStreamingClock {
+  time = 0;
+  now = (): number => this.time;
   readonly timers: Array<{
     callback: () => void;
     delayMs: number;
@@ -163,7 +165,9 @@ describe("DictationStreamingSessionService", () => {
         protocols: ["realtime-v1"],
       },
     ]);
-    expect(harness.port.messages).toEqual([{ type: "prepared" }]);
+    expect(harness.port.messages.filter((message) => message.type !== "diagnostics")).toEqual([
+      { type: "prepared" },
+    ]);
 
     harness.socket.emitOpen();
     expect(JSON.parse(harness.socket.sent[0] ?? "null")).toEqual({
@@ -198,7 +202,9 @@ describe("DictationStreamingSessionService", () => {
       type: "audio.append",
       audio: "AAECAw==",
     });
-    expect(harness.port.messages.slice(1)).toEqual([
+    expect(
+      harness.port.messages.filter((message) => message.type !== "diagnostics").slice(1),
+    ).toEqual([
       { type: "audio-ack", sequence: 0, byteLength: 4, outstandingBytes: 0 },
       { type: "started" },
     ]);
@@ -246,7 +252,9 @@ describe("DictationStreamingSessionService", () => {
       sequence: 0,
       pcm16: new ArrayBuffer(DICTATION_STREAM_MAX_OUTSTANDING_AUDIO_BYTES),
     });
-    expect(harness.port.messages).toEqual([{ type: "prepared" }]);
+    expect(harness.port.messages.filter((message) => message.type !== "diagnostics")).toEqual([
+      { type: "prepared" },
+    ]);
 
     harness.port.emit({ type: "audio-frame", sequence: 1, pcm16: new ArrayBuffer(2) });
     expect(readFailureCode(harness.port)).toBe("backpressure-overflow");
@@ -438,7 +446,7 @@ describe("DictationStreamingSessionService", () => {
     service.prepare({ ownerId: "owner", sessionId: "session", sampleRateHz: 48_000, port });
 
     port.emit({ type: "abort" });
-    expect(port.messages).toEqual([
+    expect(port.messages.filter((message) => message.type !== "diagnostics")).toEqual([
       { type: "closed", outcome: { kind: "aborted", shouldFallback: false } },
     ]);
     expect(signals[0]?.aborted).toBe(true);
@@ -505,3 +513,38 @@ async function flushPromises(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
 }
+
+test("retains handshake, actual audio sends and abnormal closure evidence for buffered recovery", async () => {
+  const harness = await createHarness();
+  harness.clock.time = 100;
+  harness.socket.emitOpen();
+  harness.clock.time = 140;
+  emitSessionStarted(harness.socket, 0);
+  harness.port.emit({
+    type: "audio-frame",
+    sequence: 0,
+    pcm16: new Uint8Array([1, 2, 3, 4]).buffer,
+  });
+  harness.clock.time = 300;
+  harness.socket.emitClose({ code: 1006, wasClean: false, reason: "private server details" });
+  const message = harness.port.messages.findLast((entry) => entry.type === "diagnostics");
+  expect(message).toEqual({
+    type: "diagnostics",
+    diagnostics: {
+      attempted: true,
+      opened: true,
+      started: true,
+      finalReceived: false,
+      sentAudioFrames: 1,
+      sentAudioBytes: 4,
+      transcriptEvents: 0,
+      connectInfoMs: 0,
+      handshakeMs: 100,
+      sessionStartMs: 40,
+      selectedProtocol: "none",
+      providerMode: "streaming_sse",
+      closeCode: 1006,
+      failureCode: "abnormal-close",
+    },
+  });
+});

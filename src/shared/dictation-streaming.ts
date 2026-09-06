@@ -1,3 +1,4 @@
+import type { DictationStreamDiagnostics } from "./dictation-diagnostics";
 export const DICTATION_STREAM_START_TIMEOUT_MS = 10_000;
 export const DICTATION_STREAM_FINISH_TIMEOUT_MS = 8_000;
 export const DICTATION_STREAM_MAX_OUTSTANDING_AUDIO_BYTES = 4_194_304 as const;
@@ -78,22 +79,24 @@ export type DictationStreamingClientMessage =
   | { readonly type: "finish" }
   | { readonly type: "abort" };
 
-export type DictationStreamingFailureCode =
-  | "connect-info-failed"
-  | "invalid-connect-info"
-  | "start-timeout"
-  | "websocket-failed"
-  | "invalid-server-event"
-  | "transcript-failed"
-  | "fatal-session-error"
-  | "closed-before-start"
-  | "unexpected-close"
-  | "abnormal-close"
-  | "finish-timeout"
-  | "backpressure-overflow"
-  | "invalid-audio-frame"
-  | "empty-final"
-  | "send-failed";
+export const DICTATION_STREAMING_FAILURE_CODES = [
+  "connect-info-failed",
+  "invalid-connect-info",
+  "start-timeout",
+  "websocket-failed",
+  "invalid-server-event",
+  "transcript-failed",
+  "fatal-session-error",
+  "closed-before-start",
+  "unexpected-close",
+  "abnormal-close",
+  "finish-timeout",
+  "backpressure-overflow",
+  "invalid-audio-frame",
+  "empty-final",
+  "send-failed",
+] as const;
+export type DictationStreamingFailureCode = (typeof DICTATION_STREAMING_FAILURE_CODES)[number];
 
 export interface DictationStreamingFailure {
   readonly code: DictationStreamingFailureCode;
@@ -108,6 +111,7 @@ export type DictationStreamingClosedOutcome =
   | { readonly kind: "aborted"; readonly shouldFallback: false };
 
 export type DictationStreamingHostMessage =
+  | { readonly type: "diagnostics"; readonly diagnostics: DictationStreamDiagnostics }
   | { readonly type: "prepared" }
   | { readonly type: "started" }
   | {

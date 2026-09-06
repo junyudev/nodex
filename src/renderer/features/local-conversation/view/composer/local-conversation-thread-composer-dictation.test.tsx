@@ -1,3 +1,4 @@
+import { dictationTextResult } from "../../../../../../tests/fixtures/dictation-diagnostics";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import {
@@ -296,7 +297,7 @@ describe("ThreadComposer dictation", () => {
         if (channel === "codex:dictation:transcribe") {
           transcribeCallCount += 1;
           if (transcribeFailure) throw transcribeFailure;
-          return transcribePromise ?? transcribeResult;
+          return dictationTextResult(await (transcribePromise ?? transcribeResult));
         }
         return null;
       },

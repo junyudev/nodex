@@ -1,3 +1,4 @@
+import { DictationDiagnosticsSchema, type DictationDiagnostics } from "./dictation-diagnostics";
 import { z } from "zod";
 import type { DictationSurface } from "./dictation";
 
@@ -48,6 +49,7 @@ export const DictationRecordingMetadataSchema = z
     status: DictationRecordingStatusSchema,
     surface: DictationRecordingSurfaceSchema,
     transcript: DictationTranscriptSchema.optional(),
+    diagnostics: DictationDiagnosticsSchema.optional(),
   })
   .strict()
   .superRefine((metadata, context) => {
@@ -89,4 +91,9 @@ export interface DictationRecordingSetTranscriptInput {
 export interface DictationRecordingAudio {
   readonly recording: DictationRecordingMetadata;
   readonly bytes: Uint8Array;
+}
+
+export interface DictationRecordingSetDiagnosticsInput {
+  readonly id: string;
+  readonly diagnostics: DictationDiagnostics;
 }

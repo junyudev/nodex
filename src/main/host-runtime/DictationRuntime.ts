@@ -27,6 +27,7 @@ import type {
   DictationRecordingFinalizeInput,
   DictationRecordingMetadata,
   DictationRecordingSetTranscriptInput,
+  DictationRecordingSetDiagnosticsInput,
 } from "../../shared/dictation-history";
 import type { GlobalDictationRendererEvent } from "../../shared/global-dictation";
 import { APP_RENDERER_URL } from "../../shared/app-renderer-policy";
@@ -116,6 +117,9 @@ export class DictationRuntime extends Context.Service<
     ) => Effect.Effect<DictationRecordingMetadata, DictationRuntimeError>;
     readonly finalizeRecording: (
       input: DictationRecordingFinalizeInput,
+    ) => Effect.Effect<DictationRecordingMetadata, DictationRuntimeError>;
+    readonly setRecordingDiagnostics: (
+      input: DictationRecordingSetDiagnosticsInput,
     ) => Effect.Effect<DictationRecordingMetadata, DictationRuntimeError>;
     readonly setRecordingTranscript: (
       input: DictationRecordingSetTranscriptInput,
@@ -359,6 +363,8 @@ export const live = (options: {
           attemptPromise("append-dictation-recording", () => recordings.append(input)),
         finalizeRecording: (input) =>
           attemptPromise("finalize-dictation-recording", () => recordings.finalize(input)),
+        setRecordingDiagnostics: (input) =>
+          attemptPromise("set-dictation-diagnostics", () => recordings.setDiagnostics(input)),
         setRecordingTranscript: (input) =>
           attemptPromise("set-dictation-transcript", () => recordings.setTranscript(input)),
         listRecordings: attemptPromise("list-dictation-recordings", () => recordings.list()),

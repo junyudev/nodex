@@ -39,6 +39,7 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   "codex:dictation:history:create",
   "codex:dictation:history:append",
   "codex:dictation:history:finalize",
+  "codex:dictation:history:set-diagnostics",
   "codex:dictation:history:set-transcript",
   "codex:dictation:transcribe",
   "codex:dictation:cleanup",

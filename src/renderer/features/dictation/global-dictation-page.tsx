@@ -1,3 +1,4 @@
+import { deliverGlobalDictation } from "./global-dictation-delivery";
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   ActivitySpinnerIcon,
@@ -51,11 +52,18 @@ const createGlobalHistoryPort = (): DictationControllerPorts["history"] =>
     append: globalDictationTransport.appendHistory,
     finalize: globalDictationTransport.finalizeHistory,
     setTranscript: globalDictationTransport.setHistoryTranscript,
+    setDiagnostics: globalDictationTransport.setHistoryDiagnostics,
   });
 
-const transcribe = async (blob: Blob, signal: AbortSignal): Promise<string> =>
+const transcribe: DictationControllerPorts["buffered"]["transcribe"] = async (
+  blob,
+  signal,
+  _sessionId,
+  onDiagnostics,
+) =>
   await transcribeDictationBlob(blob, {
     signal,
+    onDiagnostics,
     transcribe: async (input) => {
       const requestId = crypto.randomUUID();
       const cancel = (): void => {
@@ -404,22 +412,33 @@ export function GlobalDictationRoot() {
         streaming: mainDictationStreamingPort,
         buffered: { transcribe },
         cleanup: {
-          transcript: async (transcript, signal) =>
+          enabled: true,
+          transcript: async (transcript, signal, _sessionId, onDiagnostics) =>
             await cleanupDictationTranscript(transcript, {
               signal,
+              onDiagnostics,
               cleanup: globalDictationTransport.cleanup,
               cancel: globalDictationTransport.cancelTranscription,
             }),
         },
         history: createGlobalHistoryPort(),
         completion: {
-          apply: async ({ sessionId: recordingSessionId, transcript }) => {
+          apply: async ({ sessionId: recordingSessionId, transcript, signal }) => {
             if (appliedCompletionIdsRef.current.has(recordingSessionId)) return;
-            appliedCompletionIdsRef.current.add(recordingSessionId);
             const sessionId = activeSessionIdRef.current;
-            if (!sessionId) return;
+            if (!sessionId) throw new DOMException("Dictation was cancelled", "AbortError");
             completionReportedRef.current = true;
-            await sendEvent({ type: "completed", sessionId, transcript }).catch(() => false);
+            const bridge = window.globalDictation;
+            if (!bridge) throw new Error("Global dictation bridge is unavailable");
+            const delivered = await deliverGlobalDictation({
+              sessionId,
+              transcript,
+              signal,
+              sendEvent,
+              onCommand: bridge.onCommand,
+            });
+            appliedCompletionIdsRef.current.add(recordingSessionId);
+            return delivered;
           },
         },
         clock: defaultClock,
@@ -434,7 +453,6 @@ export function GlobalDictationRoot() {
       .then(setSettings)
       .catch(() => undefined);
     void sendEvent({ type: "ready" });
-    return () => controller.dispose();
   }, [controller]);
 
   useEffect(() => {
@@ -475,6 +493,7 @@ export function GlobalDictationRoot() {
         return;
       }
       if (command.sessionId !== activeSessionIdRef.current) return;
+      if (command.type === "paste-completed") return;
       if (command.type === "paste-failed") {
         setExternalError(command.error);
         setPresentationState("error");
@@ -536,14 +555,7 @@ export function GlobalDictationRoot() {
   }, [settings.playStartSound, settings.playStopSound, snapshot.kind]);
 
   const retry = (): void => {
-    if (externalError) {
-      const sessionId = activeSessionIdRef.current;
-      if (sessionId) {
-        setPresentationState("transcribing");
-        void sendEvent({ type: "retry-paste", sessionId });
-      }
-      return;
-    }
+    if (externalError) setExternalError(null);
     if (snapshot.kind !== "retryable-error") return;
     if (!snapshot.canRetryRecording) return;
     setPresentationState("transcribing");

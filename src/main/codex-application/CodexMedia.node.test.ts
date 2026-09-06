@@ -146,14 +146,19 @@ it.effect("owns dictation projection and transcription", () =>
       },
     });
     assert.strictEqual(
-      yield* media.transcribe({ contentType: "audio/webm", base64Payload: "AQID" }),
+      (yield* media.transcribe({
+        requestId: "4ee71509-91df-4ebe-adef-9cc41b200af1",
+        contentType: "audio/webm",
+        base64Payload: "AQID",
+      })).text,
       "hello",
     );
     assert.strictEqual(
-      yield* media.cleanupTranscript({
+      (yield* media.cleanupTranscript({
+        requestId: "4ee71509-91df-4ebe-adef-9cc41b200af1",
         transcript: "node x works",
         surroundingText: "The project is open.",
-      }),
+      })).text,
       "Nodex works",
     );
     assert.deepEqual(requests, ["/transcribe", "/codex/responses"]);
@@ -197,4 +202,73 @@ it.effect("resolves generated images without leaking transport failures", () =>
     );
     yield* Scope.close(scope, Exit.void);
   }),
+);
+
+it.effect(
+  "prepares authenticated WebSocket connections locally without a connect-info HTTP request",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const authReads: boolean[] = [];
+      let failAuth = true;
+      const context = yield* build(
+        ChatGptDesktop.of({
+          authMethod: Effect.succeed("chatgpt"),
+          authStatus: (includeToken) => {
+            authReads.push(includeToken);
+            return Effect.succeed({
+              authMethod: "chatgpt",
+              authToken: failAuth ? null : "test-token",
+              requiresOpenaiAuth: true,
+            });
+          },
+          request: () => Effect.die("Connection preparation must not make an HTTP request"),
+        }),
+        scope,
+      );
+      const media = Context.get(context, CodexMedia);
+      assert.isTrue(Exit.isFailure(yield* Effect.exit(media.prepareStreamingConnectInfo)));
+      failAuth = false;
+      assert.deepEqual(yield* media.prepareStreamingConnectInfo, {
+        websocketUrl: "wss://chatgpt.test/dictation/stream",
+        protocols: ["chatgpt-dictation", "openai-bearer.test-token", "codex-desktop"],
+      });
+      assert.deepEqual(authReads, [true, true]);
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
+
+it.effect(
+  "returns diagnostic evidence when HTTP transcription fails and cleanup keeps the original text",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const context = yield* build(
+        ChatGptDesktop.of({
+          authMethod: Effect.succeed("chatgpt"),
+          authStatus: () => Effect.die("unused"),
+          request: () => Effect.succeed(new Response("private service error", { status: 429 })),
+        }),
+        scope,
+      );
+      const media = Context.get(context, CodexMedia);
+      const requestId = "4ee71509-91df-4ebe-adef-9cc41b200af1";
+      const transcription = yield* media.transcribe({
+        requestId,
+        contentType: "audio/webm",
+        base64Payload: "AQID",
+      });
+      assert.strictEqual(transcription.text, "");
+      assert.strictEqual(transcription.diagnostics.status, 429);
+      assert.strictEqual(transcription.diagnostics.outcome, "failed");
+      const cleanup = yield* media.cleanupTranscript({
+        requestId,
+        transcript: "original",
+        surroundingText: null,
+      });
+      assert.strictEqual(cleanup.text, "original");
+      assert.strictEqual(cleanup.diagnostics.outcome, "failed");
+      assert.strictEqual(cleanup.diagnostics.status, 429);
+      yield* Scope.close(scope, Exit.void);
+    }),
 );

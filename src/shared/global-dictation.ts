@@ -31,6 +31,11 @@ export type GlobalDictationRendererCommand =
   | { readonly type: "stop"; readonly sessionId: string }
   | { readonly type: "cancel"; readonly sessionId: string }
   | { readonly type: "finish"; readonly sessionId: string }
+  | {
+      readonly type: "paste-completed";
+      readonly sessionId: string;
+      readonly clipboardRestoreMs: number;
+    }
   | { readonly type: "paste-failed"; readonly sessionId: string; readonly error: DictationError };
 
 export type GlobalDictationRendererEvent =
@@ -55,7 +60,6 @@ export type GlobalDictationRendererEvent =
   | { readonly type: "completed"; readonly sessionId: string; readonly transcript: string }
   | { readonly type: "cancelled"; readonly sessionId: string }
   | { readonly type: "failed"; readonly sessionId: string; readonly error: DictationError }
-  | { readonly type: "retry-paste"; readonly sessionId: string }
   | { readonly type: "dismiss"; readonly sessionId: string }
   | { readonly type: "close"; readonly sessionId: string | null }
   | { readonly type: "interactive"; readonly enabled: boolean };

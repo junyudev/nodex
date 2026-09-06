@@ -1,3 +1,7 @@
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
+import { useDictationSession } from "./use-dictation-session";
+import { emptyDictationStreamDiagnostics } from "../../../shared/dictation-diagnostics";
 import { describe, expect, it, vi } from "vitest";
 import {
   DICTATION_HISTORY_CHUNK_INTERVAL_MS,
@@ -42,20 +46,25 @@ const createFixture = (
     dispose: vi.fn(),
   };
   const streamingAttempt = {
+    diagnostics: vi.fn(emptyDictationStreamDiagnostics),
     start: vi.fn(async () => undefined),
     finish: vi.fn<() => Promise<string | null>>(async () => null),
     abort: vi.fn(),
   };
   const history = {
+    diagnostics: vi.fn<DictationControllerPorts["history"]["diagnostics"]>(async () => undefined),
     create: vi.fn(async () => undefined),
     append: vi.fn(async () => undefined),
     finalize: vi.fn(async () => undefined),
   };
-  const completion = { apply: vi.fn(async () => undefined) };
+  const completion = {
+    apply: vi.fn<DictationControllerPorts["completion"]["apply"]>(async () => undefined),
+  };
   const buffered = {
     transcribe: vi.fn(options.transcribe ?? (async () => "hello world")),
   };
   const cleanup = {
+    enabled: true,
     transcript: vi.fn(options.cleanup ?? (async (transcript: string) => transcript)),
   };
   const acquire = vi.fn(options.acquire ?? (async () => stream));
@@ -163,6 +172,7 @@ describe("DictationSessionController", () => {
     );
     expect(fixture.completion.apply).toHaveBeenCalledWith({
       sessionId: "session-1",
+      signal: expect.any(AbortSignal),
       action: "send",
       transcript: "hello world",
     });
@@ -202,6 +212,7 @@ describe("DictationSessionController", () => {
       "hello world",
       expect.any(AbortSignal),
       "session-1",
+      expect.any(Function),
     );
     expect(cleaned.completion.apply).toHaveBeenCalledWith(
       expect.objectContaining({ transcript: "Nodex" }),
@@ -350,5 +361,111 @@ describe("DictationSessionController", () => {
       canRetryRecording: false,
       error: { kind: "microphone-permission-denied" },
     });
+  });
+});
+
+it("records the actual streaming result, skips cleanup, and freezes recording duration at stop", async () => {
+  const fixture = createFixture();
+  fixture.cleanup.enabled = false;
+  fixture.streamingAttempt.finish.mockImplementation(async () => {
+    fixture.setNow(400);
+    return "streamed";
+  });
+  fixture.streamingAttempt.diagnostics.mockReturnValue({
+    ...emptyDictationStreamDiagnostics(),
+    attempted: true,
+    opened: true,
+    started: true,
+    finalReceived: true,
+    sentAudioFrames: 2,
+    sentAudioBytes: 512,
+  });
+  fixture.history.finalize.mockImplementation(async () => {
+    fixture.setNow(450);
+  });
+  fixture.completion.apply.mockImplementation(async () => {
+    fixture.setNow(500);
+  });
+  await fixture.controller.start({ surface: "composer", gesture: "click" });
+  fixture.setNow(300);
+  fixture.controller.stop("insert");
+  await vi.waitFor(() => expect(fixture.history.diagnostics).toHaveBeenCalledOnce());
+  expect(fixture.buffered.transcribe).not.toHaveBeenCalled();
+  expect(fixture.cleanup.transcript).not.toHaveBeenCalled();
+  expect(fixture.history.finalize).toHaveBeenCalledWith(
+    expect.objectContaining({ durationMs: 300 }),
+  );
+  expect(fixture.history.diagnostics.mock.calls[0]?.[1]).toMatchObject({
+    transport: "websocket",
+    stopToTextMs: 200,
+    stopToCompletionMs: 200,
+    phases: expect.arrayContaining([
+      { stage: "cleanup", offsetMs: 400, durationMs: 0, outcome: "skipped" },
+    ]),
+    streaming: { attempted: true, opened: true, started: true, finalReceived: true },
+  });
+});
+
+it("retries delivery with the saved transcript without retranscribing or re-finalizing audio", async () => {
+  const fixture = createFixture();
+  fixture.completion.apply.mockImplementationOnce(async () => {
+    throw new Error("paste failed");
+  });
+  await fixture.controller.start({ surface: "global", gesture: "hold" });
+  fixture.setNow(300);
+  fixture.controller.stop("insert");
+  await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("retryable-error"));
+  fixture.setNow(2_000);
+  fixture.completion.apply.mockImplementation(async () => {
+    fixture.setNow(2_850);
+    return { clipboardRestoreMs: 700 };
+  });
+  await fixture.controller.retry();
+  await vi.waitFor(() => expect(fixture.history.diagnostics).toHaveBeenCalledTimes(2));
+  expect(fixture.buffered.transcribe).toHaveBeenCalledOnce();
+  expect(fixture.cleanup.transcript).toHaveBeenCalledOnce();
+  expect(fixture.history.finalize).toHaveBeenCalledOnce();
+  expect(fixture.history.diagnostics.mock.calls[1]?.[1]).toMatchObject({
+    attempt: 2,
+    source: "retry",
+    transport: "retained",
+    outcome: "completed",
+    stopToTextMs: 150,
+    stopToCompletionMs: 850,
+    clipboardRestoreMs: 700,
+    requests: [],
+  });
+});
+
+describe("useDictationSession", () => {
+  it("records and delivers after Strict Mode effect replay, then releases capture on unmount", async () => {
+    const fixture = createFixture();
+    const { result, unmount } = renderHook(() => useDictationSession(fixture.controller), {
+      wrapper: StrictMode,
+    });
+    await act(async () => {
+      await fixture.controller.start({ surface: "global", gesture: "toggle" });
+    });
+    expect(result.current.kind).toBe("recording");
+    expect(fixture.recorder.start).toHaveBeenCalledOnce();
+    fixture.setNow(1000);
+    await act(async () => {
+      fixture.controller.stop("insert");
+      await flush();
+    });
+    await waitFor(() => expect(fixture.completion.apply).toHaveBeenCalledOnce());
+    await waitFor(() => expect(result.current.kind).toBe("idle"));
+    await act(async () => {
+      await fixture.controller.start({ surface: "global", gesture: "toggle" });
+    });
+    fixture.track.stop.mockClear();
+    fixture.lease.release.mockClear();
+    await act(async () => {
+      unmount();
+      await flush();
+    });
+    expect(fixture.track.stop).toHaveBeenCalledOnce();
+    expect(fixture.lease.release).toHaveBeenCalledOnce();
+    expect(fixture.controller.getSnapshot().kind).toBe("idle");
   });
 });

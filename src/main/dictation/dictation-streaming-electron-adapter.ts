@@ -52,12 +52,15 @@ const adaptMessagePort = (port: MessagePortMain): DictationStreamingPort => ({
   close: () => port.close(),
 });
 
-const createSocket = (
+export const createDictationStreamingSocket = (
   websocketUrl: string,
   protocols: readonly string[],
 ): DictationStreamingSocket => {
   const socket = new WebSocket(websocketUrl, [...protocols]);
   return {
+    get protocol() {
+      return socket.protocol;
+    },
     get bufferedAmount() {
       return socket.bufferedAmount;
     },
@@ -88,7 +91,7 @@ export const registerDictationStreamingElectronAdapter = (
 ): (() => void) => {
   const service = new DictationStreamingSessionService({
     readConnectInfo: ({ signal }) => dependencies.readConnectInfo(signal),
-    createWebSocket: createSocket,
+    createWebSocket: createDictationStreamingSocket,
     logger: dependencies.logger,
   });
   const observedOwners = new Set<number>();

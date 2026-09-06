@@ -162,6 +162,7 @@ import type {
   DictationRecordingFinalizeInput,
   DictationRecordingMetadata,
   DictationRecordingSetTranscriptInput,
+  DictationRecordingSetDiagnosticsInput,
 } from "../../shared/dictation-history";
 
 let gitWorkerClient: GitWorkerClient | null = null;
@@ -484,6 +485,12 @@ export function finalizeDictationRecording(
   input: DictationRecordingFinalizeInput,
 ): Promise<DictationRecordingMetadata> {
   return invokeRendererControl("codex:dictation:history:finalize", input);
+}
+
+export function setDictationRecordingDiagnostics(
+  input: DictationRecordingSetDiagnosticsInput,
+): Promise<DictationRecordingMetadata> {
+  return invokeRendererControl("codex:dictation:history:set-diagnostics", input);
 }
 
 export function setDictationRecordingTranscript(

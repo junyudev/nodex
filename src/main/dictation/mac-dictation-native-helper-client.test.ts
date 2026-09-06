@@ -30,7 +30,7 @@ describe("MacDictationNativeHelperClient", () => {
   it("waits for the protocol handshake and validates responses", async () => {
     const executable = await createExecutable(`
       const readline = require("node:readline");
-      process.stdout.write(JSON.stringify({ type: "ready", protocolVersion: 2 }) + "\\n");
+      process.stdout.write(JSON.stringify({ type: "ready", protocolVersion: 3 }) + "\\n");
       readline.createInterface({ input: process.stdin }).on("line", (line) => {
         const request = JSON.parse(line);
         const value = request.type === "capabilities"
@@ -41,7 +41,7 @@ describe("MacDictationNativeHelperClient", () => {
               ? { accelerator: "Fn" }
               : request.type === "replaceBindings"
                 ? { applied: true, generation: request.generation }
-                : { ok: true };
+                : request.type === "safePaste" ? { pasted: true, clipboardRestoreMs: 712 } : { ok: true };
         process.stdout.write(JSON.stringify({ type: "response", id: request.id, ok: true, value }) + "\\n");
       });
     `);
@@ -67,6 +67,9 @@ describe("MacDictationNativeHelperClient", () => {
       }),
     ).resolves.toBeUndefined();
     await expect(client.captureFn()).resolves.toBe("Fn");
+    await expect(
+      client.safePaste("text", { pid: 1, bundleIdentifier: "test.app" }),
+    ).resolves.toEqual({ clipboardRestoreMs: 712 });
     client.dispose();
   });
 
@@ -85,7 +88,7 @@ describe("MacDictationNativeHelperClient", () => {
       const marker = __filename + ".started";
       const shouldCrash = !fs.existsSync(marker);
       if (shouldCrash) fs.writeFileSync(marker, "1");
-      process.stdout.write(JSON.stringify({ type: "ready", protocolVersion: 2 }) + "\\n");
+      process.stdout.write(JSON.stringify({ type: "ready", protocolVersion: 3 }) + "\\n");
       readline.createInterface({ input: process.stdin }).on("line", (line) => {
         const request = JSON.parse(line);
         if (shouldCrash) process.exit(7);
@@ -109,7 +112,7 @@ describe("MacDictationNativeHelperClient", () => {
   it("preserves stable native rejection codes", async () => {
     const executable = await createExecutable(`
       const readline = require("node:readline");
-      process.stdout.write(JSON.stringify({ type: "ready", protocolVersion: 2 }) + "\\n");
+      process.stdout.write(JSON.stringify({ type: "ready", protocolVersion: 3 }) + "\\n");
       readline.createInterface({ input: process.stdin }).on("line", (line) => {
         const request = JSON.parse(line);
         process.stdout.write(JSON.stringify({

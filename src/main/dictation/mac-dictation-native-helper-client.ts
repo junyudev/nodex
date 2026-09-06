@@ -8,7 +8,7 @@ const MAXIMUM_LINE_BYTES = 64 * 1024;
 const MAXIMUM_STDERR_BYTES = 8 * 1024;
 const REQUEST_TIMEOUT_MS = 12_000;
 const READY_TIMEOUT_MS = 3_000;
-const MAC_DICTATION_HELPER_PROTOCOL_VERSION = 2;
+const MAC_DICTATION_HELPER_PROTOCOL_VERSION = 3;
 
 export interface MacDictationForegroundTarget {
   readonly pid: number;
@@ -127,8 +127,24 @@ export class MacDictationNativeHelperClient {
     return value.accelerator;
   }
 
-  async safePaste(text: string, target: MacDictationForegroundTarget): Promise<void> {
-    await this.#request("safePaste", { text, target });
+  async safePaste(
+    text: string,
+    target: MacDictationForegroundTarget,
+  ): Promise<{ readonly clipboardRestoreMs: number }> {
+    const result = (await this.#request("safePaste", { text, target })) as {
+      pasted?: unknown;
+      clipboardRestoreMs?: unknown;
+    };
+    if (
+      result.pasted !== true ||
+      typeof result.clipboardRestoreMs !== "number" ||
+      !Number.isFinite(result.clipboardRestoreMs) ||
+      result.clipboardRestoreMs < 0 ||
+      result.clipboardRestoreMs > 60_000
+    ) {
+      throw new MacDictationHelperRequestError("invalid-response");
+    }
+    return { clipboardRestoreMs: result.clipboardRestoreMs };
   }
 
   async queryBuiltInMicrophoneName(): Promise<string | null> {

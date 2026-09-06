@@ -1,3 +1,4 @@
+import type { DictationTextResult } from "./dictation-diagnostics";
 import type { ReadFileBytesInput, SaveFileInput } from "./library-files";
 import type { ThreadBackgroundTerminal } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminal";
 import type {
@@ -209,6 +210,7 @@ import type {
   DictationRecordingFinalizeInput,
   DictationRecordingMetadata,
   DictationRecordingSetTranscriptInput,
+  DictationRecordingSetDiagnosticsInput,
 } from "./dictation-history";
 
 import type {
@@ -1828,6 +1830,10 @@ export interface IpcApi {
     args: [input: DictationRecordingFinalizeInput];
     result: DictationRecordingMetadata;
   };
+  "codex:dictation:history:set-diagnostics": {
+    args: [input: DictationRecordingSetDiagnosticsInput];
+    result: DictationRecordingMetadata;
+  };
   "codex:dictation:history:set-transcript": {
     args: [input: DictationRecordingSetTranscriptInput];
     result: DictationRecordingMetadata;
@@ -1850,7 +1856,7 @@ export interface IpcApi {
   };
   "codex:dictation:transcribe": {
     args: [input: { contentType: string; base64Payload: string; requestId: string }];
-    result: string;
+    result: DictationTextResult;
   };
   "codex:dictation:cleanup": {
     args: [
@@ -1860,7 +1866,7 @@ export interface IpcApi {
         requestId: string;
       },
     ];
-    result: string;
+    result: DictationTextResult;
   };
   "codex:dictation:transcribe:cancel": {
     args: [requestId: string];

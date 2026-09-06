@@ -138,16 +138,16 @@ export function useComposerDictation(
         waveform: browserDictationWaveformPort,
         streaming: mainDictationStreamingPort,
         buffered: {
-          transcribe: async (blob, signal) => {
+          transcribe: async (blob, signal, _sessionId, onDiagnostics) => {
             if (signal.aborted) throw new DOMException("Dictation was aborted", "AbortError");
-            const result = await transcribeDictationBlob(blob, { signal });
+            const result = await transcribeDictationBlob(blob, { signal, onDiagnostics });
             if (signal.aborted) throw new DOMException("Dictation was aborted", "AbortError");
             return result;
           },
         },
         // Current Codex Composer intentionally bypasses semantic cleanup; the shared
         // controller keeps the seam so global dictation and recording recovery can use it.
-        cleanup: { transcript: async (transcript) => transcript },
+        cleanup: { enabled: false, transcript: async (transcript) => transcript },
         history: mainDictationHistoryPort,
         completion: {
           apply: async ({ sessionId, action, transcript }) => {

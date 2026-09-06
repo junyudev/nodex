@@ -26,13 +26,16 @@ export class ClipboardSafePasteService {
     this.#helper = options.helper;
   }
 
-  async paste(transcript: string, target: GlobalDictationTarget): Promise<void> {
+  async paste(
+    transcript: string,
+    target: GlobalDictationTarget,
+  ): Promise<{ readonly clipboardRestoreMs: number }> {
     const insertedText = `${transcript.trim()} `;
     if (!insertedText.trim()) throw new ClipboardSafePasteError("paste-failed");
     const capabilities = await this.#helper.capabilities(false);
     if (!capabilities.accessibility) throw new ClipboardSafePasteError("accessibility-denied");
     try {
-      await this.#helper.safePaste(insertedText, target);
+      return await this.#helper.safePaste(insertedText, target);
     } catch {
       throw new ClipboardSafePasteError("paste-failed");
     }

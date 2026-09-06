@@ -3,7 +3,7 @@ import { ClipboardSafePasteError, ClipboardSafePasteService } from "./clipboard-
 
 describe("ClipboardSafePasteService", () => {
   it("delegates one native transaction with normalized trailing space", async () => {
-    const safePaste = vi.fn(async () => undefined);
+    const safePaste = vi.fn(async () => ({ clipboardRestoreMs: 710 }));
     const service = new ClipboardSafePasteService({
       helper: {
         capabilities: async () => ({ inputMonitoring: true, accessibility: true }),
@@ -18,7 +18,7 @@ describe("ClipboardSafePasteService", () => {
   });
 
   it("checks Accessibility before asking the helper to mutate the pasteboard", async () => {
-    const safePaste = vi.fn(async () => undefined);
+    const safePaste = vi.fn(async () => ({ clipboardRestoreMs: 710 }));
     const service = new ClipboardSafePasteService({
       helper: {
         capabilities: async () => ({ inputMonitoring: true, accessibility: false }),

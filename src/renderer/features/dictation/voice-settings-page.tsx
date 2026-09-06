@@ -1,3 +1,5 @@
+import { DictationPerformanceDetails } from "./dictation-performance-details";
+import { DictationDiagnosticsRecorder } from "./dictation-diagnostics-recorder";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NodexButton } from "@/components/ui/button";
@@ -37,6 +39,7 @@ import {
   requestGlobalDictationAccessibility,
   requestGlobalDictationInputMonitoring,
   setDictationRecordingTranscript,
+  setDictationRecordingDiagnostics,
   updateDictationSettings,
 } from "@/lib/api";
 import type { DictationSettings, MicrophoneAccessStatus } from "../../../shared/dictation";
@@ -291,20 +294,41 @@ export function VoiceSettingsPage(_props: { readonly onPathChange: (path: string
 
   const retryRecording = async (id: string): Promise<void> => {
     setHistoryAction(`retry:${id}`);
+    const previousAttempt =
+      historyQuery.data?.find((recording) => recording.id === id)?.diagnostics?.attempt ?? 0;
+    const diagnostics = new DictationDiagnosticsRecorder(
+      () => performance.now(),
+      "history",
+      "recovery",
+      previousAttempt + 1,
+    );
+    let outcome: "completed" | "failed" = "failed";
     try {
       const audio = await readDictationRecordingAudio(id);
-      const rawTranscript = (
-        await transcribeDictationBlob(
+      const rawTranscript = await diagnostics.measure("buffered", () =>
+        transcribeDictationBlob(
           new Blob([Uint8Array.from(audio.bytes).buffer], { type: audio.recording.mimeType }),
-        )
-      ).trim();
-      const transcript = await cleanupDictationTranscript(rawTranscript);
-      await setDictationRecordingTranscript({ id, transcript });
-      await queryClient.invalidateQueries({ queryKey: HISTORY_QUERY_KEY });
+          { onDiagnostics: diagnostics.request },
+        ),
+      );
+      diagnostics.useTransport("buffered");
+      const transcript = await diagnostics.measure("cleanup", () =>
+        cleanupDictationTranscript(rawTranscript, { onDiagnostics: diagnostics.request }),
+      );
+      await diagnostics.measure("history", () =>
+        setDictationRecordingTranscript({ id, transcript }),
+      );
+      diagnostics.delivered();
+      outcome = "completed";
       toast.success("Recording transcribed");
     } catch {
       toast.danger("Could not transcribe this recording");
     } finally {
+      await setDictationRecordingDiagnostics({
+        id,
+        diagnostics: diagnostics.snapshot(outcome),
+      }).catch(() => undefined);
+      await queryClient.invalidateQueries({ queryKey: HISTORY_QUERY_KEY });
       setHistoryAction(null);
     }
   };
@@ -581,57 +605,59 @@ export function VoiceSettingsPage(_props: { readonly onPathChange: (path: string
           <div className="px-4 py-3 text-sm text-token-text-secondary">Loading recordings…</div>
         ) : historyQuery.data?.length ? (
           historyQuery.data.map((recording) => (
-            <NodexSettingsRow
-              key={recording.id}
-              label={recording.transcript?.trim() || recordingFallbackLabel(recording.status)}
-              description={formatRecordingTimestamp(recording.createdAtMs)}
-            >
-              {recording.transcript ? (
-                <NodexButton
-                  aria-label="Copy transcript"
-                  size="icon-xs"
-                  variant="ghost"
-                  onClick={() => void navigator.clipboard.writeText(recording.transcript ?? "")}
-                >
-                  <LinkToolbarCopyIcon className="icon-2xs" />
-                </NodexButton>
-              ) : recording.status !== "recording" && recording.sizeBytes > 0 ? (
-                <NodexButton
-                  size="xs"
-                  variant="secondary"
-                  disabled={historyAction !== null}
-                  onClick={() => void retryRecording(recording.id)}
-                >
-                  Retry
-                </NodexButton>
-              ) : null}
-              <NodexDropdownMenu
-                align="end"
-                disabled={historyAction !== null}
-                triggerButton={
-                  <NodexButton aria-label="Recording actions" size="icon-xs" variant="ghost">
-                    <MoreActionsIcon className="icon-2xs" />
-                  </NodexButton>
-                }
+            <div key={recording.id}>
+              <NodexSettingsRow
+                label={recording.transcript?.trim() || recordingFallbackLabel(recording.status)}
+                description={formatRecordingTimestamp(recording.createdAtMs)}
               >
-                {recording.sizeBytes > 0 ? (
-                  <NodexDropdownItem
-                    leftSlot={<DownloadIcon className="icon-xs" />}
-                    onSelect={() => void downloadRecording(recording.id)}
+                {recording.transcript ? (
+                  <NodexButton
+                    aria-label="Copy transcript"
+                    size="icon-xs"
+                    variant="ghost"
+                    onClick={() => void navigator.clipboard.writeText(recording.transcript ?? "")}
                   >
-                    Download recording
-                  </NodexDropdownItem>
+                    <LinkToolbarCopyIcon className="icon-2xs" />
+                  </NodexButton>
+                ) : recording.status !== "recording" && recording.sizeBytes > 0 ? (
+                  <NodexButton
+                    size="xs"
+                    variant="secondary"
+                    disabled={historyAction !== null}
+                    onClick={() => void retryRecording(recording.id)}
+                  >
+                    Retry
+                  </NodexButton>
                 ) : null}
-                <NodexDropdownItem
-                  className="text-token-error-foreground"
-                  disabled={recording.status === "recording"}
-                  leftSlot={<DeleteIcon className="icon-xs" />}
-                  onSelect={() => void removeRecording(recording.id)}
+                <NodexDropdownMenu
+                  align="end"
+                  disabled={historyAction !== null}
+                  triggerButton={
+                    <NodexButton aria-label="Recording actions" size="icon-xs" variant="ghost">
+                      <MoreActionsIcon className="icon-2xs" />
+                    </NodexButton>
+                  }
                 >
-                  Delete recording
-                </NodexDropdownItem>
-              </NodexDropdownMenu>
-            </NodexSettingsRow>
+                  {recording.sizeBytes > 0 ? (
+                    <NodexDropdownItem
+                      leftSlot={<DownloadIcon className="icon-xs" />}
+                      onSelect={() => void downloadRecording(recording.id)}
+                    >
+                      Download recording
+                    </NodexDropdownItem>
+                  ) : null}
+                  <NodexDropdownItem
+                    className="text-token-error-foreground"
+                    disabled={recording.status === "recording"}
+                    leftSlot={<DeleteIcon className="icon-xs" />}
+                    onSelect={() => void removeRecording(recording.id)}
+                  >
+                    Delete recording
+                  </NodexDropdownItem>
+                </NodexDropdownMenu>
+              </NodexSettingsRow>
+              <DictationPerformanceDetails diagnostics={recording.diagnostics} />
+            </div>
           ))
         ) : (
           <div className="px-4 py-3 text-sm text-token-text-secondary">No recordings yet.</div>

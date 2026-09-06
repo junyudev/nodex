@@ -24,21 +24,21 @@ Dictation turns a bounded microphone recording into text. It is available in the
 
 ## Session lifecycle
 
-The controller has explicit idle, permission/acquisition, recording, stopping, transcribing, retryable-error, and disposed states. Only one session and one acquisition generation may be current.
+The controller has explicit idle, permission/acquisition, recording, stopping, transcribing, retryable-error, and disposed states. Only one session and one acquisition generation may be current. React Effect cleanup cancels the active session and releases capture without permanently disabling the retained controller; subsequent Effect setup must remain able to start dictation.
 
 - Permission completes before `getUserMedia` begins. A release, cancel, replacement start, unmount, or capability change invalidates the generation; a late stream is stopped immediately and cannot activate recording.
 - The device policy tries the selected microphone, then the current built-in microphone hint when macOS is routing input/output through Bluetooth, then the system default, then the first real input. Permission or security failures never trigger device fallback. A missing, busy, or unsupported route may continue to the next safe candidate.
 - `MediaRecorder` records continuously and emits recovery chunks every five seconds. An `AudioWorklet` separately produces mono PCM16 frames for streaming and never owns the durable recording.
 - Recordings shorter than 250 ms, or with no audio chunk, are cancelled locally and are not uploaded. A session stops once at 595 seconds.
-- Recorder final data is consumed before finalization. Recorder errors, ended tracks, repeated stop/cancel, and late transcription results cannot finalize or apply a session twice.
+- Recording duration freezes when capture stops and excludes subsequent transcription, cleanup, and retry waits. Recorder final data is consumed before finalization. Recorder errors, ended tracks, repeated stop/cancel, and late transcription results cannot finalize or apply a session twice.
 
 ## Transcription and recovery
 
 - ChatGPT sessions attempt streaming first while always retaining the complete `MediaRecorder` recording.
-- Streaming uses Main-provided connection information and a dedicated MessagePort. Socket creation, start/finish timeout, backpressure, malformed events, an empty final, or a non-abort close disables only that attempt.
+- Main prepares streaming connection information locally from the configured ChatGPT API base and the authenticated token. It connects to the secure `/dictation/stream` WebSocket with the service's dictation, bearer-authentication, and desktop subprotocols; connection preparation is not an HTTP API request. A dedicated MessagePort carries PCM frames and bounded transport observations. Socket creation, start/finish timeout, backpressure, malformed events, an empty final, or a non-abort close disables only that attempt.
 - A successful non-empty streaming final is used directly and does not send a buffered request.
 - Any retryable streaming failure automatically transcribes the same complete recording through the buffered endpoint. Abort never falls back.
-- An explicitly unsupported streaming endpoint is cached for the current authority/process and later sessions go directly to buffered transcription. Account authority or app-server connection replacement resets that cache.
+- Each new recording can attempt streaming again after a failed connection. Capability availability describes permission to attempt streaming; only the per-attempt connection evidence proves whether a socket opened or its result was used.
 - A retryable buffered failure preserves the same recording and offers `Retry`; retry does not ask the user to speak again.
 - Global dictation and recording recovery run a best-effort semantic cleanup pass using surrounding text and the Voice dictionary. Cleanup fixes likely recognition mistakes while preserving intent and fails open to the original transcript. The current Composer path intentionally preserves the raw transcription result.
 - Composer start and transcription failures use the app-owned top notification surface. A retained-audio transcription failure offers `View recording`, `Retry`, and close; it does not render a Composer-local toast.
@@ -63,6 +63,19 @@ An ordinary global shortcut must contain exactly one supported non-modifier key 
 Each session creates a Profile-scoped history entry and appends ordered chunks while recording. Completed entries retain duration, surface, audio MIME type, status, and an optional transcript. A process interruption changes an unfinished `recording` entry to `interrupted` on the next scan. Recent rows show transcript-or-status plus timestamp, with an inline copy or retry action and an overflow menu for download/delete. Users can retry transcription from retained audio, download reconstructed audio through a native Save dialog, or delete a non-active entry. Retention never deletes an active recording.
 
 History is a recovery feature, not a second conversation transcript. Deleting a recording does not remove text already inserted or sent. Dictation settings are Main-owned and shared by every window.
+
+## Performance details
+
+Each recent recording can disclose the latest attempt's local performance details. The collapsed line identifies the result actually used (WebSocket, buffered upload, or saved transcript), the outcome, and text-delivery latency. Recordings without measurements say that details are available for new attempts.
+
+- The primary latency runs from stopping capture to text delivery. Recovery and retry attempts start their own clock and are labelled accordingly; time spent waiting for the user to retry is excluded.
+- Capture-surface stages retain start offsets, durations, and completed, failed, or skipped outcomes for permission, microphone preparation, recording, recorder finalization, streaming finalization, buffered transcription, text cleanup, history saving, and delivery. Concurrent stages are not added together. Host transport durations use the host's monotonic clock and remain separate from capture-surface offsets.
+- Streaming details distinguish an attempted connection, an opened WebSocket, a started session, sent audio frames/bytes, received transcript events, and the result ultimately used. Details retain measured preparation/handshake/start/finish durations, negotiated protocol category, provider mode, observed close code, and a stable failure code. Missing observations remain unknown rather than implying success.
+- Buffered transcription and semantic cleanup retain independent request timings, outcome, HTTP status when observed, local request ID, optional server request ID, HTTP attempt count, and the cleanup model. Request preparation to response headers includes local preparation, authentication, upload, and server wait; response-body consumption is separate. Network transit and server-internal processing cannot be inferred from these measurements.
+- HTTP diagnostics expose only the configured originator and User-Agent plus the presence of bearer authentication and the account header. WebSocket handshake headers are runtime-managed and are explicitly not captured; bearer subprotocol values are never exposed.
+- Global delivery waits for the native paste transaction's completion signal. Its text-delivery estimate subtracts the measured clipboard-restoration interval from completion latency; it estimates shortcut dispatch, not rendering in the target app. Retrying a failed paste reuses the saved transcript without another transcription or cleanup request.
+- Main validates and retains one bounded diagnostics report with each recording. A later attempt replaces the previous report; an older late report cannot overwrite a newer attempt. Diagnostics writes are best-effort and do not delay successful text delivery.
+- `Copy diagnostics` exports only the closed diagnostic contract. It never includes audio, transcript, surrounding text, dictionary values, device labels, account identifiers, authentication tokens, raw subprotocols, full URLs, clipboard content, or raw server errors. Deleting the recording also removes its diagnostics.
 
 ## macOS global dictation
 

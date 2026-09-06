@@ -1,3 +1,4 @@
+import { dictationDiagnosticsFixture } from "../../../tests/fixtures/dictation-diagnostics";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -270,4 +271,24 @@ describe("FileDictationRecordingStore", () => {
       createStore({ profileRoot: first.profileRoot }).store.list(),
     ).rejects.toMatchObject({ code: "invalid_recording" });
   });
+});
+
+test("persists isolated diagnostics, rejects extra fields, and ignores a late older attempt", async () => {
+  const { store, profileRoot } = createStore();
+  await createCompletedRecording({ store, id: "diagnostics", transcript: "private transcript" });
+  const diagnostics = dictationDiagnosticsFixture();
+  await store.setDiagnostics({ id: "diagnostics", diagnostics });
+  const [first] = await store.list();
+  first!.diagnostics!.phases[0]!.durationMs = 999;
+  expect((await store.list())[0]?.diagnostics).toEqual(diagnostics);
+  await expect(
+    store.setDiagnostics({
+      id: "diagnostics",
+      diagnostics: { ...diagnostics, token: "secret" } as typeof diagnostics,
+    }),
+  ).rejects.toMatchObject({ code: "invalid_input" });
+  await store.setDiagnostics({ id: "diagnostics", diagnostics: { ...diagnostics, attempt: 2 } });
+  await store.setDiagnostics({ id: "diagnostics", diagnostics });
+  const reopened = new FileDictationRecordingStore({ profileRoot });
+  expect((await reopened.list())[0]?.diagnostics?.attempt).toBe(2);
 });

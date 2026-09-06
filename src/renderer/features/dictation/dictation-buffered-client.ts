@@ -1,3 +1,7 @@
+import type {
+  DictationHttpDiagnostics,
+  DictationTextResult,
+} from "../../../shared/dictation-diagnostics";
 import { cancelDictationRequest, transcribeDictationRequest } from "./dictation-command-runtime";
 
 const DEFAULT_DICTATION_CONTENT_TYPE = "audio/webm";
@@ -66,10 +70,11 @@ export async function transcribeDictationBlob(
     readonly filename?: string;
     readonly language?: string;
     readonly signal?: AbortSignal;
+    readonly onDiagnostics?: (diagnostics: DictationHttpDiagnostics) => void;
     readonly transcribe?: (input: {
       readonly contentType: string;
       readonly base64Payload: string;
-    }) => Promise<string>;
+    }) => Promise<DictationTextResult>;
   },
 ): Promise<string> {
   const contentType = resolveDictationContentType(blob, options?.contentType);
@@ -86,7 +91,16 @@ export async function transcribeDictationBlob(
     contentType: `multipart/form-data; boundary=${boundary}`,
     base64Payload: encodeDictationBase64(multipartBody),
   };
-  if (options?.transcribe) return await options.transcribe(input);
+  const readResult = (result: DictationTextResult): string => {
+    options?.onDiagnostics?.(result.diagnostics);
+    if (result.diagnostics.outcome !== "completed") {
+      throw Object.assign(new Error("Unable to transcribe dictation"), {
+        status: result.diagnostics.status === 200 ? 502 : result.diagnostics.status,
+      });
+    }
+    return result.text;
+  };
+  if (options?.transcribe) return readResult(await options.transcribe(input));
   if (options?.signal?.aborted) {
     throw options.signal.reason ?? new DOMException("Dictation was aborted", "AbortError");
   }
@@ -101,7 +115,7 @@ export async function transcribeDictationBlob(
     if (options?.signal?.aborted) {
       throw options.signal.reason ?? new DOMException("Dictation was aborted", "AbortError");
     }
-    return result;
+    return readResult(result);
   } finally {
     options?.signal?.removeEventListener("abort", cancel);
   }

@@ -1,3 +1,7 @@
+import {
+  DictationDiagnosticsSchema,
+  type DictationTextResult,
+} from "../../../shared/dictation-diagnostics";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FiberMap from "effect/FiberMap";
@@ -94,7 +98,6 @@ const GlobalRendererEvent = z.discriminatedUnion("type", [
     .strict(),
   z.object({ type: z.literal("cancelled"), sessionId: SessionId }).strict(),
   z.object({ type: z.literal("failed"), sessionId: SessionId, error: DictationError }).strict(),
-  z.object({ type: z.literal("retry-paste"), sessionId: SessionId }).strict(),
   z.object({ type: z.literal("dismiss"), sessionId: SessionId }).strict(),
   z.object({ type: z.literal("close"), sessionId: SessionId.nullable() }).strict(),
   z.object({ type: z.literal("interactive"), enabled: z.boolean() }).strict(),
@@ -174,7 +177,7 @@ export const live = (
       const ipc = yield* ElectronIpc;
       const media = yield* CodexMedia;
       const windows = yield* WindowRuntime;
-      const transcriptionFibers = yield* FiberMap.make<string, string>();
+      const transcriptionFibers = yield* FiberMap.make<string, DictationTextResult>();
       const transcriptionOwners = new Map<string, number>();
       const authorizeRenderer = options.authorize ?? requireTrustedAppRendererSender;
       const registerStreaming =
@@ -192,7 +195,7 @@ export const live = (
       const runOwnedTranscriptTask = Effect.fn("DictationIpc.runOwnedTranscriptTask")(function* <E>(
         event: IpcMainInvokeEvent,
         requestId: string,
-        task: Effect.Effect<string, E>,
+        task: Effect.Effect<DictationTextResult, E>,
       ) {
         const reserved = yield* Effect.sync(() => {
           if (transcriptionOwners.has(requestId)) return false;
@@ -376,6 +379,19 @@ export const live = (
           Effect.flatMap(dictation.finalizeRecording),
         ),
       );
+      yield* ipc.handleControl("codex:dictation:history:set-diagnostics", (event, input: unknown) =>
+        trusted(event, "Dictation performance details").pipe(
+          Effect.andThen(
+            validate("parse-recording-diagnostics", () =>
+              z
+                .object({ id: DictationRecordingIdSchema, diagnostics: DictationDiagnosticsSchema })
+                .strict()
+                .parse(input),
+            ),
+          ),
+          Effect.flatMap(dictation.setRecordingDiagnostics),
+        ),
+      );
       yield* ipc.handlePlainCommand(
         "codex:dictation:history:set-transcript",
         (event, input: unknown) =>
@@ -526,6 +542,7 @@ export const live = (
               event,
               request.requestId,
               media.transcribe({
+                requestId: request.requestId,
                 contentType: request.contentType,
                 base64Payload: request.base64Payload,
               }),
@@ -541,6 +558,7 @@ export const live = (
               event,
               request.requestId,
               media.cleanupTranscript({
+                requestId: request.requestId,
                 transcript: request.transcript,
                 surroundingText: request.surroundingText,
               }),

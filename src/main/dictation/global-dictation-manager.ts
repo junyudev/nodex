@@ -363,6 +363,7 @@ export class GlobalDictationManager {
       });
       return true;
     }
+    if (event.type === "completed" && this.#snapshot.kind === "pasting") return false;
     if (event.type === "completed") {
       if (active.owner === "in-app") {
         this.#finishActive();
@@ -374,10 +375,6 @@ export class GlobalDictationManager {
     }
     if (event.type === "failed") {
       this.#publish({ kind: "retryable-error", sessionId: active.sessionId, error: event.error });
-      return true;
-    }
-    if (event.type === "retry-paste" && active.transcript) {
-      void this.#pasteActive(active);
       return true;
     }
     if (event.type === "cancelled" || event.type === "dismiss") {
@@ -728,7 +725,13 @@ export class GlobalDictationManager {
     if (this.#active !== active || !active.transcript) return;
     this.#publish({ kind: "pasting", sessionId: active.sessionId });
     try {
-      await this.#pasteService.paste(active.transcript, active.target);
+      const result = await this.#pasteService.paste(active.transcript, active.target);
+      if (this.#active !== active) return;
+      this.#windowController.send({
+        type: "paste-completed",
+        sessionId: active.sessionId,
+        clipboardRestoreMs: result.clipboardRestoreMs,
+      });
       this.#finishActive();
     } catch (error) {
       if (this.#active !== active) return;

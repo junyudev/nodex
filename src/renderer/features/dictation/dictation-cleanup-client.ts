@@ -1,3 +1,7 @@
+import type {
+  DictationHttpDiagnostics,
+  DictationTextResult,
+} from "../../../shared/dictation-diagnostics";
 import { cancelDictationRequest, cleanupDictationRequest } from "./dictation-command-runtime";
 
 interface DictationCleanupRequest {
@@ -15,7 +19,8 @@ export async function cleanupDictationTranscript(
   options?: {
     readonly surroundingText?: string | null;
     readonly signal?: AbortSignal;
-    readonly cleanup?: (input: DictationCleanupRequest) => Promise<string>;
+    readonly onDiagnostics?: (diagnostics: DictationHttpDiagnostics) => void;
+    readonly cleanup?: (input: DictationCleanupRequest) => Promise<DictationTextResult>;
     readonly cancel?: (requestId: string) => Promise<boolean>;
   },
 ): Promise<string> {
@@ -44,7 +49,8 @@ export async function cleanupDictationTranscript(
     if (signal?.aborted) {
       throw signal.reason ?? new DOMException("Dictation was aborted", "AbortError");
     }
-    return result.trim() || original;
+    options?.onDiagnostics?.(result.diagnostics);
+    return result.text.trim() || original;
   } catch (error) {
     if (signal?.aborted) throw error;
     return original;

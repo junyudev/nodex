@@ -1,3 +1,4 @@
+import { dictationTextResult } from "../../../../../../tests/fixtures/dictation-diagnostics";
 import { describe, expect, test } from "vite-plus/test";
 import {
   buildDictationMultipartPayload,
@@ -41,7 +42,7 @@ describe("composer dictation transport", () => {
     const text = await transcribeDictationBlob(new Blob(["audio-bytes"], { type: "audio/webm" }), {
       transcribe: async (input) => {
         capturedInput = input;
-        return "transcribed text";
+        return dictationTextResult("transcribed text");
       },
     });
 

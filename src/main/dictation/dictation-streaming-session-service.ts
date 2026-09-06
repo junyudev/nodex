@@ -1,4 +1,8 @@
 import {
+  emptyDictationStreamDiagnostics,
+  type DictationStreamDiagnostics,
+} from "../../shared/dictation-diagnostics";
+import {
   DICTATION_STREAM_FINISH_TIMEOUT_MS,
   DICTATION_STREAM_MAX_OUTSTANDING_AUDIO_BYTES,
   DICTATION_STREAM_START_TIMEOUT_MS,
@@ -18,6 +22,7 @@ import {
 } from "../../shared/dictation-streaming";
 
 export interface DictationStreamingClock {
+  readonly now?: () => number;
   readonly scheduleTimeout: (callback: () => void, delayMs: number) => () => void;
 }
 
@@ -36,6 +41,7 @@ export interface DictationStreamingSocketHandlers {
 
 /** A small adapter over browser-compatible WebSocket implementations; it is Electron-free. */
 export interface DictationStreamingSocket {
+  readonly protocol?: string;
   readonly bufferedAmount: number;
   readonly send: (payload: string) => void;
   readonly close: (code?: number, reason?: string) => void;
@@ -173,6 +179,29 @@ class DictationStreamingAttempt {
   private finishRequested = false;
   private closeSent = false;
   private terminal = false;
+  private readonly diagnostics: DictationStreamDiagnostics = emptyDictationStreamDiagnostics();
+  private preparedAt = 0;
+  private socketCreatedAt: number | null = null;
+  private socketOpenedAt: number | null = null;
+  private finishAt: number | null = null;
+
+  private now(): number {
+    return this.deps.clock.now?.() ?? performance.now();
+  }
+
+  private reportDiagnostics(): void {
+    if (this.terminal && this.diagnostics.connectInfoMs === undefined) {
+      this.diagnostics.connectInfoMs = Math.max(0, this.now() - this.preparedAt);
+    }
+    if (this.terminal && this.socketCreatedAt !== null && this.socketOpenedAt === null) {
+      this.diagnostics.handshakeMs = Math.max(0, this.now() - this.socketCreatedAt);
+    }
+    if (this.terminal && this.socketOpenedAt !== null && !this.started) {
+      this.diagnostics.sessionStartMs = Math.max(0, this.now() - this.socketOpenedAt);
+    }
+    if (this.finishAt !== null) this.diagnostics.finishMs = Math.max(0, this.now() - this.finishAt);
+    this.post({ type: "diagnostics", diagnostics: { ...this.diagnostics } });
+  }
 
   constructor(
     input: PrepareDictationStreamingSessionInput,
@@ -185,6 +214,7 @@ class DictationStreamingAttempt {
   }
 
   prepare(): void {
+    this.preparedAt = this.now();
     this.cancelPortListener = this.port.onMessage((message) => this.handlePortMessage(message));
     this.cancelStartTimeout = this.deps.clock.scheduleTimeout(
       () =>
@@ -197,6 +227,8 @@ class DictationStreamingAttempt {
   abort(): void {
     if (this.terminal) return;
     this.terminal = true;
+    this.diagnostics.failureCode = "aborted";
+    this.reportDiagnostics();
     this.post({ type: "closed", outcome: { kind: "aborted", shouldFallback: false } });
     this.release();
   }
@@ -216,6 +248,7 @@ class DictationStreamingAttempt {
     }
     if (this.terminal) return;
 
+    this.diagnostics.connectInfoMs = Math.max(0, this.now() - this.preparedAt);
     const validated = validateDictationStreamingConnectInfo(connectInfo);
     if (!validated.ok) {
       this.deps.logger.warn("Invalid dictation streaming connection info", {
@@ -228,6 +261,8 @@ class DictationStreamingAttempt {
 
     let socket: DictationStreamingSocket;
     try {
+      this.diagnostics.attempted = true;
+      this.socketCreatedAt = this.now();
       socket = this.deps.createWebSocket(validated.value.websocketUrl, validated.value.protocols);
     } catch (error) {
       this.deps.logger.warn("Unable to create dictation streaming websocket", {
@@ -258,12 +293,26 @@ class DictationStreamingAttempt {
       this.fail("websocket-failed", "Unable to open the dictation stream.");
       return;
     }
+    this.reportDiagnostics();
     if (!this.post({ type: "prepared" })) this.closeWithoutNotification();
   }
 
   private handleSocketOpen(): void {
     if (this.terminal || this.opened) return;
     this.opened = true;
+    this.diagnostics.opened = true;
+    this.socketOpenedAt = this.now();
+    this.diagnostics.handshakeMs = Math.max(
+      0,
+      this.socketOpenedAt - (this.socketCreatedAt ?? this.socketOpenedAt),
+    );
+    const protocol = this.socket?.protocol;
+    this.diagnostics.selectedProtocol = !protocol
+      ? "none"
+      : protocol === "chatgpt-dictation" || protocol === "codex-desktop"
+        ? protocol
+        : "other";
+    this.reportDiagnostics();
     this.sendJson(buildDictationStreamingSessionStartMessage(this.sampleRateHz));
   }
 
@@ -275,6 +324,17 @@ class DictationStreamingAttempt {
       return;
     }
 
+    if (event.type === "session.started" || event.type === "session.updated") {
+      this.diagnostics.providerMode = event.session.config.provider_mode;
+    }
+    if (
+      event.type === "transcript.delta" ||
+      event.type === "transcript.segment" ||
+      event.type === "transcript.final"
+    ) {
+      this.diagnostics.transcriptEvents += 1;
+      if (event.type === "transcript.final") this.diagnostics.finalReceived = true;
+    }
     applyDictationStreamingServerEvent(this.transcriptState, event);
     switch (event.type) {
       case "session.started":
@@ -311,9 +371,12 @@ class DictationStreamingAttempt {
   private handleSessionStarted(): void {
     if (this.started || this.terminal) return;
     this.started = true;
+    this.diagnostics.started = true;
+    this.diagnostics.sessionStartMs = Math.max(0, this.now() - (this.socketOpenedAt ?? this.now()));
     this.cancelStartDeadline();
     this.flushPendingAudioFrames();
     if (this.terminal) return;
+    this.reportDiagnostics();
     if (!this.post({ type: "started" })) {
       this.closeWithoutNotification();
       return;
@@ -332,6 +395,7 @@ class DictationStreamingAttempt {
 
   private handleSocketClose(event: DictationStreamingSocketClose): void {
     if (this.terminal) return;
+    this.diagnostics.closeCode = event.code;
     this.socket = null;
     this.cancelSocketListeners?.();
     this.cancelSocketListeners = null;
@@ -424,6 +488,9 @@ class DictationStreamingAttempt {
       audio: Buffer.from(frame.pcm16).toString("base64"),
     });
     if (!didSend || this.terminal) return;
+    this.diagnostics.sentAudioBytes += frame.pcm16.byteLength;
+    this.diagnostics.sentAudioFrames += 1;
+    if (this.diagnostics.sentAudioFrames === 1) this.reportDiagnostics();
     this.outstandingAudioBytes -= frame.pcm16.byteLength;
     this.acknowledgeAudioFrame(frame.sequence, frame.pcm16.byteLength);
   }
@@ -444,6 +511,7 @@ class DictationStreamingAttempt {
   private requestFinish(): void {
     if (this.finishRequested) return;
     this.finishRequested = true;
+    this.finishAt = this.now();
     if (this.started) this.sendSessionClose();
   }
 
@@ -466,6 +534,7 @@ class DictationStreamingAttempt {
     }
 
     this.terminal = true;
+    this.reportDiagnostics();
     this.post({ type: "final", text });
     this.post({ type: "closed", outcome: { kind: "completed" } });
     this.release();
@@ -474,6 +543,8 @@ class DictationStreamingAttempt {
   private fail(code: DictationStreamingFailureCode, message: string): void {
     if (this.terminal) return;
     this.terminal = true;
+    this.diagnostics.failureCode = code;
+    this.reportDiagnostics();
     const error: DictationStreamingFailure = { code, message, shouldFallback: true };
     this.post({ type: "failed", error });
     this.post({ type: "closed", outcome: { kind: "failed" } });

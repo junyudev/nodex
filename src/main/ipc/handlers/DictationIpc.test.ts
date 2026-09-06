@@ -1,3 +1,4 @@
+import { dictationTextResult } from "../../../../tests/fixtures/dictation-diagnostics";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -37,7 +38,8 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
       dictationState: Effect.die("unused"),
       transcribe: () =>
         Effect.never.pipe(Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined))),
-      cleanupTranscript: ({ transcript }) => Effect.succeed(`cleaned:${transcript}`),
+      cleanupTranscript: ({ transcript }) =>
+        Effect.succeed(dictationTextResult(`cleaned:${transcript}`, "cleanup")),
       prepareStreamingConnectInfo: Effect.die("unused"),
       resolveImage: () => Effect.die("unused"),
     });
@@ -110,13 +112,13 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
     );
     assert.isTrue(Exit.isFailure(unauthorizedContextMenu));
 
-    assert.strictEqual(
+    assert.deepEqual(
       yield* handlers.get("codex:dictation:cleanup")!(owner, {
         transcript: "hello nodex",
         surroundingText: null,
         requestId: "6d23f70b-f145-4ca0-943b-0042ea9fe091",
       }),
-      "cleaned:hello nodex",
+      dictationTextResult("cleaned:hello nodex", "cleanup"),
     );
 
     yield* Scope.close(scope, Exit.void);

@@ -80,7 +80,7 @@ const createFixture = (
       },
     ),
   };
-  const paste = vi.fn(async () => undefined);
+  const paste = vi.fn(async () => ({ clipboardRestoreMs: 710 }));
   const readSettings = vi.fn(async () => ({
     microphoneInputDeviceId: null,
     keepGlobalBarVisible: false,
@@ -331,6 +331,11 @@ describe("GlobalDictationManager", () => {
       transcript: "hello",
     });
     await vi.waitFor(() => expect(fixture.manager.getSnapshot().kind).toBe("idle"));
+    expect(fixture.commands).toContainEqual({
+      type: "paste-completed",
+      sessionId: snapshot.sessionId,
+      clipboardRestoreMs: 710,
+    });
     expect(fixture.paste).toHaveBeenCalledWith("hello", {
       pid: 7,
       bundleIdentifier: "example.app",
@@ -606,8 +611,9 @@ describe("GlobalDictationManager", () => {
       }),
     );
     fixture.manager.handleRendererEvent(99, {
-      type: "retry-paste",
+      type: "completed",
       sessionId: snapshot.sessionId,
+      transcript: "retained text",
     });
     await vi.waitFor(() => expect(fixture.manager.getSnapshot().kind).toBe("idle"));
     expect(fixture.paste).toHaveBeenLastCalledWith("retained text", {
