@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { createEvent, fireEvent, waitFor, within } from "@testing-library/react";
 import { act, useRef, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
+import {
+  groupScopeKeyForPath,
+  type DatabaseViewRenderModel,
+} from "@/lib/database-view-render-model";
 import {
   commitDatabaseViewOperations,
   DatabaseViewMutationError,
@@ -30,6 +33,8 @@ import { handleWorkbenchShortcut } from "@/lib/use-workbench-shortcuts";
 import { readFocusedHistory } from "@/lib/focused-history";
 import { createMaitaiStore } from "@/lib/maitai";
 import { NodexModalHost } from "@/lib/modal-registry";
+import { ContentHistoryControl } from "@/components/shared/surface-history-status";
+import { acquireContentInteractionHistory } from "@/lib/content-interaction-history";
 import { TestMaitaiRoot } from "@/test/app-maitai";
 import { resetContextualKeyboardActionRegistryForTests } from "@/lib/contextual-keyboard-actions";
 import { PageTitleProjectionProvider } from "@/lib/page-title-projection-context";
@@ -1284,7 +1289,11 @@ describe("DatabaseViewSurface", () => {
 
   test("exposes List history recovery and confirms reset without changing its Pages", async () => {
     const model = listModel();
-    const history = createDatabaseViewMutationHistory(databaseViewHistoryScopeKey(model));
+    const realm = acquireContentInteractionHistory(model);
+    const history = createDatabaseViewMutationHistory(
+      databaseViewHistoryScopeKey(model),
+      realm.history,
+    );
     const commitOperations = vi.fn<typeof commitDatabaseViewOperations>(async () => {
       throw new Error("Response lost");
     });
@@ -1303,6 +1312,7 @@ describe("DatabaseViewSurface", () => {
     ).rejects.toThrow();
     const screen = render(
       <>
+        <ContentHistoryControl />
         <DatabaseViewSurface
           model={model}
           presentationLayout="list"
@@ -1313,6 +1323,10 @@ describe("DatabaseViewSurface", () => {
         <NodexModalHost />
       </>,
     );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Content edits" }));
+      await Promise.resolve();
+    });
     const retry = await screen.findByRole("button", { name: "Check again" });
     await act(async () => {
       fireEvent.click(retry);
@@ -1323,7 +1337,7 @@ describe("DatabaseViewSurface", () => {
       fireEvent.click(screen.getByRole("button", { name: "Reset history" }));
       await Promise.resolve();
     });
-    const dialog = await screen.findByRole("dialog", { name: "Reset this surface’s history?" });
+    const dialog = await screen.findByRole("dialog", { name: "Reset content history?" });
     expect(history.snapshot().undo.status).toBe("waiting");
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Reset history" }));
@@ -1332,6 +1346,11 @@ describe("DatabaseViewSurface", () => {
     await waitFor(() => expect(history.snapshot().undo.status).toBe("empty"));
     expect(screen.getAllByRole("row")).toHaveLength(2);
     expect(commitOperations).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      history.close();
+      realm.release();
+      await Promise.resolve();
+    });
   });
 
   test("keeps the named List grid valid and cells anchored when Page ID is hidden", () => {
@@ -1663,9 +1682,26 @@ describe("DatabaseViewSurface", () => {
         }),
     );
     const current = boardModel();
+    const groupPagination = new Map(
+      current.query.rows.map((row) => {
+        const scopeKey = groupScopeKeyForPath(row.effectiveGroupKey, row.effectiveSubgroupKey);
+        return [
+          scopeKey,
+          {
+            scopeKey,
+            loadedRows: 2,
+            totalRows: 2,
+            hasMore: false,
+            loadingMore: false,
+            error: null,
+          },
+        ];
+      }),
+    );
     const screen = render(
       <DatabaseViewSurface
         model={current}
+        groupPagination={groupPagination}
         searchQuery=""
         onOpenPage={() => undefined}
         commitOperations={commitOperations}
@@ -1710,6 +1746,7 @@ describe("DatabaseViewSurface", () => {
       screen.rerender(
         <DatabaseViewSurface
           model={canonical}
+          groupPagination={groupPagination}
           searchQuery=""
           onOpenPage={() => undefined}
           commitOperations={commitOperations}
@@ -1835,15 +1872,17 @@ describe("DatabaseViewSurface", () => {
     },
   );
 
-  test("hands a sorted Board drop its exact Property projection", async () => {
-    const onMoveBoardPages = vi.fn(async () => mutationReceipt(["position_pages"]));
+  test("submits a sorted Board drop with its exact Property edit and position in one request", async () => {
+    const commitOperations = vi.fn<typeof commitDatabaseViewOperations>(async () =>
+      mutationReceipt(["edit_property_values", "position_pages"]),
+    );
     const current = prioritySortedBoardModel();
     const screen = render(
       <DatabaseViewSurface
         model={current}
         searchQuery=""
         onOpenPage={() => undefined}
-        onMoveBoardPages={onMoveBoardPages}
+        commitOperations={commitOperations}
       />,
     );
     const dataTransfer = databaseViewPageDataTransfer();
@@ -1859,31 +1898,46 @@ describe("DatabaseViewSurface", () => {
       await Promise.resolve();
     });
 
-    expect(onMoveBoardPages).toHaveBeenCalledWith(
+    expect(commitOperations).toHaveBeenCalledWith(
       expect.objectContaining({
-        pageIds: ["page-focused"],
-        propertyValues: [
+        operationId: expect.any(String),
+        operations: [
           {
-            propertyId: priorityPropertyId,
-            value: "p3-low",
+            kind: "edit_property_values",
+            edits: [
+              expect.objectContaining({
+                pageId: "page-focused",
+                propertyId: priorityPropertyId,
+                edit: expect.objectContaining({
+                  kind: "replace",
+                  value: { kind: "select", optionId: "p3-low" },
+                }),
+              }),
+            ],
           },
+          expect.objectContaining({
+            kind: "position_pages",
+            pages: [expect.objectContaining({ pageId: "page-focused" })],
+          }),
         ],
       }),
-      expect.objectContaining({ operationId: expect.any(String), operations: expect.any(Array) }),
     );
   });
 
-  test("keeps an uncertain delegated Board drop on the owning card", async () => {
+  test("keeps an uncertain Board drop visible and blocks older history", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const onMoveBoardPages = vi.fn(async () => {
+    const current = prioritySortedBoardModel();
+    const history = createDatabaseViewMutationHistory(databaseViewHistoryScopeKey(current));
+    const commitOperations = vi.fn<typeof commitDatabaseViewOperations>(async () => {
       throw new Error("injected Board failure");
     });
     const screen = render(
       <DatabaseViewSurface
-        model={prioritySortedBoardModel()}
+        model={current}
         searchQuery=""
         onOpenPage={() => undefined}
-        onMoveBoardPages={onMoveBoardPages}
+        mutationHistory={history}
+        commitOperations={commitOperations}
       />,
     );
     const dataTransfer = databaseViewPageDataTransfer();
@@ -1899,10 +1953,15 @@ describe("DatabaseViewSurface", () => {
       await Promise.resolve();
     });
 
-    expect(
-      await screen.findByText("Confirming your last edit. Earlier history is paused."),
-    ).toBeTruthy();
+    await waitFor(() => expect(history.snapshot().undo.status).toBe("waiting"));
+    expect(screen.container.querySelector('[data-board-uuid-v7="page-focused"]')).not.toBeNull();
+    expect(await history.undoLast()).toBe(false);
+    expect(commitOperations).toHaveBeenCalledOnce();
     expect(consoleError).toHaveBeenCalledOnce();
+    await act(async () => {
+      history.close();
+      await Promise.resolve();
+    });
     consoleError.mockRestore();
   });
 

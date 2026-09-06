@@ -510,22 +510,26 @@ a conservative optimistic projection remains until a receipt-fenced canonical
 window confirms the same parent, group, and order semantics. A typed revision
 conflict rolls back without clearing the readable List; a new gesture uses fresh
 occurrence authority. Successful moves are silent.
-Their opaque Core recipe enters a bounded, Store-epoch-and-View-scoped session
-history, and List-scoped Command/Ctrl+Z restores it only while editor, input,
-combobox, and menu Undo owners are inactive.
+Their opaque Core recipe enters the window's bounded content history for the
+same Library, access context, and Store epoch. Page body, Page title, Board and
+List shortcuts replay this same interaction order; native input drafts,
+comboboxes, menus and independent editors retain their input boundaries.
 
-View history reserves each data gesture before asynchronous preparation and
+The content owner reserves each data gesture before asynchronous preparation and
 serializes its forward commands and inverses. Later replies fill their original
-slots; a queued Undo cannot wait for a gesture admitted behind it. Scope changes
-retire the old queue, and its late completion cannot change the new View history.
-The scope binds Library, access context, Store epoch, and View identity once per
-render; a ready View never detours through a temporary loading identity during
-ordinary projection refresh or presentation rerender.
+slots; a queued Undo cannot wait for a gesture admitted behind it. Each View
+participant validates Library, access context, Store epoch and View identity for
+admission; View identity is a command target, not a separate chronology. A ready
+View preserves its participant during ordinary projection refresh or presentation
+rerender. Authority changes cannot attach old actions to the new scope.
 Transfer-toast Undo addresses the exact transfer and only runs while that entry
-is the latest eligible action in the same View. It never undoes a newer action.
-Board's optimistic delivery returns the complete authoritative receipt to this
-same owner. It neither rebuilds the admitted request nor maintains a separate
-history. An uncertain response keeps its place and blocks dependent commands
+is the latest eligible action in the shared content timeline. A newer Page title,
+body or other View action makes that exact target ineligible; the toast never
+undoes a newer action.
+Board and List forward edits and replay use the same receipt-fenced presentation
+lifecycle. Each returns the complete authoritative receipt to the content owner;
+neither rebuilds the admitted request nor maintains a separate history.
+An uncertain response keeps its place and blocks dependent commands
 and older Undo. Recovery resends the frozen request and operation identity.
 Only a known non-commit or supported no-op removes a pending action. If its
 receipt can no longer be recovered, a permanent barrier remains; expiry does
@@ -560,11 +564,13 @@ form an explicit history barrier. Undo explains that the latest edit cannot be
 reversed and leaves earlier moves intact; it must not skip the edit and undo an
 older Move. A batch can only enter history when its inverse covers the whole
 gesture; a List-move suboperation receipt cannot make a mixed batch undoable.
-Each data inverse is bounded to 4,096 affected identities and 8 MiB. The View
-retains at most 50 completed entries and 16 MiB of encoded evidence, evicting a
+Each data inverse is bounded to 4,096 affected identities and 8 MiB. Shared content
+history retains at most 500 completed entries and 64 MiB of evidence, evicting a
 contiguous oldest prefix; an oversized gesture never uncovers an older action.
-Controls remain interactive while another command is pending;
-accepted commands wait in gesture order. Scalar, multi-select, manual-order and
+Independent controls remain interactive while another command is pending;
+accepted commands wait in gesture order. A position-dependent drag waits for
+the preceding placement's canonical rendered handoff, so a new gesture never
+captures stale projection or position revisions. Scalar, multi-select, manual-order and
 whole List-move inverses return the evidence for Redo. List replay restores
 discontiguous selections across their original parents and validates every
 affected logical value, parent and ordered run before writing. Each successful
@@ -577,16 +583,25 @@ not a partial Undo followed by a Redo barrier. Their unused one-way token is
 released; the success notification offers Undo only for a complete inverse.
 Consumed inverses are not released twice. Retiring the surface or a Redo branch
 releases the remaining reachable capabilities through Main's cleanup owner.
-Waiting or blocked history appears in a
-compact surface notice with an explicit recovery action when safe. Reset history
-requires confirmation and clears the complete local timeline without changing
-content or abandoning submitted requests. Native menu labels and availability
-follow the focused surface; native inputs retain their own history. Keyboard and native-menu history requests share the same focused owner,
+Routine edits do not insert status sections into Board or List. The fixed
+Workbench `Content edits` control stays quiet for short waits, shows delayed
+activity, and exposes unknown or blocked actions through an attention indicator
+and a manually opened recovery popover. A committed edit still awaiting its
+canonical projection is described as updating the View, not saving. Recovery
+is scoped to the original Library/access context. Ordinary pending work offers
+no reset action. When reset is safe, it requires confirmation and clears the
+complete shared content timeline without changing content or abandoning
+submitted requests. Native menu labels and availability
+follow the focused input boundary; native inputs retain their own history. Keyboard and native-menu history requests share the same content owner,
 including when empty, pending, or blocked. A nested Property input keeps its own
-text history, and an embedded View never delegates its history to a parent Page.
+text history. An embedded View submits through its own Adapter while sharing
+chronology with Page content; the parent editor never interprets a View receipt.
 Closing a Board or List Page menu returns focus to the surviving View when the
 menu item’s Page has regrouped or disappeared from the current result, unless
-the user has moved focus elsewhere. The next Undo/Redo still belongs to that View.
+the user has moved focus elsewhere. Undo/Redo follows shared content interaction
+order without requiring that View to remain focused. Immediately undoing a Block
+drop removes promoted Pages and restores the source Blocks; Redo restores the
+same generated identities.
 
 List also accepts native NFM Block drags from another mounted editor in the
 same renderer window. Under manual order or an inferable writable Property
@@ -716,8 +731,9 @@ by a Data Source and the corresponding schema/value coordinates are valid.
 Losing or changing membership removes only that capability; Page identity,
 Document, content, and local editing surface remain stable.
 
-Mounted surfaces own independent caret, selection, undo, and presence. Undo
-includes only that surface's local edits. Durable history is a semantic revision
+Mounted surfaces own independent caret, selection, and presence. Their local Page
+body/title and Database edits share window-local content interaction history
+within the same authority scope; remote changes never enter it. Durable history is a semantic revision
 timeline; restore applies a new forward mutation and never rewinds collaborative
 causality. Exact revision and retention behavior remains a reliability concern.
 

@@ -48,10 +48,17 @@ import {
 import type { SurfaceHistorySelectionPair, YUndoExtension } from "@blocknote/core/yjs";
 import { NfmHistoryLane } from "./nfm-editor-history";
 import type { SurfaceHistoryControls } from "../../../lib/surface-history/controls";
+import type { SurfaceHistoryDirection } from "../../../../shared/surface-history";
+import {
+  acquireContentInteractionHistory,
+  contentInteractionHistoryScopeKey,
+  type ContentInteractionHistoryScope,
+} from "../../../lib/content-interaction-history";
 import type {
   HistoryCommandHandle,
   HistoryCommandOutcome,
   HistoryPreparation,
+  InteractionHistory,
 } from "../../../lib/surface-history/owner";
 import type {
   NfmHistoryCommand,
@@ -122,6 +129,7 @@ type StructuralEditor = BlockNoteEditor & {
 export interface NfmStructuralEditingSessionOptions {
   readonly editor: BlockNoteEditor<any, any, any>;
   readonly historyLane?: NfmHistoryLane | null;
+  readonly interactionHistory?: InteractionHistory;
   readonly historyReconciliation?: NfmHistoryReconciliation;
   readonly apply?: typeof applyLibraryModule;
   readonly preparePromotion?: typeof prepareNfmBlockPromotion;
@@ -378,11 +386,18 @@ export class NfmStructuralEditingSession {
     this.history =
       options.historyLane ??
       new NfmHistoryLane({
+        interactionHistory: options.interactionHistory,
         undoManager: backend.undoManager,
         textHistory: journal,
         textSelection: backend.getSemanticSelection,
       });
-    this.unbindHistory = backend.bindHistory(this.history);
+    this.unbindHistory = backend.bindHistory({
+      beforeLocalCapture: () => this.history.beforeLocalCapture(),
+      canUndo: () => this.history.canUndo(),
+      canRedo: () => this.history.canRedo(),
+      requestUndo: () => this.requestHistory("undo"),
+      requestRedo: () => this.requestHistory("redo"),
+    });
     this.ownsHistory = this.history !== options.historyLane;
     this.detachHistory = this.history.attach({
       prepareCommand: (command) => this.prepareCommand(command),
@@ -479,10 +494,10 @@ export class NfmStructuralEditingSession {
     if (this.disposed || event.isComposing || this.editor.prosemirrorView?.composing) return false;
     const mod = event.metaKey || event.ctrlKey;
     if (mod && !event.altKey && event.key.toLowerCase() === "z") {
-      return event.shiftKey ? this.history.requestRedo() : this.history.requestUndo();
+      return this.requestHistory(event.shiftKey ? "redo" : "undo");
     }
     if (mod && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "y") {
-      return this.history.requestRedo();
+      return this.requestHistory("redo");
     }
     if (
       event.altKey ||
@@ -637,8 +652,8 @@ export class NfmStructuralEditingSession {
 
   handleBeforeInput(event: InputEvent): boolean {
     if (this.disposed || event.isComposing || this.editor.prosemirrorView?.composing) return false;
-    if (event.inputType === "historyUndo") return this.history.requestUndo();
-    if (event.inputType === "historyRedo") return this.history.requestRedo();
+    if (event.inputType === "historyUndo") return this.requestHistory("undo");
+    if (event.inputType === "historyRedo") return this.requestHistory("redo");
     const roots = selectedStructuralRoots(this.editor);
     if (!hasTypedOwnerBlock(roots)) return false;
     if (event.inputType === "insertParagraph") {
@@ -653,6 +668,30 @@ export class NfmStructuralEditingSession {
 
   stopCapturing(): void {
     this.history.stopCapturing();
+  }
+
+  /** A foreign participant's fence may blur this input; preserve the invoking view. */
+  private requestHistory(direction: SurfaceHistoryDirection): boolean {
+    if (this.disposed) return false;
+    const container = this.runtime?.getContainer();
+    const document = container?.ownerDocument;
+    const active = document?.activeElement;
+    const ownsInput =
+      container?.isConnected &&
+      (!active ||
+        active === document?.body ||
+        active === document?.documentElement ||
+        container.contains(active));
+    const focusRevision = this.focusRevision;
+    const handle = this.history.requestHistory(direction);
+    if (ownsInput)
+      void handle.result
+        .then(() => {
+          if (this.disposed || focusRevision !== this.focusRevision) return;
+          this.restoreFocusIfUnclaimed();
+        })
+        .catch((error: unknown) => this.reportError(error));
+    return true;
   }
 
   whenIdle(): Promise<void> {
@@ -1233,6 +1272,7 @@ export class NfmStructuralEditingSession {
     if (presentation?.clipboardFallback)
       this.runtime?.onClipboardFallback?.(presentation.clipboardFallback);
     if (!presentation || presentation.focusRevision !== this.focusRevision) return;
+    if (!this.runtime?.getContainer()?.isConnected) return;
     const backend = this.editor.getExtension<typeof YUndoExtension>("yUndo");
     const restoredSemanticSelection =
       presentation.selection?.before &&
@@ -1753,6 +1793,8 @@ export class NfmStructuralEditingController {
   private activeSession: NfmStructuralEditingSession | null = null;
   private disposed = false;
   private disposePromise: Promise<void> | null = null;
+  private historyLease: ReturnType<typeof acquireContentInteractionHistory> | undefined;
+  private historyScopeKey: string | undefined;
 
   constructor(
     private readonly historyReconciliation: NfmHistoryReconciliation = coreHistoryReconciliation,
@@ -1762,18 +1804,29 @@ export class NfmStructuralEditingController {
     return this.activeSession;
   }
 
-  attachEditor(editor: BlockNoteEditor<any, any, any>): NfmStructuralEditingSession {
+  attachEditor(
+    editor: BlockNoteEditor<any, any, any>,
+    historyScope?: ContentInteractionHistoryScope,
+  ): NfmStructuralEditingSession {
     if (this.disposed) {
       throw new Error("Cannot attach an editor to a disposed structural editing controller.");
     }
     if (this.editor && this.editor !== editor) {
       throw new Error("A structural editing controller cannot change its editor.");
     }
-    if (this.session) return this.session;
+    const scopeKey = historyScope && contentInteractionHistoryScopeKey(historyScope);
+    if (this.session) {
+      if (this.historyScopeKey !== scopeKey)
+        throw new Error("A retained editor cannot change its content history authority.");
+      return this.session;
+    }
 
     this.editor = editor;
+    this.historyScopeKey = scopeKey;
+    this.historyLease = historyScope ? acquireContentInteractionHistory(historyScope) : undefined;
     this.session = new NfmStructuralEditingSession({
       editor,
+      interactionHistory: this.historyLease?.history,
       historyReconciliation: this.historyReconciliation,
     });
     return this.session;
@@ -1795,7 +1848,10 @@ export class NfmStructuralEditingController {
     if (this.disposePromise) return this.disposePromise;
     this.disposed = true;
     this.activeSession = null;
-    this.disposePromise = this.session?.close() ?? Promise.resolve();
+    this.disposePromise = (this.session?.close() ?? Promise.resolve()).finally(() => {
+      this.historyLease?.release();
+      this.historyLease = undefined;
+    });
     this.session = null;
     this.editor = null;
     return this.disposePromise;

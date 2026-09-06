@@ -922,7 +922,18 @@ describe("NFM structural editing session", () => {
             };
           },
         },
-        getContainer: () => null,
+        // This contract fixture includes mounted selection presentation; hidden
+        // replay is exercised with a real detached EditorView in Chromium.
+        getContainer: () =>
+          ({
+            isConnected: true,
+            contains: () => false,
+            ownerDocument: {
+              activeElement: {},
+              addEventListener: () => undefined,
+              removeEventListener: () => undefined,
+            },
+          }) as unknown as HTMLElement,
         resolveClipboardText: async (portableText) => `local:${portableText}`,
       },
       apply,

@@ -29,6 +29,58 @@ const selectAllShortcut = async (): Promise<void> => {
 };
 
 describe("CollaborativePageTitle in Chromium", () => {
+  test("a focused title routes native Undo to the latest title interaction in its content realm", async () => {
+    const first = createTitle("First");
+    const second = createTitle("Second");
+    const historyScope = {
+      libraryId: "title-browser-library",
+      storeEpoch: "title-browser-epoch",
+      accessContext: { kind: "library" as const },
+    };
+    const view = render(
+      <>
+        <CollaborativePageTitle
+          title={first.title}
+          historyScope={historyScope}
+          aria-label="First title"
+        />
+        <CollaborativePageTitle
+          title={second.title}
+          historyScope={historyScope}
+          aria-label="Second title"
+        />
+      </>,
+    );
+    const a = view.getByRole("textbox", { name: "First title" }) as HTMLDivElement;
+    const b = view.getByRole("textbox", { name: "Second title" }) as HTMLDivElement;
+    try {
+      await act(async () => {
+        a.focus();
+        restoreRichTitleDomSelection(a, first.title.length, first.title.length);
+        await userEvent.keyboard(" A");
+        b.focus();
+        restoreRichTitleDomSelection(b, second.title.length, second.title.length);
+        await userEvent.keyboard(" B");
+        a.focus();
+        dispatchFocusedHistory("undo");
+        await Promise.resolve();
+      });
+      expect(first.title.toString()).toBe("First A");
+      expect(second.title.toString()).toBe("Second");
+      expect(document.activeElement).toBe(a);
+      await act(async () => {
+        dispatchFocusedHistory("redo");
+        await Promise.resolve();
+      });
+      expect(second.title.toString()).toBe("Second B");
+      expect(document.activeElement).toBe(a);
+    } finally {
+      view.unmount();
+      first.document.destroy();
+      second.document.destroy();
+    }
+  });
+
   test("native history commands belong to the focused title, including redo", async () => {
     const { document, title } = createTitle("Title");
     const view = render(

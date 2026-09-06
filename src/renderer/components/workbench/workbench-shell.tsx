@@ -20,6 +20,7 @@ import {
 import { registerAppCloseFlushHandler } from "@/lib/app-close-flush";
 import { workspaceTextDocumentRegistry } from "@/features/workspace-files/workspace-text-document-controller";
 import { documentSessionRegistry } from "@/lib/document-session-registry";
+import { flushContentInteractionHistories } from "@/lib/content-interaction-history";
 import { canvasSceneSurfaceRegistry } from "@/lib/canvas-scene-surface-runtime";
 import { useWindowSessionLayoutPersistence } from "@/lib/use-window-session-layout-persistence";
 import type { OpenPageStageOptions } from "@/components/board/open-page-stage";
@@ -168,6 +169,7 @@ export function WorkbenchShell({
 
   useEffect(() => {
     return registerAppCloseFlushHandler(async () => {
+      await flushContentInteractionHistories();
       await pageStagePersistRef.current?.();
       await documentSessionRegistry.persistAll();
       await canvasSceneSurfaceRegistry.persistAllDurable();

@@ -13,6 +13,14 @@ import {
 } from "react";
 import * as Y from "yjs";
 import {
+  getPageTitleInteractionHistory,
+  type PageTitleInteractionHistory,
+} from "@/lib/page-title-interaction-history";
+import type { ContentInteractionHistoryScope } from "@/lib/content-interaction-history";
+import { registerFocusedHistory } from "@/lib/focused-history";
+import { toast } from "@/components/ui/toast";
+import type { SurfaceHistoryDirection } from "../../../shared/surface-history";
+import {
   portableRichTextPlainText,
   portableRichTextSemanticSource,
   readPortableRichTextFromYText,
@@ -62,6 +70,7 @@ type NativeTitleEditorProps = Omit<
 
 export interface CollaborativePageTitleProps extends NativeTitleEditorProps {
   readonly title: Y.Text;
+  readonly historyScope?: ContentInteractionHistoryScope;
   readonly ref?: Ref<HTMLDivElement>;
   readonly placeholder?: string;
   /** Fires for every authoritative local or remote Y.Text change. */
@@ -147,6 +156,7 @@ const renderRichTitleDom = (root: HTMLDivElement, value: PortableRichText): void
 
 export function CollaborativePageTitle({
   title,
+  historyScope,
   ref: forwardedRef,
   onValueChange,
   onCompositionStart,
@@ -181,11 +191,24 @@ export function CollaborativePageTitle({
   const compositionBaseRef = useRef(title.toString());
   const relativeSelectionRef = useRef<RelativeTitleSelection | null>(null);
   const absoluteSelectionRef = useRef<AbsoluteTitleSelection | null>(null);
-  const undoManagerRef = useRef<Y.UndoManager | null>(null);
+  const historyRef = useRef<PageTitleInteractionHistory | null>(null);
   const onValueChangeRef = useRef(onValueChange);
   onValueChangeRef.current = onValueChange;
   const plainTitle = portableRichTextPlainText(richTitle);
   const disabled = ariaDisabled === true || ariaDisabled === "true";
+
+  const requestHistory = (direction: SurfaceHistoryDirection): void => {
+    const history = historyRef.current;
+    if (!history) return;
+    void history.controls
+      .request(direction)
+      .result.then((result) => {
+        if (result.status !== "committed" && result.status !== "noop") toast.danger(result.reason);
+      })
+      .catch((error: unknown) =>
+        toast.danger(error instanceof Error ? error.message : "Content history is not available."),
+      );
+  };
 
   const captureSelection = (): void => {
     const editor = editorRef.current;
@@ -208,10 +231,16 @@ export function CollaborativePageTitle({
     if (!document) {
       throw new TypeError("Collaborative Page title must belong to a Y.Doc");
     }
-    const undoManager = new Y.UndoManager(title, {
-      trackedOrigins: new Set([localOrigin]),
-    });
-    undoManagerRef.current = undoManager;
+    const history = getPageTitleInteractionHistory(title, historyScope);
+    const releaseOrigin = history.retainOrigin(localOrigin);
+    historyRef.current = history;
+    const root = editorRef.current;
+    const releaseFocus = root
+      ? registerFocusedHistory(root, {
+          controls: history.controls,
+          contentEditableRoot: () => root,
+        })
+      : undefined;
 
     const publishRichTitle = (nextRichTitle: PortableRichText): void => {
       const nextSource = portableRichTextSemanticSource(nextRichTitle);
@@ -281,10 +310,11 @@ export function CollaborativePageTitle({
       title.unobserve(handleTitleChange);
       document.off("beforeTransaction", handleBeforeTransaction);
       document.off("afterTransaction", handleAfterTransaction);
-      undoManager.destroy();
-      if (undoManagerRef.current === undoManager) undoManagerRef.current = null;
+      releaseFocus?.();
+      releaseOrigin();
+      if (historyRef.current === history) historyRef.current = null;
     };
-  }, [localOrigin, title]);
+  }, [historyScope, localOrigin, title]);
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
@@ -387,8 +417,7 @@ export function CollaborativePageTitle({
     if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
       event.preventDefault();
       event.stopPropagation();
-      if (event.inputType === "historyUndo") undoManagerRef.current?.undo();
-      else undoManagerRef.current?.redo();
+      requestHistory(event.inputType === "historyUndo" ? "undo" : "redo");
       return;
     }
     const selection = readRichTitleDomSelection(editor);
@@ -497,8 +526,7 @@ export function CollaborativePageTitle({
     if (!event.altKey && (key === "z" || (key === "y" && !event.shiftKey))) {
       event.preventDefault();
       event.stopPropagation();
-      if (event.shiftKey || key === "y") undoManagerRef.current?.redo();
-      else undoManagerRef.current?.undo();
+      requestHistory(event.shiftKey || key === "y" ? "redo" : "undo");
       return;
     }
     const format =

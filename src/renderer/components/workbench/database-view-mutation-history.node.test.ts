@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vite-plus/test";
+import { createInteractionHistory } from "@/lib/surface-history/owner";
 import {
   parseDatabaseViewId,
   parseDataSourceId,
@@ -84,6 +85,46 @@ const fixture = () => {
 };
 
 describe("Database View semantic command history", () => {
+  test("another View replays the originating View's edit and refreshes only its presentation", async () => {
+    const realm = createInteractionHistory({ scopeKey: "content" });
+    const first = createDatabaseViewMutationHistory(databaseViewHistoryScopeKey(model), realm);
+    const secondModel = { ...model, databaseViewId: parseDatabaseViewId("second-view") };
+    const second = createDatabaseViewMutationHistory(
+      databaseViewHistoryScopeKey(secondModel),
+      realm,
+    );
+    const refreshedFirst = vi.fn();
+    const refreshedSecond = vi.fn();
+    first.subscribeReplayCommitted(refreshedFirst);
+    second.subscribeReplayCommitted(refreshedSecond);
+    const commit = vi.fn<typeof commitDatabaseViewOperations>(async () => receipt());
+    await first.executeOperations({ model, operations, commitOperations: commit });
+    expect(refreshedFirst).not.toHaveBeenCalled();
+    expect(second.snapshot().undo.label).toBe("Change Properties");
+    const resolution = await second.request("undo").result;
+    expect(resolution).toEqual({ status: "committed", entryId: expect.any(Number) });
+    expect(commit.mock.calls[1]?.[0].operations).toEqual([
+      { kind: "reverse_data_edit", recipe: recipe() },
+    ]);
+    expect(refreshedFirst).toHaveBeenCalledOnce();
+    expect(refreshedSecond).not.toHaveBeenCalled();
+    realm.close();
+  });
+
+  test("explicit content reset clears the shared interval without replaying another View's edits", async () => {
+    const realm = createInteractionHistory({ scopeKey: "content" });
+    const first = createDatabaseViewMutationHistory(databaseViewHistoryScopeKey(model), realm);
+    const second = createDatabaseViewMutationHistory("second-view", realm);
+    const commit = vi.fn<typeof commitDatabaseViewOperations>(async () => receipt());
+    await first.executeOperations({ model, operations, commitOperations: commit });
+    second.reset();
+    expect(first.snapshot().undo.status).toBe("empty");
+    expect(first.snapshot().redo.status).toBe("empty");
+    expect(await first.undoLast()).toBe(false);
+    expect(commit).toHaveBeenCalledOnce();
+    realm.close();
+  });
+
   test("List replay installs each authoritative inverse so Undo and Redo remain symmetric", async () => {
     const { history, commit } = fixture();
     const listRecipe: DatabaseListMoveUndoRecipeV2 = {
@@ -222,23 +263,24 @@ describe("Database View semantic command history", () => {
     expect(history.snapshot().undo.status).toBe("empty");
   });
 
-  test("delegated forward delivery returns its authoritative receipt, while inverse uses the typed commit port", async () => {
+  test("forward, Undo and Redo share the captured typed presentation port", async () => {
     const { history, commit } = fixture();
-    const forward = vi.fn<typeof commitDatabaseViewOperations>(async () =>
-      receipt(recipe("a", "b")),
-    );
+    commit.mockResolvedValueOnce(receipt(recipe("a", "b")));
     await history.executeOperations({
       model,
       operations,
       commitOperations: commit,
-      submitForward: forward,
     });
-    expect(commit).not.toHaveBeenCalled();
+    expect(commit.mock.calls[0]?.[0].operations).toEqual(operations);
     expect(await history.undoLast()).toBe(true);
-    expect(commit.mock.calls[0]?.[0].operations).toEqual([
+    expect(commit.mock.calls[1]?.[0].operations).toEqual([
       { kind: "reverse_data_edit", recipe: recipe("a", "b") },
     ]);
-    expect(forward).toHaveBeenCalledOnce();
+    expect((await history.request("redo").result).status).toBe("committed");
+    expect(commit.mock.calls[2]?.[0].operations).toEqual([
+      { kind: "reverse_data_edit", recipe: recipe() },
+    ]);
+    expect(commit).toHaveBeenCalledTimes(3);
   });
 
   test("a recipe covers the entire gesture or establishes a permanent barrier", () => {

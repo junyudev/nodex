@@ -276,10 +276,11 @@ uses local state and a submit-time guard.
   editable DOM behavior through the owning editor lifecycle, and keep callback
   refs stable when they write registration state.
 - Separate content authority from surface-local interaction. Editors that share
-  one Document may still own independent selection, undo, caret, camera, tool,
+  one Document may still own independent selection, caret, camera, tool,
   and presence contributions.
 - Bind collaborative history through the registered typed editor capability,
-  before any view exists. Feature commands use the surface history owner,
+  before any view exists. Page and Database participants join their window's
+  authority-scoped content interaction history. Feature commands use that owner,
   never a plugin-key scan or a second keyboard-priority stack. Structural
   gestures enter that owner before asynchronous preparation; retain its
   cleanup until committed results and their inverse tokens have been handed off.

@@ -86,10 +86,10 @@ export const runNfmEditorFocusPreservingMutation = async <Result>(
   }
 };
 
-/** Settles editor-only drag/focus state before Core observes a causal head. */
+/** Retained Documents can fence without a view; mounted views settle drag/focus first. */
 export const prepareNfmEditorStructuralMutation = async (
   editor: NfmEditorStructuralMutationRuntime,
-  container: HTMLElement,
+  container: HTMLElement | null,
   barrier: BlockDocumentMutationBarrier,
   input: DocumentWaitOptions = {},
 ): Promise<DocumentHeadFence> => {
@@ -98,6 +98,7 @@ export const prepareNfmEditorStructuralMutation = async (
     deadlineAt: input.deadlineAt ?? Date.now() + DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
   };
   assertDocumentWaitActive(options);
+  if (!container?.isConnected) return await barrier.flushAndFence(options);
   finalizeSideMenuBlockDrag(editor);
   await prepareNfmEditorForMutation(editor, container);
   assertDocumentWaitActive(options);

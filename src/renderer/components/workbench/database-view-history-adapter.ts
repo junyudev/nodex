@@ -48,7 +48,7 @@ export interface DatabaseViewOperationsCommand {
   readonly operations: readonly DatabaseApplyOperationV2[];
   readonly label?: string;
   readonly commitOperations?: typeof commitDatabaseViewOperations;
-  readonly submitForward?: typeof commitDatabaseViewOperations;
+  readonly discardPresentation?: (operationId: string) => void;
 }
 
 export interface DatabaseViewBlockDropCommand {
@@ -237,6 +237,10 @@ export const databaseViewHistoryAdapter = (
     intent.kind === "data"
       ? (intent.command.commitOperations ?? commitDatabaseViewOperations)
       : commitDatabaseViewOperations;
+  const submittedOperationIds = new Set<string>();
+  const discardPresentation = (operationId: string): void => {
+    if (intent.kind === "data") intent.command.discardPresentation?.(operationId);
+  };
   return {
     describe: (action) =>
       action.kind === "data"
@@ -291,12 +295,9 @@ export const databaseViewHistoryAdapter = (
     },
     submit: async (request) => {
       if (request.kind === "data") {
+        submittedOperationIds.add(request.operationId);
         try {
-          const submit =
-            !request.replay && intent.kind === "data"
-              ? (intent.command.submitForward ?? commit)
-              : commit;
-          const receipt = await submit({
+          const receipt = await commit({
             model: request.scope,
             operations: request.operations,
             operationId: request.operationId,
@@ -345,6 +346,8 @@ export const databaseViewHistoryAdapter = (
     },
     interpret: interpretDatabaseViewHistoryReceipt,
     release: (inverse, reason) => {
+      if (reason === "discarded")
+        for (const operationId of submittedOperationIds) discardPresentation(operationId);
       if (inverse.kind !== "block_transfer" || reason !== "discarded") return;
       return releaseStructuralHistory(
         { kind: "project", projectId: inverse.projectId },
@@ -363,6 +366,10 @@ export const databaseViewHistoryAdapter = (
       }
     },
     abandon: async (request) => {
+      if (request.kind === "data") {
+        discardPresentation(request.operationId);
+        return;
+      }
       if (request.kind === "transfer") return abandonPromotion(request.request);
       if (request.kind === "reverse_transfer")
         await abandonStructuralHistory(

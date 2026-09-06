@@ -18,6 +18,7 @@ import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host"
 import { WorkbenchAutomationDetailRail } from "./workbench-automation-detail-rail";
 import { WorkbenchThreadSummaryHeader } from "./workbench-thread-summary-header";
 import { ToolbarIconButton, WindowNavigationToolbarButton } from "./workbench-panel-controls";
+import { ContentHistoryControl } from "@/components/shared/surface-history-status";
 import {
   PageStageSessionTab,
   type OpenPageTabHandler,
@@ -4462,7 +4463,16 @@ export function WorkbenchRuntime({
 
   return (
     <PageTitleProjectionProvider currentLibraryId={currentLibraryId} store={pageTitleStore}>
-      <HeaderActionProvider actions={appShellHeaderActions}>
+      <HeaderActionProvider
+        actions={
+          <>
+            {appShellHeaderActions}
+            <HeaderAction actionId="content-history" slotPosition="right" align="end" order={150}>
+              <ContentHistoryControl projects={projects} />
+            </HeaderAction>
+          </>
+        }
+      >
         <NodexTooltipProvider>
           <FileReferenceRouterProvider
             openWorkspaceFileTab={openWorkspaceFileTab}

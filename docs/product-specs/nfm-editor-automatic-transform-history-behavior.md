@@ -15,7 +15,7 @@ For example, typing `**ABC**` first creates the literal text and then converts i
 
 The transform remains isolated from immediately following typing. If the user types `X` after bold `ABC`, Undo removes `X` first, restores literal `**ABC**` second, and removes the literal input third. This ordering does not depend on typing speed or a timeout.
 
-Every mounted editor surface owns this history in the same chronological lane as its other local edits. A local automatic transform and its history boundaries never capture or undo another surface's changes or remote collaborative changes.
+Every retained editor contributes automatic transforms to the window's authority-scoped content history alongside Page title and Database edits. Its native capture tracks only its own local changes; remote collaborative changes never enter local history. Switching participants closes the typing group before another local capture can merge across an intervening action.
 
 ## Inline formatting
 

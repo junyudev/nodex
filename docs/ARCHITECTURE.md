@@ -576,15 +576,23 @@ A Document is an independently synchronized content owner. Page title/body Docum
 
 The public identity of an authorized Document observation is `(libraryId, accessContext, documentId)`: Library owns physical lifetime, while `accessContext` is the explicit Library or Project authorization path. Core authors this identity; Main and renderer adapters validate it without projecting Library access into a synthetic Project.
 
-A mounted surface first resolves an authorized descriptor and completes its canonical synchronization barrier. Multiple surfaces may share the same process-local Document session while retaining independent editor, undo, cursor, camera, and presence state. Surface presentation never becomes durable content authority.
+A mounted surface first resolves an authorized descriptor and completes its canonical synchronization barrier. Multiple surfaces may share the same process-local Document session while retaining independent editor, cursor, camera, and presence state. Surface presentation never becomes durable content authority.
 
-The renderer SurfaceHistory Module owns each editing surface's chronological
-interval, command admission, preparation order and outcome state. NFM and
+The renderer Content Interaction History Module owns the chronological interval,
+command admission, preparation order and outcome state shared by Page bodies,
+Page titles and Database Views in one window's Library/access-context/Store-epoch
+scope. Retained content participants own their native resources and presentation;
+DOM focus chooses an input boundary, not replay order. NFM, title and
 Database content Adapters prepare typed requests and interpret authoritative
 inverses; they do not maintain parallel command queues or mutable history lists.
 Native capture identities are Adapter-owned resources, not chronological
 identities. Electron Main retains admitted exact requests across renderer loss;
-late outcomes cannot reopen a retired surface. User-visible replay and retention
+late outcomes cannot reopen a retired participant. Mutation presentation shares
+one receipt-fenced lifecycle while each semantic owner retains its canonical
+projection and rendered-handoff proof. Independent read authorities never share
+render retirement merely because they present the same View. Workbench activity observes these owners
+without acquiring content participation or becoming another command queue.
+User-visible replay and retention
 rules belong to [NFM Structural Editing](product-specs/nfm-editor-structural-editing-behavior.md)
 and [Database Pages and Views](product-specs/database-pages-and-views-behavior.md).
 

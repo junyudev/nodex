@@ -2695,7 +2695,8 @@ describe("board store", () => {
           input.minimumCommitCursor.commitSeq === 101,
       ),
     ).toBe(true);
-    expect(outcome.superseded).toBe(true);
+    expect(outcome.ok).toBe(true);
+    await store.refreshBoard();
     expect(store.getSnapshot().pageIndex.has(pageId)).toBe(false);
     expect(store.getSnapshot().pageIndex.get("card-1")?.title).toBe("New Store");
   });
@@ -2734,7 +2735,7 @@ describe("board store", () => {
     });
 
     expect(outcome.ok).toBe(true);
-    expect(outcome.superseded).toBe(true);
+    await store.refreshBoard();
     expect(store.getSnapshot().pageIndex.has(pageId)).toBe(false);
     expect(store.getSnapshot().pageIndex.get("card-1")?.title).toBe("Replacement Store");
   });
@@ -2795,6 +2796,7 @@ describe("board store", () => {
 
     canonicalRefresh.resolve(createBoardSnapshot(canonicalBoard));
     await mutation;
+    await store.fetchBoard();
 
     expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("ship");
     expect(new Set(observedColumns)).toEqual(new Set(["ship"]));
@@ -2814,6 +2816,50 @@ describe("board store", () => {
     });
     expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("triage");
     unsubscribe();
+  });
+
+  test("hands off a receipt-covered canonical move observed before acknowledgement without another read", async () => {
+    const move = {
+      pageId: "card-1",
+      fromStatus: "triage" as const,
+      toStatus: "ship" as const,
+      newOrder: 0,
+    };
+    let canonical = createBoard();
+    let commitSeq = 1;
+    let reads = 0;
+    const remote = createDeferred<{ storeEpoch: string; commitSeq: number }>();
+    const registry = createTestRegistry({
+      readViewWindow: async () => {
+        reads += 1;
+        return createBoardSnapshot(canonical, commitSeq, "view-primary", true, commitSeq);
+      },
+      subscribeBoardChanges: () => () => {},
+    });
+    const store = registry.getStore("default");
+    await store.fetchBoard();
+    const mutation = store.runOptimisticMutation({
+      kind: "database:position",
+      conflictKeys: conflictKeysForMove(move),
+      apply: buildMovePageTransform(move),
+      runRemote: () => remote.promise,
+      getCommitCursor: (result) => result,
+      refreshOnSuccess: false,
+    });
+    canonical = buildMovePageTransform(move)(canonical);
+    commitSeq = 2;
+    await store.refreshBoardAtLeast(2);
+    expect(store.getSnapshot().materializationRenderToken).toBeNull();
+    const readsBeforeAcknowledgement = reads;
+    remote.resolve({ storeEpoch: "epoch-1", commitSeq: 2 });
+    expect((await mutation).ok).toBe(true);
+    expect(reads).toBe(readsBeforeAcknowledgement);
+    const token = store.getSnapshot().materializationRenderToken;
+    expect(token).not.toBeNull();
+    expect(store.getSnapshot().mutationActivity.acknowledged).toBe(1);
+    store.markRendered(token!);
+    expect(store.getSnapshot().mutationActivity.acknowledged).toBe(0);
+    expect(store.getSnapshot().pageIndex.get("card-1")?.columnId).toBe("ship");
   });
 
   test("serializes placement commands through the preceding receipt refresh", async () => {

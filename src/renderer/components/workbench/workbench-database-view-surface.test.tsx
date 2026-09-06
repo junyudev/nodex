@@ -15,7 +15,12 @@ import { AUTHORIZED_READ_STAMP_EXAMPLE } from "../../../shared/testing/authorize
 import { upgradeDatabaseViewConfigV2 } from "../../../shared/database-view-presentation";
 import { WorkbenchDatabaseViewSurface } from "./workbench-database-view-surface";
 import type { DatabaseViewMutationHistory } from "./database-view-mutation-history";
-import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
+import {
+  buildDatabaseViewWindowRenderModel,
+  type DatabaseViewRenderModel,
+} from "@/lib/database-view-render-model";
+import { useDatabaseViewPresentation } from "@/lib/database-view-presentation";
+import { commitDatabaseViewOperations } from "@/lib/database-view-row-mutations";
 import { useBoard } from "@/lib/use-board";
 import { createBoardStoreRegistry } from "@/lib/board-store";
 import {
@@ -203,7 +208,72 @@ beforeEach(() => {
 });
 
 describe("WorkbenchDatabaseViewSurface", () => {
-  test("the production Board runtime carries each delegated receipt into the View owner", async () => {
+  test("independent read sources retire only their own rendered presentation", async () => {
+    const canonical = buildDatabaseViewWindowRenderModel(makeWindow(null));
+    const refreshFirst = vi.fn();
+    const refreshSecond = vi.fn();
+    const transport = vi.fn<typeof commitDatabaseViewOperations>(
+      async (request): ReturnType<typeof commitDatabaseViewOperations> => ({
+        operationId: request.operationId ?? "operation",
+        accessContext: { kind: "library" },
+        libraryId: canonical.libraryId,
+        storeEpoch: canonical.storeEpoch,
+        duplicate: false,
+        operationKinds: ["position_pages"],
+        operationOutcomes: [],
+        affectedDatabaseIds: [],
+        affectedDataSourceIds: [],
+        affectedPageIds: [],
+        affectedViewIds: [viewId],
+        committedRevisions: {},
+        commitSeq: 2,
+        committedAt: timestamp,
+      }),
+    );
+    const hook = renderHook(
+      ({ first, second }) => ({
+        first: useDatabaseViewPresentation(first, refreshFirst, transport),
+        second: useDatabaseViewPresentation(second, refreshSecond, transport),
+      }),
+      { initialProps: { first: canonical, second: canonical } },
+    );
+    try {
+      await act(async () => {
+        await hook.result.current.first.submit({
+          model: canonical,
+          operationId: "first",
+          operations: [{ kind: "position_pages", viewId, pages: [] }],
+        });
+        await hook.result.current.second.submit({
+          model: canonical,
+          operationId: "second",
+          operations: [{ kind: "position_pages", viewId, pages: [] }],
+        });
+      });
+      expect(refreshFirst).toHaveBeenCalledOnce();
+      expect(refreshSecond).toHaveBeenCalledOnce();
+      await act(async () => {
+        hook.rerender({ first: canonical, second: { ...canonical, commitSeq: 2 } });
+      });
+      await waitFor(() =>
+        expect(hook.result.current.second.owner.getActivity().acknowledged).toBe(0),
+      );
+      expect(hook.result.current.first.owner.getActivity().acknowledged).toBe(1);
+      await act(async () => {
+        hook.rerender({
+          first: { ...canonical, commitSeq: 2 },
+          second: { ...canonical, commitSeq: 2 },
+        });
+      });
+      await waitFor(() =>
+        expect(hook.result.current.first.owner.getActivity().acknowledged).toBe(0),
+      );
+    } finally {
+      hook.unmount();
+    }
+  });
+
+  test("the retained View presentation carries each receipt and inverse through the content owner", async () => {
     let commitSeq = 1;
     const window = makeWindow("project-alpha");
     const registry = createBoardStoreRegistry({
@@ -222,7 +292,18 @@ describe("WorkbenchDatabaseViewSurface", () => {
     });
     presenter.store = registry.getStore("project-alpha", viewId);
     await presenter.store.fetchBoard();
-    const hook = renderHook(() => useBoard({ projectId: "project-alpha", databaseViewId: viewId }));
+    const initialModel = buildDatabaseViewWindowRenderModel(window);
+    const hook = renderHook(() => {
+      const board = useBoard({ projectId: "project-alpha", databaseViewId: viewId });
+      const presentation = useDatabaseViewPresentation(
+        board.databaseView ?? initialModel,
+        board.refresh,
+        commitDatabaseViewOperations,
+        board.canonicalDatabaseView ?? initialModel,
+        board.canonicalReadGeneration,
+      );
+      return { ...board, presentation };
+    });
     await waitFor(() =>
       expect(
         hook.result.current.databaseView,
@@ -276,33 +357,24 @@ describe("WorkbenchDatabaseViewSurface", () => {
         },
       };
     });
-    const config = model.query.view.config;
     const drop = (pageId: string) =>
       history.executeOperations({
         model,
         operations: [
           { kind: "position_pages", viewId, pages: [{ pageId, expectedPositionRevision: 0 }] },
         ],
-        submitForward: (request) =>
-          hook.result.current.moveDatabaseViewPages(
-            {
-              pageIds: [pageId],
-              presentation: {
-                layout: "board",
-                rules: config.rules,
-                presentation: config.presentation,
-              },
-              target: { groupKey: null, subgroupKey: null },
-              propertyValues: [],
-            },
-            request,
-          ),
+        commitOperations: hook.result.current.presentation.submit,
+        discardPresentation: hook.result.current.presentation.owner.discard,
       });
     try {
       await act(async () => {
         await drop("older");
+      });
+      await waitFor(() => expect(hook.result.current.databaseView?.commitSeq).toBe(2));
+      await act(async () => {
         await drop("newer");
       });
+      await waitFor(() => expect(hook.result.current.databaseView?.commitSeq).toBe(3));
       await act(async () => {
         expect(await history.undoLast()).toBe(true);
       });

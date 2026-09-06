@@ -34,10 +34,7 @@ import {
 import { DatabaseViewTabSurface } from "./workbench-db-view-panel";
 import type { Project } from "@/lib/types";
 import type { OpenPageInNewChatInput, SendPageToChatInput } from "@/lib/page-chat-actions";
-import {
-  databaseViewHistoryScopeKey,
-  useDatabaseViewMutationHistory,
-} from "./database-view-mutation-history";
+import { useDatabaseViewMutationHistory } from "./database-view-mutation-history";
 import type { DatabaseViewPageActionPort } from "./database-view-page-actions";
 import type { DatabaseViewPageOpenHandler } from "./database-view-page-open";
 
@@ -287,11 +284,7 @@ export function WorkbenchDatabaseViewSurface({
     () => (mergedWindow ? buildDatabaseViewWindowRenderModel(mergedWindow) : undefined),
     [mergedWindow],
   );
-  const mutationHistory = useDatabaseViewMutationHistory(
-    model
-      ? databaseViewHistoryScopeKey(model)
-      : `pending:${accessProjectId ?? "library"}:${targetIdentity}`,
-  );
+  const mutationHistory = useDatabaseViewMutationHistory(model);
   useEffect(() => {
     if (!model) return;
     onPresentationChange?.({
@@ -520,6 +513,7 @@ export function WorkbenchDatabaseViewSurface({
         ) : model ? (
           <DatabaseViewTabSurface
             model={model}
+            canonicalReadGeneration={queryClient.getQueryState(queryKey)?.dataUpdateCount ?? 0}
             groupPagination={groupPagination}
             onLoadMoreGroup={loadMoreGroup}
             activeSearchQuery={searchQuery}
@@ -537,7 +531,7 @@ export function WorkbenchDatabaseViewSurface({
             onSelectedPageIdsChange={setSelectedPageIds}
             mutationHistory={mutationHistory}
             onCommitted={async () => {
-              await query.refetch();
+              await query.refetch({ throwOnError: true });
             }}
           />
         ) : null}

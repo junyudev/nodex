@@ -14,6 +14,8 @@ import {
   type DatabaseViewRenderModel,
 } from "./database-view-render-model";
 import { buildDatabaseViewPropertyValueOperations } from "./database-view-row-mutations";
+import { contentAccessContextKey } from "../../shared/content-access-context";
+import type { DatabaseViewOperationProjection } from "./database-view-operation-projection";
 
 const activeProperty = (
   model: DatabaseViewRenderModel,
@@ -61,6 +63,168 @@ export interface DatabaseViewBoardDropProjection {
   };
   readonly propertyValues: readonly DatabaseViewDropPropertyValue[];
 }
+
+/** Freeze gesture evidence separately from its bounded pointer preview. */
+export const compileDatabaseViewBoardDropProjection = (
+  model: DatabaseViewRenderModel,
+  projection: DatabaseViewBoardDropProjection,
+  options: { readonly targetComplete?: boolean } = {},
+): DatabaseViewOperationProjection => {
+  const scope = (candidate: DatabaseViewRenderModel) =>
+    JSON.stringify([
+      candidate.libraryId,
+      contentAccessContextKey(candidate.accessContext),
+      candidate.storeEpoch,
+      candidate.databaseId,
+      candidate.dataSourceId,
+      candidate.databaseViewId,
+      candidate.query.view.config,
+    ]);
+  const admittedScope = scope(model);
+  const memberships = new Map(
+    model.query.rows.map((row) => [row.page.pageId, row.membership.membershipId]),
+  );
+  let committedRevisions: Readonly<Record<string, number>> = {};
+  const supersededValue = (row: DataSourcePageRowV2, propertyId: string): boolean => {
+    const committed =
+      committedRevisions[
+        `value:${model.dataSourceId}:${memberships.get(row.page.pageId)}:${propertyId}`
+      ];
+    const current = row.values[propertyId]?.revision;
+    return committed !== undefined && current !== undefined && current > committed;
+  };
+  const coveredPosition = (row: DataSourcePageRowV2): boolean => {
+    const committed = committedRevisions[`position:${model.databaseViewId}:${row.page.pageId}`];
+    return committed !== undefined && row.position !== null && row.position.revision >= committed;
+  };
+  const hasEvidence = (candidate: DatabaseViewRenderModel): boolean => {
+    if (scope(candidate) !== admittedScope) return false;
+    const rows = new Map(candidate.query.rows.map((row) => [row.page.pageId, row]));
+    if (
+      !projection.pageIds.every(
+        (id) => rows.get(id)?.membership.membershipId === memberships.get(id),
+      )
+    )
+      return false;
+    const outstandingSlot = projection.pageIds.some((id) => {
+      const row = rows.get(id)!;
+      return (
+        !coveredPosition(row) &&
+        !projection.propertyValues.some(({ propertyId }) => supersededValue(row, propertyId))
+      );
+    });
+    if (projection.target.beforePageId && outstandingSlot) {
+      const anchor = rows.get(projection.target.beforePageId);
+      if (
+        !anchor ||
+        anchor.effectiveGroupKey !== projection.target.groupKey ||
+        anchor.effectiveSubgroupKey !== projection.target.subgroupKey
+      )
+        return false;
+    }
+    return projection.propertyValues.every(({ propertyId }) =>
+      candidate.query.properties.some(
+        (property) =>
+          property.propertyId === propertyId &&
+          property.lifecycle === "active" &&
+          property.valueType ===
+            model.query.properties.find((original) => original.propertyId === propertyId)
+              ?.valueType,
+      ),
+    );
+  };
+  const conflictKeys = projection.pageIds.map((pageId) => `page:${pageId}:position`);
+  if ((!projection.target.beforePageId && options.targetComplete !== true) || !hasEvidence(model))
+    return { apply: (canonical) => canonical, conflictKeys, predictable: false };
+  return {
+    conflictKeys,
+    predictable: true,
+    acknowledge: (receipt) => {
+      committedRevisions = receipt.committedRevisions;
+    },
+    apply: (canonical) => {
+      if (
+        scope(canonical) !== admittedScope ||
+        canonical.query.rows.some(
+          (row) =>
+            projection.pageIds.includes(row.page.pageId) &&
+            row.membership.membershipId !== memberships.get(row.page.pageId),
+        ) ||
+        projection.propertyValues.some(({ propertyId }) => {
+          const property = canonical.query.properties.find(
+            (item) => item.propertyId === propertyId,
+          );
+          return (
+            property?.lifecycle !== "active" ||
+            property.valueType !==
+              model.query.properties.find((item) => item.propertyId === propertyId)?.valueType
+          );
+        })
+      )
+        return { ...canonical };
+      const supersededPages = new Set(
+        canonical.query.rows.flatMap((row) =>
+          projection.pageIds.includes(row.page.pageId) &&
+          (coveredPosition(row) ||
+            projection.propertyValues.some(({ propertyId }) => supersededValue(row, propertyId)))
+            ? [row.page.pageId]
+            : [],
+        ),
+      );
+      const positioned = applyOptimisticDatabaseViewBoardDrop(canonical, {
+        ...projection,
+        pageIds: projection.pageIds.filter((id) => !supersededPages.has(id)),
+      });
+      // Exact rank receipt evidence or a later geometry write yields this
+      // Page's old slot, not unrelated values or other Pages in the gesture.
+      const rows = positioned.query.rows.map((row) => {
+        if (!supersededPages.has(row.page.pageId)) return row;
+        const values = { ...row.values };
+        let changed = false;
+        let effectiveGroupKey = row.effectiveGroupKey;
+        let effectiveSubgroupKey = row.effectiveSubgroupKey;
+        for (const { propertyId, value } of projection.propertyValues) {
+          if (supersededValue(row, propertyId)) continue;
+          const property = canonical.query.properties.find(
+            (item) => item.propertyId === propertyId,
+          );
+          if (
+            !property ||
+            stableStringifyDatabaseJson(values[propertyId]?.value ?? null) ===
+              stableStringifyDatabaseJson(value)
+          )
+            continue;
+          values[propertyId] = {
+            propertyId: property.propertyId,
+            valueType: property.valueType,
+            value,
+            revision: values[propertyId]?.revision ?? 0,
+          };
+          if (propertyId === canonical.query.view.config.presentation.group?.propertyId)
+            effectiveGroupKey = projection.target.groupKey;
+          if (propertyId === canonical.query.view.config.presentation.subgroup?.propertyId)
+            effectiveSubgroupKey = projection.target.subgroupKey;
+          changed = true;
+        }
+        return changed ? { ...row, values, effectiveGroupKey, effectiveSubgroupKey } : row;
+      });
+      const query = { ...positioned.query, rows };
+      const projected = rows.some((row, index) => row !== positioned.query.rows[index])
+        ? {
+            ...positioned,
+            query,
+            columns: buildDatabaseViewColumns(
+              query,
+              query.view.config.presentation.group?.propertyId ?? null,
+            ),
+          }
+        : positioned;
+      if (projected !== canonical || hasEvidence(canonical)) return projected;
+      // Missing bounded evidence is not an identity/materialization proof.
+      return { ...canonical };
+    },
+  };
+};
 
 /**
  * Replays one accepted Board drop over the latest readable authority. The

@@ -14,7 +14,6 @@ import {
 import { SideMenuController, type LinkToolbarProps, useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteEditor } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/shadcn";
-import { SurfaceHistoryStatus } from "@/components/shared/surface-history-status";
 import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
 import { CornerDownLeft } from "@/components/shared/icons/generic-icons";
 import { ChevronDownIcon, CloseIcon, ReplaceIcon } from "@/components/shared/icons";
@@ -1634,13 +1633,9 @@ function NfmEditorInstance({
     return {
       documentId: source.documentId,
       prepareAndFence: async (options?: DocumentWaitOptions) => {
-        const container = containerRef.current;
-        if (!container) {
-          throw new Error("The Page editor is not ready for a structural mutation.");
-        }
         return await prepareNfmEditorStructuralMutation(
           editor as unknown as NfmEditorStructuralMutationRuntime,
-          container,
+          containerRef.current,
           surfaceMutationBarrier,
           options,
         );
@@ -1657,8 +1652,26 @@ function NfmEditorInstance({
   }, [source.clientSessionId, structuralMutationParticipant]);
 
   const structuralEditingSession = useMemo(
-    () => structuralEditingController.attachEditor(editor),
-    [editor, structuralEditingController],
+    () =>
+      structuralEditingController.attachEditor(
+        editor,
+        editorSession?.descriptor ??
+          (surfaceMutationBarrier?.libraryId
+            ? {
+                libraryId: surfaceMutationBarrier.libraryId,
+                accessContext: contentAccessContext,
+                storeEpoch: source.storeEpoch,
+              }
+            : undefined),
+      ),
+    [
+      contentAccessContext,
+      editor,
+      editorSession,
+      source.storeEpoch,
+      structuralEditingController,
+      surfaceMutationBarrier?.libraryId,
+    ],
   );
   const historyEditableRoot = useCallback(() => editor.domElement ?? null, [editor]);
   useSurfaceHistoryFocus(
@@ -2751,7 +2764,6 @@ function NfmEditorInstance({
           editorSession.setShouldRestoreEditorFocus(false);
         }}
       >
-        <SurfaceHistoryStatus controls={structuralEditingSession.historyControls} />
         {searchOpen && (
           <div className="pointer-events-none sticky top-2 z-90 flex h-0 justify-end">
             <div className="pointer-events-auto mr-2 flex w-fit max-w-[calc(100%-16px)] flex-col self-start overflow-hidden rounded-lg border-[0.5px] border-(--border) bg-(--card) shadow-[0_2px_8px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.32),0_0_0_1px_rgba(255,255,255,0.06)]">

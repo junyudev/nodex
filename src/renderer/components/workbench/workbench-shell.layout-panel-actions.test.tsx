@@ -1165,7 +1165,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(headerShellSlot?.contains(sidePanelToggle)).toBe(true);
     expect(
       visibleGlobalHeaderButtons.map((button) => button.getAttribute("aria-label")).join(","),
-    ).toBe("Toggle bottom panel,Toggle side panel");
+    ).toBe("Content edits,Toggle bottom panel,Toggle side panel");
     expect(rightPanel?.className.includes(APP_SHELL_RIGHT_PANEL_LAYER_CLASS)).toBe(true);
     expect(globalHeader?.className.includes(APP_SHELL_GLOBAL_HEADER_LAYER_CLASS)).toBe(true);
     expect(headerCenterSurface.getAttribute("aria-hidden")).toBe(null);

@@ -20,7 +20,6 @@ import type {
 import {
   buildPatchPageTransform,
   conflictKeysForPatch,
-  overlap,
   type BoardTransform,
 } from "./board-optimistic-ops";
 import { toDatabasePageSummary } from "../../shared/page-summary";
@@ -63,8 +62,12 @@ import {
   recordRendererOwnerTrace,
   rendererCausalTrace,
   type RendererCausalTrace,
-  type RendererCausalTraceContext,
 } from "./renderer-causal-trace";
+
+import {
+  ReceiptFencedOptimisticJournal,
+  type ReceiptOptimisticActivity,
+} from "./receipt-fenced-optimistic-journal";
 
 const DEFAULT_BOARD_FRESHNESS_MS = 30_000;
 const GROUP_WINDOW_FIRST = 50;
@@ -111,12 +114,16 @@ export interface ColumnPaginationState {
 export interface BoardStoreSnapshot {
   board: BoardSummary | null;
   databaseView: DatabaseViewRenderModel | null;
+  /** Canonical bounded read, before any local presentation journal. */
+  canonicalDatabaseView: DatabaseViewRenderModel | null;
+  canonicalReadGeneration: number;
   pageIndex: ReadonlyMap<string, IndexedPage>;
   loading: boolean;
   loadingMore: boolean;
   hasMore: boolean;
   error: string | null;
   pendingMutationCount: number;
+  mutationActivity: ReceiptOptimisticActivity;
   lastMutationError: string | null;
   /** Stable while the exact canonical materialization candidate is unchanged. */
   materializationRenderToken: number | null;
@@ -202,6 +209,7 @@ export interface RunOptimisticMutationOptions<T> {
   refreshOnSuccess?: boolean;
   refreshOnFailure?: boolean;
   suppressErrorWhenSuperseded?: boolean;
+  classifyFailure?: (error: Error) => "rejected" | "unknown";
 }
 
 export interface RunOptimisticDatabaseViewMutationOptions<T> {
@@ -218,6 +226,7 @@ export interface RunOptimisticDatabaseViewMutationOptions<T> {
   refreshOnSuccess?: boolean;
   refreshOnFailure?: boolean;
   suppressErrorWhenSuperseded?: boolean;
+  classifyFailure?: (error: Error) => "rejected" | "unknown";
 }
 
 interface RunOptimisticPatchOptions<T> {
@@ -227,26 +236,9 @@ interface RunOptimisticPatchOptions<T> {
   runRemote: () => Promise<T>;
 }
 
-interface OptimisticEntry {
-  opId: number;
-  kind: string;
-  conflictKeys: string[];
-  apply: BoardTransform;
-  applyDatabaseView: DatabaseViewTransform | null;
-  phase: "pending" | "acknowledged" | "local";
-  commitCursor: LocalProjectionCursor | null;
-  isCommitMaterialized: ((canonicalBoard: BoardSummary) => boolean) | null;
-  isDatabaseViewCommitMaterialized: ((canonicalModel: DatabaseViewRenderModel) => boolean) | null;
-  minimumMaterializationGeneration: number | null;
-  superseded: boolean;
-  readonly trace: RendererCausalTraceContext | null;
-}
-
-interface MaterializationRenderCandidate {
-  readonly operationIds: readonly number[];
+interface BoardJournalModel {
   readonly board: BoardSummary | null;
   readonly databaseView: DatabaseViewRenderModel | null;
-  readonly token: number;
 }
 
 const defaultDependencies: BoardStoreDependencies = {
@@ -459,12 +451,15 @@ class BoardProjectStore {
   private snapshot: BoardStoreSnapshot = {
     board: null,
     databaseView: null,
+    canonicalDatabaseView: null,
+    canonicalReadGeneration: 0,
     pageIndex: new Map(),
     loading: true,
     loadingMore: false,
     hasMore: false,
     error: null,
     pendingMutationCount: 0,
+    mutationActivity: { pending: 0, unknown: 0, acknowledged: 0 },
     lastMutationError: null,
     materializationRenderToken: null,
     groupPagination: new Map(),
@@ -481,15 +476,11 @@ class BoardProjectStore {
 
   private groupsSnapshot: DatabaseViewGroupsSnapshot | null = null;
 
-  private optimisticEntries: OptimisticEntry[] = [];
-
-  private materializationRenderCandidate: MaterializationRenderCandidate | null = null;
-
-  private nextMaterializationRenderToken = 0;
-
-  private readonly remoteLanes = new Map<string, Promise<boolean>>();
-
-  private nextOpId = 1;
+  private readonly journal = new ReceiptFencedOptimisticJournal<BoardJournalModel>({
+    onChange: () => this.recomputeSnapshot(),
+    equal: (left, right) =>
+      boardSummariesEqual(left.board, right.board) && left.databaseView === right.databaseView,
+  });
 
   private inFlightFetch: Promise<boolean> | null = null;
 
@@ -579,30 +570,7 @@ class BoardProjectStore {
   getSnapshot = (): BoardStoreSnapshot => this.snapshot;
 
   /** Settles only the acknowledged entries represented by the current React commit. */
-  markRendered = (renderToken: number): void => {
-    const candidate = this.materializationRenderCandidate;
-    if (!candidate || candidate.token !== renderToken) return;
-
-    const materializedOperationIds = new Set(candidate.operationIds);
-    this.materializationRenderCandidate = null;
-    for (const entry of this.optimisticEntries) {
-      if (!materializedOperationIds.has(entry.opId)) continue;
-      recordRendererOwnerTrace(
-        entry.trace,
-        { kind: "rendered", reason: "render_handoff", renderToken },
-        this.dependencies.causalTrace,
-      );
-      recordRendererOwnerTrace(
-        entry.trace,
-        { kind: "settled", reason: "proof_complete" },
-        this.dependencies.causalTrace,
-      );
-    }
-    this.optimisticEntries = this.optimisticEntries.filter(
-      (entry) => !materializedOperationIds.has(entry.opId),
-    );
-    this.recomputeSnapshot();
-  };
+  markRendered = (renderToken: number): void => this.journal.markRendered(renderToken);
 
   subscribe = (listener: StoreListener): (() => void) => {
     this.onAccess();
@@ -627,8 +595,7 @@ class BoardProjectStore {
   }
 
   disposeIfInactive(): boolean {
-    if (this.listeners.size > 0 || this.optimisticEntries.length > 0 || this.remoteLanes.size > 0)
-      return false;
+    if (this.listeners.size > 0 || this.journal.hasWork()) return false;
     this.teardownRealtimeSubscription();
     this.clearInactiveAuthority();
     return true;
@@ -649,8 +616,6 @@ class BoardProjectStore {
     this.groupsSnapshot = null;
     this.inFlightFetch = null;
     this.revokeEntries("store_reset");
-    this.optimisticEntries = [];
-    this.materializationRenderCandidate = null;
     this.disposeCausalProjectionRuntime();
     this.requiredMinimumCommitSeq = 0;
     this.requiredMinimumStoreEpoch = null;
@@ -664,12 +629,15 @@ class BoardProjectStore {
     this.setSnapshot({
       board: null,
       databaseView: null,
+      canonicalDatabaseView: null,
+      canonicalReadGeneration: 0,
       pageIndex: new Map(),
       loading: true,
       loadingMore: false,
       hasMore: false,
       error: null,
       pendingMutationCount: 0,
+      mutationActivity: { pending: 0, unknown: 0, acknowledged: 0 },
       lastMutationError: null,
       materializationRenderToken: null,
       groupPagination: new Map(),
@@ -679,10 +647,7 @@ class BoardProjectStore {
 
   private fenceStoreEpochReplacement(): void {
     this.authorityGeneration += 1;
-    this.remoteLanes.clear();
     this.revokeEntries("store_reset");
-    this.optimisticEntries = [];
-    this.materializationRenderCandidate = null;
     this.disposeCausalProjectionRuntime();
     this.requiredMinimumCommitSeq = 0;
     this.requiredMinimumStoreEpoch = null;
@@ -1156,11 +1121,14 @@ class BoardProjectStore {
   };
 
   resolveConflict = (conflictKeys: string[]): void => {
-    this.supersedeConflicts(conflictKeys);
+    this.journal.resolveConflicts(conflictKeys);
     this.recomputeSnapshot({
       lastMutationError: null,
     });
   };
+
+  discardOptimisticMutation = (operationIdentity: string): boolean =>
+    this.journal.discard(operationIdentity);
 
   applyRemoteCard = (card: DatabasePage, cursor?: LocalProjectionCursor): void => {
     this.applyRemoteCardSummary(toDatabasePageSummary(card), cursor);
@@ -1455,23 +1423,15 @@ class BoardProjectStore {
   };
 
   enqueueLocalOverlay = (options: LocalOverlayOptions): boolean => {
-    this.supersedeConflicts(options.conflictKeys);
-    const before = this.baseBoard ? this.composeBoard(this.baseBoard) : null;
-    const entry = this.createEntry({
-      ...options,
-      phase: "local",
+    const before = this.snapshot.board;
+    this.journal.enqueueLocal({
+      conflictKeys: options.conflictKeys,
+      apply: (model) => ({
+        ...model,
+        board: model.board ? options.apply(model.board) : null,
+      }),
     });
-    this.optimisticEntries.push(entry);
-    const after = this.baseBoard ? this.composeBoard(this.baseBoard) : null;
-    if (this.baseBoard && after === before) {
-      this.optimisticEntries = this.optimisticEntries.filter(
-        (candidate) => candidate.opId !== entry.opId,
-      );
-      return false;
-    }
-
-    this.recomputeSnapshot();
-    return true;
+    return before === null || before !== this.snapshot.board;
   };
 
   applyLocalPatch = (columnId: string, pageId: string, updates: Partial<PageInput>): boolean => {
@@ -1504,92 +1464,69 @@ class BoardProjectStore {
   runOptimisticMutation = async <T>(
     options: RunOptimisticMutationOptions<T>,
   ): Promise<OptimisticMutationResult<T>> => {
-    const authorityGeneration = this.authorityGeneration;
-    this.supersedeConflicts(options.conflictKeys);
-    const entry = this.createEntry({
-      ...options,
-      phase: "pending",
-    });
-    this.optimisticEntries.push(entry);
-    this.recomputeSnapshot();
-    recordRendererOwnerTrace(
-      entry.trace,
-      { kind: "local_intent", reason: "local_intent" },
+    const trace = beginRendererOwnerTrace(
+      {
+        semanticKey: `board.${options.kind}`,
+        operationIdentity:
+          options.operationIdentity ??
+          `board:${this.projectId}:${this.databaseViewId ?? "primary"}:${++this.nextJournalTraceId}`,
+        owner: "board-store",
+        protocol: "receipt_fenced_projection",
+        scopeKind: "database",
+      },
       this.dependencies.causalTrace,
     );
-
-    try {
-      const execute = async (): Promise<{
-        readonly result: T;
-        readonly readyForNextPlacement: boolean;
-      }> => {
-        recordRendererOwnerTrace(
-          entry.trace,
-          { kind: "submitted", reason: "transport_submit" },
-          this.dependencies.causalTrace,
-        );
-        const result = await options.runRemote();
-        if (!entry.superseded) {
-          recordRendererOwnerTrace(
-            entry.trace,
-            { kind: "acknowledged", reason: "committed" },
-            this.dependencies.causalTrace,
-          );
-        }
-        entry.phase = "acknowledged";
-        entry.commitCursor = options.getCommitCursor?.(result) ?? null;
-        entry.minimumMaterializationGeneration = entry.commitCursor
-          ? this.canonicalReadGeneration + 1
-          : null;
-        // A successful command is durable, but its exact View projection can
-        // reach this store before or after the response. A receipt-backed entry
-        // stays projected until authority covers that commit floor.
-        this.recomputeSnapshot();
-        let readyForNextPlacement = true;
-        if (options.refreshOnSuccess !== false) {
-          readyForNextPlacement = await this.refreshBoardAtLeast(entry.commitCursor ?? 0);
-        }
-        return { result, readyForNextPlacement };
-      };
-      const execution = options.remoteLane
-        ? await this.runRemoteInLane(options.remoteLane, authorityGeneration, execute)
-        : await execute();
-      return {
-        ok: true,
-        result: execution.result,
-        superseded: entry.superseded,
-        opId: entry.opId,
-      };
-    } catch (error) {
-      const normalized = toError(error);
-      if (!entry.superseded) {
-        recordRendererOwnerTrace(
-          entry.trace,
-          { kind: "failed", reason: "domain_failure" },
-          this.dependencies.causalTrace,
-        );
-      }
-      this.removeEntry(entry.opId);
-
-      const shouldSurfaceError = !entry.superseded || options.suppressErrorWhenSuperseded === false;
-      if (shouldSurfaceError) {
-        this.recomputeSnapshot({
-          error: normalized.message,
-          lastMutationError: normalized.message,
-        });
-      }
-
-      if (options.refreshOnFailure !== false) {
-        await this.refreshBoard();
-      }
-      return {
-        ok: false,
-        error: normalized,
-        superseded: entry.superseded,
-        opId: entry.opId,
-      };
+    const outcome = await this.journal.run({
+      operationIdentity: options.operationIdentity,
+      conflictKeys: options.conflictKeys,
+      apply: (model) => ({
+        board: model.board ? options.apply(model.board) : null,
+        databaseView:
+          model.databaseView && options.applyDatabaseView
+            ? options.applyDatabaseView(model.databaseView)
+            : model.databaseView,
+      }),
+      runRemote: options.runRemote,
+      remoteLane: options.remoteLane,
+      getCommitCursor: options.getCommitCursor,
+      ...(options.isCommitMaterialized || options.isDatabaseViewCommitMaterialized
+        ? {
+            isCommitMaterialized: (model: BoardJournalModel) => {
+              const boardReady = options.isCommitMaterialized
+                ? model.board !== null && options.isCommitMaterialized(model.board)
+                : !model.board || options.apply(model.board) === model.board;
+              const viewReady = options.isDatabaseViewCommitMaterialized
+                ? model.databaseView !== null &&
+                  options.isDatabaseViewCommitMaterialized(model.databaseView)
+                : !model.databaseView ||
+                  !options.applyDatabaseView ||
+                  options.applyDatabaseView(model.databaseView) === model.databaseView;
+              return boardReady && viewReady;
+            },
+          }
+        : {}),
+      ...(options.refreshOnSuccess !== false
+        ? {
+            refresh: (cursor: LocalProjectionCursor | null) =>
+              this.refreshBoardAtLeast(cursor ?? 0),
+          }
+        : {}),
+      classifyFailure: options.classifyFailure,
+      trace: (event) => recordRendererOwnerTrace(trace, event, this.dependencies.causalTrace),
+    });
+    if (outcome.ok) return outcome;
+    const shouldSurfaceError = !outcome.superseded || options.suppressErrorWhenSuperseded === false;
+    if (shouldSurfaceError) {
+      this.recomputeSnapshot({
+        error: outcome.error?.message ?? "Mutation failed",
+        lastMutationError: outcome.error?.message ?? "Mutation failed",
+      });
     }
+    if (options.refreshOnFailure !== false) void this.refreshBoard();
+    return outcome;
   };
+
+  private nextJournalTraceId = 0;
 
   /**
    * Runs a mutation whose visible authority is the generic Database View
@@ -1615,68 +1552,6 @@ class BoardProjectStore {
       isDatabaseViewCommitMaterialized: isCommitMaterialized,
     });
   };
-
-  private async runRemoteInLane<T>(
-    lane: string,
-    authorityGeneration: number,
-    task: () => Promise<{
-      readonly result: T;
-      readonly readyForNextPlacement: boolean;
-    }>,
-  ): Promise<{
-    readonly result: T;
-    readonly readyForNextPlacement: boolean;
-  }> {
-    const previous = this.remoteLanes.get(lane) ?? Promise.resolve(true);
-    let settle: (succeeded: boolean) => void = () => {};
-    const completion = new Promise<boolean>((resolve) => {
-      settle = resolve;
-    });
-    this.remoteLanes.set(lane, completion);
-    let succeeded = false;
-    try {
-      const previousSucceeded = await previous;
-      if (!previousSucceeded) {
-        throw new Error("A preceding Board placement did not reach canonical authority");
-      }
-      if (authorityGeneration !== this.authorityGeneration) {
-        throw new Error("Board authority changed before the queued mutation could execute");
-      }
-      const result = await task();
-      succeeded = result.readyForNextPlacement;
-      return result;
-    } finally {
-      settle(succeeded);
-      void completion.then(() => {
-        if (this.remoteLanes.get(lane) === completion) {
-          this.remoteLanes.delete(lane);
-        }
-      });
-    }
-  }
-
-  private composeBoard(baseBoard: BoardSummary): BoardSummary {
-    let next = baseBoard;
-    for (const entry of this.optimisticEntries) {
-      if (entry.superseded) continue;
-      next = entry.apply(next);
-    }
-    return next;
-  }
-
-  private composeDatabaseView(baseModel: DatabaseViewRenderModel): DatabaseViewRenderModel {
-    let next = baseModel;
-    for (const entry of this.optimisticEntries) {
-      if (entry.superseded || !entry.applyDatabaseView) continue;
-      next = entry.applyDatabaseView(next);
-    }
-    return next;
-  }
-
-  private activePendingCount(): number {
-    return this.optimisticEntries.filter((entry) => entry.phase === "pending" && !entry.superseded)
-      .length;
-  }
 
   private buildGroupPagination(): ReadonlyMap<GroupWindowScopeKey, ColumnPaginationState> {
     const totals = new Map<GroupWindowScopeKey, number>();
@@ -1705,19 +1580,24 @@ class BoardProjectStore {
       Pick<BoardStoreSnapshot, "loading" | "loadingMore" | "error" | "lastMutationError">
     > = {},
   ): void {
-    const materializedOperationIds = this.pruneConvergedEntries();
-    const composedBoard = this.baseBoard ? this.composeBoard(this.baseBoard) : null;
-    const composedDatabaseView = this.baseDatabaseView
-      ? this.composeDatabaseView(this.baseDatabaseView)
-      : null;
+    const projection = this.journal.project(
+      {
+        board: this.baseBoard,
+        databaseView: this.baseDatabaseView,
+      },
+      this.baseBoardAuthority
+        ? {
+            storeEpoch: this.baseBoardAuthority.storeEpoch,
+            commitSeq: this.baseBoardAuthority.projection.coveredCommitSeq,
+          }
+        : null,
+      this.baseBoard !== null || this.baseDatabaseView !== null,
+    );
+    const composedBoard = projection.model.board;
+    const composedDatabaseView = projection.model.databaseView;
     const board = boardSummariesEqual(this.snapshot.board, composedBoard)
       ? this.snapshot.board
       : composedBoard;
-    this.refreshMaterializationRenderCandidate(
-      materializedOperationIds,
-      board,
-      composedDatabaseView,
-    );
     const hasLoading = Object.prototype.hasOwnProperty.call(overrides, "loading");
     const hasError = Object.prototype.hasOwnProperty.call(overrides, "error");
     const hasLoadingMore = Object.prototype.hasOwnProperty.call(overrides, "loadingMore");
@@ -1732,9 +1612,12 @@ class BoardProjectStore {
       ...this.snapshot,
       board,
       databaseView: composedDatabaseView,
+      canonicalDatabaseView: this.baseDatabaseView,
+      canonicalReadGeneration: this.canonicalReadGeneration,
       pageIndex: board === this.snapshot.board ? this.snapshot.pageIndex : buildPageIndex(board),
-      pendingMutationCount: this.activePendingCount(),
-      materializationRenderToken: this.materializationRenderCandidate?.token ?? null,
+      pendingMutationCount: this.journal.getActivity().pending,
+      mutationActivity: this.journal.getActivity(),
+      materializationRenderToken: projection.renderToken,
       hasMore: anyHasMore,
       groupPagination,
       totalRows: this.groupsSnapshot?.totalRows ?? null,
@@ -1748,253 +1631,14 @@ class BoardProjectStore {
     this.setSnapshot(next);
   }
 
-  private refreshMaterializationRenderCandidate(
-    operationIds: readonly number[],
-    board: BoardSummary | null,
-    databaseView: DatabaseViewRenderModel | null,
-  ): void {
-    if (operationIds.length === 0) {
-      this.materializationRenderCandidate = null;
-      return;
-    }
-
-    const previous = this.materializationRenderCandidate;
-    const sameOperations =
-      previous?.operationIds.length === operationIds.length &&
-      operationIds.every((operationId, index) => previous.operationIds[index] === operationId);
-    if (sameOperations && previous.board === board && previous.databaseView === databaseView)
-      return;
-
-    this.nextMaterializationRenderToken += 1;
-    this.materializationRenderCandidate = {
-      operationIds: [...operationIds],
-      board,
-      databaseView,
-      token: this.nextMaterializationRenderToken,
-    };
-    for (const operationId of operationIds) {
-      const entry = this.optimisticEntries.find((candidate) => candidate.opId === operationId);
-      if (!entry) continue;
-      recordRendererOwnerTrace(
-        entry.trace,
-        {
-          kind: "materialized",
-          reason: "canonical_observation",
-          renderToken: this.nextMaterializationRenderToken,
-        },
-        this.dependencies.causalTrace,
-      );
-    }
-  }
-
-  private pruneConvergedEntries(): readonly number[] {
-    if (!this.baseBoard && !this.baseDatabaseView) return [];
-    if (this.optimisticEntries.length === 0) return [];
-
-    let working = this.baseBoard;
-    let workingDatabaseView = this.baseDatabaseView;
-    let changed = false;
-    const nextEntries: OptimisticEntry[] = [];
-    const materializedOperationIds: number[] = [];
-
-    for (const entry of this.optimisticEntries) {
-      if (entry.superseded) {
-        changed = true;
-        continue;
-      }
-
-      const after = working ? entry.apply(working) : working;
-      const afterDatabaseView =
-        workingDatabaseView && entry.applyDatabaseView
-          ? entry.applyDatabaseView(workingDatabaseView)
-          : workingDatabaseView;
-
-      if (entry.phase === "pending") {
-        nextEntries.push(entry);
-        working = after;
-        workingDatabaseView = afterDatabaseView;
-        continue;
-      }
-
-      // Retained local overlays are now auto-collected when base state catches up.
-      if (entry.phase === "local") {
-        if (after === working && afterDatabaseView === workingDatabaseView) {
-          changed = true;
-          continue;
-        }
-        nextEntries.push(entry);
-        working = after;
-        workingDatabaseView = afterDatabaseView;
-        continue;
-      }
-
-      if (
-        entry.commitCursor !== null &&
-        (!this.baseBoardAuthority ||
-          this.baseBoardAuthority.storeEpoch !== entry.commitCursor.storeEpoch ||
-          this.baseBoardAuthority.projection.coveredCommitSeq < entry.commitCursor.commitSeq)
-      ) {
-        nextEntries.push(entry);
-        working = after;
-        workingDatabaseView = afterDatabaseView;
-        continue;
-      }
-
-      if (entry.commitCursor !== null) {
-        if (
-          entry.minimumMaterializationGeneration !== null &&
-          this.canonicalReadGeneration < entry.minimumMaterializationGeneration
-        ) {
-          nextEntries.push(entry);
-          working = after;
-          workingDatabaseView = afterDatabaseView;
-          continue;
-        }
-        const boardMaterialized = entry.isCommitMaterialized
-          ? this.baseBoard !== null && entry.isCommitMaterialized(this.baseBoard)
-          : after === working;
-        const databaseViewMaterialized = entry.isDatabaseViewCommitMaterialized
-          ? this.baseDatabaseView !== null &&
-            entry.isDatabaseViewCommitMaterialized(this.baseDatabaseView)
-          : afterDatabaseView === workingDatabaseView;
-        const materialized = boardMaterialized && databaseViewMaterialized;
-        if (materialized) {
-          nextEntries.push(entry);
-          materializedOperationIds.push(entry.opId);
-          working = after;
-          workingDatabaseView = afterDatabaseView;
-          continue;
-        }
-        nextEntries.push(entry);
-        working = after;
-        workingDatabaseView = afterDatabaseView;
-        continue;
-      }
-
-      // Acknowledged entries remain visible until canonical state satisfies
-      // the same semantic intent, at which point the transform is a no-op.
-      if (after !== working || afterDatabaseView !== workingDatabaseView) {
-        nextEntries.push(entry);
-        working = after;
-        workingDatabaseView = afterDatabaseView;
-        continue;
-      }
-
-      nextEntries.push(entry);
-      materializedOperationIds.push(entry.opId);
-      working = after;
-      workingDatabaseView = afterDatabaseView;
-    }
-
-    if (changed) this.optimisticEntries = nextEntries;
-    return materializedOperationIds;
-  }
-
-  private createEntry({
-    kind,
-    operationIdentity,
-    conflictKeys,
-    apply,
-    applyDatabaseView,
-    phase,
-    isCommitMaterialized,
-    isDatabaseViewCommitMaterialized,
-  }: {
-    kind: string;
-    operationIdentity?: string;
-    conflictKeys: string[];
-    apply: BoardTransform;
-    applyDatabaseView?: DatabaseViewTransform;
-    phase: OptimisticEntry["phase"];
-    isCommitMaterialized?: (canonicalBoard: BoardSummary) => boolean;
-    isDatabaseViewCommitMaterialized?: (canonicalModel: DatabaseViewRenderModel) => boolean;
-  }): OptimisticEntry {
-    const opId = this.nextOpId++;
-    return {
-      opId,
-      kind,
-      conflictKeys,
-      apply,
-      applyDatabaseView: applyDatabaseView ?? null,
-      phase,
-      commitCursor: null,
-      isCommitMaterialized: isCommitMaterialized ?? null,
-      isDatabaseViewCommitMaterialized: isDatabaseViewCommitMaterialized ?? null,
-      minimumMaterializationGeneration: null,
-      superseded: false,
-      trace:
-        phase === "pending"
-          ? beginRendererOwnerTrace(
-              {
-                semanticKey: `board.${kind}`,
-                operationIdentity:
-                  operationIdentity ??
-                  `board:${this.projectId}:${this.databaseViewId ?? "primary"}:${opId}`,
-                owner: "board-store",
-                protocol: "receipt_fenced_projection",
-                scopeKind: "database",
-              },
-              this.dependencies.causalTrace,
-            )
-          : null,
-    };
-  }
-
-  private supersedeConflicts(conflictKeys: string[]): void {
-    if (conflictKeys.length === 0) return;
-    let changed = false;
-    for (const entry of this.optimisticEntries) {
-      if (entry.superseded) continue;
-      if (!overlap(entry.conflictKeys, conflictKeys)) continue;
-      entry.superseded = true;
-      recordRendererOwnerTrace(
-        entry.trace,
-        { kind: "superseded", reason: "newer_intent" },
-        this.dependencies.causalTrace,
-      );
-      changed = true;
-    }
-    if (!changed) return;
-    this.pruneSupersededEntries();
-  }
-
-  private pruneSupersededEntries(): void {
-    this.optimisticEntries = this.optimisticEntries.filter((entry) => !entry.superseded);
-  }
-
-  private removeEntry(opId: number): void {
-    this.optimisticEntries = this.optimisticEntries.filter((entry) => entry.opId !== opId);
-  }
-
   private revokeEntries(reason: "authority_revoked" | "store_reset"): void {
-    for (const entry of this.optimisticEntries) {
-      if (entry.superseded) continue;
-      entry.superseded = true;
-      recordRendererOwnerTrace(
-        entry.trace,
-        { kind: "revoked", reason },
-        this.dependencies.causalTrace,
-      );
-    }
+    this.journal.revoke(reason);
   }
 
   private removeEntriesForPage(pageId: string): boolean {
-    const conflictPrefix = `card:${pageId}:`;
-    const nextEntries = this.optimisticEntries.filter((entry) => {
-      const removesEntry = entry.conflictKeys.some((key) => key.startsWith(conflictPrefix));
-      if (removesEntry) {
-        entry.superseded = true;
-        recordRendererOwnerTrace(
-          entry.trace,
-          { kind: "revoked", reason: "authority_revoked" },
-          this.dependencies.causalTrace,
-        );
-      }
-      return !removesEntry;
-    });
-    if (nextEntries.length === this.optimisticEntries.length) return false;
-    this.optimisticEntries = nextEntries;
-    return true;
+    return this.journal.removeWhere((keys) =>
+      keys.some((key) => key.startsWith(`card:${pageId}:`)),
+    );
   }
 
   private setSnapshot(next: BoardStoreSnapshot): void {
@@ -2002,12 +1646,16 @@ class BoardProjectStore {
     if (
       previous.board === next.board &&
       previous.databaseView === next.databaseView &&
+      previous.canonicalDatabaseView === next.canonicalDatabaseView &&
+      previous.canonicalReadGeneration === next.canonicalReadGeneration &&
       previous.pageIndex === next.pageIndex &&
       previous.loading === next.loading &&
       previous.loadingMore === next.loadingMore &&
       previous.hasMore === next.hasMore &&
       previous.error === next.error &&
       previous.pendingMutationCount === next.pendingMutationCount &&
+      previous.mutationActivity.unknown === next.mutationActivity.unknown &&
+      previous.mutationActivity.acknowledged === next.mutationActivity.acknowledged &&
       previous.lastMutationError === next.lastMutationError &&
       previous.materializationRenderToken === next.materializationRenderToken &&
       previous.totalRows === next.totalRows &&
@@ -2087,8 +1735,6 @@ class BoardProjectStore {
     this.groupWindows.clear();
     this.groupsSnapshot = null;
     this.revokeEntries("authority_revoked");
-    this.optimisticEntries = [];
-    this.materializationRenderCandidate = null;
     // Keep the causal runtime paired with its still-live registration. The
     // canonical repair below advances its dynamically read coordinate.
     this.recomputeSnapshot({
@@ -2132,8 +1778,6 @@ class BoardProjectStore {
     this.groupWindows.clear();
     this.groupsSnapshot = null;
     this.revokeEntries(cause.kind === "reset" ? "store_reset" : "authority_revoked");
-    this.optimisticEntries = [];
-    this.materializationRenderCandidate = null;
     // The registry has already fenced the paired causal runtime. Disposing it
     // here would orphan the still-live registration and drop every later
     // projection effect.

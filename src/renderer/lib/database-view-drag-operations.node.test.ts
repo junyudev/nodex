@@ -5,6 +5,7 @@ import {
 } from "./database-view-render-model";
 import {
   applyOptimisticDatabaseViewBoardDrop,
+  compileDatabaseViewBoardDropProjection,
   buildDatabaseViewBoardDropOperations,
   databaseViewSupportsSortedSlotInference,
   resolveDatabaseViewDropPropertyValues,
@@ -642,6 +643,126 @@ describe("buildDatabaseViewBoardDropOperations", () => {
         (row) => row.page.pageId,
       ),
     ).toEqual(["page-1", "page-3", "page-2"]);
+  });
+
+  test("requires authoritative target completeness for an unanchored tail preview", () => {
+    const canonical = prioritySortedModel();
+    const projection = {
+      pageIds: ["page-3"],
+      fallbackRows: [canonical.query.rows[2]!],
+      target: { groupKey: "o_DONE0001", subgroupKey: null },
+      propertyValues: [],
+    } as const;
+    expect(compileDatabaseViewBoardDropProjection(canonical, projection).predictable).toBe(false);
+    expect(
+      compileDatabaseViewBoardDropProjection(canonical, projection, { targetComplete: false })
+        .predictable,
+    ).toBe(false);
+    expect(
+      compileDatabaseViewBoardDropProjection(canonical, projection, { targetComplete: true })
+        .predictable,
+    ).toBe(true);
+  });
+
+  test("does not mistake an unavailable drop anchor for canonical tail materialization", () => {
+    const canonical = prioritySortedModel();
+    const projection = {
+      pageIds: ["page-3"],
+      fallbackRows: [canonical.query.rows[2]!],
+      target: { groupKey: "o_DONE0001", subgroupKey: null, beforePageId: "page-2" },
+      propertyValues: [],
+    } as const;
+    const plan = compileDatabaseViewBoardDropProjection(canonical, projection);
+    expect(plan.predictable).toBe(true);
+    const missing = {
+      ...canonical,
+      query: {
+        ...canonical.query,
+        rows: canonical.query.rows.filter((row) => row.page.pageId !== "page-2"),
+      },
+    };
+    expect(plan.apply(missing)).not.toBe(missing);
+    expect(compileDatabaseViewBoardDropProjection(missing, projection).predictable).toBe(false);
+    const materialized = applyOptimisticDatabaseViewBoardDrop(canonical, projection);
+    expect(plan.apply(materialized)).toBe(materialized);
+  });
+
+  test("never replays a drop into a replaced Data Source or Membership", () => {
+    const canonical = prioritySortedModel();
+    const plan = compileDatabaseViewBoardDropProjection(canonical, {
+      pageIds: ["page-3"],
+      fallbackRows: [canonical.query.rows[2]!],
+      target: { groupKey: "o_DONE0001", subgroupKey: null, beforePageId: "page-2" },
+      propertyValues: [{ propertyId: statusId, value: "o_DONE0001" }],
+    });
+    const replacedSource = { ...canonical, dataSourceId: parseDataSourceId("replacement-source") };
+    const replacedMembership = {
+      ...canonical,
+      query: {
+        ...canonical.query,
+        rows: canonical.query.rows.map((row) =>
+          row.page.pageId !== "page-3"
+            ? row
+            : {
+                ...row,
+                membership: { ...row.membership, membershipId: "replacement-membership" },
+              },
+        ),
+      },
+    };
+    for (const replaced of [replacedSource, replacedMembership]) {
+      const projected = plan.apply(replaced);
+      expect(projected).not.toBe(replaced);
+      expect(projected.query).toBe(replaced.query);
+    }
+  });
+
+  test("yields a later Page value without dropping other values or Pages in the same drop", () => {
+    const canonical = prioritySortedModel();
+    const projection = {
+      pageIds: ["page-1", "page-3"],
+      fallbackRows: [canonical.query.rows[0]!, canonical.query.rows[2]!],
+      target: { groupKey: "o_DONE0001", subgroupKey: null, beforePageId: "page-2" },
+      propertyValues: [
+        { propertyId: statusId, value: "o_DONE0001" },
+        { propertyId: priorityId, value: "o_HIGH0001" },
+      ],
+    } as const;
+    const plan = compileDatabaseViewBoardDropProjection(canonical, projection);
+    plan.acknowledge?.({
+      committedRevisions: {
+        [`value:${dataSourceId}:membership-page-1:${priorityId}`]: 4,
+        [`value:${dataSourceId}:membership-page-1:${statusId}`]: 3,
+      },
+    });
+    const remote = {
+      ...canonical,
+      query: {
+        ...canonical.query,
+        rows: canonical.query.rows.map((row) =>
+          row.page.pageId !== "page-1"
+            ? row
+            : {
+                ...row,
+                values: {
+                  ...row.values,
+                  [priorityId]: { ...row.values[priorityId]!, value: "o_LOW00001", revision: 5 },
+                },
+              },
+        ),
+      },
+    };
+    const projected = plan.apply(remote);
+    const byId = new Map(projected.query.rows.map((row) => [row.page.pageId, row]));
+    expect(byId.get("page-1")?.values[priorityId]?.value).toBe("o_LOW00001");
+    expect(byId.get("page-1")?.values[statusId]?.value).toBe("o_DONE0001");
+    expect(byId.get("page-3")?.values[priorityId]?.value).toBe("o_HIGH0001");
+    expect(projected.query.rows.map((row) => row.page.pageId)).toEqual([
+      "page-1",
+      "page-3",
+      "page-2",
+    ]);
+    expect(plan.apply(projected)).toBe(projected);
   });
 
   test("does not promise an exact slot after a derived secondary sort", () => {

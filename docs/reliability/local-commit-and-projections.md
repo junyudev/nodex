@@ -128,7 +128,21 @@ state.
 Optimistic journals may keep an acknowledged semantic transform composed over
 canonical base until the bounded projection actually materializes it. Promise
 success or a broad commit cursor is not proof that one row/window contains the
-result.
+result. The subscribed React owner must then acknowledge the exact canonical
+render before the journal retires that transform. Canonical data and the receipt
+may arrive in either order. A projection refresh failure cannot turn an already
+acknowledged durable mutation into a rejected history action. Lost responses
+retain frozen operation identity and local intent until exact confirmation;
+only authoritative non-commit evidence permits rollback. Database Board rows
+and List occurrence windows use this lifecycle while retaining their distinct
+canonical-read and materialization proofs.
+
+Exact resource revisions in the receipt can prove a rank write has materialized
+even when another edit later changes its neighbors. Newer revisions supersede
+only the affected value or position, not unrelated addresses in the same batch.
+Missing bounded rows, an unrelated metadata revision, and a broad commit cursor
+cannot substitute for this evidence. Explicit resource revocation retires local
+presentation, including fallback rows that have left the current query window.
 
 ### Database List occurrence windows
 

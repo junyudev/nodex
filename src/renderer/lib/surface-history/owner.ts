@@ -56,6 +56,10 @@ export interface HistoryContentAdapter<Intent, Request, Receipt, Inverse> {
   /** Retire receipt resources that cannot become a complete retained inverse. */
   discardReceipt?(receipt: Receipt): void | Promise<void>;
   abandon?(request: Request, inverse?: Inverse): Promise<void>;
+  onCommitted?(receipt: Receipt): void | Promise<void>;
+  onError?(error: unknown): void;
+  /** A detached participant may recover sent requests, but cannot prepare new ones. */
+  available?(): boolean;
 }
 
 export interface HistoryRetainedEntry<Inverse> {
@@ -120,6 +124,7 @@ interface Entry<Inverse, Adapter> {
   state: EntryState<Inverse>;
   bytes: number;
   readonly adapter: Adapter;
+  retired?: boolean;
 }
 interface Attempt<Request, Inverse, Adapter> {
   readonly entry: Entry<Inverse, Adapter>;
@@ -128,6 +133,7 @@ interface Attempt<Request, Inverse, Adapter> {
   readonly bytes: number;
   readonly branch: number;
   readonly originalInverse?: Inverse;
+  abandoned?: boolean;
 }
 interface Job<Receipt> {
   readonly direction: "forward" | SurfaceHistoryDirection;
@@ -163,7 +169,7 @@ const emptyCapability: SurfaceHistoryCapability = Object.freeze({
 /** Owns admission, command order, exact attempts and the reachable history interval.
  * Content adapters alone prepare requests and interpret authoritative inverses.
  */
-export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options: {
+const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
   readonly scopeKey: string;
   readonly adapter:
     | HistoryContentAdapter<Intent, Request, Receipt, Inverse>
@@ -177,7 +183,22 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
     >
   >;
   readonly onError?: (error: unknown) => void;
-}): SurfaceHistory<Intent, Receipt, Inverse> => {
+}): SurfaceHistory<Intent, Receipt, Inverse> & {
+  retainedFor(
+    matches: (adapter: HistoryContentAdapter<Intent, Request, Receipt, Inverse>) => boolean,
+  ): readonly HistoryRetainedEntry<Inverse>[];
+  retire(
+    matches: (adapter: HistoryContentAdapter<Intent, Request, Receipt, Inverse>) => boolean,
+  ): void;
+  adopt(
+    captures: Partial<
+      Record<
+        SurfaceHistoryDirection,
+        readonly { readonly intent: Intent; readonly receipt: Receipt }[]
+      >
+    >,
+  ): void;
+} => {
   type Adapter = HistoryContentAdapter<Intent, Request, Receipt, Inverse>;
   type Slot = Entry<Inverse, Adapter>;
   type FrozenAttempt = Attempt<Request, Inverse, Adapter>;
@@ -225,10 +246,11 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
     for (const complete of idleWaiters) complete();
     idleWaiters.clear();
   };
-  const report = (error: unknown) => options.onError?.(error);
-  const retainRelease = (release: void | Promise<void>) => {
+  const report = (error: unknown, adapter?: Adapter) =>
+    (adapter?.onError ?? options.onError)?.(error);
+  const retainRelease = (release: void | Promise<void>, adapter?: Adapter) => {
     if (!release) return;
-    const pending = release.catch(report);
+    const pending = release.catch((error: unknown) => report(error, adapter));
     releases.add(pending);
     void pending.finally(() => {
       releases.delete(pending);
@@ -237,9 +259,9 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
   };
   const releaseInverse = (adapter: Adapter, inverse: Inverse, reason: "consumed" | "discarded") => {
     try {
-      retainRelease(adapter.release?.(inverse, reason));
+      retainRelease(adapter.release?.(inverse, reason), adapter);
     } catch (error) {
-      report(error);
+      report(error, adapter);
     }
   };
   // The opposite gesture can be admitted before a replay receipt moves its
@@ -266,7 +288,7 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
         label: entry.label,
         acceptsIntent: !scope.uncertain,
         reason: scope.uncertain ? "Confirming the last action." : "Waiting for the current action.",
-        recoveryActions: scope.uncertain ? ["retry", "reset"] : ["reset"],
+        recoveryActions: scope.uncertain ? ["retry", "reset"] : [],
       };
     if (entry.state.kind === "blocked")
       return {
@@ -314,7 +336,14 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
     const { adapter } = entry;
     const attempt = owner.attempts.get(entry.id);
     if (attempt) {
-      retainRelease(adapter.abandon?.(attempt.request, attempt.originalInverse));
+      if (!attempt.abandoned && adapter.abandon) {
+        attempt.abandoned = true;
+        try {
+          retainRelease(adapter.abandon(attempt.request, attempt.originalInverse), adapter);
+        } catch (error) {
+          report(error, adapter);
+        }
+      }
       return;
     }
     if (entry.state.kind === "ready") releaseInverse(adapter, entry.state.inverse, "discarded");
@@ -421,7 +450,7 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
     return { accepted: true, entryId, result };
   };
   const finishAttempt = (owner: typeof scope, attempt: FrozenAttempt) => {
-    owner.attempts.delete(attempt.entry.id);
+    if (!owner.attempts.delete(attempt.entry.id)) return;
     if (owner.uncertain === attempt) owner.uncertain = null;
     requestBytes -= attempt.bytes;
   };
@@ -430,7 +459,7 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
     try {
       interpretation = adapter.interpret(receipt);
     } catch (error) {
-      report(error);
+      report(error, adapter);
       interpretation = {
         kind: "barrier",
         reason: "The action committed, but its history could not be restored.",
@@ -438,9 +467,9 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
     }
     if (interpretation.kind !== "reversible") {
       try {
-        retainRelease(adapter.discardReceipt?.(receipt));
+        retainRelease(adapter.discardReceipt?.(receipt), adapter);
       } catch (error) {
-        report(error);
+        report(error, adapter);
       }
     }
     return interpretation;
@@ -457,6 +486,13 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
       direction === "forward" ? owner.undo : direction === "undo" ? owner.redo : owner.undo;
     const reachable = owner === scope && !closed && source.includes(entry);
     const interpretation = interpret(adapter, receipt);
+    if (reachable && !entry.retired) {
+      try {
+        retainRelease(adapter.onCommitted?.(receipt), adapter);
+      } catch (error) {
+        report(error, adapter);
+      }
+    }
     if (attempt.originalInverse !== undefined)
       releaseInverse(adapter, attempt.originalInverse, "consumed");
     if (direction !== "forward" || interpretation.kind === "noop") remove(source, entry);
@@ -464,7 +500,12 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
       if (owner === scope) publish();
       return { status: "noop" };
     }
-    if (!reachable || (direction !== "forward" && owner.branch !== attempt.branch)) {
+    if (
+      !reachable ||
+      entry.retired ||
+      (direction !== "forward" && owner.branch !== attempt.branch)
+    ) {
+      remove(source, entry);
       if (interpretation.kind === "reversible")
         releaseInverse(adapter, interpretation.inverse, "discarded");
       return { status: "committed", receipt, entryId: entry.id };
@@ -477,7 +518,7 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
     try {
       entry.bytes = measure(entry);
     } catch (error) {
-      report(error);
+      report(error, adapter);
       if (entry.state.kind === "ready") releaseInverse(adapter, entry.state.inverse, "discarded");
       entry.state = {
         kind: "blocked",
@@ -514,6 +555,17 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
       return installReceipt(owner, attempt, outcome.receipt);
     }
     if (outcome.kind === "unknown") {
+      if (attempt.abandoned) {
+        finishAttempt(owner, attempt);
+        attempt.entry.state = {
+          kind: "blocked",
+          reason:
+            "This action is being recovered outside the closed surface. Reset history to continue.",
+          retryable: false,
+        };
+        if (owner === scope) publish();
+        return { status: "blocked", reason: attempt.entry.state.reason };
+      }
       if (owner !== scope || closed) {
         finishAttempt(owner, attempt);
         return { status: "recovering", reason: outcome.reason };
@@ -528,6 +580,12 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
       return { status: "recovering", reason: outcome.reason };
     }
     finishAttempt(owner, attempt);
+    if (attempt.abandoned && outcome.kind === "rejected") {
+      remove(owner.undo, attempt.entry);
+      remove(owner.redo, attempt.entry);
+      if (owner === scope) publish();
+      return { status: "rejected", reason: outcome.reason };
+    }
     if (attempt.originalInverse !== undefined && !retains(owner, attempt.entry))
       releaseInverse(adapter, attempt.originalInverse, "discarded");
     if (outcome.kind === "unrecoverable") {
@@ -537,7 +595,7 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
         kind: "blocked",
         reason: outcome.reason,
         retryable: false,
-        inverse: attempt.originalInverse,
+        inverse: attempt.abandoned ? undefined : attempt.originalInverse,
       };
       if (attempt.direction === "forward" && owner === scope) fork(owner, attempt.entry.id);
       if (owner === scope) publish();
@@ -563,6 +621,12 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
     branch = owner.branch,
   ): Promise<HistoryCommandResolution<Receipt>> => {
     const { adapter } = entry;
+    if (entry.retired || adapter.available?.() === false || !retains(owner, entry)) {
+      remove(owner.undo, entry);
+      remove(owner.redo, entry);
+      if (owner === scope) publish();
+      return { status: "rejected", reason: "This history participant is no longer available." };
+    }
     entry.state = { kind: "pending", phase: "preparing", inverse: originalInverse };
     publish();
     let request: Request;
@@ -593,7 +657,15 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
       if (owner === scope) publish();
       return { status: "rejected", reason: reasonOf(error) };
     }
-    if (owner !== scope || closed || !retains(owner, entry)) {
+    if (
+      owner !== scope ||
+      closed ||
+      entry.retired ||
+      adapter.available?.() === false ||
+      !retains(owner, entry)
+    ) {
+      remove(owner.undo, entry);
+      remove(owner.redo, entry);
       if (originalInverse !== undefined) releaseInverse(adapter, originalInverse, "discarded");
       return {
         status: "rejected",
@@ -695,7 +767,7 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
       try {
         result = entry.adapter.replayLocal(entry.state.inverse, direction);
       } catch (error) {
-        report(error);
+        report(error, entry.adapter);
         entry.state = {
           kind: "blocked",
           reason: reasonOf(error),
@@ -757,47 +829,96 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
   };
   // A native engine may already have reachable history when the surface binds.
   // Adopt it without creating a new content branch or trimming dependent Redo early.
-  for (const direction of ["undo", "redo"] as const) {
-    const captures = [...(options.initialCaptures?.[direction] ?? [])];
-    if (direction === "redo") captures.reverse();
-    for (const { intent, receipt } of captures) {
-      const adapter =
-        typeof options.adapter === "function" ? options.adapter(intent) : options.adapter;
-      const interpretation = interpret(adapter, receipt);
-      if (interpretation.kind === "noop") continue;
-      const entry: Slot = {
-        id: ++sequence,
-        local: true,
-        label: adapter.describe(intent),
-        adapter,
-        bytes: 0,
-        state:
-          interpretation.kind === "reversible"
-            ? { kind: "ready", inverse: interpretation.inverse }
-            : { kind: "blocked", reason: interpretation.reason, retryable: false },
-      };
-      entry.bytes = measure(entry);
-      scope[direction].push(entry);
+  const adopt = (initialCaptures: typeof options.initialCaptures) => {
+    for (const direction of ["undo", "redo"] as const) {
+      const existingLength = scope[direction].length;
+      const captures = [...(initialCaptures?.[direction] ?? [])];
+      if (direction === "redo") captures.reverse();
+      for (const { intent, receipt } of captures) {
+        const adapter =
+          typeof options.adapter === "function" ? options.adapter(intent) : options.adapter;
+        const interpretation = interpret(adapter, receipt);
+        if (interpretation.kind === "noop") continue;
+        const entry: Slot = {
+          id: ++sequence,
+          local: true,
+          label: adapter.describe(intent),
+          adapter,
+          bytes: 0,
+          state:
+            interpretation.kind === "reversible"
+              ? { kind: "ready", inverse: interpretation.inverse }
+              : { kind: "blocked", reason: interpretation.reason, retryable: false },
+        };
+        entry.bytes = measure(entry);
+        scope[direction].push(entry);
+      }
+      if (direction === "redo") {
+        const adopted = scope.redo.splice(existingLength);
+        scope.redo.push(...adopted.reverse());
+      }
     }
-    if (direction === "redo") scope.redo.reverse();
-  }
-  trim(scope);
+    trim(scope);
+    publish();
+  };
+  adopt(options.initialCaptures);
   snapshot = readSnapshot();
-  return {
-    retained: () =>
-      (["undo", "redo"] as const).flatMap((direction) =>
-        scope[direction].map((entry) => ({
+  const retainedFor = (matches: (adapter: Adapter) => boolean) =>
+    (["undo", "redo"] as const).flatMap((direction) =>
+      scope[direction]
+        .filter((entry) => matches(entry.adapter))
+        .map((entry) => ({
           entryId: entry.id,
           direction,
           state: entry.state.kind,
           inverse: entry.state.inverse,
         })),
-      ),
+    );
+  return {
+    retained: () => retainedFor(() => true),
+    retainedFor,
+    adopt,
+    retire: (matches) => {
+      const through = scope.undo.findLastIndex((entry) => matches(entry.adapter));
+      const affectedRedo = scope.redo.some((entry) => matches(entry.adapter));
+      if (through < 0 && !affectedRedo) return;
+      scope.branch++;
+      for (const entry of [...scope.undo.slice(0, through + 1), ...scope.redo]) {
+        entry.retired = true;
+        // Sent/uncertain attempts remain visible until exact resolution. Removing
+        // them would make an unknown durable outcome look like empty history.
+        const attempt = scope.attempts.get(entry.id);
+        if (attempt) {
+          if (!entry.adapter.abandon || attempt.abandoned) continue;
+          attempt.abandoned = true;
+          try {
+            retainRelease(
+              entry.adapter.abandon(attempt.request, attempt.originalInverse),
+              entry.adapter,
+            );
+          } catch (error) {
+            report(error, entry.adapter);
+          }
+          entry.state = {
+            kind: "blocked",
+            reason:
+              "This action is being recovered outside the closed surface. Reset history to continue.",
+            retryable: false,
+          };
+          if (scope.uncertain === attempt) finishAttempt(scope, attempt);
+          continue;
+        }
+        remove(scope.undo, entry);
+        remove(scope.redo, entry);
+        discard(scope, entry);
+      }
+      publish();
+    },
     reconcile,
     capture: (intent, receipt) => {
       const adapter =
         typeof options.adapter === "function" ? options.adapter(intent) : options.adapter;
-      if (closed) {
+      if (closed || adapter.available?.() === false) {
         const interpretation = interpret(adapter, receipt);
         if (interpretation.kind === "reversible")
           releaseInverse(adapter, interpretation.inverse, "discarded");
@@ -824,7 +945,7 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
       try {
         entry.bytes = measure(entry);
       } catch (error) {
-        report(error);
+        report(error, entry.adapter);
         releaseInverse(entry.adapter, entry.state.inverse, "discarded");
         entry.state = { kind: "blocked", reason: reasonOf(error), retryable: false };
         entry.bytes = byteLength(entry.state);
@@ -906,3 +1027,236 @@ export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(options:
       isIdle() ? Promise.resolve() : new Promise<void>((complete) => idleWaiters.add(complete)),
   };
 };
+
+export type HistoryReplayResolution =
+  | { readonly status: "committed"; readonly entryId: number }
+  | Exclude<HistoryCommandResolution<unknown>, { readonly status: "committed" }>;
+export interface HistoryReplayHandle {
+  readonly accepted: boolean;
+  readonly entryId: number | null;
+  readonly result: Promise<HistoryReplayResolution>;
+}
+export interface HistoryBindingOptions<Intent, Request, Receipt, Inverse> {
+  readonly scopeKey?: string;
+  readonly adapter:
+    | HistoryContentAdapter<Intent, Request, Receipt, Inverse>
+    | ((intent: Intent) => HistoryContentAdapter<Intent, Request, Receipt, Inverse>);
+  readonly retainedIdentityCount?: () => number;
+  readonly initialCaptures?: Partial<
+    Record<
+      SurfaceHistoryDirection,
+      readonly { readonly intent: Intent; readonly receipt: Receipt }[]
+    >
+  >;
+  readonly breakCapture?: () => void;
+  readonly onCommitted?: (receipt: Receipt) => void | Promise<void>;
+  readonly onError?: (error: unknown) => void;
+}
+export interface InteractionHistoryBinding<Intent, Receipt, Inverse> extends Omit<
+  SurfaceHistory<Intent, Receipt, Inverse>,
+  "request" | "recover"
+> {
+  /** Call before the native engine decides whether to extend its current group. */
+  beginLocalCapture(): void;
+  request(direction: SurfaceHistoryDirection, targetEntryId?: number): HistoryReplayHandle;
+  recover(): HistoryReplayHandle;
+}
+export interface InteractionHistory {
+  bind<Intent, Request, Receipt, Inverse>(
+    options: HistoryBindingOptions<Intent, Request, Receipt, Inverse>,
+  ): InteractionHistoryBinding<Intent, Receipt, Inverse>;
+  request(direction: SurfaceHistoryDirection, targetEntryId?: number): HistoryReplayHandle;
+  recover(): HistoryReplayHandle;
+  snapshot(): SurfaceHistorySnapshot;
+  subscribe(listener: () => void): () => void;
+  setScope(scopeKey: string): void;
+  reset(): void;
+  close(): void;
+  whenIdle(): Promise<void>;
+}
+
+type ErasedAdapter = HistoryContentAdapter<unknown, unknown, unknown, unknown>;
+interface BoundIntent {
+  readonly adapter: ErasedAdapter;
+  readonly intent: unknown;
+}
+const replayHandle = (handle: HistoryCommandHandle<unknown>): HistoryReplayHandle => ({
+  accepted: handle.accepted,
+  entryId: handle.entryId,
+  result: handle.result.then((result) =>
+    result.status === "committed" ? { status: "committed", entryId: result.entryId } : result,
+  ),
+});
+
+/** One chronological engine; typed bindings own content resources, not history lists.
+ * Type erasure is confined here: each slot keeps the adapter that accepted its
+ * original values. Requests and inverse objects are never wrapped or reconstructed.
+ */
+export const createInteractionHistory = (options: {
+  readonly scopeKey: string;
+  readonly limits?: Partial<Limits>;
+  readonly onError?: (error: unknown) => void;
+}): InteractionHistory => {
+  const participants = new Set<{
+    readonly breakCapture?: () => void;
+    readonly retainedIdentityCount?: () => number;
+  }>();
+  let capturing: { readonly breakCapture?: () => void } | undefined;
+  const breakCapture = () => {
+    const previous = capturing;
+    capturing = undefined;
+    previous?.breakCapture?.();
+  };
+  const engine = createHistoryEngine<BoundIntent, unknown, unknown, unknown>({
+    ...options,
+    retainedIdentityCount: () =>
+      [...participants].reduce(
+        (total, participant) => total + (participant.retainedIdentityCount?.() ?? 0),
+        0,
+      ),
+    adapter: (action) => ({
+      ...action.adapter,
+      describe: () => action.adapter.describe(action.intent),
+      prepare: () => action.adapter.prepare(action.intent),
+    }),
+  });
+  const request: InteractionHistory["request"] = (direction, target) => {
+    breakCapture();
+    return replayHandle(engine.request(direction, target));
+  };
+  const recover = () => {
+    breakCapture();
+    return replayHandle(engine.recover());
+  };
+  return {
+    bind: <Intent, Request, Receipt, Inverse>(
+      binding: HistoryBindingOptions<Intent, Request, Receipt, Inverse>,
+    ) => {
+      let closed = false;
+      let generation = 0;
+      let scopeKey = binding.scopeKey;
+      // Adapter membership is a weak resource identity index, never chronology.
+      const adapters = new WeakSet<object>();
+      participants.add(binding);
+      const action = (intent: Intent): BoundIntent => {
+        const adapter =
+          typeof binding.adapter === "function" ? binding.adapter(intent) : binding.adapter;
+        const attachedGeneration = generation;
+        const wrapped: HistoryContentAdapter<Intent, Request, Receipt, Inverse> = {
+          ...adapter,
+          onError: binding.onError ?? adapter.onError,
+          available: () =>
+            !closed && generation === attachedGeneration && adapter.available?.() !== false,
+          onCommitted: (receipt) => {
+            if (closed || generation !== attachedGeneration) return;
+            if (binding.onCommitted) return binding.onCommitted(receipt);
+            return adapter.onCommitted?.(receipt);
+          },
+        };
+        // The engine specializes prepare/describe to the accepted intent. Keep
+        // identity tagging on the shared callback rather than the copied object.
+        adapters.add(wrapped.available!);
+        return { intent, adapter: wrapped as ErasedAdapter };
+      };
+      const matches = (adapter: HistoryContentAdapter<BoundIntent, unknown, unknown, unknown>) =>
+        !!adapter.available && adapters.has(adapter.available);
+      const retire = () => {
+        generation++;
+        if (capturing === binding) breakCapture();
+        engine.retire(matches);
+      };
+      const retained = () =>
+        engine.retainedFor(matches) as readonly HistoryRetainedEntry<Inverse>[];
+      const beginLocalCapture = () => {
+        if (closed || capturing === binding) return;
+        breakCapture();
+        binding.breakCapture?.();
+        capturing = binding;
+      };
+      const rejectClosed = () => ({
+        accepted: false,
+        entryId: null,
+        result: Promise.resolve({
+          status: "rejected" as const,
+          reason: "This history participant is closed.",
+        }),
+      });
+      if (binding.initialCaptures) {
+        const captures = binding.initialCaptures;
+        engine.adopt(
+          Object.fromEntries(
+            (["undo", "redo"] as const).map((direction) => [
+              direction,
+              (captures[direction] ?? []).map(({ intent, receipt }) => ({
+                intent: action(intent),
+                receipt,
+              })),
+            ]),
+          ),
+        );
+      }
+      return {
+        execute: (intent: Intent) => {
+          if (closed) return rejectClosed();
+          breakCapture();
+          return engine.execute(action(intent)) as HistoryCommandHandle<Receipt>;
+        },
+        capture: (intent: Intent, receipt: Receipt) => {
+          return engine.capture(action(intent), receipt) as HistoryCommandResolution<Receipt>;
+        },
+        beginLocalCapture,
+        refreshCapture: (entryId: number) =>
+          retained().some((entry) => entry.entryId === entryId) && engine.refreshCapture(entryId),
+        retained,
+        reconcile: (input: Parameters<SurfaceHistory<Intent, Receipt, Inverse>["reconcile"]>[0]) =>
+          retained().some((entry) => entry.entryId === input.entryId) && engine.reconcile(input),
+        request: (direction: SurfaceHistoryDirection, target?: number) =>
+          closed ? rejectClosed() : request(direction, target),
+        recover: () => (closed ? rejectClosed() : recover()),
+        snapshot: engine.snapshot,
+        subscribe: engine.subscribe,
+        setScope: (key: string) => {
+          if (closed || scopeKey === key) return;
+          scopeKey = key;
+          retire();
+        },
+        reset: () => {
+          if (!closed) retire();
+        },
+        close: () => {
+          if (closed) return;
+          closed = true;
+          retire();
+          participants.delete(binding);
+        },
+        whenIdle: engine.whenIdle,
+      };
+    },
+    request,
+    recover,
+    snapshot: engine.snapshot,
+    subscribe: engine.subscribe,
+    setScope: (key) => {
+      breakCapture();
+      engine.setScope(key);
+    },
+    reset: () => {
+      breakCapture();
+      engine.reset();
+    },
+    close: () => {
+      breakCapture();
+      engine.close();
+      participants.clear();
+    },
+    whenIdle: engine.whenIdle,
+  };
+};
+
+/** Standalone compatibility for a surface that is not attached to a shared realm. */
+export const createSurfaceHistory = <Intent, Request, Receipt, Inverse>(
+  options: {
+    readonly scopeKey: string;
+    readonly limits?: Partial<Limits>;
+  } & HistoryBindingOptions<Intent, Request, Receipt, Inverse>,
+): SurfaceHistory<Intent, Receipt, Inverse> => createHistoryEngine(options);

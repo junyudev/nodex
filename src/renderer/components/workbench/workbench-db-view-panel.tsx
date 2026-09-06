@@ -12,7 +12,7 @@ import {
 } from "react";
 import { NodexIconButton } from "@/components/ui/button";
 import type { WorkbenchTabProjection } from "@/lib/types";
-import { useBoard, type DatabaseViewBoardPageDropIntent } from "@/lib/use-board";
+import { useBoard } from "@/lib/use-board";
 import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
 import type {
   DatabaseViewConditionalColorRule,
@@ -70,7 +70,6 @@ import { toast } from "@/components/ui/toast";
 import { isWorkflowStatus } from "../../../shared/workflow-status";
 import {
   useDatabaseViewMutationHistory,
-  databaseViewHistoryScopeKey,
   type DatabaseViewMutationHistory,
 } from "./database-view-mutation-history";
 import type { DatabaseViewPageActionPort } from "./database-view-page-actions";
@@ -132,6 +131,8 @@ export function DatabaseViewTabSurface({
 
 function DatabaseViewTabSurfaceContent({
   model,
+  canonicalModel,
+  canonicalReadGeneration,
   presentationLayout = model.query.view.layout,
   effectivePresentation,
   toolbarItems,
@@ -154,7 +155,6 @@ function DatabaseViewTabSurfaceContent({
   onOpenPage,
   pageActionPort,
   onCommitted,
-  onMoveBoardPages,
   keyboardSurface,
   presentedPageIds,
   initialSelectedPageIds,
@@ -167,6 +167,8 @@ function DatabaseViewTabSurfaceContent({
   mutationHistory: providedMutationHistory,
 }: {
   readonly model: DatabaseViewRenderModel;
+  readonly canonicalModel?: DatabaseViewRenderModel;
+  readonly canonicalReadGeneration?: number;
   readonly presentationLayout?: DatabaseViewLayout;
   readonly effectivePresentation?: EffectiveDatabaseView;
   readonly toolbarItems?: DbViewToolbarItem[];
@@ -192,10 +194,6 @@ function DatabaseViewTabSurfaceContent({
   readonly onOpenPage: DatabaseViewPageOpenHandler;
   readonly pageActionPort?: DatabaseViewPageActionPort;
   readonly onCommitted?: () => void | Promise<void>;
-  readonly onMoveBoardPages?: (
-    input: DatabaseViewBoardPageDropIntent,
-    request: Parameters<typeof commitDatabaseViewOperations>[0],
-  ) => ReturnType<typeof commitDatabaseViewOperations>;
   readonly keyboardSurface?: {
     readonly surfaceId: string;
     readonly presentationId: string;
@@ -214,8 +212,7 @@ function DatabaseViewTabSurfaceContent({
   readonly mutationHistory?: DatabaseViewMutationHistory;
 }) {
   const pageChatRuntime = useDatabasePageChatActivityRuntime();
-  const localMutationHistory = useDatabaseViewMutationHistory(databaseViewHistoryScopeKey(model));
-  const mutationHistory = providedMutationHistory ?? localMutationHistory;
+  const mutationHistory = useDatabaseViewMutationHistory(model, providedMutationHistory);
   const presentation = effectivePresentation ?? {
     layout: presentationLayout,
     rules: model.query.view.config.rules,
@@ -272,6 +269,8 @@ function DatabaseViewTabSurfaceContent({
             ) : (
               <DatabaseViewSurface
                 model={model}
+                canonicalModel={canonicalModel}
+                canonicalReadGeneration={canonicalReadGeneration}
                 effectivePresentation={presentation}
                 groupPagination={groupPagination}
                 onLoadMoreGroup={onLoadMoreGroup}
@@ -279,7 +278,6 @@ function DatabaseViewTabSurfaceContent({
                 onOpenPage={onOpenPage}
                 pageActionPort={pageActionPort}
                 onCommitted={onCommitted}
-                onMoveBoardPages={onMoveBoardPages}
                 keyboardSurface={keyboardSurface}
                 presentedPageIds={presentedPageIds}
                 initialSelectedPageIds={initialSelectedPageIds}
@@ -360,11 +358,7 @@ export function DbViewSessionTab({
     databaseId: databaseView?.databaseId ?? null,
     activeViewId: String(databaseViewId),
   });
-  const mutationHistory = useDatabaseViewMutationHistory(
-    databaseView
-      ? databaseViewHistoryScopeKey(databaseView)
-      : `pending:${projectId}:${databaseViewId}`,
-  );
+  const mutationHistory = useDatabaseViewMutationHistory(databaseView);
   const [publishingPresentation, setPublishingPresentation] = useState(false);
   const [rulePublishError, setRulePublishError] = useState<string | null>(null);
   const [conditionalColorPreview, setConditionalColorPreview] = useState<{
@@ -983,6 +977,8 @@ export function DbViewSessionTab({
     <>
       <DatabaseViewTabSurface
         model={databaseView}
+        canonicalModel={runtime.canonicalDatabaseView ?? undefined}
+        canonicalReadGeneration={runtime.canonicalReadGeneration}
         presentationLayout={effectivePresentation.layout}
         effectivePresentation={effectivePresentation}
         toolbarItems={toolbarItems}
@@ -1116,8 +1112,7 @@ export function DbViewSessionTab({
           });
         }}
         pageActionPort={pageActionPort}
-        onCommitted={runtime.refresh}
-        onMoveBoardPages={runtime.moveDatabaseViewPages}
+        onCommitted={runtime.refreshCanonicalDatabaseView}
         keyboardSurface={{ surfaceId, presentationId: tab.id }}
         presentedPageIds={presentedPageIds}
         initialSelectedPageIds={selectedPageIds}

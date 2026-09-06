@@ -46,18 +46,31 @@ interface UndoStackItemEvent {
 
 /** An editor-lifetime owner can route every history command through one lane. */
 export interface SurfaceHistoryDelegate {
+  /** Runs before a local transaction can merge into an earlier native capture. */
+  beforeLocalCapture?(): void;
   canUndo(): boolean;
   canRedo(): boolean;
   requestUndo(): boolean;
   requestRedo(): boolean;
 }
 
-function createSurfaceUndoController(fragment: Y.XmlFragment, transactionOrigin: object) {
+function createSurfaceUndoController(
+  fragment: Y.XmlFragment,
+  transactionOrigin: object,
+  beforeLocalCapture: () => void,
+) {
   // Register before EditorView exists: local history must never depend on mount order.
   const manager = new Y.UndoManager(fragment, {
     trackedOrigins: new Set([transactionOrigin]),
     deleteFilter: (item) => defaultDeleteFilter(item, defaultProtectedNodes),
-    captureTransaction: (transaction) => transaction.meta.get("addToHistory") !== false,
+    captureTransaction: (transaction) => {
+      if (transaction.meta.get("addToHistory") === false) return false;
+      if (
+        transaction.origin === transactionOrigin &&
+        transaction.changedParentTypes.has(fragment)
+      ) beforeLocalCapture();
+      return true;
+    },
   });
   let disposed = false;
   let view: EditorView | undefined;
@@ -199,8 +212,12 @@ export const YUndoExtension = createExtension(
     readonly fragment: Y.XmlFragment;
     readonly transactionOrigin: object;
   }>) => {
-    const controller = createSurfaceUndoController(options.fragment, options.transactionOrigin);
     let delegate: SurfaceHistoryDelegate | undefined;
+    const controller = createSurfaceUndoController(
+      options.fragment,
+      options.transactionOrigin,
+      () => delegate?.beforeLocalCapture?.(),
+    );
     const command =
       (direction: "undo" | "redo", fallback: Command): Command =>
       (state, dispatch, view) => {

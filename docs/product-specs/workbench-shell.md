@@ -26,6 +26,15 @@ Thread Summary content and row actions are specified in [Thread Summary Panel Be
 
 ## Scene And Surface Semantics
 
+The global header keeps one fixed-size `Content edits` control for this window's
+Page and Database history. It does not replace Page version history or follow
+DOM focus. Fast edits remain quiet; work lasting more than one second shows
+activity, and unknown or blocked actions show an attention indicator. Opening
+the control reveals Library/Project-scoped recovery without inserting content
+above a View or editor. Acknowledged work awaiting projection is labelled
+`Updating views`, separately from saving. Reset is secondary, explicitly
+confirmed for its original scope, and unavailable during ordinary submission.
+
 - Primary surfaces are fixed for Project and Session owners. A Project Scene's `db_view` primary starts with the semantic `project-default` target and may resolve to an exact `database-view` target after explicit View selection. It occurs exactly once at the start of the full-width right stack and cannot be closed, moved, split, or reordered behind another tab. The protected role and placement, not a permanently symbolic target, define the Project primary. A Session Scene's `conversation` primary resolves that exact Session outside its panel trees. Pages has no primary; its Library-authorized surfaces all live in the panel trees and may close, move, split, and reorder.
 - `db_view`: renders one durable View through shared effective-presentation and data authority. A canonical Status Board retains the established Board Column/Card presenter; List uses the dense task-row presenter; capability-specific Board configurations use the advanced fallback. A Scene can have one panel surface per explicit View target; selecting an already-open target focuses that surface. Board and List tabs are distinct View identities, so selecting a tab changes the exact target and preserves it across window restoration. Explicitly converting one View's layout preserves only that View identity and its layout-neutral settings. The toolbar's adjacent `Canvas` destination opens or focuses that Project's deterministic primary `canvas_stage` in the same panel group; it does not alter Database config or personal presentation preferences.
 - `canvas_stage`: renders the generic scene-native Canvas surface for `{ accessContext, canvasBlockId }`. The public Canvas Block ID is the target; the surface never persists `documentId`, scene state, or Page host coordinates. Opening the same Canvas again focuses the existing target where the owner Scene and access context match. The live Canvas target updates the surface title, resolves host-Page grants, and provides explicit missing/deleted/error states with normal close behavior. Within one renderer, inline Page Canvas and Canvas Stage share one Document session/provider/outbox only when their Core-authored `libraryId + accessContext + documentId` identity matches, while retaining independent Excalidraw bindings, camera, undo/tool state, asset resolver, and presence participant.

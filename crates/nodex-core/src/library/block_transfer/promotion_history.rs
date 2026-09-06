@@ -7,6 +7,9 @@ use nodex_core_contracts::library::{LibraryStructuralEditResult, LibraryStructur
 mod placement;
 use placement::PromotionPlacement;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct PromotionFootprint {
@@ -761,15 +764,86 @@ fn validate_source_after_undo(
     connection: &Connection,
     state: &PromotionRestore,
 ) -> Result<(), StoreError> {
-    let Some(expected) = &state.source_post_undo_head else {
+    if state.undo.mode != LibraryBlockTransferMode::Move {
         return Ok(());
-    };
+    }
+    let expected = state
+        .source_post_undo_head
+        .as_ref()
+        .ok_or_else(|| corrupt("Promotion replay has no source generation evidence"))?;
+    if expected.document_id != state.undo.source_document_id
+        || expected.generation != state.undo.source_generation
+    {
+        return Err(corrupt("Promotion replay source identity is inconsistent"));
+    }
     let source = read_document_authority(connection, &expected.document_id)?
         .ok_or_else(|| conflict("Promotion source is no longer available"))?;
-    if source.head.generation != expected.generation
-        || source.head.head_seq != expected.expected_head_seq
-    {
-        return Err(conflict("Source Document changed after Promotion Undo"));
+    if source.head.generation != expected.generation {
+        return Err(conflict(
+            "Source Document generation changed after Promotion Undo",
+        ));
+    }
+    Ok(())
+}
+
+#[derive(PartialEq)]
+struct SourcePosition<'a> {
+    id: &'a str,
+    parent: Option<&'a str>,
+    previous: Option<&'a str>,
+    next: Option<&'a str>,
+}
+
+#[derive(PartialEq)]
+struct RestoredRoot<'a> {
+    block: &'a MaterializedBlockNode,
+    path: Vec<SourcePosition<'a>>,
+}
+
+fn restored_root<'a>(
+    siblings: &'a [MaterializedBlockNode],
+    parent: Option<&'a str>,
+    id: &str,
+) -> Option<RestoredRoot<'a>> {
+    siblings.iter().enumerate().find_map(|(index, block)| {
+        let position = SourcePosition {
+            id: &block.id,
+            parent,
+            previous: index
+                .checked_sub(1)
+                .map(|previous| siblings[previous].id.as_str()),
+            next: siblings.get(index + 1).map(|next| next.id.as_str()),
+        };
+        if block.id == id {
+            return Some(RestoredRoot {
+                block,
+                path: vec![position],
+            });
+        }
+        let mut nested = restored_root(&block.children, Some(&block.id), id)?;
+        nested.path.push(position);
+        Some(nested)
+    })
+}
+
+/// Replay consumes only the restored forest. Collaborative history may advance
+/// the head while returning that forest to the same semantic state; unrelated
+/// title/sibling fields are not a comparison fence and must not be overwritten.
+fn validate_restored_forest(
+    before: &DocumentMaterialization,
+    current: &DocumentMaterialization,
+    roots: &[BlockTransferUndoRootV1],
+) -> Result<(), StoreError> {
+    for root in roots {
+        let expected = restored_root(&before.block_tree, None, &root.source_root_id)
+            .ok_or_else(|| corrupt("Promotion replay is missing its restored source forest"))?;
+        let actual = restored_root(&current.block_tree, None, &root.source_root_id)
+            .ok_or_else(|| conflict("Restored promotion Block is no longer available"))?;
+        if actual != expected {
+            return Err(conflict(
+                "Restored promotion content or placement changed after Undo",
+            ));
+        }
     }
     Ok(())
 }
@@ -786,6 +860,16 @@ fn remove_restored_source(
     let recipe = &mut state.undo;
     let mut parent =
         super::super::mutation::load_parent_document(connection, &recipe.source_document_id)?;
+    let before = recipe
+        .source_pre_materialization
+        .as_ref()
+        .ok_or_else(|| corrupt("Promotion replay has no source forest evidence"))?;
+    let expected = crate::document::normalize_stored_document_materialization(
+        &recipe.source_document_id,
+        parent.schema,
+        before,
+    )?;
+    validate_restored_forest(&expected, &parent.base_materialization, &recipe.roots)?;
     // The next inverse records the actual before-image and revision clocks,
     // including properties that were absent while this Block was a Page.
     for root in &mut recipe.roots {
@@ -820,11 +904,6 @@ fn remove_restored_source(
         false,
     )
     .map_err(|error| invalid(error.to_string()))?;
-    if state.source_post_materialization.as_ref() != Some(&update.materialization) {
-        return Err(conflict(
-            "Promotion no longer restores the committed source result",
-        ));
-    }
     let detaches = recipe
         .roots
         .iter()

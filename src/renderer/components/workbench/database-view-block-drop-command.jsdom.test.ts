@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { registerBlockDocumentStructuralMutationParticipant } from "@/lib/block-document-mutation-registry";
+import { createInteractionHistory } from "@/lib/surface-history/owner";
 import {
   createDatabaseViewMutationHistory,
   type DatabaseViewMutationHistory,
@@ -252,13 +253,23 @@ describe("Database View Block drop command", () => {
     },
   );
 
-  test("the success toast can reverse only its still-latest transfer", async () => {
+  test("the success toast cannot bypass newer editor typing in the shared history", async () => {
     const unregister = source();
     mocks.transferBlocks
       .mockResolvedValueOnce(success("first"))
       .mockResolvedValueOnce(success("later"));
     try {
-      const history = createDatabaseViewMutationHistory("view-1");
+      const realm = createInteractionHistory({ scopeKey: "content" });
+      const history = createDatabaseViewMutationHistory("view-1", realm);
+      const editor = realm.bind<string, string, string, string>({
+        adapter: {
+          describe: () => "Typing",
+          prepare: async (intent) => ({ kind: "complete", receipt: intent }),
+          prepareInverse: async (inverse) => ({ kind: "complete", receipt: inverse }),
+          submit: async (request) => ({ kind: "committed", receipt: request }),
+          interpret: (inverse) => ({ kind: "reversible", inverse }),
+        },
+      });
       expect(await commitDatabaseViewBlockDrop(inputFor(history))).toBe(true);
       expect(history.snapshot().undo).toMatchObject({ status: "ready", label: "Move to Database" });
       expect(mocks.toastSuccess).toHaveBeenCalledWith(
@@ -269,14 +280,17 @@ describe("Database View Block drop command", () => {
         }),
       );
       const action = mocks.toastSuccess.mock.calls[0]?.[1]?.action as { onClick: () => void };
-      await commitDatabaseViewBlockDrop(inputFor(history));
+      editor.capture("typing", "typing");
       action.onClick();
       await vi.waitFor(() =>
         expect(mocks.toastInfo).toHaveBeenCalledWith(
-          "This transfer is no longer the latest undoable action in this View.",
+          "This transfer is no longer the latest undoable action.",
         ),
       );
       expect(mocks.undoBlockTransfer).not.toHaveBeenCalled();
+      expect(mocks.applyLibraryModule).not.toHaveBeenCalled();
+      expect(history.snapshot().undo.label).toBe("Typing");
+      realm.close();
     } finally {
       unregister();
     }

@@ -1,6 +1,11 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import { createUuidV7 } from "../../../shared/uuid-v7";
-import { createSurfaceHistory, type HistoryCommandOutcome } from "./owner";
+import {
+  createInteractionHistory,
+  createSurfaceHistory,
+  type HistoryCommandOutcome,
+  type InteractionHistory,
+} from "./owner";
 
 interface Edit {
   readonly value: number;
@@ -13,6 +18,303 @@ interface Change {
 interface Request extends Change {
   readonly operationId: string;
 }
+
+const participant = (
+  realm: InteractionHistory,
+  label: string,
+  abandon?: (request: Request) => Promise<void>,
+) => {
+  let value = 0;
+  const committed = vi.fn();
+  const release = vi.fn();
+  const breakCapture = vi.fn();
+  const submit = vi.fn(async (request: Request): Promise<HistoryCommandOutcome<Change>> => {
+    value = request.after;
+    return { kind: "committed", receipt: { before: request.before, after: request.after } };
+  });
+  const binding = realm.bind<number, Request, Change, Change>({
+    scopeKey: label,
+    breakCapture,
+    onCommitted: committed,
+    adapter: {
+      describe: () => label,
+      prepare: async (next) => ({
+        kind: "submit",
+        request: { operationId: createUuidV7(), before: value, after: next },
+      }),
+      prepareInverse: async (inverse) => ({
+        kind: "submit",
+        request: { operationId: createUuidV7(), before: inverse.after, after: inverse.before },
+      }),
+      submit,
+      interpret: (receipt) => ({ kind: "reversible", inverse: receipt }),
+      release,
+      abandon,
+    },
+  });
+  return { binding, committed, release, breakCapture, submit, value: () => value };
+};
+
+describe("interaction history bindings", () => {
+  test("closed participants release late native captures without changing peer history", async () => {
+    const realm = createInteractionHistory({ scopeKey: "scene" });
+    const detached = participant(realm, "Detached");
+    const live = participant(realm, "Live");
+    detached.binding.close();
+    await live.binding.execute(1).result;
+    const before = realm.snapshot();
+    const lateReceipt = { before: 2, after: 3 };
+    expect(detached.binding.capture(3, lateReceipt)).toMatchObject({ status: "rejected" });
+    await realm.whenIdle();
+    expect(detached.release).toHaveBeenCalledExactlyOnceWith(lateReceipt, "discarded");
+    expect(detached.committed).not.toHaveBeenCalled();
+    expect(realm.snapshot()).toBe(before);
+    expect((await detached.binding.request("undo").result).status).toBe("rejected");
+    expect(live.value()).toBe(1);
+    expect(realm.snapshot()).toBe(before);
+    expect((await live.binding.request("undo").result).status).toBe("committed");
+    expect(live.value()).toBe(0);
+    realm.close();
+  });
+
+  test("closed participants cannot recover an uncertain peer action", async () => {
+    const realm = createInteractionHistory({ scopeKey: "scene" });
+    const detached = participant(realm, "Detached");
+    const live = participant(realm, "Live");
+    detached.binding.close();
+    live.submit.mockResolvedValueOnce({ kind: "unknown", reason: "Reply lost" });
+    expect((await live.binding.execute(1).result).status).toBe("recovering");
+    const before = realm.snapshot();
+    expect((await detached.binding.recover().result).status).toBe("rejected");
+    expect(live.submit).toHaveBeenCalledOnce();
+    expect(realm.snapshot()).toBe(before);
+    expect((await live.binding.recover().result).status).toBe("committed");
+    expect(live.value()).toBe(1);
+    realm.close();
+  });
+
+  test("originating participants report presentation and resource failures even when another participant requests replay", async () => {
+    const realmError = vi.fn();
+    const originError = vi.fn();
+    const realm = createInteractionHistory({ scopeKey: "scene", onError: realmError });
+    const foreign = participant(realm, "Foreign");
+    const presentationFailure = new Error("Presentation failed");
+    const releaseFailure = new Error("Release failed");
+    const binding = realm.bind<string, string, string, string>({
+      onError: originError,
+      onCommitted: () => {
+        throw presentationFailure;
+      },
+      adapter: {
+        describe: () => "Edit",
+        prepare: async (receipt) => ({ kind: "complete", receipt }),
+        prepareInverse: async (receipt) => ({ kind: "complete", receipt }),
+        submit: async (receipt) => ({ kind: "committed", receipt }),
+        interpret: (inverse) => ({ kind: "reversible", inverse }),
+        release: async () => {
+          throw releaseFailure;
+        },
+      },
+    });
+    await binding.execute("content").result;
+    originError.mockClear();
+    expect((await foreign.binding.request("undo").result).status).toBe("committed");
+    await realm.whenIdle();
+    expect(originError).toHaveBeenCalledWith(presentationFailure);
+    expect(originError).toHaveBeenCalledWith(releaseFailure);
+    expect(realmError).not.toHaveBeenCalled();
+    realm.close();
+    await realm.whenIdle();
+  });
+  test("heterogeneous bindings share chronology and present through the originating adapter", async () => {
+    const realm = createInteractionHistory({ scopeKey: "scene" });
+    const database = participant(realm, "Move Pages");
+    const presentText = vi.fn();
+    const text = realm.bind<string, string, string, string>({
+      onCommitted: presentText,
+      adapter: {
+        describe: () => "Edit Text",
+        prepare: async (value) => ({ kind: "complete", receipt: value }),
+        prepareInverse: async (value) => ({ kind: "complete", receipt: value.toUpperCase() }),
+        submit: async (value) => ({ kind: "committed", receipt: value }),
+        interpret: (value) => ({ kind: "reversible", inverse: value }),
+      },
+    });
+    await text.execute("hello").result;
+    await database.binding.execute(5).result;
+    expect(text.snapshot().ownerId).toBe(database.binding.snapshot().ownerId);
+    expect(text.retained()).toHaveLength(1);
+    expect(database.binding.retained()).toHaveLength(1);
+    presentText.mockClear();
+    database.committed.mockClear();
+    const result = await text.request("undo").result;
+    expect(result).toEqual({ status: "committed", entryId: 2 });
+    expect(database.value()).toBe(0);
+    expect(database.committed).toHaveBeenCalledExactlyOnceWith({ before: 5, after: 0 });
+    expect(presentText).not.toHaveBeenCalled();
+    await database.binding.request("undo").result;
+    expect(presentText).toHaveBeenCalledExactlyOnceWith("HELLO");
+    realm.close();
+  });
+
+  test("capture ownership switches before native grouping and durable admission cuts the active group", async () => {
+    const realm = createInteractionHistory({ scopeKey: "scene" });
+    const a = participant(realm, "A");
+    const b = participant(realm, "B");
+    a.binding.beginLocalCapture();
+    a.breakCapture.mockClear();
+    a.binding.beginLocalCapture();
+    expect(a.breakCapture).not.toHaveBeenCalled();
+    b.binding.beginLocalCapture();
+    expect(a.breakCapture).toHaveBeenCalledTimes(1);
+    expect(b.breakCapture).toHaveBeenCalledTimes(1);
+    await a.binding.execute(1).result;
+    expect(b.breakCapture).toHaveBeenCalledTimes(2);
+    realm.close();
+  });
+
+  test("reconciliation is binding-scoped and preserves exact inverse identity", async () => {
+    const realm = createInteractionHistory({ scopeKey: "scene" });
+    const a = participant(realm, "A");
+    const b = participant(realm, "B");
+    await a.binding.execute(1).result;
+    const entry = a.binding.retained()[0]!;
+    expect(
+      b.binding.reconcile({
+        entryId: entry.entryId,
+        expectedInverse: entry.inverse!,
+        state: "superseded",
+      }),
+    ).toBe(false);
+    expect(
+      a.binding.reconcile({
+        entryId: entry.entryId,
+        expectedInverse: { ...entry.inverse! },
+        state: "superseded",
+      }),
+    ).toBe(false);
+    expect(
+      a.binding.reconcile({
+        entryId: entry.entryId,
+        expectedInverse: entry.inverse!,
+        state: "superseded",
+      }),
+    ).toBe(true);
+    expect(realm.snapshot().undo.status).toBe("empty");
+    realm.close();
+  });
+
+  test("closing a participant retires the dependent prefix and redo but preserves newer foreign actions", async () => {
+    const realm = createInteractionHistory({ scopeKey: "scene" });
+    const a = participant(realm, "A");
+    const b = participant(realm, "B");
+    await b.binding.execute(1).result;
+    await a.binding.execute(1).result;
+    await b.binding.execute(2).result;
+    await b.binding.execute(3).result;
+    await realm.request("undo").result;
+    a.binding.close();
+    expect(b.binding.retained().map((entry) => entry.entryId)).toEqual([3]);
+    expect(realm.snapshot().redo.status).toBe("empty");
+    await realm.request("undo").result;
+    expect(b.value()).toBe(1);
+    expect(realm.snapshot().undo.status).toBe("empty");
+    expect(a.release).toHaveBeenCalledTimes(1);
+    realm.close();
+  });
+
+  test("detached uncertain attempts retain a global barrier and recover the exact frozen request", async () => {
+    const realm = createInteractionHistory({ scopeKey: "scene" });
+    const a = participant(realm, "A");
+    const b = participant(realm, "B");
+    a.submit.mockResolvedValueOnce({ kind: "unknown", reason: "Reply lost" });
+    expect((await a.binding.execute(7).result).status).toBe("recovering");
+    const request = a.submit.mock.calls[0]![0];
+    a.binding.close();
+    expect(realm.snapshot().undo.status).toBe("waiting");
+    expect((await b.binding.execute(1).result).status).toBe("rejected");
+    expect((await b.binding.recover().result).status).toBe("committed");
+    expect(a.submit.mock.calls[1]![0]).toBe(request);
+    expect(realm.snapshot().undo.status).toBe("empty");
+    expect(a.committed).not.toHaveBeenCalled();
+    expect(a.release).toHaveBeenCalledExactlyOnceWith({ before: 0, after: 7 }, "discarded");
+    realm.close();
+  });
+
+  test("changing one binding scope never resets newer foreign history", async () => {
+    const realm = createInteractionHistory({ scopeKey: "scene" });
+    const a = participant(realm, "A");
+    const b = participant(realm, "B");
+    await a.binding.execute(1).result;
+    await b.binding.execute(1).result;
+    a.binding.setScope("A2");
+    expect(b.binding.retained()).toHaveLength(1);
+    expect(a.binding.retained()).toHaveLength(0);
+    await a.binding.execute(2).result;
+    expect(a.binding.retained()).toHaveLength(1);
+    realm.close();
+  });
+
+  test.each(["unknown", "submitting"] as const)(
+    "closing a %s attempt hands its frozen request to Main and keeps a nonretryable barrier",
+    async (phase) => {
+      const realm = createInteractionHistory({ scopeKey: "scene" });
+      const abandon = vi.fn(async () => {});
+      const a = participant(realm, "A", abandon);
+      const response = deferred<HistoryCommandOutcome<Change>>();
+      a.submit.mockImplementationOnce(() => response.promise);
+      const command = a.binding.execute(4);
+      await vi.waitFor(() => expect(a.submit).toHaveBeenCalledOnce());
+      if (phase === "unknown") {
+        response.resolve({ kind: "unknown", reason: "Response lost" });
+        expect((await command.result).status).toBe("recovering");
+      }
+      a.binding.close();
+      expect(abandon).toHaveBeenCalledExactlyOnceWith(a.submit.mock.calls[0]![0], undefined);
+      if (phase === "submitting") {
+        response.resolve({ kind: "unknown", reason: "Response lost" });
+        expect((await command.result).status).toBe("blocked");
+      }
+      expect(realm.snapshot().undo).toMatchObject({
+        status: "blocked",
+        recoveryActions: ["reset"],
+      });
+      expect((await realm.recover().result).status).toBe("blocked");
+      expect(a.submit).toHaveBeenCalledOnce();
+      realm.close();
+      await realm.whenIdle();
+      expect(abandon).toHaveBeenCalledOnce();
+    },
+  );
+
+  test("closing during preparation never submits or hands off an unsent request", async () => {
+    const realm = createInteractionHistory({ scopeKey: "scene" });
+    const prepared = deferred<{ kind: "submit"; request: string }>();
+    const submit = vi.fn(async (request: string) => ({
+      kind: "committed" as const,
+      receipt: request,
+    }));
+    const abandon = vi.fn(async () => {});
+    const binding = realm.bind<string, string, string, string>({
+      adapter: {
+        describe: () => "Pending",
+        prepare: () => prepared.promise,
+        prepareInverse: async (request) => ({ kind: "submit", request }),
+        submit,
+        abandon,
+        interpret: (inverse) => ({ kind: "reversible", inverse }),
+      },
+    });
+    const command = binding.execute("start");
+    binding.close();
+    prepared.resolve({ kind: "submit", request: "frozen" });
+    expect((await command.result).status).toBe("rejected");
+    expect(submit).not.toHaveBeenCalled();
+    expect(abandon).not.toHaveBeenCalled();
+    expect(realm.snapshot().undo.status).toBe("empty");
+    realm.close();
+  });
+});
 
 const deferred = <T>() => {
   let resolve!: (value: T) => void;

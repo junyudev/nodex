@@ -308,42 +308,40 @@ type DatabaseListNormalizedMoveTarget = Extract<
 >["normalizedTarget"];
 
 /**
- * Verifies only canonical roots that are visible in the current bounded
- * projection. Hidden or filtered roots are proven by the receipt commitSeq.
+ * Proves the exact ordered sibling run from unfiltered canonical occurrences.
+ * A receipt floor cannot replace a missing root or anchor; an append also
+ * needs complete authority because the loaded tail may not be the real tail.
  */
 export const databaseListProjectionReflectsMove = (input: {
   readonly rows: readonly DatabaseListProjectionRow[];
   readonly moveRootPageIds: readonly string[];
   readonly normalizedTarget: DatabaseListNormalizedMoveTarget;
+  readonly complete?: boolean;
 }): boolean => {
-  const { normalizedTarget } = input;
-  const matchingRootIndexes = new Map<string, number>();
-  for (const pageId of input.moveRootPageIds) {
-    const visible = input.rows.flatMap((row, index) =>
-      row.kind === "page" && row.transientKind === "none" && row.pageId === pageId
-        ? [{ row, index }]
-        : [],
-    );
-    if (visible.length === 0) continue;
-    const matching = visible.find(
-      ({ row }) =>
-        row.groupKey === normalizedTarget.groupKey &&
-        row.subgroupKey === normalizedTarget.subgroupKey &&
-        (row.row.parentPageId ?? null) === normalizedTarget.parentPageId,
-    );
-    if (!matching) return false;
-    matchingRootIndexes.set(pageId, matching.index);
-  }
-  if (!normalizedTarget.beforePageId || matchingRootIndexes.size === 0) return true;
-  const beforeIndex = input.rows.findIndex(
-    (row) =>
+  const { normalizedTarget, moveRootPageIds } = input;
+  if (moveRootPageIds.length === 0 || new Set(moveRootPageIds).size !== moveRootPageIds.length)
+    return false;
+  const siblings = input.rows.filter(
+    (row): row is DatabaseListPageRow =>
       row.kind === "page" &&
-      row.transientKind === "none" &&
-      row.pageId === normalizedTarget.beforePageId &&
       row.groupKey === normalizedTarget.groupKey &&
       row.subgroupKey === normalizedTarget.subgroupKey &&
       (row.row.parentPageId ?? null) === normalizedTarget.parentPageId,
   );
-  if (beforeIndex < 0) return true;
-  return [...matchingRootIndexes.values()].every((index) => index < beforeIndex);
+  const matchesRunBefore = (endIndex: number): boolean => {
+    const startIndex = endIndex - moveRootPageIds.length;
+    if (startIndex < 0) return false;
+    return moveRootPageIds.every((pageId, index) => {
+      const sibling = siblings[startIndex + index];
+      return sibling?.transientKind === "none" && sibling.pageId === pageId;
+    });
+  };
+  if (normalizedTarget.beforePageId === null)
+    return input.complete === true && matchesRunBefore(siblings.length);
+  return siblings.some(
+    (row, index) =>
+      row.transientKind === "none" &&
+      row.pageId === normalizedTarget.beforePageId &&
+      matchesRunBefore(index),
+  );
 };

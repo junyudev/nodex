@@ -3,6 +3,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   databaseListDragTargetChangesPlacement,
   databaseListDropTargetIdentity,
+  databaseListProjectionReflectsMove,
   normalizeDatabaseListDropTarget,
   resolveDatabaseListDragSources,
   resolveDatabaseListRawEdge,
@@ -23,6 +24,7 @@ const page = (input: {
   readonly concreteSubtreePageCount?: number;
   readonly hasChildren?: boolean;
   readonly groupKey?: string;
+  readonly parentPageId?: string;
 }): DatabaseListPageRow => ({
   kind: "page",
   key: input.key,
@@ -35,6 +37,7 @@ const page = (input: {
     title: input.pageId,
     preview: "",
     plainText: "",
+    ...(input.parentPageId ? { parentPageId: input.parentPageId } : {}),
     tags: [],
     taskParentValueRevision: 1,
     documentGeneration: 1,
@@ -84,6 +87,164 @@ const subtree = (): readonly DatabaseListProjectionRow[] => [
   page({ key: "d", pageId: "D", depth: 1, ancestors: ["A"] }),
   page({ key: "e", pageId: "E" }),
 ];
+
+describe("Database List receipt materialization", () => {
+  const target = {
+    targetOccurrenceKey: "anchor",
+    targetPageId: "anchor",
+    parentPageId: null,
+    beforePageId: "anchor",
+    groupKey: "build",
+    subgroupKey: null,
+    depth: 0,
+    edge: "before",
+  } as const;
+  const rootA = page({ key: "a", pageId: "A" });
+  const rootB = page({ key: "b", pageId: "B" });
+  const anchor = page({ key: "anchor", pageId: "anchor" });
+
+  test.each([
+    { name: "all roots missing", rows: [anchor] },
+    { name: "one root missing", rows: [rootA, anchor] },
+    { name: "anchor missing", rows: [rootA, rootB] },
+    { name: "wrong root order", rows: [rootB, rootA, anchor] },
+    {
+      name: "a sibling between roots",
+      rows: [rootA, page({ key: "other", pageId: "other" }), rootB, anchor],
+    },
+    {
+      name: "a sibling before the anchor",
+      rows: [rootA, rootB, page({ key: "other", pageId: "other" }), anchor],
+    },
+    {
+      name: "a transient root instead of concrete evidence",
+      rows: [{ ...rootA, transientKind: "ancestor" as const }, rootB, anchor],
+    },
+    {
+      name: "a transient sibling before the anchor",
+      rows: [
+        rootA,
+        rootB,
+        page({ key: "context", pageId: "context", transientKind: "ancestor" }),
+        anchor,
+      ],
+    },
+  ])("does not settle when $name", ({ rows }) => {
+    expect(
+      databaseListProjectionReflectsMove({
+        rows,
+        moveRootPageIds: ["A", "B"],
+        normalizedTarget: target,
+        complete: true,
+      }),
+    ).toBe(false);
+  });
+
+  test("accepts the exact sibling run while preserving descendants between its roots", () => {
+    const rows = [
+      rootA,
+      page({ key: "child", pageId: "child", parentPageId: "A", depth: 1, ancestors: ["A"] }),
+      rootB,
+      anchor,
+    ];
+    expect(
+      databaseListProjectionReflectsMove({
+        rows,
+        moveRootPageIds: ["A", "B"],
+        normalizedTarget: target,
+      }),
+    ).toBe(true);
+  });
+
+  test("requires complete authority to prove a true sibling tail", () => {
+    const normalizedTarget = { ...target, beforePageId: null };
+    const rows = [anchor, rootA, rootB];
+    expect(
+      databaseListProjectionReflectsMove({ rows, moveRootPageIds: ["A", "B"], normalizedTarget }),
+    ).toBe(false);
+    expect(
+      databaseListProjectionReflectsMove({
+        rows,
+        moveRootPageIds: ["A", "B"],
+        normalizedTarget,
+        complete: true,
+      }),
+    ).toBe(true);
+    expect(
+      databaseListProjectionReflectsMove({
+        rows: [rootA, rootB, anchor],
+        moveRootPageIds: ["A", "B"],
+        normalizedTarget,
+        complete: true,
+      }),
+    ).toBe(false);
+  });
+
+  test("finds the exact destination occurrence without rejecting copies in another group", () => {
+    const rows = [
+      page({ key: "other-a", pageId: "A", groupKey: "ship" }),
+      page({ key: "other-b", pageId: "B", groupKey: "ship" }),
+      rootA,
+      rootB,
+      anchor,
+    ];
+    expect(
+      databaseListProjectionReflectsMove({
+        rows,
+        moveRootPageIds: ["A", "B"],
+        normalizedTarget: target,
+      }),
+    ).toBe(true);
+    expect(
+      databaseListProjectionReflectsMove({
+        rows: rows.slice(0, 2),
+        moveRootPageIds: ["A", "B"],
+        normalizedTarget: { ...target, beforePageId: null },
+        complete: true,
+      }),
+    ).toBe(false);
+  });
+
+  test("requires the normalized parent as well as sibling order", () => {
+    const normalizedTarget = { ...target, parentPageId: "parent", depth: 1 };
+    expect(
+      databaseListProjectionReflectsMove({
+        rows: [rootA, rootB, anchor],
+        moveRootPageIds: ["A", "B"],
+        normalizedTarget,
+      }),
+    ).toBe(false);
+    const rows = ["A", "B", "anchor"].map((pageId) =>
+      page({
+        key: `parent/${pageId}`,
+        pageId,
+        parentPageId: "parent",
+        depth: 1,
+        ancestors: ["parent"],
+      }),
+    );
+    expect(
+      databaseListProjectionReflectsMove({ rows, moveRootPageIds: ["A", "B"], normalizedTarget }),
+    ).toBe(true);
+  });
+
+  test("does not accept an empty or duplicate root proof", () => {
+    expect(
+      databaseListProjectionReflectsMove({
+        rows: [rootA, anchor],
+        moveRootPageIds: [],
+        normalizedTarget: target,
+      }),
+    ).toBe(false);
+    expect(
+      databaseListProjectionReflectsMove({
+        rows: [rootA, rootA, anchor],
+        moveRootPageIds: ["A", "A"],
+        normalizedTarget: target,
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("Database List subtree drag model", () => {
   test("classifies the exact row midpoint as after", () => {

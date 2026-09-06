@@ -21,6 +21,7 @@ import {
 import { PageEditorSessionSurface } from "@/components/block-documents/page-editor-session-surface";
 import { BlockDocumentSyncStatus } from "@/components/block-documents/block-document-sync-status";
 import { CollaborativePageTitle } from "@/components/block-documents/collaborative-page-title";
+import type { ContentInteractionHistoryScope } from "@/lib/content-interaction-history";
 import { PageStageInlinePropertyStrip } from "./page-stage/inline-property-strip";
 import { PageStageContentSkeleton } from "./page-stage/content-skeleton";
 import { PageStagePropertiesSection } from "./page-stage/properties-section";
@@ -321,16 +322,19 @@ function PageStageContent({
 
 function PageStageDocumentTitle({
   title,
+  historyScope,
   onValueChange,
   autoFocus,
 }: {
   readonly title: Y.Text;
+  readonly historyScope: ContentInteractionHistoryScope;
   readonly onValueChange: (title: string) => void;
   readonly autoFocus?: boolean;
 }) {
   return (
     <CollaborativePageTitle
       title={title}
+      historyScope={historyScope}
       autoFocus={autoFocus}
       onValueChange={onValueChange}
       onKeyDown={(event) => {
@@ -394,6 +398,7 @@ export function PageStage(props: PageStageProps) {
       title={
         <PageStageDocumentTitle
           title={surface.title}
+          historyScope={surface.descriptor}
           onValueChange={controller.handleDocumentTitleChange}
           autoFocus={props.autoFocusTitle}
         />

@@ -1,6 +1,7 @@
 import {
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -45,6 +46,7 @@ import {
   type DatabaseViewMutationReceipt,
 } from "@/lib/database-view-row-mutations";
 import { databaseViewSupportsSortedSlotInference } from "@/lib/database-view-drag-operations";
+import { databaseOperationsRequirePlacementFence } from "@/lib/database-view-presentation";
 import {
   compilePageCollectionSearchQuery,
   matchesPageCollectionSearchQuery,
@@ -70,7 +72,6 @@ import type {
 import { parseDataSourcePropertyId } from "../../../../shared/database-identities";
 import {
   buildDatabaseListProjection,
-  applyOptimisticDatabaseListDrop,
   captureDatabaseListScrollAnchor,
   computeDatabaseListVirtualWindow,
   databaseListScrollTopForOccurrence,
@@ -119,7 +120,6 @@ import {
 } from "./database-list-grid";
 import {
   databaseListDragTargetChangesPlacement,
-  databaseListProjectionReflectsMove,
   resolveDatabaseListDragPreviewPlacement,
 } from "./database-list-drag-model";
 import {
@@ -127,7 +127,11 @@ import {
   DatabaseListGroupDropTarget,
   type DatabaseListDndCommit,
 } from "./database-list-dnd";
-import { databaseListPreferencesOverride, useDatabaseListWindow } from "./use-database-list-window";
+import {
+  databaseListPreferencesOverride,
+  useDatabaseListWindow,
+  type DatabaseListMovePresentation,
+} from "./use-database-list-window";
 import {
   databaseViewHistoryScopeKey,
   handleDatabaseViewMutationHistoryKeyDown,
@@ -138,7 +142,6 @@ import {
 import { databaseListNestingContinuations } from "./database-list-nesting-lines";
 import { DATABASE_LIST_THEME_CLASS_NAME } from "./database-list-theme";
 import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
-import { SurfaceHistoryStatus } from "@/components/shared/surface-history-status";
 import {
   endLocalBlockDragSession,
   hasDragType,
@@ -200,28 +203,12 @@ interface DatabaseListCommitOptions {
   readonly inlineError?: boolean;
   readonly propagateError?: boolean;
   readonly modelOverride?: DatabaseViewRenderModel;
+  readonly movePresentation?: DatabaseListMovePresentation;
 }
 
 interface DatabaseListFocusRequest {
   readonly id: number;
   readonly occurrenceKey: string;
-}
-
-interface DatabaseListOptimisticMove {
-  readonly sessionId: number;
-  readonly rootOccurrenceKeys: ReadonlySet<string>;
-  readonly rootPageIds: ReadonlySet<string>;
-  readonly targetOccurrenceKey: string;
-  readonly position: "before" | "after" | "nest" | "root";
-  readonly groupKey: string | null;
-  readonly subgroupKey: string | null;
-  readonly receiptCommitSeq: number | null;
-  readonly normalizedTarget:
-    | Extract<
-        NonNullable<DatabaseViewMutationReceipt>["operationOutcomes"][number],
-        { readonly kind: "list_occurrence_move" }
-      >["normalizedTarget"]
-    | null;
 }
 
 interface DatabaseListInteractionState {
@@ -430,8 +417,7 @@ export function DatabaseList({
   pageChatActivityByPageId,
   onRemovePageChatRelation,
 }: DatabaseListProps) {
-  const localMutationHistory = useDatabaseViewMutationHistory(databaseViewHistoryScopeKey(model));
-  const mutationHistory = providedMutationHistory ?? localMutationHistory;
+  const mutationHistory = useDatabaseViewMutationHistory(model, providedMutationHistory);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const inFlightScopesRef = useRef(new Set<string>());
@@ -441,7 +427,6 @@ export function DatabaseList({
   const latestScrollTopRef = useRef(0);
   const lastScrollCommitAtRef = useRef(0);
   const pointerTimerRef = useRef<number | null>(null);
-  const moveSessionIdRef = useRef(0);
   const restoredScrollStateKeyRef = useRef<string | null>(null);
   const lastReportedSelectionRef = useRef<{
     readonly handler: NonNullable<DatabaseListProps["onSelectedPageIdsChange"]>;
@@ -502,7 +487,6 @@ export function DatabaseList({
     null,
   );
   const [blockDropMessage, setBlockDropMessage] = useState<string | null>(null);
-  const [optimisticMove, setOptimisticMove] = useState<DatabaseListOptimisticMove | null>(null);
   const [pendingMutationCount, setPendingMutationCount] = useState(0);
   const [pendingMutationKeys, setPendingMutationKeys] = useState<ReadonlyMap<string, number>>(
     new Map(),
@@ -626,22 +610,54 @@ export function DatabaseList({
     coreRows: coreProjection.rows,
     clientRows: clientProjection,
   });
+  const proofProjection = useMemo(
+    () =>
+      usesCoreAuthority
+        ? projectCoreDatabaseListRows({
+            rows: coreWindow.rows,
+            properties: model.query.properties,
+            conditionalColors: presentation.conditionalColors,
+            collapsedOccurrenceKeys: new Set(),
+            groupLabel: (key) => groupLabel(model, presentation.group?.propertyId, key),
+            subgroupLabel: (key) => groupLabel(model, presentation.subgroup?.propertyId, key),
+          }).rows
+        : clientProjection,
+    [
+      usesCoreAuthority,
+      coreWindow.rows,
+      model,
+      presentation.conditionalColors,
+      presentation.group?.propertyId,
+      presentation.subgroup?.propertyId,
+      clientProjection,
+    ],
+  );
   // Recompute the optimistic hierarchy over each fresh authoritative row set,
   // so concurrent title/Property updates keep flowing during a pending move.
-  const projection = useMemo(
-    () =>
-      optimisticMove
-        ? applyOptimisticDatabaseListDrop({
-            rows: authoritativeProjection,
-            occurrenceKeys: optimisticMove.rootOccurrenceKeys,
-            targetOccurrenceKey: optimisticMove.targetOccurrenceKey,
-            position: optimisticMove.position,
-            groupKey: optimisticMove.groupKey,
-            subgroupKey: optimisticMove.subgroupKey,
-          })
-        : authoritativeProjection,
-    [authoritativeProjection, optimisticMove],
-  );
+  const presented = useMemo(() => {
+    // Reproject only when authority or the retained journal changes, not on selection renders.
+    void coreWindow.presentationRevision;
+    void coreWindow.commitSeq;
+    void coreWindow.loading;
+    return coreWindow.presentationOwner.projectRows(
+      authoritativeProjection,
+      proofProjection,
+      coreWindow.rows,
+    );
+  }, [
+    coreWindow.presentationOwner,
+    coreWindow.presentationRevision,
+    coreWindow.commitSeq,
+    coreWindow.loading,
+    coreWindow.rows,
+    authoritativeProjection,
+    proofProjection,
+  ]);
+  const projection = presented.model;
+  useLayoutEffect(() => {
+    if (presented.renderToken !== null)
+      coreWindow.presentationOwner.markRendered(presented.renderToken);
+  }, [coreWindow.presentationOwner, presented.renderToken]);
   const authorityByPageId = useMemo(() => {
     const authority = new Map(model.query.rows.map((row) => [row.page.pageId, row] as const));
     for (const [pageId, row] of coreProjection.authorityByPageId) {
@@ -777,7 +793,8 @@ export function DatabaseList({
   const pageDragDisabled =
     model.readOnlyReason !== null ||
     !coreWindow.active ||
-    optimisticMove !== null ||
+    coreWindow.presentationOwner.getActivity().unknown > 0 ||
+    coreWindow.presentationOwner.hasPendingPlacement() ||
     blockDropPreview !== null;
   const projectionIndexByKey = useMemo(
     () => new Map(projection.map((row, index) => [row.key, index] as const)),
@@ -821,33 +838,6 @@ export function DatabaseList({
     });
     previousProjectionRef.current = projection;
   }, [projection]);
-
-  useEffect(() => {
-    if (!optimisticMove) return;
-    const receiptCommitSeq = optimisticMove.receiptCommitSeq;
-    if (
-      receiptCommitSeq === null ||
-      receiptCommitSeq === undefined ||
-      !coreWindow.active ||
-      coreWindow.storeEpoch !== model.storeEpoch ||
-      coreWindow.commitSeq < receiptCommitSeq ||
-      !optimisticMove.normalizedTarget ||
-      !databaseListProjectionReflectsMove({
-        rows: authoritativeProjection,
-        moveRootPageIds: [...optimisticMove.rootPageIds],
-        normalizedTarget: optimisticMove.normalizedTarget,
-      })
-    )
-      return;
-    setOptimisticMove(null);
-  }, [
-    authoritativeProjection,
-    coreWindow.active,
-    coreWindow.commitSeq,
-    coreWindow.storeEpoch,
-    model.storeEpoch,
-    optimisticMove,
-  ]);
 
   useEffect(() => {
     if (!onSelectedPageIdsChange) {
@@ -1015,6 +1005,11 @@ export function DatabaseList({
     options: DatabaseListCommitOptions = {},
   ): Promise<DatabaseViewMutationReceipt | null> => {
     if (operations.length === 0) return null;
+    if (
+      databaseOperationsRequirePlacementFence(operations) &&
+      coreWindow.presentationOwner.hasPendingPlacement()
+    )
+      return null;
     const mutationKeys = [...new Set(options.mutationKeys ?? [])];
     setPendingMutationCount((current) => current + 1);
     setPendingMutationKeys((current) => updateMutationCounts(current, mutationKeys, 1));
@@ -1027,12 +1022,21 @@ export function DatabaseList({
       });
     }
     try {
+      let forwardOperationId: string | undefined;
       const receipt = await mutationHistory.executeOperations({
         model: options.modelOverride ?? mutationModel,
         operations,
-        commitOperations,
+        commitOperations: (request) => {
+          forwardOperationId ??= request.operationId;
+          return coreWindow.presentationOwner.submitMutation(
+            request,
+            commitOperations,
+            request.operationId === forwardOperationId ? options.movePresentation : undefined,
+          );
+        },
+        discardPresentation: coreWindow.presentationOwner.discard,
       });
-      await onCommitted?.();
+      void Promise.resolve(onCommitted?.()).catch(() => undefined);
       return receipt;
     } catch (cause) {
       const message = options.errorMessage ?? "Couldn’t update these pages. Refresh and try again.";
@@ -1315,18 +1319,14 @@ export function DatabaseList({
       setMutationError(null);
       return;
     }
-    const optimistic: DatabaseListOptimisticMove = {
-      sessionId: ++moveSessionIdRef.current,
-      rootOccurrenceKeys: new Set(drop.sources.rootRows.map((row) => row.key)),
-      rootPageIds: new Set(drop.sources.rootRows.map((row) => row.pageId)),
+    const optimistic: DatabaseListMovePresentation = {
+      occurrenceKeys: new Set(drop.sources.rootRows.map((row) => row.key)),
+      rootPageIds: drop.sources.rootRows.map((row) => row.pageId),
       targetOccurrenceKey: previewPlacement.targetOccurrenceKey,
       position: previewPlacement.position,
       groupKey: previewPlacement.groupKey,
       subgroupKey: previewPlacement.subgroupKey,
-      receiptCommitSeq: null,
-      normalizedTarget: null,
     };
-    setOptimisticMove(optimistic);
     setMutationError(null);
     const latestProjection = windowState.projection;
     const operation: DatabaseApplyOperationV2 = {
@@ -1348,25 +1348,7 @@ export function DatabaseList({
       mutationKeys: drop.sources.rootRows.map((row) => pageMutationKey(row.pageId)),
       errorMessage: "Couldn’t move these Pages. Review the latest hierarchy and try again.",
       modelOverride: mutationModelRef.current,
-    }).then((receipt) => {
-      const outcome = receipt?.operationOutcomes.find(
-        (candidate) => candidate.kind === "list_occurrence_move" && candidate.operationIndex === 0,
-      );
-      if (!receipt || !outcome || outcome.kind !== "list_occurrence_move") {
-        setOptimisticMove((current) =>
-          current?.sessionId === optimistic.sessionId ? null : current,
-        );
-        return;
-      }
-      setOptimisticMove((current) =>
-        current?.sessionId === optimistic.sessionId
-          ? {
-              ...current,
-              receiptCommitSeq: receipt.commitSeq,
-              normalizedTarget: outcome.normalizedTarget,
-            }
-          : current,
-      );
+      movePresentation: optimistic,
     });
   };
 
@@ -1755,18 +1737,22 @@ export function DatabaseList({
         pageKey: item.row.pageKey,
         titleSnapshot: item.row.title,
       },
-      canMoveUp: canMoveDatabaseViewPage({
-        model: mutationModel,
-        pageId: item.pageId,
-        direction: "up",
-        groupComplete,
-      }),
-      canMoveDown: canMoveDatabaseViewPage({
-        model: mutationModel,
-        pageId: item.pageId,
-        direction: "down",
-        groupComplete,
-      }),
+      canMoveUp:
+        !coreWindow.presentationOwner.hasPendingPlacement() &&
+        canMoveDatabaseViewPage({
+          model: mutationModel,
+          pageId: item.pageId,
+          direction: "up",
+          groupComplete,
+        }),
+      canMoveDown:
+        !coreWindow.presentationOwner.hasPendingPlacement() &&
+        canMoveDatabaseViewPage({
+          model: mutationModel,
+          pageId: item.pageId,
+          direction: "down",
+          groupComplete,
+        }),
       propertySource,
       actionPort: pageActionPort,
       deleteDisabled: model.readOnlyReason !== null,
@@ -1776,6 +1762,7 @@ export function DatabaseList({
 
   const selectedIds = [...selectedPageIds];
   const canMoveSelection = (direction: "up" | "down"): boolean => {
+    if (coreWindow.presentationOwner.hasPendingPlacement()) return false;
     if (selection.allMatching && usesCoreAuthority && !coreWindow.isComplete) return false;
     try {
       return (
@@ -1823,7 +1810,6 @@ export function DatabaseList({
             DATABASE_LIST_THEME_CLASS_NAME,
           )}
         >
-          <SurfaceHistoryStatus controls={mutationHistory} />
           <div
             ref={scrollerRef}
             role="grid"

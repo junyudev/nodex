@@ -517,16 +517,18 @@ single-use forward inverse; reversing it creates a new recipe rather than
 rewinding storage. Clipboard and history authorities retain their closure only
 while their lease or recipe remains reachable.
 
-### Editor surface history
+### Content interaction history
 
-An editor surface's history orders its local content and structural gestures.
-It belongs to the retained editing surface, not to a mounted view, a whole
-Library, or a priority ordering between mutation engines. A structural restore
-may preserve Block identity while replacing collaborative content addresses.
-The surface retains local semantic inverse evidence for that case; Core guards
-replay against current fields, placement, and generation and returns a new
-inverse. History stays with its original surface when a Block moves elsewhere.
-See [ADR 0058](docs/adr/0058-surface-history-and-semantic-address-recovery.md).
+Content interaction history orders local Page body, Page title, and Database
+gestures within one window's Library, access context, and Store epoch. Retained
+content participants own inverse evidence; one owner orders commands and replay
+across their views. Focus selects the input boundary, not the next content action.
+A structural restore may preserve Block identity while replacing collaborative
+addresses; Core guards semantic replay against current fields, placement, and
+generation and returns a new inverse. Evidence stays with its original participant
+when a Block moves elsewhere. See
+[ADR 0060](docs/adr/0060-content-interaction-history.md) and
+[ADR 0058](docs/adr/0058-surface-history-and-semantic-address-recovery.md).
 
 ### Reference Block
 
@@ -723,7 +725,8 @@ runtime values, uploads assets, persists the exact outbox mutation, and sends
 canonical scene intent through the same durable FIFO. Remote repair never
 guesses snapshots.
 
-Title and body undo remain local to the mounted surface. Awareness is ephemeral
+Title, body, and Database edits share window-local content interaction history
+under the same Library and access authority. Awareness is ephemeral
 and not a lock. Close/deactivation persistence is bounded: durable
 acknowledgement or disposable local checkpoint, never an unbounded offline wait.
 

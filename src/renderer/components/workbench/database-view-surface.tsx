@@ -10,7 +10,10 @@ import {
   type DragEvent as ReactDragEvent,
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { SurfaceHistoryStatus } from "@/components/shared/surface-history-status";
+import {
+  useDatabaseViewPresentation,
+  databaseOperationsRequirePlacementFence,
+} from "@/lib/database-view-presentation";
 import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
 import {
   type DatabaseViewLayout,
@@ -71,7 +74,7 @@ import {
   type BoardKeyboardDirection,
 } from "../board/board-keyboard-navigation";
 import {
-  applyOptimisticDatabaseViewBoardDrop,
+  compileDatabaseViewBoardDropProjection,
   buildDatabaseViewBoardDropOperations,
   databaseViewSupportsSortedSlotInference,
   resolveDatabaseViewDropPropertyValues,
@@ -122,7 +125,6 @@ import {
 import { COLLAPSED_BOARD_COLUMN_WIDTH } from "@/lib/board-column-layout";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { PlusIcon } from "@/components/shared/icons";
-import type { DatabaseViewBoardPageDropIntent } from "@/lib/use-board";
 import { databaseViewGesturePreferencesOverride } from "../../../shared/database-view-presentation";
 import type { DatabaseViewPageActionPort } from "./database-view-page-actions";
 import type { DatabaseViewPageOpenHandler } from "./database-view-page-open";
@@ -166,6 +168,8 @@ const readDraggedPageIds = (dataTransfer: DataTransfer): readonly string[] => {
 
 interface DatabaseViewSurfaceProps {
   readonly model: DatabaseViewRenderModel;
+  readonly canonicalModel?: DatabaseViewRenderModel;
+  readonly canonicalReadGeneration?: number;
   readonly presentationLayout?: DatabaseViewLayout;
   readonly effectivePresentation?: EffectiveDatabaseView;
   readonly groupPagination?: ReadonlyMap<string, ColumnPaginationState>;
@@ -176,10 +180,6 @@ interface DatabaseViewSurfaceProps {
   readonly pageActionPort?: DatabaseViewPageActionPort;
   readonly onCommitted?: () => void | Promise<void>;
   readonly commitOperations?: typeof commitDatabaseViewOperations;
-  readonly onMoveBoardPages?: (
-    input: DatabaseViewBoardPageDropIntent,
-    request: Parameters<typeof commitDatabaseViewOperations>[0],
-  ) => ReturnType<typeof commitDatabaseViewOperations>;
   readonly mutationHistory?: DatabaseViewMutationHistory;
   readonly keyboardSurface?: {
     readonly surfaceId: string;
@@ -190,12 +190,6 @@ interface DatabaseViewSurfaceProps {
   readonly onSelectedPageIdsChange?: (pageIds: ReadonlySet<string>) => void;
   readonly pageCreateSurfaceId?: string;
   readonly onRequestCreatePage?: (groupKey: string) => void;
-}
-
-interface DatabaseViewBoardOptimisticDrop extends DatabaseViewBoardDropProjection {
-  readonly sessionId: number;
-  readonly storeEpoch: string;
-  readonly receiptCommitSeq: number | null;
 }
 
 const rowByPageId = (model: DatabaseViewRenderModel, pageId: string): DataSourcePageRowV2 | null =>
@@ -264,10 +258,7 @@ export function DatabaseViewSurface(props: DatabaseViewSurfaceProps) {
 function DatabaseViewSurfaceContent(props: DatabaseViewSurfaceProps) {
   const { onSelectedPageIdsChange } = props;
   const pageChatRuntime = useDatabasePageChatActivityRuntime();
-  const localMutationHistory = useDatabaseViewMutationHistory(
-    databaseViewHistoryScopeKey(props.model),
-  );
-  const mutationHistory = props.mutationHistory ?? localMutationHistory;
+  const mutationHistory = useDatabaseViewMutationHistory(props.model, props.mutationHistory);
   const [selectedPageIds, setSelectedPageIds] = useState<ReadonlySet<string>>(
     () => new Set(props.initialSelectedPageIds),
   );
@@ -326,6 +317,8 @@ function DatabaseViewSurfaceContent(props: DatabaseViewSurfaceProps) {
 
 function BoardDatabaseViewSurface({
   model,
+  canonicalModel,
+  canonicalReadGeneration,
   effectivePresentation,
   groupPagination,
   onLoadMoreGroup,
@@ -334,7 +327,6 @@ function BoardDatabaseViewSurface({
   pageActionPort,
   onCommitted,
   commitOperations = commitDatabaseViewOperations,
-  onMoveBoardPages,
   keyboardSurface,
   presentedPageIds,
   initialSelectedPageIds,
@@ -349,7 +341,7 @@ function BoardDatabaseViewSurface({
   readonly pageChatActivityByPageId: ReadonlyMap<string, PageChatActivitySummary>;
   readonly onRemovePageChatRelation: (pageId: string, sessionId: string) => Promise<void>;
 }) {
-  const localMutationHistory = useDatabaseViewMutationHistory(databaseViewHistoryScopeKey(model));
+  const mutationHistory = useDatabaseViewMutationHistory(model, providedMutationHistory);
   const reducedMotion = useResolvedReducedMotion();
   const columnWidthTransition = reducedMotion
     ? DATABASE_BOARD_COLUMN_REDUCED_MOTION_TRANSITION
@@ -357,7 +349,6 @@ function BoardDatabaseViewSurface({
   const columnContentTransition = reducedMotion
     ? DATABASE_BOARD_COLUMN_REDUCED_MOTION_TRANSITION
     : DATABASE_BOARD_COLUMN_CONTENT_TRANSITION;
-  const mutationHistory = providedMutationHistory ?? localMutationHistory;
   const [pendingMutationKeys, setPendingMutationKeys] = useState<ReadonlyMap<string, number>>(
     () => new Map(),
   );
@@ -369,10 +360,6 @@ function BoardDatabaseViewSurface({
     () => new Set(initialSelectedPageIds),
   );
   const [draggingPageIds, setDraggingPageIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [optimisticDrop, setOptimisticDrop] = useState<DatabaseViewBoardOptimisticDrop | null>(
-    null,
-  );
-  const optimisticDropSessionIdRef = useRef(0);
   const draggingPageIdsRef = useRef<ReadonlySet<string>>(new Set());
   const [boardDragInstanceId] = useState(() => Symbol("database-board-drag"));
   const [dropIndicator, setDropIndicator] = useState<{
@@ -421,30 +408,22 @@ function BoardDatabaseViewSurface({
     () => withEffectiveDatabaseView(model, effectivePresentation),
     [effectivePresentation, model],
   );
-  const mutationModel = useMemo(
+  const canonicalMutationModel = useMemo(
     () =>
-      optimisticDrop
-        ? applyOptimisticDatabaseViewBoardDrop(authorityMutationModel, optimisticDrop)
+      canonicalModel
+        ? withEffectiveDatabaseView(canonicalModel, effectivePresentation)
         : authorityMutationModel,
-    [authorityMutationModel, optimisticDrop],
+    [canonicalModel, effectivePresentation, authorityMutationModel],
   );
-  useEffect(() => {
-    if (!optimisticDrop) return;
-    if (optimisticDrop.storeEpoch !== authorityMutationModel.storeEpoch) {
-      setOptimisticDrop(null);
-      return;
-    }
-    if (
-      optimisticDrop.receiptCommitSeq === null ||
-      authorityMutationModel.commitSeq < optimisticDrop.receiptCommitSeq ||
-      applyOptimisticDatabaseViewBoardDrop(authorityMutationModel, optimisticDrop) !==
-        authorityMutationModel
-    )
-      return;
-    setOptimisticDrop((current) =>
-      current?.sessionId === optimisticDrop.sessionId ? null : current,
-    );
-  }, [authorityMutationModel, optimisticDrop]);
+  const presentationOwner = useDatabaseViewPresentation(
+    authorityMutationModel,
+    onCommitted,
+    commitOperations,
+    canonicalMutationModel,
+    canonicalReadGeneration,
+    canonicalModel ?? model,
+  );
+  const mutationModel = presentationOwner.model;
   const groupPropertyId = presentation.group?.propertyId ?? null;
   const subgroupPropertyId = presentation.subgroup?.propertyId ?? null;
   const compiledSearchQuery = useMemo(
@@ -657,9 +636,26 @@ function BoardDatabaseViewSurface({
     operations: Parameters<typeof commitDatabaseViewOperations>[0]["operations"],
     mutationKeys: readonly string[],
     propagateError = false,
-    submitForward?: typeof commitDatabaseViewOperations,
+    dropProjection?: DatabaseViewBoardDropProjection,
   ) => {
     if (operations.length === 0) return null;
+    if (
+      databaseOperationsRequirePlacementFence(operations) &&
+      presentationOwner.owner.hasPendingPlacement()
+    )
+      return null;
+    let forwardOperationId: string | undefined;
+    const dropPlan = dropProjection
+      ? compileDatabaseViewBoardDropProjection(mutationModel, dropProjection, {
+          targetComplete:
+            groupPagination?.get(
+              groupScopeKeyForPath(
+                dropProjection.target.groupKey,
+                dropProjection.target.subgroupKey,
+              ),
+            )?.hasMore === false,
+        })
+      : undefined;
     setPendingMutationKeys((current) => {
       const next = new Map(current);
       for (const key of mutationKeys) next.set(key, (next.get(key) ?? 0) + 1);
@@ -674,10 +670,15 @@ function BoardDatabaseViewSurface({
       const receipt = await mutationHistory.executeOperations({
         model: mutationModel,
         operations,
-        commitOperations,
-        submitForward,
+        commitOperations: (request) => {
+          forwardOperationId ??= request.operationId;
+          return presentationOwner.submit(
+            request,
+            dropPlan && request.operationId === forwardOperationId ? dropPlan : undefined,
+          );
+        },
+        discardPresentation: presentationOwner.owner.discard,
       });
-      await onCommitted?.();
       return receipt;
     } catch (nextError) {
       console.error("[database-view:mutation]", nextError);
@@ -833,40 +834,18 @@ function BoardDatabaseViewSurface({
       endPageDrag();
       return;
     }
-    const optimistic: DatabaseViewBoardOptimisticDrop = {
-      sessionId: ++optimisticDropSessionIdRef.current,
-      storeEpoch: mutationModel.storeEpoch,
-      pageIds,
-      fallbackRows: mutationModel.query.rows.filter((row) => pageIds.includes(row.page.pageId)),
-      target,
-      propertyValues,
-      receiptCommitSeq: null,
-    };
-    setOptimisticDrop(optimistic);
     endPageDrag();
-    void (async () => {
-      const receipt = await commit(
-        operations,
-        pageIds.map((pageId) => `page:${pageId}`),
-        false,
-        onMoveBoardPages
-          ? (request) =>
-              onMoveBoardPages(
-                {
-                  pageIds,
-                  presentation: effectivePresentation,
-                  target,
-                  propertyValues,
-                },
-                request,
-              )
-          : undefined,
-      );
-      setOptimisticDrop((current) => {
-        if (current?.sessionId !== optimistic.sessionId) return current;
-        return receipt ? { ...current, receiptCommitSeq: receipt.commitSeq } : null;
-      });
-    })();
+    void commit(
+      operations,
+      pageIds.map((pageId) => `page:${pageId}`),
+      false,
+      {
+        pageIds,
+        target,
+        propertyValues,
+        fallbackRows: mutationModel.query.rows.filter((row) => pageIds.includes(row.page.pageId)),
+      },
+    );
   };
   const dropBlocks = async (
     event: ReactDragEvent<HTMLElement>,
@@ -1089,7 +1068,7 @@ function BoardDatabaseViewSurface({
     return operations.length > 0 ? operations : null;
   };
   const canMoveHighlightedPage = (commandId: CommandId): boolean => {
-    if (mutationModel.readOnlyReason) return false;
+    if (mutationModel.readOnlyReason || presentationOwner.owner.hasPendingPlacement()) return false;
     if (commandId === "boardMoveLeft" || commandId === "boardMoveRight") {
       return buildHorizontalMoveOperations(commandId) !== null;
     }
@@ -1310,7 +1289,9 @@ function BoardDatabaseViewSurface({
       // cannot start until the first optimistic projection has handed off to
       // receipt-covered authority.
       draggable:
-        activeLayout === "board" && model.readOnlyReason === null && optimisticDrop === null,
+        activeLayout === "board" &&
+        model.readOnlyReason === null &&
+        !presentationOwner.owner.hasPendingPlacement(),
       pragmaticDragData: buildDatabaseViewPageDragData({
         model: mutationModel,
         row,
@@ -1392,7 +1373,6 @@ function BoardDatabaseViewSurface({
         onPointerDownCapture={() => markContextualKeyboardActionTargetActive(surfaceId)}
         onKeyDown={handleListKeyDown}
       >
-        <SurfaceHistoryStatus controls={mutationHistory} />
         {failedContinuations.length > 0 && onLoadMoreGroup ? (
           <div
             role="alert"

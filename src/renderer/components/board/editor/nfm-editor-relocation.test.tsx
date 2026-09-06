@@ -8,6 +8,35 @@ import {
 } from "./nfm-editor-relocation";
 
 describe("NfmEditor mutation preparation", () => {
+  test("fences a retained Document without touching an unmounted editor view", async () => {
+    const head = {
+      documentId: "retained-document",
+      storeEpoch: "epoch",
+      generation: 1,
+      expectedHeadSeq: 8,
+    };
+    const flushAndFence = vi.fn(async () => head);
+    const editor = {
+      get prosemirrorView(): never {
+        throw new Error("Detached editor has no view");
+      },
+      getExtension: () => {
+        throw new Error("Detached editor has no drag state");
+      },
+    };
+    const cancellation = new AbortController();
+    const options = { signal: cancellation.signal, deadlineAt: Date.now() + 1_000 };
+    expect(
+      await prepareNfmEditorStructuralMutation(editor, null, { flushAndFence }, options),
+    ).toEqual(head);
+    expect(flushAndFence).toHaveBeenCalledWith(options);
+    cancellation.abort();
+    await expect(
+      prepareNfmEditorStructuralMutation(editor, null, { flushAndFence }, options),
+    ).rejects.toThrow();
+    expect(flushAndFence).toHaveBeenCalledTimes(1);
+  });
+
   test("blurs only its own editor and waits for the DOM boundary", async () => {
     const view = render(
       <>

@@ -8,6 +8,7 @@ import type {
 import { NfmHistoryLane, type NfmHistoryLaneOptions } from "./nfm-editor-history";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
 import type { NfmHistoryCommand } from "./nfm-history-command";
+import { createInteractionHistory } from "../../../lib/surface-history/owner";
 
 const digest = "a".repeat(64);
 const deferred = <T>() => {
@@ -113,6 +114,92 @@ const seed = async (lane: NfmHistoryLane, result: LibraryStructuralEditResult) =
 };
 
 describe("NFM chronological history lane", () => {
+  test("different editors replay one chronology without merging across a semantic action", async () => {
+    const history = createInteractionHistory({ scopeKey: "content" });
+    const document = new Y.Doc();
+    const first = document.getText("first");
+    const second = document.getText("second");
+    const firstOrigin = {};
+    const secondOrigin = {};
+    let firstLane: NfmHistoryLane | undefined;
+    let secondLane: NfmHistoryLane | undefined;
+    const firstManager = new Y.UndoManager(first, {
+      trackedOrigins: new Set([firstOrigin]),
+      captureTimeout: 60_000,
+      captureTransaction: (transaction) => {
+        if (transaction.origin === firstOrigin) firstLane?.beforeLocalCapture();
+        return true;
+      },
+    });
+    const secondManager = new Y.UndoManager(second, {
+      trackedOrigins: new Set([secondOrigin]),
+      captureTimeout: 60_000,
+      captureTransaction: (transaction) => {
+        if (transaction.origin === secondOrigin) secondLane?.beforeLocalCapture();
+        return true;
+      },
+    });
+    const presented: string[] = [];
+    firstLane = createLane({
+      interactionHistory: history,
+      undoManager: firstManager,
+      onCommitted: () => {
+        presented.push("first");
+      },
+    });
+    secondLane = createLane({
+      interactionHistory: history,
+      undoManager: secondManager,
+      onCommitted: () => {
+        presented.push("second");
+      },
+    });
+    const semantic = createLane({
+      interactionHistory: history,
+      reverseStructural: async () => ({ structuralEdit: structuralResult(token("redo")) }),
+      onCommitted: () => {
+        presented.push("semantic");
+      },
+    });
+    try {
+      document.transact(() => first.insert(0, "A"), firstOrigin);
+      await seed(semantic, structuralResult(token("move")));
+      document.transact(() => first.insert(1, "B"), firstOrigin);
+      document.transact(() => second.insert(0, "X"), secondOrigin);
+      document.transact(() => first.insert(2, "C"), firstOrigin);
+      firstLane.requestUndo();
+      await history.whenIdle();
+      expect(first.toString()).toBe("AB");
+      expect(second.toString()).toBe("X");
+      firstLane.requestUndo();
+      await history.whenIdle();
+      expect(second.toString()).toBe("");
+      expect(presented.at(-1)).toBe("second");
+      firstLane.requestUndo();
+      await history.whenIdle();
+      expect(first.toString()).toBe("A");
+      firstLane.requestUndo();
+      await history.whenIdle();
+      expect(presented.at(-1)).toBe("semantic");
+      expect(first.toString()).toBe("A");
+      secondLane.requestUndo();
+      await history.whenIdle();
+      expect(first.toString()).toBe("");
+      secondLane.requestRedo();
+      await history.whenIdle();
+      expect(first.toString()).toBe("A");
+      expect(presented.at(-1)).toBe("first");
+    } finally {
+      await firstLane.close();
+      await secondLane.close();
+      await semantic.close();
+      history.close();
+      firstManager.destroy();
+      secondManager.destroy();
+      document.destroy();
+    }
+  });
+
   test("trimming Redo keeps its next prerequisite instead of a disconnected future", async () => {
     const document = new Y.Doc();
     const text = document.getText("body");

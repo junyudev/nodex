@@ -210,6 +210,7 @@ function ActivePageOutlinerContent({
           <CollaborativePageTitle
             ref={titleRef}
             title={surface.title}
+            historyScope={surface.descriptor}
             className="px-0 py-0 text-[1em] leading-6 font-normal"
             aria-label={`Edit ${target.page.title.trim() || target.fallbackTitle} title`}
             onKeyDown={handleTitleKeyDown}

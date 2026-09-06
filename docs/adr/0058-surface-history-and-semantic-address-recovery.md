@@ -2,6 +2,10 @@
 
 Status: Accepted
 
+The per-surface chronology decision below is superseded by
+[ADR 0060](0060-content-interaction-history.md). Semantic address recovery,
+content authority, and resource retention decisions remain accepted.
+
 An editor surface owns one chronological history, even though collaborative
 content and structural ownership use different inverse engines. Structural
 gestures reserve their place before asynchronous work; the retained editor owns

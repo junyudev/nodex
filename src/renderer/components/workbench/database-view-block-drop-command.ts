@@ -81,11 +81,7 @@ export const commitDatabaseViewBlockDrop = async (
               label: "Undo",
               onClick: () => {
                 void input.mutationHistory.undoTarget(historyTarget).then(async (undone) => {
-                  if (undone) await input.onCommitted?.();
-                  else
-                    toast.info(
-                      "This transfer is no longer the latest undoable action in this View.",
-                    );
+                  if (!undone) toast.info("This transfer is no longer the latest undoable action.");
                 });
                 return false;
               },

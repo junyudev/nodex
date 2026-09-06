@@ -1,4 +1,18 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { ReceiptFencedOptimisticJournal } from "@/lib/receipt-fenced-optimistic-journal";
+import {
+  classifyDatabasePresentationFailure,
+  databaseOperationsRequirePlacementFence,
+  databasePresentationFailure,
+} from "@/lib/database-view-presentation";
+import { registerContentProjectionActivity } from "@/lib/content-interaction-history";
+import { commitDatabaseViewOperations } from "@/lib/database-view-row-mutations";
+import {
+  applyOptimisticDatabaseListDrop,
+  type DatabaseListProjectionRow,
+} from "./database-list-model";
+import { databaseListProjectionReflectsMove } from "./database-list-drag-model";
+import { databaseListRowsCoverMoveReceipt } from "./database-list-receipt-proof";
 
 import { CoreApiError, readDatabaseListWindow, readLibraryDatabaseListWindow } from "@/lib/api";
 import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
@@ -209,6 +223,21 @@ const assertWindowIdentity = (
 
 type ListWindowListener = () => void;
 
+export interface DatabaseListMovePresentation {
+  readonly occurrenceKeys: ReadonlySet<string>;
+  readonly rootPageIds: readonly string[];
+  readonly targetOccurrenceKey: string;
+  readonly position: "before" | "after" | "nest" | "root";
+  readonly groupKey: string | null;
+  readonly subgroupKey: string | null;
+}
+
+interface DatabaseListPresentationModel {
+  readonly rows: readonly DatabaseListProjectionRow[];
+  readonly authorityRows: readonly DatabaseListProjectionRow[];
+  readonly receiptRows: readonly DatabaseListProjectionRowSnapshot[];
+}
+
 export interface DatabaseListWindowStoreDependencies {
   readonly readWindow: (
     request: DatabaseListWindowRequest,
@@ -216,6 +245,131 @@ export interface DatabaseListWindowStoreDependencies {
 }
 
 export class DatabaseListWindowStore {
+  private presentationRevision = 0;
+  getPresentationRevision = (): number => this.presentationRevision;
+  private canonicalReadGeneration = 0;
+  private readonly journal = new ReceiptFencedOptimisticJournal<DatabaseListPresentationModel>({
+    onChange: () => {
+      this.presentationRevision += 1;
+      this.publish({ ...this.state });
+    },
+  });
+
+  getActivity = () => this.journal.getActivity();
+  markRendered = (token: number): void => this.journal.markRendered(token);
+  discard = (operationId: string): void => {
+    this.journal.discard(operationId);
+  };
+  hasPendingPresentation = (): boolean => this.journal.hasWork();
+  hasPendingPlacement = (): boolean =>
+    this.journal.hasMatchingConflict((keys) => keys.includes("database:placement"));
+  projectRows = (
+    rows: readonly DatabaseListProjectionRow[],
+    authorityRows = rows,
+    receiptRows: readonly DatabaseListProjectionRowSnapshot[] = [],
+  ) => {
+    const projected = this.journal.project(
+      { rows, authorityRows, receiptRows },
+      this.state.storeEpoch
+        ? { storeEpoch: this.state.storeEpoch, commitSeq: this.state.commitSeq }
+        : null,
+      this.state.active && !this.state.loading,
+    );
+    return { model: projected.model.rows, renderToken: projected.renderToken };
+  };
+
+  submitMutation = async (
+    request: Parameters<typeof commitDatabaseViewOperations>[0],
+    transport: typeof commitDatabaseViewOperations = commitDatabaseViewOperations,
+    preview?: DatabaseListMovePresentation,
+  ): ReturnType<typeof commitDatabaseViewOperations> => {
+    if (this.listeners.size === 0) return transport(request);
+    const placement = databaseOperationsRequirePlacementFence(request.operations);
+    let pendingReadFloor = Infinity;
+    const result = await this.journal.run({
+      operationIdentity: request.operationId,
+      conflictKeys: [
+        ...(preview?.rootPageIds.map((id) => `page:${id}:position`) ?? []),
+        ...(placement ? ["database:placement"] : []),
+      ],
+      apply: (model) =>
+        preview
+          ? { ...model, rows: applyOptimisticDatabaseListDrop({ ...preview, rows: model.rows }) }
+          : model,
+      runRemote: () => transport(request),
+      getCommitCursor: (receipt) => {
+        pendingReadFloor = this.canonicalReadGeneration + 1;
+        return receipt && { storeEpoch: receipt.storeEpoch, commitSeq: receipt.commitSeq };
+      },
+      isCommitMaterialized: (model, receipt) => {
+        if (!preview)
+          return (
+            this.canonicalReadGeneration >= pendingReadFloor &&
+            model.receiptRows === this.state.rows
+          );
+        if (
+          receipt &&
+          this.descriptor &&
+          databaseListRowsCoverMoveReceipt({
+            viewId: this.descriptor.resource.viewId,
+            rows: model.receiptRows,
+            receipt,
+          })
+        )
+          return true;
+        const outcome = receipt?.operationOutcomes.find(
+          (item) => item.kind === "list_occurrence_move",
+        );
+        return (
+          outcome?.kind === "list_occurrence_move" &&
+          databaseListProjectionReflectsMove({
+            rows: model.authorityRows,
+            moveRootPageIds: [...outcome.moveRootPageIds],
+            normalizedTarget: outcome.normalizedTarget,
+            complete: this.state.isComplete,
+          })
+        );
+      },
+      classifyFailure: classifyDatabasePresentationFailure,
+      remoteLane: placement ? "database-list:position" : undefined,
+      refresh: async (cursor) => {
+        if (!cursor) return true;
+        const descriptor = this.descriptor;
+        if (!descriptor || (cursor && cursor.storeEpoch !== descriptor.resource.storeEpoch))
+          return false;
+        const readGeneration = this.canonicalReadGeneration;
+        if (cursor)
+          this.descriptor = {
+            ...descriptor,
+            request: {
+              ...descriptor.request,
+              input: {
+                ...descriptor.request.input,
+                minimumCommitCursor: {
+                  ...cursor,
+                  commitSeq: Math.max(
+                    cursor.commitSeq,
+                    descriptor.request.input.minimumCommitCursor?.commitSeq ?? 0,
+                  ),
+                },
+              },
+            },
+          };
+        const state = await this.refresh();
+        return (
+          state.active &&
+          !state.loading &&
+          state.error === null &&
+          state.storeEpoch === cursor.storeEpoch &&
+          state.commitSeq >= cursor.commitSeq &&
+          this.canonicalReadGeneration > readGeneration
+        );
+      },
+    });
+    if (!result.ok) throw databasePresentationFailure(result.error, result.outcome);
+    if (result.result === null && request.operationId) this.discard(request.operationId);
+    return result.result ?? null;
+  };
   private readonly listeners = new Set<ListWindowListener>();
 
   private state = EMPTY_WINDOW_STATE;
@@ -256,7 +410,10 @@ export class DatabaseListWindowStore {
     }
     return () => {
       this.listeners.delete(listener);
-      if (this.listeners.size === 0) this.onInactive();
+      if (this.listeners.size === 0) {
+        this.journal.revoke("authority_revoked");
+        this.onInactive();
+      }
     };
   };
 
@@ -265,6 +422,7 @@ export class DatabaseListWindowStore {
   }
 
   dispose(): void {
+    this.journal.revoke("authority_revoked");
     this.generation += 1;
     this.firstWindowRequested = false;
     this.listeners.clear();
@@ -288,6 +446,9 @@ export class DatabaseListWindowStore {
     const storeEpochChanged =
       this.descriptor !== null &&
       descriptor.resource.storeEpoch !== this.descriptor.resource.storeEpoch;
+    if (this.descriptor && descriptor.presentationIdentity !== this.descriptor.presentationIdentity)
+      this.journal.revoke("authority_revoked");
+    if (storeEpochChanged) this.journal.revoke("store_reset");
     this.descriptor = descriptor;
     if (storeEpochChanged) {
       this.acceptedRequestIdentity = null;
@@ -377,6 +538,7 @@ export class DatabaseListWindowStore {
 
   private clearUnavailableAuthority(): void {
     if (this.descriptor === null && this.state === EMPTY_WINDOW_STATE) return;
+    this.journal.revoke("authority_revoked");
     this.generation += 1;
     this.descriptor = null;
     this.acceptedRequestIdentity = null;
@@ -431,6 +593,7 @@ export class DatabaseListWindowStore {
         }
         this.firstSnapshot = snapshot;
         this.acceptedRequestIdentity = descriptor.identity;
+        this.canonicalReadGeneration += 1;
         this.publish(stateFromFirstWindow(snapshot));
       } catch {
         if (generation !== this.generation || descriptor.identity !== this.descriptor?.identity) {
@@ -509,7 +672,7 @@ export class DatabaseListWindowStoreRegistry {
   private pruneInactiveStores(): void {
     if (this.stores.size <= MAX_RETAINED_LIST_WINDOW_STORES) return;
     const candidates = [...this.stores.entries()]
-      .filter(([, entry]) => !entry.store.isActive())
+      .filter(([, entry]) => !entry.store.isActive() && !entry.store.hasPendingPresentation())
       .sort(([, left], [, right]) => left.lastAccess - right.lastAccess);
     for (const [key, entry] of candidates) {
       if (this.stores.size <= MAX_RETAINED_LIST_WINDOW_STORES) return;
@@ -530,6 +693,8 @@ export const createDatabaseListWindowStoreRegistry = (
 const sharedListWindowRegistry = createDatabaseListWindowStoreRegistry();
 
 export interface UseDatabaseListWindowResult extends DatabaseListWindowState {
+  readonly presentationOwner: DatabaseListWindowStore;
+  readonly presentationRevision: number;
   readonly loadMore: () => void;
   readonly retry: () => void;
   readonly refresh: () => Promise<DatabaseListWindowState>;
@@ -552,8 +717,28 @@ export const useDatabaseListWindow = (input: {
     store.setRequest(model, effective);
   }, [effective, model, store]);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const observationScope = useMemo(
+    () => ({
+      libraryId: model.libraryId,
+      accessContext: model.accessContext,
+      storeEpoch: model.storeEpoch,
+    }),
+    [model.libraryId, model.accessContext, model.storeEpoch],
+  );
+  useEffect(
+    () =>
+      registerContentProjectionActivity(observationScope, {
+        id: `list:${storeIdentity}`,
+        label: model.viewName,
+        getActivity: store.getActivity,
+        subscribe: store.subscribe,
+      }),
+    [observationScope, model.viewName, storeIdentity, store],
+  );
   return {
     ...state,
+    presentationOwner: store,
+    presentationRevision: store.getPresentationRevision(),
     loadMore: store.loadMore,
     retry: store.retry,
     refresh: store.refresh,

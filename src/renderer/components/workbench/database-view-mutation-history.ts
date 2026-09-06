@@ -1,11 +1,13 @@
-import { useEffect, useEffectEvent, useRef, type RefObject } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, type RefObject } from "react";
 import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
 import type { DatabaseViewMutationReceipt } from "@/lib/database-view-row-mutations";
 import {
-  createSurfaceHistory,
-  type HistoryCommandHandle,
+  createInteractionHistory,
+  type InteractionHistory,
+  type HistoryReplayHandle,
   type HistoryCommandResolution,
 } from "@/lib/surface-history/owner";
+import { acquireContentInteractionHistory } from "@/lib/content-interaction-history";
 import { contentAccessContextKey } from "../../../shared/content-access-context";
 import type {
   SurfaceHistoryDirection,
@@ -47,12 +49,13 @@ export interface DatabaseViewMutationHistory {
   request(
     direction: SurfaceHistoryDirection,
     target?: DatabaseViewHistoryTarget,
-  ): HistoryCommandHandle<DatabaseViewHistoryReceipt>;
+  ): HistoryReplayHandle;
   undoLast(): Promise<boolean>;
   undoTarget(target: DatabaseViewHistoryTarget): Promise<boolean>;
   snapshot(): SurfaceHistorySnapshot;
   subscribe(listener: () => void): () => void;
-  recover(): HistoryCommandHandle<DatabaseViewHistoryReceipt>;
+  recover(): HistoryReplayHandle;
+  subscribeReplayCommitted(listener: () => void | Promise<void>): () => void;
   reset(): void;
   close(): void;
 }
@@ -76,9 +79,29 @@ const receiptOf = (resolution: HistoryCommandResolution<DatabaseViewHistoryRecei
 /** The View submits semantic actions; it never receives a cancellable history slot. */
 export const createDatabaseViewMutationHistory = (
   initialScopeKey: string,
+  interactionHistory?: InteractionHistory,
 ): DatabaseViewMutationHistory => {
   let scopeKey = initialScopeKey;
-  const owner = createSurfaceHistory({ scopeKey, adapter: databaseViewHistoryAdapter });
+  const realm = interactionHistory ?? createInteractionHistory({ scopeKey });
+  const replayListeners = new Set<() => void | Promise<void>>();
+  const owner = realm.bind({
+    scopeKey,
+    adapter: (intent: Parameters<typeof databaseViewHistoryAdapter>[0]) => {
+      const adapter = databaseViewHistoryAdapter(intent);
+      let replay = false;
+      return {
+        ...adapter,
+        prepareInverse: (inverse: Parameters<typeof adapter.prepareInverse>[0]) => {
+          replay = true;
+          return adapter.prepareInverse(inverse);
+        },
+        onCommitted: async () => {
+          if (!replay) return;
+          await Promise.all([...replayListeners].map((listener) => listener()));
+        },
+      };
+    },
+  });
   const assertScope = (key: string) => {
     if (scopeKey !== key)
       throw new DatabaseViewHistoryCommandError(
@@ -111,16 +134,108 @@ export const createDatabaseViewMutationHistory = (
     snapshot: owner.snapshot,
     subscribe: owner.subscribe,
     recover: owner.recover,
-    reset: owner.reset,
-    close: owner.close,
+    subscribeReplayCommitted: (listener) => {
+      replayListeners.add(listener);
+      return () => {
+        replayListeners.delete(listener);
+      };
+    },
+    reset: realm.reset,
+    close: () => {
+      owner.close();
+      if (!interactionHistory) realm.close();
+    },
   };
 };
 
-export const useDatabaseViewMutationHistory = (scopeKey: string): DatabaseViewMutationHistory => {
-  const historyRef = useRef<DatabaseViewMutationHistory | null>(null);
-  historyRef.current ??= createDatabaseViewMutationHistory(scopeKey);
-  historyRef.current.setScope(scopeKey);
-  return historyRef.current;
+type ViewHistoryModel = Pick<
+  DatabaseViewRenderModel,
+  "libraryId" | "accessContext" | "storeEpoch" | "databaseViewId"
+>;
+
+/** Render creates only a facade; committed React lifetime owns realm admission. */
+const createMountedViewHistory = (scopeKey: string) => {
+  let owner: DatabaseViewMutationHistory | null = null;
+  const listeners = new Set<() => void>();
+  const replayListeners = new Set<() => void | Promise<void>>();
+  const unavailable = () => {
+    if (owner) return owner;
+    throw new DatabaseViewHistoryCommandError("rejected", "This Database View is not attached.");
+  };
+  const empty: SurfaceHistorySnapshot = {
+    ownerId: scopeKey,
+    generation: 0,
+    revision: 0,
+    undo: { status: "empty", label: null, acceptsIntent: false, reason: null, recoveryActions: [] },
+    redo: { status: "empty", label: null, acceptsIntent: false, reason: null, recoveryActions: [] },
+  };
+  const history: DatabaseViewMutationHistory = {
+    setScope: (key) => unavailable().setScope(key),
+    executeOperations: (command) => unavailable().executeOperations(command),
+    executeBlockDrop: (command) => unavailable().executeBlockDrop(command),
+    request: (direction, target) => unavailable().request(direction, target),
+    undoLast: () => unavailable().undoLast(),
+    undoTarget: (target) => unavailable().undoTarget(target),
+    snapshot: () => owner?.snapshot() ?? empty,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    subscribeReplayCommitted: (listener) => {
+      replayListeners.add(listener);
+      return () => {
+        replayListeners.delete(listener);
+      };
+    },
+    recover: () => unavailable().recover(),
+    reset: () => owner?.reset(),
+    close: () => owner?.close(),
+  };
+  return {
+    history,
+    attach: (realm: InteractionHistory) => {
+      const attached = createDatabaseViewMutationHistory(scopeKey, realm);
+      owner = attached;
+      const unsubscribe = attached.subscribe(() => {
+        for (const listener of listeners) listener();
+      });
+      const unsubscribeReplay = attached.subscribeReplayCommitted(async () => {
+        await Promise.all([...replayListeners].map((listener) => listener()));
+      });
+      for (const listener of listeners) listener();
+      return () => {
+        unsubscribe();
+        unsubscribeReplay();
+        attached.close();
+        if (owner === attached) owner = null;
+      };
+    },
+  };
+};
+
+export const useDatabaseViewMutationHistory = (
+  model: ViewHistoryModel | null | undefined,
+  provided?: DatabaseViewMutationHistory,
+): DatabaseViewMutationHistory => {
+  const scopeKey = model ? databaseViewHistoryScopeKey(model) : "pending";
+  const mounted = useMemo(
+    () => (provided ? null : createMountedViewHistory(scopeKey)),
+    [provided, scopeKey],
+  );
+  const readModel = useEffectEvent(() => model);
+  useLayoutEffect(() => {
+    const model = readModel();
+    if (!mounted || !model) return;
+    const lease = acquireContentInteractionHistory(model);
+    const detach = mounted.attach(lease.history);
+    return () => {
+      detach();
+      lease.release();
+    };
+  }, [mounted, scopeKey]);
+  return provided ?? mounted!.history;
 };
 
 interface UndoKeyboardEvent {
@@ -160,9 +275,9 @@ interface ViewHistoryInput {
 const dispatchViewHistory = (input: ViewHistoryInput, direction: SurfaceHistoryDirection) => {
   void input.history
     .request(direction)
-    .result.then(async (result) => {
-      if (result.status === "committed") await input.onCommitted?.();
-      else if (result.status !== "noop") input.onBlocked?.(result.reason);
+    .result.then((result) => {
+      if (result.status !== "committed" && result.status !== "noop")
+        input.onBlocked?.(result.reason);
     })
     .catch((error: unknown) =>
       input.onBlocked?.(
@@ -204,8 +319,10 @@ export const handleDatabaseViewHistoryBeforeInput = (
 
 export const useDatabaseViewHistoryInput = (
   elementRef: RefObject<HTMLElement | null>,
-  input: ViewHistoryInput,
+  input: ViewHistoryInput & { readonly history: DatabaseViewMutationHistory },
 ): void => {
+  const onCommitted = useEffectEvent(() => input.onCommitted?.());
+  useEffect(() => input.history.subscribeReplayCommitted(onCommitted), [input.history]);
   const dispatch = useEffectEvent((event: InputEvent) => {
     handleDatabaseViewHistoryBeforeInput({ ...input, event });
   });

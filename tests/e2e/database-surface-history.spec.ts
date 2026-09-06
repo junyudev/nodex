@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
   createConvergenceBoardPage,
@@ -12,6 +12,37 @@ import {
 import { dragBlockFromEditorWithMouse } from "./support/drag-block-with-mouse";
 import { dragListRowWithMouse } from "./support/drag-list-row-with-mouse";
 import { openBoardPageFromCard } from "./support/open-board-page";
+
+/** Sample every frame so a transient status insertion cannot hide between assertions. */
+async function expectStableContentTop(target: Locator, action: () => Promise<void>): Promise<void> {
+  const probe = await target.evaluateHandle((element) => {
+    const initialTop = element.getBoundingClientRect().top;
+    let maximumShift = 0;
+    let active = true;
+    const sample = () => {
+      maximumShift = Math.max(
+        maximumShift,
+        Math.abs(element.getBoundingClientRect().top - initialTop),
+      );
+      if (active) requestAnimationFrame(sample);
+    };
+    sample();
+    return {
+      finish: () => {
+        active = false;
+        sample();
+        return maximumShift;
+      },
+    };
+  });
+  try {
+    await action();
+    expect(await probe.evaluate((probe) => probe.finish())).toBeLessThanOrEqual(0.5);
+  } finally {
+    await probe.evaluate((probe) => probe.finish());
+    await probe.dispose();
+  }
+}
 
 /** Exercise the real application menu after its focused-owner capability settles. */
 async function invokeHistoryMenu(
@@ -34,7 +65,7 @@ async function invokeHistoryMenu(
   }, direction);
 }
 
-test("routes Board, List, and editor transfer Undo/Redo to their real surface owners", async () => {
+test("replays Board, List, and editor transfers through their content participants", async () => {
   test.setTimeout(180_000);
   const harness = await ElectronScenarioHarness.create({ label: "database-surface-history" });
   const modifier = process.platform === "darwin" ? "Meta" : "Control";
@@ -67,16 +98,21 @@ test("routes Board, List, and editor transfer Undo/Redo to their real surface ow
 
     await test.step("Board Property callbacks support native-menu Undo and Redo", async () => {
       await expect(triage.locator(card)).toBeVisible();
-      await triage
-        .locator(card)
-        .locator('[data-card-context-menu-trigger="true"]')
-        .click({ button: "right" });
-      await page.getByRole("menuitem", { name: /Status/ }).click();
-      await page.getByRole("option", { name: "Build", exact: true }).click();
-      await expect(build.locator(card)).toBeVisible();
-      await expect(triage.locator(card)).toHaveCount(0);
-      await invokeHistoryMenu(harness, "undo", "Move Pages");
-      await expect(triage.locator(card)).toBeVisible();
+      await expectStableContentTop(
+        page.locator('[data-database-board-scroll="true"]'),
+        async () => {
+          await triage
+            .locator(card)
+            .locator('[data-card-context-menu-trigger="true"]')
+            .click({ button: "right" });
+          await page.getByRole("menuitem", { name: /Status/ }).click();
+          await page.getByRole("option", { name: "Build", exact: true }).click();
+          await expect(build.locator(card)).toBeVisible();
+          await expect(triage.locator(card)).toHaveCount(0);
+          await invokeHistoryMenu(harness, "undo", "Move Pages");
+          await expect(triage.locator(card)).toBeVisible();
+        },
+      );
       await expect(build.locator(card)).toHaveCount(0);
       await invokeHistoryMenu(harness, "redo", "Move Pages");
       await expect(build.locator(card)).toBeVisible();
@@ -96,22 +132,24 @@ test("routes Board, List, and editor transfer Undo/Redo to their real surface ow
         );
       const before = await order();
       const movedPage = before[0]!;
-      await dragListRowWithMouse({
-        page,
-        sourceRow: grid.locator(
-          `[data-list-row="true"][data-database-view-page-id="${movedPage}"]`,
-        ),
-        targetRow: grid.locator(
-          `[data-list-row="true"][data-database-view-page-id="${before[2]}"]`,
-        ),
-        position: "after",
+      await expectStableContentTop(grid, async () => {
+        await dragListRowWithMouse({
+          page,
+          sourceRow: grid.locator(
+            `[data-list-row="true"][data-database-view-page-id="${movedPage}"]`,
+          ),
+          targetRow: grid.locator(
+            `[data-list-row="true"][data-database-view-page-id="${before[2]}"]`,
+          ),
+          position: "after",
+        });
+        const after = [...before.slice(1), movedPage];
+        await expect.poll(order).toEqual(after);
+        await invokeHistoryMenu(harness, "undo", "Move Pages");
+        await expect.poll(order).toEqual(before);
+        await invokeHistoryMenu(harness, "redo", "Move Pages");
+        await expect.poll(order).toEqual(after);
       });
-      const after = [...before.slice(1), movedPage];
-      await expect.poll(order).toEqual(after);
-      await invokeHistoryMenu(harness, "undo", "Move Pages");
-      await expect.poll(order).toEqual(before);
-      await invokeHistoryMenu(harness, "redo", "Move Pages");
-      await expect.poll(order).toEqual(after);
     });
 
     await viewTab(project.defaultDatabaseViewId).click();
@@ -211,17 +249,20 @@ test("routes Board, List, and editor transfer Undo/Redo to their real surface ow
       );
       const changed = await preparePromoted();
       await invokeHistoryMenu(harness, "undo", "Move to Database");
-      const board = page.locator(`[data-database-view-id="${project.defaultDatabaseViewId}"]`);
-      await expect(board.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
-      await expect(board.getByRole("button", { name: "Reset history", exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("status").filter({ hasText: "Content edits need attention" }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "Content edits", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Reset history", exact: true })).toBeVisible();
       const blockedScreenshot = test.info().outputPath("blocked-view-history.png");
       await page.screenshot({ path: blockedScreenshot });
       await test.info().attach("Blocked View history", {
         path: blockedScreenshot,
         contentType: "image/png",
       });
-      await board.getByRole("button", { name: "Reset history", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Reset this surface’s history?" });
+      await page.getByRole("button", { name: "Reset history", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Reset content history?" });
       await expect(dialog).toBeVisible();
       const confirmationScreenshot = test.info().outputPath("reset-history-confirmation.png");
       await page.screenshot({ path: confirmationScreenshot });
@@ -231,9 +272,7 @@ test("routes Board, List, and editor transfer Undo/Redo to their real surface ow
       });
       await dialog.getByRole("button", { name: "Reset history", exact: true }).click();
       await expect(dialog).toBeHidden();
-      await expect(board.getByRole("button", { name: "Reset history", exact: true })).toHaveCount(
-        0,
-      );
+      await expect(page.getByRole("button", { name: "Reset history", exact: true })).toHaveCount(0);
       await expect(triage.locator(`[data-board-uuid-v7="${promotedPageId}"]`)).toBeVisible();
       await expect(block(seeded.blockIds[2]!)).toHaveCount(0);
       const afterReset = await preparePromoted();
@@ -265,9 +304,10 @@ test("routes Board, List, and editor transfer Undo/Redo to their real surface ow
       }
       await expect(block(first.pageId)).toBeVisible();
       await expect(sourceCard).toHaveCount(0);
-      await expect(editor.getByRole("status")).toHaveText(
-        "Move Pages here · This transfer has no complete inverse.",
-      );
+      await page.getByRole("button", { name: "Content edits", exact: true }).click();
+      await expect(
+        page.getByText("Move Pages here · This transfer has no complete inverse.", { exact: true }),
+      ).toBeVisible();
       await independentText.click();
       await page.keyboard.press(`${modifier}+Z`);
       await expect(independentText).toHaveText("Independent text kept");

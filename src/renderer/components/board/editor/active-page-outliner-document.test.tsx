@@ -9,6 +9,7 @@ import {
 } from "@/lib/rich-title-editor-dom";
 import { render } from "@/test/dom";
 import { projectContentAccess } from "../../../../shared/content-access-context";
+import type { OwnedDocumentDescriptor } from "../../../../shared/block-documents/contracts";
 import { ActivePageOutlinerDocument } from "./active-page-outliner-document";
 
 const surfaceState = vi.hoisted(() => ({ value: null as unknown }));
@@ -126,7 +127,22 @@ function createSurface() {
       title,
       body: document.getXmlFragment("body"),
       documentId: "document:nested",
-      descriptor: { storeEpoch: "epoch", generation: 1 },
+      descriptor: {
+        libraryId: "library:a",
+        accessContext: projectContentAccess("project-a"),
+        documentId: "document:nested",
+        ownerBlockId: "nested-page",
+        ownerType: "page",
+        ownerLifecycle: "active",
+        storeEpoch: "epoch",
+        generation: 1,
+        headSeq: 0,
+        schemaKey: "nfm",
+        schemaVersion: 1,
+        authorization: null,
+        readiness: "ready",
+        sync: { kind: "yjs", stateVector: Y.encodeStateVector(document) },
+      } satisfies OwnedDocumentDescriptor,
       clientSessionId: "client",
       awareness: {},
       runtime: {

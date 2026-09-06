@@ -7,12 +7,14 @@ import {
 } from "../../../../shared/library-module";
 import type { SurfaceHistoryDirection } from "../../../../shared/surface-history";
 import {
-  createSurfaceHistory,
+  createInteractionHistory,
   type HistoryCommandHandle,
   type HistoryCommandOutcome,
   type HistoryPreparation,
   type HistoryReceiptInterpretation,
-  type SurfaceHistory,
+  type HistoryReplayHandle,
+  type InteractionHistory,
+  type InteractionHistoryBinding,
 } from "../../../lib/surface-history/owner";
 import type { NfmTextHistoryJournal } from "./nfm-text-history-journal";
 import { promotionRetentionResources } from "../../../lib/surface-history/structural-resources";
@@ -33,7 +35,7 @@ interface StackItemEvent {
   readonly changedParentTypes: Y.Transaction["changedParentTypes"];
 }
 type CaptureIntent = { readonly kind: "native_capture" };
-type Owner = SurfaceHistory<
+type Owner = InteractionHistoryBinding<
   NfmHistoryCommand | CaptureIntent,
   NfmHistoryReceipt,
   NfmHistoryInverse
@@ -51,6 +53,7 @@ const DEFAULT_LIMITS: NfmHistoryLimits = {
   maxRetainedIdentities: 10_000,
 };
 export interface NfmHistoryLaneOptions {
+  readonly interactionHistory?: InteractionHistory;
   readonly limits?: Partial<NfmHistoryLimits>;
   readonly undoManager?: Y.UndoManager | null;
   readonly textHistory?: NfmTextHistoryJournal;
@@ -79,7 +82,7 @@ export interface NfmHistoryLaneOptions {
 }
 type Handlers = Omit<
   NfmHistoryLaneOptions,
-  "undoManager" | "textHistory" | "textSelection" | "limits"
+  "undoManager" | "textHistory" | "textSelection" | "limits" | "interactionHistory"
 >;
 interface NativeCapture {
   readonly item: YStackItem;
@@ -98,6 +101,7 @@ const tokenKey = (token: LibraryStructuralHistoryToken) =>
 /** Content Adapter for one NFM surface. Chronology and exact attempts belong to SurfaceHistory. */
 export class NfmHistoryLane {
   private readonly owner: Owner;
+  private readonly standaloneHistory: InteractionHistory | undefined;
   private readonly captures = new Map<number, NativeCapture>();
   private readonly captureIds = new WeakMap<YStackItem, number>();
   private nextCaptureId = 0;
@@ -110,7 +114,6 @@ export class NfmHistoryLane {
     YStackItem
   >();
   private readonly indexedKeys = new Set<string>();
-  private readonly presentations = new Set<Promise<void>>();
   private readonly unsubscribeOwner: () => void;
   private localCompletion: number[] | null = null;
   private replayingText = false;
@@ -133,9 +136,18 @@ export class NfmHistoryLane {
         intent: { kind: "native_capture" as const },
         receipt: { kind: "native" as const, captureId: this.registerCapture(item) },
       }));
-    this.owner = createSurfaceHistory({
+    this.standaloneHistory = options.interactionHistory
+      ? undefined
+      : createInteractionHistory({
+          scopeKey: "nfm",
+          limits: { ...limits, maxPending: limits.maxQueued + 1 },
+          onError: (error) => this.onError?.(error),
+        });
+    const interactionHistory = options.interactionHistory ?? this.standaloneHistory!;
+    this.owner = interactionHistory.bind({
       scopeKey: "nfm",
-      limits: { ...limits, maxPending: limits.maxQueued + 1 },
+      breakCapture: () => this.stopCapturing(),
+      onCommitted: (receipt) => this.handlers.onCommitted?.(receipt),
       retainedIdentityCount: () => options.textHistory?.retainedIdentityCount ?? 0,
       initialCaptures: {
         undo: initial(options.undoManager?.undoStack ?? []),
@@ -227,23 +239,26 @@ export class NfmHistoryLane {
   requestRedo(): boolean {
     return this.request("redo");
   }
-  recover(): HistoryCommandHandle<NfmHistoryReceipt> {
+  recover(): HistoryReplayHandle {
     return this.observe(this.owner.recover());
   }
   reset(): void {
     this.stopCapturing();
-    this.owner.reset();
+    (this.options.interactionHistory ?? this.standaloneHistory!).reset();
   }
   private request(direction: SurfaceHistoryDirection): boolean {
     if (this.disposed) return false;
-    this.stopCapturing();
-    this.observe(this.owner.request(direction));
+    this.requestHistory(direction);
     // Empty, pending and blocked still belong to this surface, never another engine.
     return true;
   }
-  private observe(
-    handle: HistoryCommandHandle<NfmHistoryReceipt>,
-  ): HistoryCommandHandle<NfmHistoryReceipt> {
+  requestHistory(direction: SurfaceHistoryDirection): HistoryReplayHandle {
+    this.stopCapturing();
+    return this.observe(this.owner.request(direction));
+  }
+  private observe<Handle extends HistoryCommandHandle<NfmHistoryReceipt> | HistoryReplayHandle>(
+    handle: Handle,
+  ): Handle {
     void handle.result
       .then((resolution) => {
         if (this.disposed) return;
@@ -251,23 +266,22 @@ export class NfmHistoryLane {
           if (resolution.status !== "noop") this.onError?.(new Error(resolution.reason));
           return;
         }
-        const presentation = Promise.resolve()
-          .then(() => this.handlers.onCommitted?.(resolution.receipt))
-          .catch((error: unknown) => this.onError?.(error));
-        this.presentations.add(presentation);
-        void presentation.finally(() => this.presentations.delete(presentation));
       })
       .catch((error: unknown) => this.onError?.(error));
     return handle;
   }
   async whenIdle(): Promise<void> {
     await this.owner.whenIdle();
+    // Shared replay removes content-specific receipt typing in a promise step.
+    // Drain its observer, but do not wait for gestures queued behind uncertainty.
     await Promise.resolve();
-    if (this.disposed) return;
-    while (this.presentations.size > 0) await Promise.all(this.presentations);
   }
   stopCapturing(): void {
     this.options.undoManager?.stopCapturing();
+  }
+  beforeLocalCapture(): void {
+    if (this.disposed || this.replayingText || this.localCompletion) return;
+    this.owner.beginLocalCapture();
   }
 
   /** A synchronous portable write fills its already-reserved semantic gesture. */
@@ -552,6 +566,7 @@ export class NfmHistoryLane {
     this.options.undoManager?.off("stack-item-popped", this.handleStackPopped);
     this.options.undoManager?.doc.off("update", this.handleDocumentUpdate);
     this.owner.close();
+    this.standaloneHistory?.close();
     this.unsubscribeOwner();
     this.options.textHistory?.dispose();
   }
