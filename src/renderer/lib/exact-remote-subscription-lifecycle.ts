@@ -1,5 +1,9 @@
 export interface ExactRemoteSubscriptionLifecycle<Result> {
   ensure(): Promise<Result>;
+  /** Invoke at the admission boundary; do not await again before sending the command. */
+  run<CommandResult>(
+    command: (subscription: Result) => Promise<CommandResult>,
+  ): Promise<CommandResult>;
   /** Main has retired this logical session; an in-flight open is no longer evidence. */
   invalidate(): void;
   releaseIfIdle(): void;
@@ -19,9 +23,10 @@ export const createExactRemoteSubscriptionLifecycle = <Result>(input: {
   let opening: Promise<Result> | null = null;
   let closing: Promise<void> | null = null;
   let version = 0;
+  let admissionVersion = 0;
 
   const ensure = (): Promise<Result> => {
-    if (disposed) return Promise.resolve(input.inactiveResult());
+    if (disposed || !input.hasSubscribers()) return Promise.resolve(input.inactiveResult());
     if (closing) return closing.then(ensure);
     if (remoteOpen) return Promise.resolve(input.alreadyOpenResult());
     if (opening) return opening;
@@ -41,7 +46,9 @@ export const createExactRemoteSubscriptionLifecycle = <Result>(input: {
   };
 
   const releaseIfIdle = (): void => {
-    if (disposed || closing || input.hasSubscribers()) return;
+    if (disposed || input.hasSubscribers()) return;
+    admissionVersion += 1;
+    if (closing) return;
     const operation = (async () => {
       await opening?.catch(() => undefined);
       if (input.hasSubscribers()) return;
@@ -62,8 +69,22 @@ export const createExactRemoteSubscriptionLifecycle = <Result>(input: {
 
   const invalidate = (): void => {
     version += 1;
+    admissionVersion += 1;
     remoteOpen = false;
   };
 
-  return { ensure, releaseIfIdle, invalidate };
+  const run = async <CommandResult>(
+    command: (subscription: Result) => Promise<CommandResult>,
+  ): Promise<CommandResult> => {
+    const admittedVersion = admissionVersion;
+    const result = await ensure();
+    // A successful open is evidence only for the owner that requested it. Releasing
+    // and immediately reviving the same key must not revive its queued commands.
+    if (disposed || !input.hasSubscribers() || admittedVersion !== admissionVersion) {
+      return command(input.inactiveResult());
+    }
+    return command(result);
+  };
+
+  return { ensure, run, releaseIfIdle, invalidate };
 };

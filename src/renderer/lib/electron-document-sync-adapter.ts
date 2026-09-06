@@ -459,65 +459,48 @@ const createScopedElectronDocumentSyncAdapter = (
     entry: SubscriptionEntry,
   ): Promise<DocumentSyncCommandResult<DocumentSyncSubscriptionAck>> => entry.lifecycle.ensure();
 
-  const requireRemoteSubscription = async <T>(
+  const withRemoteSubscription = <T>(
     request: DocumentSyncSubscribeRequest,
-  ): Promise<DocumentSyncCommandResult<T> | null> => {
+    command: () => Promise<DocumentSyncCommandResult<T>>,
+  ): Promise<DocumentSyncCommandResult<T>> => {
     const entry = subscriptions.get(subscriptionKey(request));
-    if (!entry) {
-      return { ok: false, error: unauthorizedError() };
-    }
-    const subscription = await ensureRemoteSubscription(entry);
-    if (!subscription.ok) {
-      return { ok: false, error: subscription.error };
-    }
-    return null;
+    if (!entry) return Promise.resolve({ ok: false, error: unauthorizedError() });
+    return entry.lifecycle.run(async (subscription) => {
+      if (!subscription.ok) return { ok: false, error: subscription.error };
+      return command();
+    });
   };
 
   return {
-    sync: async (request: DocumentSyncRequest) => {
-      const blocked = await requireRemoteSubscription<DocumentSyncResponse>(request);
-      if (blocked) {
-        return blocked;
-      }
-      return normalizeSyncResult(
-        await invokeCommand<DocumentSyncResponse>(channel("sync"), scope(request)),
-      );
-    },
-    applyUpdate: async (request: DocumentSyncApplyRequest) => {
-      const blocked = await requireRemoteSubscription<DocumentSyncApplyAck>(request);
-      if (blocked) {
-        return blocked;
-      }
-      try {
-        const commandResult =
-          accessScope.kind === "library"
-            ? await invokeLocalCommitCommandResultThrough(
-                libraryDocumentUpdateCommand,
-                bridge,
-                request,
-              )
-            : await invokeLocalCommitCommandResultThrough(projectDocumentUpdateCommand, bridge, {
-                ...request,
-                projectId: accessScope.projectId,
-              });
-        return normalizeApplyResult(normalizeCommandResult<DocumentSyncApplyAck>(commandResult));
-      } catch (error) {
-        return {
-          ok: false,
-          error: transportError(error),
-        };
-      }
-    },
-    publishAwareness: async (request: DocumentAwarenessPublishRequest) => {
-      const blocked = await requireRemoteSubscription<DocumentAwarenessPublishAck>(request);
-      if (blocked) {
-        return blocked;
-      }
-      return invokeCommand<DocumentAwarenessPublishAck>(
-        channel("awareness:publish"),
-        scope(request),
-      );
-    },
+    sync: (request: DocumentSyncRequest) =>
+      withRemoteSubscription(request, async () =>
+        normalizeSyncResult(
+          await invokeCommand<DocumentSyncResponse>(channel("sync"), scope(request)),
+        ),
+      ),
+    applyUpdate: (request: DocumentSyncApplyRequest) =>
+      withRemoteSubscription(request, async () => {
+        try {
+          const commandResult =
+            accessScope.kind === "library"
+              ? await invokeLocalCommitCommandResultThrough(
+                  libraryDocumentUpdateCommand,
+                  bridge,
+                  request,
+                )
+              : await invokeLocalCommitCommandResultThrough(projectDocumentUpdateCommand, bridge, {
+                  ...request,
+                  projectId: accessScope.projectId,
+                });
+          return normalizeApplyResult(normalizeCommandResult<DocumentSyncApplyAck>(commandResult));
+        } catch (error) {
+          return { ok: false, error: transportError(error) };
+        }
+      }),
+    publishAwareness: (request: DocumentAwarenessPublishRequest) =>
+      withRemoteSubscription(request, () =>
+        invokeCommand<DocumentAwarenessPublishAck>(channel("awareness:publish"), scope(request)),
+      ),
     subscribe: (request, listener) => {
       const key = subscriptionKey(request);
       let entry = subscriptions.get(key);

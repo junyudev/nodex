@@ -1,8 +1,13 @@
 import { it } from "@effect/vitest";
 import { expect, vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
+import * as Logger from "effect/Logger";
 import * as Y from "yjs";
 import { createPageDocument } from "../../shared/block-documents/page-document";
+import type {
+  DocumentSyncRealtimeEvent,
+  DocumentSyncResponse,
+} from "../../shared/block-documents/document-sync";
 import type { ContentAccessContext } from "../../shared/content-access-context";
 import { NodexYProvider } from "../../renderer/lib/nodex-y-provider";
 import { CoreModuleResponseError } from "./core-client";
@@ -155,6 +160,172 @@ it.live("propagates terminal stream failure and settles durable waiters", () =>
         });
         await expect(provider.flush()).rejects.toThrow();
         expect(openings).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      server.destroy();
+    }
+  }),
+);
+
+scopes
+  .flatMap((scope) => [false, true].map((replace) => ({ scope, replace })))
+  .forEach(({ scope, replace }) =>
+    it.live(
+      `retires ${scope.kind} awareness failures after ${replace ? "replacement" : "closure"}`,
+      () => {
+        const messages: unknown[] = [];
+        return Effect.gen(function* () {
+          const { client, server } = fixture();
+          const open = client.openDocumentEventStream.bind(client);
+          const close = vi.fn();
+          const openings = vi.fn(async (...args: Parameters<typeof open>) => {
+            const stream = await open(...args);
+            return {
+              ...stream,
+              close: () => {
+                close();
+                stream.close();
+              },
+            };
+          });
+          client.openDocumentEventStream = openings;
+          let rejectPublication: (error: Error) => void = () => undefined;
+          const publish = vi.fn(
+            () =>
+              new Promise<{ accepted: true }>((_resolve, reject) => {
+                rejectPublication = reject;
+              }),
+          );
+          client.documentPublishAwareness = publish;
+          const adapter = yield* makeDesktopDocumentSessionHarness(client, scope);
+          try {
+            yield* Effect.promise(async () => {
+              const request = { documentId, clientSessionId: "closing-session" };
+              const release = adapter.subscribe(request, () => undefined);
+              let releaseReplacement: (() => void) | undefined;
+              try {
+                await adapter.sync({ ...request, stateVector: new Uint8Array([0]) });
+                const pending = adapter.publishAwareness({
+                  ...request,
+                  storeEpoch: "epoch:test",
+                  generation: 1,
+                  update: new Uint8Array([0]),
+                });
+                await vi.waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+                release();
+                await vi.waitFor(() => expect(close).toHaveBeenCalled());
+                if (replace) {
+                  releaseReplacement = adapter.subscribe(request, () => undefined);
+                  expect(
+                    await adapter.sync({ ...request, stateVector: new Uint8Array([0]) }),
+                  ).toMatchObject({ ok: true });
+                }
+                rejectPublication(
+                  new CoreModuleResponseError({
+                    code: "unauthorized",
+                    message: "An exact Yjs subscription is required",
+                    retryable: true,
+                    recovery: { kind: "reconnect_document_subscription" },
+                  }),
+                );
+                expect(await pending).toMatchObject({ ok: false });
+                expect(openings).toHaveBeenCalledTimes(replace ? 2 : 1);
+                expect(
+                  messages.filter((message) =>
+                    String(message).includes("Document session command failed"),
+                  ),
+                ).toEqual([]);
+              } finally {
+                releaseReplacement?.();
+                release();
+              }
+            });
+          } finally {
+            server.destroy();
+          }
+        }).pipe(
+          Effect.withLogger(
+            Logger.make(({ message }) => {
+              messages.push(message);
+            }),
+          ),
+        );
+      },
+    ),
+  );
+
+it.live("a retired sync response cannot replace the new session's canonical generation", () =>
+  Effect.gen(function* () {
+    const { client, server } = fixture();
+    const open = client.openDocumentEventStream.bind(client);
+    let generation = 0;
+    let emit: (event: DocumentSyncRealtimeEvent) => void = () => undefined;
+    const closed = vi.fn();
+    client.openDocumentEventStream = async (...args: Parameters<typeof open>) => {
+      const stream = await open(...args);
+      generation += 1;
+      emit = args[3];
+      return {
+        ...stream,
+        barrier: { ...stream.barrier, document_generation: generation },
+        close: () => {
+          closed();
+          stream.close();
+        },
+      };
+    };
+    let completeOldSync: (response: DocumentSyncResponse) => void = () => undefined;
+    const originalSync = client.documentSync.bind(client);
+    const oldResponse = yield* Effect.promise(() =>
+      originalSync({
+        documentId,
+        clientSessionId: "reused-session",
+        stateVector: new Uint8Array([0]),
+      }),
+    );
+    const sync = vi.fn(async () => {
+      if (generation === 1)
+        return new Promise<DocumentSyncResponse>((resolve) => {
+          completeOldSync = resolve;
+        });
+      return { ...oldResponse, generation };
+    });
+    client.documentSync = sync;
+    const adapter = yield* makeDesktopDocumentSessionHarness(client, { kind: "library" });
+    try {
+      yield* Effect.promise(async () => {
+        const request = { documentId, clientSessionId: "reused-session" };
+        const release = adapter.subscribe(request, () => undefined);
+        let releaseReplacement: (() => void) | undefined;
+        try {
+          const oldSync = adapter.sync({ ...request, stateVector: new Uint8Array([0]) });
+          await vi.waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+          release();
+          await vi.waitFor(() => expect(closed).toHaveBeenCalled());
+          const events: DocumentSyncRealtimeEvent[] = [];
+          releaseReplacement = adapter.subscribe(request, (event) => events.push(event));
+          expect(
+            await adapter.sync({ ...request, stateVector: new Uint8Array([0]) }),
+          ).toMatchObject({ ok: true, value: { generation: 2 } });
+          completeOldSync(oldResponse);
+          await oldSync;
+          const update = {
+            kind: "document-update",
+            documentId,
+            updateId: "remote-update",
+            clientSessionId: "remote-session",
+            storeEpoch: "epoch:test",
+            generation: 2,
+            headSeq: 1,
+            update: new Uint8Array([0]),
+          } as const;
+          emit(update);
+          await vi.waitFor(() => expect(events).toContainEqual(update));
+          expect(events.some((event) => event.kind === "resync-required")).toBe(false);
+        } finally {
+          releaseReplacement?.();
+          release();
+        }
       });
     } finally {
       server.destroy();

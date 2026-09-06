@@ -1010,10 +1010,16 @@ const makeDesktopDocumentSessionState = (
           "command.subscription",
           new Error("Document subscription ended"),
         );
+      const current = () => subscriptions.get(key) === subscription;
+      const ended = () =>
+        documentLiveRuntimeError("command.subscription", new Error("Document subscription ended"));
       const version = yield* subscription.lease.waitUntilConnected;
+      if (!current()) return yield* ended();
       return yield* command.pipe(
         Effect.tapError((error) => {
           const failure = documentSessionError(error);
+          if (!current() && failure.core?.recovery.kind === "reconnect_document_subscription")
+            return Effect.void;
           const signature = JSON.stringify([
             error.operation,
             failure.code,
@@ -1033,11 +1039,19 @@ const makeDesktopDocumentSessionState = (
           });
         }),
         Effect.catch((error) => {
-          if (documentSessionError(error).core?.recovery.kind !== "reconnect_document_subscription")
+          if (
+            !current() ||
+            documentSessionError(error).core?.recovery.kind !== "reconnect_document_subscription"
+          )
             return Effect.fail(error);
-          return subscription.lease
-            .reconnectAfterSubscriptionLoss(version)
-            .pipe(Effect.andThen(replayAfterReconnect ? command : Effect.fail(error)));
+          return subscription.lease.reconnectAfterSubscriptionLoss(version).pipe(
+            Effect.andThen(
+              Effect.gen(function* () {
+                if (!current()) return yield* ended();
+                return yield* replayAfterReconnect ? command : Effect.fail(error);
+              }),
+            ),
+          );
         }),
       );
     });
@@ -1782,6 +1796,7 @@ const makeDesktopDocumentSessionState = (
           return documentSyncUnauthorized();
         }
         const key = subscriptionKey(target, scope, request);
+        const subscription = subscriptions.get(key);
         suspendSubscriptionBoundary(key);
         const result = yield* withDocumentLease(
           key,
@@ -1791,7 +1806,7 @@ const makeDesktopDocumentSessionState = (
           Effect.map((value) => ({ ok: true as const, value })),
           Effect.catch((error) => Effect.succeed(documentFailure<DocumentSyncResponse>(error))),
         );
-        if (!result.ok) return result;
+        if (!result.ok || subscriptions.get(key) !== subscription) return result;
         yield* reportDocumentRecovered(key);
         adoptSubscriptionBoundary(key, result.value);
         drainDocumentRealtimeEvents(key, target);
@@ -2049,6 +2064,7 @@ const makeDesktopDocumentSessionState = (
           return canvasSceneUnauthorized();
         }
         const key = canvasSceneSubscriptionKey(target, request);
+        const subscription = subscriptions.get(key);
         suspendSubscriptionBoundary(key);
         const result = yield* runCanvasCommand(
           "canvas.sync",
@@ -2058,7 +2074,7 @@ const makeDesktopDocumentSessionState = (
           key,
           true,
         );
-        if (result.ok) {
+        if (result.ok && subscriptions.get(key) === subscription) {
           yield* reportDocumentRecovered(key);
           adoptSubscriptionBoundary(key, result.value);
           drainCanvasRealtimeEvents(key, target);

@@ -341,3 +341,45 @@ describe("createElectronDocumentSyncAdapter", () => {
     ).resolves.toEqual(bridge.applyResult);
   });
 });
+
+test.each(["opening", "open"])(
+  "does not send queued document commands after release while %s",
+  async (phase) => {
+    const bridge = new FakeBridge();
+    const adapter = createElectronDocumentSyncAdapter(
+      bridge as unknown as ElectronRendererBridge,
+      "project-1",
+    );
+    const request = { documentId: "doc-1", clientSessionId: "session-1" };
+    const release = adapter.subscribe(request, () => undefined);
+    if (phase === "open") {
+      bridge.subscription.resolve({ ok: true, value: { subscribed: true } });
+      await adapter.sync({ ...request, stateVector: new Uint8Array([0]) });
+      bridge.calls.length = 0;
+    }
+    const boundary = {
+      ...request,
+      storeEpoch: "epoch-1",
+      generation: 1,
+      update: new Uint8Array([0]),
+    };
+    const commands = [
+      adapter.sync({ ...request, stateVector: new Uint8Array([0]) }),
+      adapter.applyUpdate({
+        ...boundary,
+        baseHeadSeq: 0,
+        updateId: "update-1",
+        touchedBlockIds: [],
+      }),
+      adapter.publishAwareness(boundary),
+    ];
+    release();
+    bridge.subscription.resolve({ ok: true, value: { subscribed: true } });
+    for (const result of await Promise.all(commands)) expect(result).toMatchObject({ ok: false });
+    expect(
+      bridge.calls.filter(
+        ({ channel }) => !channel.endsWith(":subscribe") && !channel.endsWith(":unsubscribe"),
+      ),
+    ).toEqual([]);
+  },
+);

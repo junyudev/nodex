@@ -217,19 +217,11 @@ export const createElectronCanvasSceneSyncAdapter = (
         const entry = subscriptions.get(
           JSON.stringify([request.documentId, request.clientSessionId]),
         );
-        const ready = entry ? await ensureRemoteSubscription(entry) : null;
-        if (!ready?.ok) {
-          return {
-            ok: false,
-            error: ready?.error ?? {
-              code: "access_scope_mismatch",
-              message: "Canvas scene subscription is not active",
-              retryable: false,
-              resetRequired: false,
-            },
-          };
-        }
-        return await invoke("canvas-scene:sync", request);
+        if (!entry) return { ok: false, error: accessFailure() };
+        return await entry.lifecycle.run(async (ready) => {
+          if (!ready.ok) return { ok: false, error: ready.error };
+          return await invoke<CanvasSceneSyncCommandResult>("canvas-scene:sync", request);
+        });
       } catch (error) {
         return { ok: false, error: transportFailure(error) };
       }
@@ -242,24 +234,17 @@ export const createElectronCanvasSceneSyncAdapter = (
         const entry = subscriptions.get(
           JSON.stringify([request.documentId, request.clientSessionId]),
         );
-        const ready = entry ? await ensureRemoteSubscription(entry) : null;
-        if (!ready?.ok) {
-          return {
-            ok: false,
-            error: ready?.error ?? {
-              code: "access_scope_mismatch",
-              message: "Canvas scene subscription is not active",
-              retryable: false,
-              resetRequired: false,
-              mutationId: request.mutationId,
-            },
-          };
-        }
-        return await invokeLocalCommitCommandResultThrough(
-          canvasSceneMutationCommand,
-          bridge,
-          request,
-        );
+        if (!entry)
+          return { ok: false, error: { ...accessFailure(), mutationId: request.mutationId } };
+        return await entry.lifecycle.run(async (ready) => {
+          if (!ready.ok)
+            return { ok: false, error: { ...ready.error, mutationId: request.mutationId } };
+          return await invokeLocalCommitCommandResultThrough(
+            canvasSceneMutationCommand,
+            bridge,
+            request,
+          );
+        });
       } catch (error) {
         return { ok: false, error: { ...transportFailure(error), mutationId: request.mutationId } };
       }
@@ -274,8 +259,7 @@ export const createElectronCanvasSceneSyncAdapter = (
         const entry = subscriptions.get(
           JSON.stringify([request.publication.documentId, request.clientSessionId]),
         );
-        const ready = entry ? await ensureRemoteSubscription(entry) : null;
-        if (!ready?.ok) {
+        if (!entry)
           return {
             ok: false,
             error: {
@@ -285,8 +269,23 @@ export const createElectronCanvasSceneSyncAdapter = (
               resetRequired: false,
             },
           };
-        }
-        return await invoke("canvas-scene:presence:publish", request);
+        return await entry.lifecycle.run(async (ready) => {
+          if (!ready.ok) {
+            return {
+              ok: false,
+              error: {
+                code: "unauthorized",
+                message: "Canvas scene subscription is not active",
+                retryable: false,
+                resetRequired: false,
+              },
+            };
+          }
+          return await invoke<CanvasPresenceCommandResult>(
+            "canvas-scene:presence:publish",
+            request,
+          );
+        });
       } catch (error) {
         return {
           ok: false,

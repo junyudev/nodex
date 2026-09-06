@@ -283,3 +283,66 @@ test("Electron Canvas keeps a revived exact session ahead of stale teardown", as
   await Promise.resolve();
   expect(calls.at(-1)).toBe("canvas-scene:unsubscribe");
 });
+
+test.each(["opening", "open"])(
+  "Canvas release fences sync, mutations and presence while %s",
+  async (phase) => {
+    const calls: string[] = [];
+    let complete: (value: unknown) => void = () => undefined;
+    const opening = new Promise((resolve) => {
+      complete = resolve;
+    });
+    const bridge = {
+      invoke: async (channel: string) => {
+        calls.push(channel);
+        if (channel === "canvas-scene:subscribe") return opening;
+        return { ok: true, value: { unsubscribed: true } };
+      },
+      on: () => () => undefined,
+    } as unknown as ElectronRendererBridge;
+    const accessContext = { kind: "library" } as const;
+    const adapter = createElectronCanvasSceneSyncAdapter(bridge, {
+      libraryId: "library-1",
+      accessContext,
+    });
+    const request = { accessContext, documentId: "canvas-1", clientSessionId: "client-1" };
+    const release = adapter.subscribe(request, () => undefined);
+    if (phase === "open") {
+      complete({ ok: true, value: { subscribed: true } });
+      await adapter.sync({ ...request, syncRequestId: "initial" });
+      calls.length = 0;
+    }
+    const commands = [
+      adapter.sync({ ...request, syncRequestId: "late" }),
+      adapter.applyMutation({
+        ...request,
+        mutationId: "mutation-1",
+        storeEpoch: "epoch-1",
+        generation: 1,
+        baseHeadSeq: 0,
+        elementCandidates: [],
+        appStateIntents: {},
+        fileAdditions: {},
+      }),
+      adapter.publishPresence!({
+        accessContext,
+        clientSessionId: request.clientSessionId,
+        publication: {
+          engine: "canvas_scene",
+          documentId: request.documentId,
+          generation: 1,
+          clock: 1,
+          state: null,
+        },
+      }),
+    ];
+    release();
+    complete({ ok: true, value: { subscribed: true } });
+    for (const result of await Promise.all(commands)) expect(result).toMatchObject({ ok: false });
+    expect(
+      calls.filter(
+        (channel) => !channel.endsWith(":subscribe") && !channel.endsWith(":unsubscribe"),
+      ),
+    ).toEqual([]);
+  },
+);

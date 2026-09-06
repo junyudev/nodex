@@ -15,6 +15,16 @@ closes the physical stream and requires a fresh barrier plus canonical sync.
 Awareness uses a separate ephemeral addressed channel and cannot crowd the
 durable repair lane.
 
+Renderer commands are admitted against the exact subscription lifetime at send
+time. Releasing the last subscriber or invalidating the session fences commands
+still awaiting admission, even when the same session key is immediately revived.
+Already-submitted durable writes retain their original receipt semantics. Core
+withdraws session-owned Awareness on unsubscribe; local offline publication is
+best effort and cannot keep a retired subscription alive. Main does not log a
+retired session's late subscription-loss response as an active fault or reconnect
+it. A late successful sync cannot adopt its boundary into a replacement session.
+Active subscription loss still requires a fresh validated barrier.
+
 Main retains the logical lease across physical reconnection and consumes Core's
 `reconnect_document_subscription` recovery evidence. Concurrent failures share
 one reconnect; late failures from older connection versions cannot retire the
