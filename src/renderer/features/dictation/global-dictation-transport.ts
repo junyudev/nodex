@@ -59,6 +59,11 @@ const cleanupCommand = defineRendererCommand({
 type FirstArg<Channel extends keyof IpcApi> = IpcApi[Channel]["args"][0];
 
 export const globalDictationTransport = {
+  readStreamingConnectInfo: () =>
+    invokeRendererQueryThrough(
+      globalDictationInvokePort,
+      "codex:dictation:streaming-connect-info:read",
+    ),
   createHistory: (input: FirstArg<"codex:dictation:history:create">) =>
     invokePlainCommandThrough(createHistoryCommand, globalDictationInvokePort, input),
   appendHistory: (input: FirstArg<"codex:dictation:history:append">) =>

@@ -8,7 +8,6 @@ import * as Scope from "effect/Scope";
 import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
-import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
 import { CodexMedia, CodexMediaError } from "../../codex-application/CodexMedia";
 import { DictationRuntime } from "../../host-runtime/DictationRuntime";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
@@ -40,7 +39,10 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
         Effect.never.pipe(Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined))),
       cleanupTranscript: ({ transcript }) =>
         Effect.succeed(dictationTextResult(`cleaned:${transcript}`, "cleanup")),
-      prepareStreamingConnectInfo: Effect.die("unused"),
+      prepareStreamingConnectInfo: Effect.succeed({
+        websocketUrl: "wss://chatgpt.com/backend-api/dictation/stream",
+        protocols: ["chatgpt-dictation", "openai-bearer.fixture-token", "codex-desktop"],
+      }),
       resolveImage: () => Effect.die("unused"),
     });
     const dictation = DictationRuntime.of({
@@ -56,18 +58,16 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
       showNotification: () => Effect.die("unused"),
       onPowerEvent: () => Effect.void,
     });
-    const callbacks = ScopedCallbackRuntime.of({
-      fork: () => null,
-      runPromise: () => Promise.reject(new Error("unused")),
-    });
     const windows = WindowRuntime.of({
       get: () => null,
     } as unknown as WindowRuntime["Service"]);
     const scope = yield* Scope.make();
     yield* Layer.buildWithScope(
       live({
-        authorize: () => undefined,
-        registerStreaming: () => () => undefined,
+        authorize: (event, capability) => {
+          if (capability === "Dictation streaming connection" && event.sender.id !== 7)
+            throw new Error("Untrusted renderer");
+        },
       }).pipe(
         Layer.provide(
           Layer.mergeAll(
@@ -76,7 +76,6 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
             Layer.succeed(ElectronDesktop, desktop),
             Layer.succeed(ElectronIpc, ipc),
             mainConfigLayer(),
-            Layer.succeed(ScopedCallbackRuntime, callbacks),
             Layer.succeed(WindowRuntime, windows),
           ),
         ),
@@ -87,6 +86,15 @@ it.effect("cancels only the owning renderer's active transcription fiber", () =>
     const requestId = "44ad6887-2d86-4e3a-a9ed-d9397907ffad";
     const owner = { sender: { id: 7 } } as IpcMainInvokeEvent;
     const stranger = { sender: { id: 8 } } as IpcMainInvokeEvent;
+    assert.deepEqual(yield* handlers.get("codex:dictation:streaming-connect-info:read")!(owner), {
+      websocketUrl: "wss://chatgpt.com/backend-api/dictation/stream",
+      protocols: ["chatgpt-dictation", "openai-bearer.fixture-token", "codex-desktop"],
+    });
+    assert.isTrue(
+      Exit.isFailure(
+        yield* Effect.exit(handlers.get("codex:dictation:streaming-connect-info:read")!(stranger)),
+      ),
+    );
     const requestFiber = yield* Effect.forkChild(
       handlers.get("codex:dictation:transcribe")!(owner, {
         contentType: "multipart/form-data; boundary=nodex-test",

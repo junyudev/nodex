@@ -127,6 +127,7 @@ type QueryEndpointPolicy =
   | "codex:dictation:microphone-route-hint:read"
   | "codex:dictation:settings:read"
   | "codex:dictation:state:read"
+  | "codex:dictation:streaming-connect-info:read"
   | "codex:experimental-features:list"
   | "codex:hooks:list"
   | "codex:mcp-apps:list"

@@ -1,32 +1,6 @@
-import type { DictationStreamDiagnostics } from "./dictation-diagnostics";
 export const DICTATION_STREAM_START_TIMEOUT_MS = 10_000;
 export const DICTATION_STREAM_FINISH_TIMEOUT_MS = 8_000;
 export const DICTATION_STREAM_MAX_OUTSTANDING_AUDIO_BYTES = 4_194_304 as const;
-export const DICTATION_STREAMING_PORT_CHANNEL = "codex:dictation:streaming:port" as const;
-export const DICTATION_STREAMING_WINDOW_MESSAGE = "nodex:dictation:streaming:port" as const;
-
-export interface DictationStreamingPortHandshake {
-  readonly type: typeof DICTATION_STREAMING_WINDOW_MESSAGE;
-  readonly sessionId: string;
-  readonly sampleRateHz: number;
-}
-
-export function isDictationStreamingPortHandshake(
-  input: unknown,
-): input is DictationStreamingPortHandshake {
-  if (!input || typeof input !== "object") return false;
-  const value = input as Partial<DictationStreamingPortHandshake>;
-  return (
-    value.type === DICTATION_STREAMING_WINDOW_MESSAGE &&
-    typeof value.sessionId === "string" &&
-    /^[0-9a-f-]{36}$/iu.test(value.sessionId) &&
-    typeof value.sampleRateHz === "number" &&
-    Number.isFinite(value.sampleRateHz) &&
-    value.sampleRateHz >= 8_000 &&
-    value.sampleRateHz <= 192_000
-  );
-}
-
 export interface DictationStreamingConnectInfo {
   readonly websocketUrl: string;
   readonly protocols: readonly string[];
@@ -51,7 +25,7 @@ export interface DictationStreamingSessionStartMessage {
     readonly max_utterance_duration_ms: 30_000;
     readonly session_ttl_ms: 300_000;
     readonly provider_mode: "streaming_sse";
-    readonly transcript_delivery_mode: "final_only";
+    readonly transcript_delivery_mode: "final_only" | "segment";
     readonly vad: {
       readonly type: "server_vad";
       readonly threshold: 0.5;
@@ -70,15 +44,6 @@ export interface DictationStreamingSessionCloseMessage {
   readonly type: "session.close";
 }
 
-export type DictationStreamingClientMessage =
-  | {
-      readonly type: "audio-frame";
-      readonly sequence: number;
-      readonly pcm16: ArrayBuffer;
-    }
-  | { readonly type: "finish" }
-  | { readonly type: "abort" };
-
 export const DICTATION_STREAMING_FAILURE_CODES = [
   "connect-info-failed",
   "invalid-connect-info",
@@ -91,51 +56,10 @@ export const DICTATION_STREAMING_FAILURE_CODES = [
   "unexpected-close",
   "abnormal-close",
   "finish-timeout",
-  "backpressure-overflow",
-  "invalid-audio-frame",
   "empty-final",
   "send-failed",
 ] as const;
 export type DictationStreamingFailureCode = (typeof DICTATION_STREAMING_FAILURE_CODES)[number];
-
-export interface DictationStreamingFailure {
-  readonly code: DictationStreamingFailureCode;
-  readonly message: string;
-  /** Streaming failures are recoverable by the record-always buffered path. */
-  readonly shouldFallback: true;
-}
-
-export type DictationStreamingClosedOutcome =
-  | { readonly kind: "completed" }
-  | { readonly kind: "failed" }
-  | { readonly kind: "aborted"; readonly shouldFallback: false };
-
-export type DictationStreamingHostMessage =
-  | { readonly type: "diagnostics"; readonly diagnostics: DictationStreamDiagnostics }
-  | { readonly type: "prepared" }
-  | { readonly type: "started" }
-  | {
-      readonly type: "audio-ack";
-      readonly sequence: number;
-      readonly byteLength: number;
-      readonly outstandingBytes: number;
-    }
-  | { readonly type: "final"; readonly text: string }
-  | { readonly type: "failed"; readonly error: DictationStreamingFailure }
-  | { readonly type: "closed"; readonly outcome: DictationStreamingClosedOutcome };
-
-/**
- * Adapter around a dedicated MessagePort. Electron ownership and sender validation stay in the
- * transport adapter; the streaming session only sees its typed, one-session channel.
- */
-export interface DictationStreamingPort {
-  readonly postMessage: (
-    message: DictationStreamingHostMessage,
-    transfer?: readonly ArrayBuffer[],
-  ) => void;
-  readonly onMessage: (listener: (message: DictationStreamingClientMessage) => void) => () => void;
-  readonly close: () => void;
-}
 
 export interface DictationStreamingServerError {
   readonly code: string;
@@ -153,6 +77,10 @@ export interface DictationStreamingServerSession {
 }
 
 export type DictationStreamingServerEvent =
+  | {
+      readonly type: "asset.ready" | "asset.committed" | "asset.failed";
+      readonly sequence_no: number;
+    }
   | {
       readonly type: "session.started" | "session.updated";
       readonly sequence_no: number;
@@ -183,10 +111,13 @@ export type DictationStreamingServerEvent =
       readonly error: DictationStreamingServerError;
     };
 
-export interface DictationStreamingTranscriptState {
-  readonly orderedUtteranceIds: string[];
-  readonly finalTextByUtteranceId: Record<string, string>;
-}
+export type DictationStreamingTranscriptState = Map<
+  string,
+  {
+    partial: { revision: number; text: string } | null;
+    final: { revision: number; text: string } | null;
+  }
+>;
 
 const WEBSOCKET_SUBPROTOCOL_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 
@@ -233,6 +164,7 @@ export function validateDictationStreamingConnectInfo(
 
 export function buildDictationStreamingSessionStartMessage(
   sampleRateHz: number,
+  receiveSegments = false,
 ): DictationStreamingSessionStartMessage {
   return {
     type: "session.start",
@@ -244,7 +176,7 @@ export function buildDictationStreamingSessionStartMessage(
       max_utterance_duration_ms: 30_000,
       session_ttl_ms: 300_000,
       provider_mode: "streaming_sse",
-      transcript_delivery_mode: "final_only",
+      transcript_delivery_mode: receiveSegments ? "segment" : "final_only",
       vad: {
         type: "server_vad",
         threshold: 0.5,
@@ -275,6 +207,10 @@ export function parseDictationStreamingServerEvent(
   }
 
   switch (parsed.type) {
+    case "asset.ready":
+    case "asset.committed":
+    case "asset.failed":
+      return { type: parsed.type, sequence_no: parsed.sequence_no };
     case "session.started":
     case "session.updated": {
       const session = parseServerSession(parsed.session);
@@ -339,43 +275,52 @@ export function parseDictationStreamingServerEvent(
 }
 
 export function createDictationStreamingTranscriptState(): DictationStreamingTranscriptState {
-  return {
-    orderedUtteranceIds: [],
-    finalTextByUtteranceId: Object.create(null) as Record<string, string>,
-  };
+  return new Map();
 }
 
-/** Final text follows first-observed utterance order, matching the server VAD event stream. */
+/** Keep first-observed utterance order and never let an older revision replace newer text. */
 export function applyDictationStreamingServerEvent(
   state: DictationStreamingTranscriptState,
   event: DictationStreamingServerEvent,
 ): void {
-  switch (event.type) {
-    case "speech.started":
-    case "speech.stopped":
-      ensureUtterance(state, event.utterance_id);
-      return;
-    case "transcript.final":
-      ensureUtterance(state, event.utterance_id);
-      state.finalTextByUtteranceId[event.utterance_id] = event.text;
-      return;
-    default:
-      return;
+  if (
+    !("utterance_id" in event) ||
+    event.utterance_id == null ||
+    event.type === "transcript.delta" ||
+    event.type === "transcript.failed"
+  )
+    return;
+  let utterance = state.get(event.utterance_id);
+  if (!utterance) {
+    utterance = { partial: null, final: null };
+    state.set(event.utterance_id, utterance);
+  }
+  if (event.type === "transcript.final" && event.revision >= (utterance.final?.revision ?? 0)) {
+    utterance.final = { revision: event.revision, text: event.text };
+    utterance.partial = null;
+    return;
+  }
+  if (
+    event.type === "transcript.segment" &&
+    !utterance.final &&
+    event.revision >= (utterance.partial?.revision ?? 0)
+  ) {
+    utterance.partial = { revision: event.revision, text: event.text };
   }
 }
 
-export function readDictationStreamingFinalText(state: DictationStreamingTranscriptState): string {
-  return state.orderedUtteranceIds
-    .map((utteranceId) => state.finalTextByUtteranceId[utteranceId] ?? "")
-    .filter(Boolean)
+export function readDictationStreamingFinalText(
+  state: DictationStreamingTranscriptState,
+  includeSegments = false,
+): string {
+  return Array.from(
+    state.values(),
+    (utterance) =>
+      utterance.final?.text ?? (includeSegments ? utterance.partial?.text : null) ?? "",
+  )
+    .filter((text) => text.length > 0)
     .join(" ")
     .trim();
-}
-
-function ensureUtterance(state: DictationStreamingTranscriptState, utteranceId: string): void {
-  if (Object.hasOwn(state.finalTextByUtteranceId, utteranceId)) return;
-  state.finalTextByUtteranceId[utteranceId] = "";
-  state.orderedUtteranceIds.push(utteranceId);
 }
 
 function parseServerSession(value: unknown): DictationStreamingServerSession | null {

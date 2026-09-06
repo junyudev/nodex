@@ -839,7 +839,7 @@ The process and resource boundary is fixed by
 
 ### Dictation capture and global routing
 
-Dictation splits media capture from privileged desktop effects. A mounted Composer or the compact global renderer owns one generation-fenced capture controller, browser `MediaStream`, `MediaRecorder`, waveform graph, and AudioWorklet. It records continuously while sending best-effort PCM frames through a dedicated MessagePort. No renderer owns permission policy, streaming credentials, history files, global hotkeys, or the clipboard.
+Dictation splits media capture from privileged desktop effects. A mounted Composer or the compact global renderer owns one generation-fenced capture controller, browser `MediaStream`, `MediaRecorder`, waveform graph, AudioWorklet, and direct transcription WebSocket. Main authenticates a narrowly scoped connection-info query; the recording renderer holds its returned subprotocol credentials only for connection setup. Main retains permission policy, credential storage, history files, global hotkeys, and clipboard ownership.
 
 The Profile Scope owns one `DictationRuntime` for microphone/settings/history/global-routing resources and one `CodexMedia` capability for authenticated transcription and streaming preparation. `CodexMedia` derives and publishes the single capability snapshot from account, connection, streaming, and native-helper changes; a scoped `DictationIpc` Layer is the only renderer transport. Renderer disposal, transcription cancellation, helper/window teardown, and IPC removal therefore follow the Main application Scope instead of an independent shutdown graph.
 

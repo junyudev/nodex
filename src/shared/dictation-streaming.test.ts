@@ -168,3 +168,29 @@ describe("dictation streaming wire contract", () => {
     expect(readDictationStreamingFinalText(state)).toBe("hello world!");
   });
 });
+
+test("retains newest final revisions, ignores later segments, and accepts asset lifecycle events", () => {
+  const state = createDictationStreamingTranscriptState();
+  const event = {
+    type: "transcript.final",
+    sequence_no: 1,
+    utterance_id: "u",
+    revision: 2,
+    text: "new",
+  } as const;
+  applyDictationStreamingServerEvent(state, event);
+  applyDictationStreamingServerEvent(state, { ...event, revision: 1, text: "old" });
+  applyDictationStreamingServerEvent(state, {
+    ...event,
+    type: "transcript.segment",
+    revision: 3,
+    text: "partial",
+  });
+  expect(readDictationStreamingFinalText(state, true)).toBe("new");
+  for (const type of ["asset.ready", "asset.committed", "asset.failed"]) {
+    expect(parseDictationStreamingServerEvent(JSON.stringify({ type, sequence_no: 3 }))).toEqual({
+      type,
+      sequence_no: 3,
+    });
+  }
+});

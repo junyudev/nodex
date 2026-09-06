@@ -1,3 +1,4 @@
+import type { DictationStreamingConnectInfo } from "./dictation-streaming";
 import type { DictationTextResult } from "./dictation-diagnostics";
 import type { ReadFileBytesInput, SaveFileInput } from "./library-files";
 import type { ThreadBackgroundTerminal } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminal";
@@ -1757,6 +1758,10 @@ export interface IpcApi {
   "codex:account:rate-limit-reset:consume": {
     args: [input: CodexRateLimitResetInput];
     result: CodexRateLimitResetResult;
+  };
+  "codex:dictation:streaming-connect-info:read": {
+    args: [];
+    result: DictationStreamingConnectInfo;
   };
   "codex:dictation:state:read": {
     args: [];

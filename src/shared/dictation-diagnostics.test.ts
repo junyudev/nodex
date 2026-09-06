@@ -39,3 +39,12 @@ it("rejects non-finite, negative and unbounded diagnostic data", () => {
     }).success,
   ).toBe(false);
 });
+
+it.each(["backpressure-overflow", "invalid-audio-frame"])(
+  "keeps saved %s diagnostics readable after transport changes",
+  (failureCode) => {
+    const diagnostics = dictationDiagnosticsFixture();
+    const saved = { ...diagnostics, streaming: { ...diagnostics.streaming, failureCode } };
+    expect(DictationDiagnosticsSchema.parse(JSON.parse(JSON.stringify(saved)))).toEqual(saved);
+  },
+);

@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { useDictationSession } from "./use-dictation-session";
 import { emptyDictationStreamDiagnostics } from "../../../shared/dictation-diagnostics";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 import {
   DICTATION_HISTORY_CHUNK_INTERVAL_MS,
   DictationSessionController,
@@ -48,6 +48,7 @@ const createFixture = (
   const streamingAttempt = {
     diagnostics: vi.fn(emptyDictationStreamDiagnostics),
     start: vi.fn(async () => undefined),
+    stopAndFlush: vi.fn<() => Promise<void>>(async () => undefined),
     finish: vi.fn<() => Promise<string | null>>(async () => null),
     abort: vi.fn(),
   };
@@ -468,4 +469,34 @@ describe("useDictationSession", () => {
     expect(fixture.lease.release).toHaveBeenCalledOnce();
     expect(fixture.controller.getSnapshot().kind).toBe("idle");
   });
+});
+
+test("flushes the streaming tail before stopping microphone tracks", async () => {
+  const fixture = createFixture();
+  let completeFlush!: () => void;
+  fixture.streamingAttempt.stopAndFlush.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        completeFlush = resolve;
+      }),
+  );
+  fixture.streamingAttempt.finish.mockResolvedValue("flushed text");
+  await fixture.controller.start({ surface: "composer", gesture: "hold" });
+  fixture.setNow(1000);
+  fixture.controller.stop("insert");
+  expect(fixture.track.stop).not.toHaveBeenCalled();
+  completeFlush();
+  await vi.waitFor(() => expect(fixture.completion.apply).toHaveBeenCalledOnce());
+  expect(fixture.track.stop).toHaveBeenCalledOnce();
+});
+
+test("does not upload or insert a successful empty streaming result", async () => {
+  const fixture = createFixture();
+  fixture.streamingAttempt.finish.mockResolvedValue("");
+  await fixture.controller.start({ surface: "composer", gesture: "hold" });
+  fixture.setNow(1000);
+  fixture.controller.stop("insert");
+  await vi.waitFor(() => expect(fixture.controller.getSnapshot().kind).toBe("idle"));
+  expect(fixture.buffered.transcribe).not.toHaveBeenCalled();
+  expect(fixture.completion.apply).not.toHaveBeenCalled();
 });

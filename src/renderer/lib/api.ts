@@ -1,3 +1,4 @@
+import type { DictationStreamingConnectInfo } from "../../shared/dictation-streaming";
 import type { ReadFileBytesInput, SaveFileInput } from "../../shared/library-files";
 import { resolveRendererTransport } from "./renderer-transport";
 import type { IpcApi } from "../../shared/ipc-api";
@@ -1092,4 +1093,8 @@ export function subscribeUserInputAutoResolutionChanges(
   ) => void,
 ): () => void {
   return resolveRendererTransport().subscribeUserInputAutoResolutionChanges(callback);
+}
+
+export function readDictationStreamingConnectInfo(): Promise<DictationStreamingConnectInfo> {
+  return invokeRendererQuery("codex:dictation:streaming-connect-info:read");
 }

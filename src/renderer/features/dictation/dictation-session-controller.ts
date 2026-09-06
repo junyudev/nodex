@@ -75,6 +75,7 @@ export interface DictationWaveformSession {
 export interface DictationStreamingAttempt {
   diagnostics?(): DictationStreamDiagnostics;
   start(stream: MediaStream): Promise<void>;
+  stopAndFlush(): Promise<void>;
   finish(): Promise<string | null>;
   abort(): void;
 }
@@ -483,6 +484,8 @@ export class DictationSessionController {
     if (!this.#isCurrent(session) || session.completed) return;
     session.completed = true;
     this.#markStopped(session);
+    await session.streaming?.stopAndFlush().catch(() => undefined);
+    if (!this.#isCurrent(session)) return;
     session.finishStopPhase?.();
     const durationMs = this.#duration(session);
     const recorder = session.recorder;
@@ -540,18 +543,16 @@ export class DictationSessionController {
     session.transcriptAbort = abortController;
     const attemptGeneration = session.generation;
     try {
-      let transcript =
-        session.retainedTranscript ??
-        (session.diagnostics.attempt === 1
-          ? ((
-              await session.diagnostics
-                .measure("stream-finalize", async () => (await session.streaming?.finish()) ?? null)
-                .catch(() => null)
-            )?.trim() ?? "")
-          : "");
-      if (transcript)
-        session.diagnostics.useTransport(session.retainedTranscript ? "retained" : "websocket");
-      if (!transcript) {
+      const streamingTranscript =
+        session.retainedTranscript === null && session.diagnostics.attempt === 1
+          ? await session.diagnostics
+              .measure("stream-finalize", async () => (await session.streaming?.finish()) ?? null)
+              .catch(() => null)
+          : null;
+      let transcript = session.retainedTranscript ?? streamingTranscript?.trim() ?? "";
+      if (session.retainedTranscript !== null) session.diagnostics.useTransport("retained");
+      else if (streamingTranscript !== null) session.diagnostics.useTransport("websocket");
+      if (session.retainedTranscript === null && streamingTranscript === null) {
         transcript = (
           await session.diagnostics.measure("buffered", () =>
             this.#ports.buffered.transcribe(
@@ -563,6 +564,10 @@ export class DictationSessionController {
           )
         ).trim();
         if (transcript) session.diagnostics.useTransport("buffered");
+      }
+      if (!transcript && streamingTranscript !== null) {
+        if (this.#isCurrent(session)) this.#invalidateAndRelease(session, "cancelled");
+        return;
       }
       if (transcript && !session.retainedTranscript && this.#ports.cleanup.enabled) {
         transcript = (
@@ -749,6 +754,7 @@ export class DictationSessionController {
 export const createNoopDictationStreamingPort = (): DictationControllerPorts["streaming"] => ({
   prepare: async () => ({
     start: async () => undefined,
+    stopAndFlush: async () => undefined,
     finish: async () => null,
     abort: () => undefined,
   }),

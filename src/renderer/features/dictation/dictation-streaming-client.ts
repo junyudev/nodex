@@ -1,187 +1,276 @@
+/* oxlint-disable unicorn/prefer-add-event-listener -- Each audio processor owns exactly one message handler, cleared when capture ends. */
 import {
-  DictationStreamDiagnosticsSchema,
   emptyDictationStreamDiagnostics,
   type DictationStreamDiagnostics,
 } from "../../../shared/dictation-diagnostics";
 import {
-  DICTATION_STREAM_MAX_OUTSTANDING_AUDIO_BYTES,
-  DICTATION_STREAMING_WINDOW_MESSAGE,
-  type DictationStreamingHostMessage,
+  applyDictationStreamingServerEvent,
+  createDictationStreamingTranscriptState,
+  readDictationStreamingFinalText,
+  type DictationStreamingConnectInfo,
 } from "../../../shared/dictation-streaming";
 import type {
   DictationControllerPorts,
   DictationStreamingAttempt,
 } from "./dictation-session-controller";
+import { encodeDictationPcm16 } from "./dictation-pcm";
+import { DictationStreamingError, DictationWebSocketClient } from "./dictation-websocket-client";
 import dictationPcmWorkletUrl from "./dictation-pcm-worklet.ts?worker&url";
 
-const RENDERER_STREAM_FINISH_TIMEOUT_MS = 9_000;
+const FIRST_AUDIO_TIMEOUT_MS = 2000;
+const AUDIO_FLUSH_TIMEOUT_MS = 1000;
+const createDeferred = <T>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((accept, fail) => {
+    resolve = accept;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+};
 
-const isHostMessage = (input: unknown): input is DictationStreamingHostMessage =>
-  Boolean(input && typeof input === "object" && "type" in input);
+interface PreparedAudio {
+  readonly context: AudioContext;
+  readonly processor: AudioWorkletNode;
+}
+let preparedAudio: PreparedAudio | null = null;
+let preparingAudio: Promise<void> | null = null;
 
-class MainDictationStreamingAttempt implements DictationStreamingAttempt {
-  readonly #sessionId: string;
+function createSilentAudioContext(): AudioContext {
+  try {
+    const options: AudioContextOptions & { sinkId: { type: "none" } } = {
+      sinkId: { type: "none" },
+    };
+    return new AudioContext(options);
+  } catch {
+    return new AudioContext();
+  }
+}
+
+/** Warm one disconnected, silent processor for the next recording. */
+export function prepareDictationAudio(): Promise<void> {
+  if (preparedAudio) return Promise.resolve();
+  preparingAudio ??= (async () => {
+    const context = createSilentAudioContext();
+    try {
+      await context.audioWorklet.addModule(dictationPcmWorkletUrl);
+      const processor = new AudioWorkletNode(context, "nodex-dictation-pcm", {
+        channelCount: 1,
+        channelCountMode: "explicit",
+        outputChannelCount: [1],
+      });
+      processor.connect(context.destination);
+      preparedAudio = { context, processor };
+    } catch (error) {
+      void context.close().catch(() => undefined);
+      throw error;
+    }
+  })().finally(() => {
+    preparingAudio = null;
+  });
+  return preparingAudio;
+}
+
+class BrowserDictationStreamingAttempt implements DictationStreamingAttempt {
+  #closed = false;
+  #captureStopped = false;
   #audioContext: AudioContext | null = null;
+  #processor: AudioWorkletNode | null = null;
   #source: MediaStreamAudioSourceNode | null = null;
-  #worklet: AudioWorkletNode | null = null;
-  #port: MessagePort | null = null;
-  #sequence = 0;
-  #outstandingBytes = 0;
-  #finishRequested = false;
-  #finishTimer: ReturnType<typeof setTimeout> | null = null;
-  #failed = false;
+  #preparation: Promise<void> | null = null;
+  #connection: Promise<void> | null = null;
+  #audioStart: ReturnType<typeof createDeferred<void>> | null = null;
+  #audioStop: Promise<void> | null = null;
+  #completeAudioStop: ((error?: Error) => void) | null = null;
+  #finish: Promise<string | null> | null = null;
+  #gain = 1;
+  #hasSignal: boolean | null = null;
   #diagnostics = emptyDictationStreamDiagnostics();
+  #transcripts = createDictationStreamingTranscriptState();
+  #client: DictationWebSocketClient;
+
+  constructor(readConnectInfo: () => Promise<DictationStreamingConnectInfo>) {
+    this.#client = new DictationWebSocketClient(
+      readConnectInfo,
+      (event) => {
+        if (this.#closed) return;
+        applyDictationStreamingServerEvent(this.#transcripts, event);
+        if (event.type === "transcript.final") this.#diagnostics.finalReceived = true;
+        if (
+          event.type === "transcript.final" ||
+          event.type === "transcript.segment" ||
+          event.type === "transcript.delta"
+        )
+          this.#diagnostics.transcriptEvents += 1;
+      },
+      this.#diagnostics,
+    );
+  }
   diagnostics(): DictationStreamDiagnostics {
     return { ...this.#diagnostics };
   }
-  #finalText = "";
-  #finishPromise: Promise<string | null>;
-  #resolveFinish: (text: string | null) => void = () => undefined;
-  readonly #handleHostPortMessage = (event: MessageEvent): void => {
-    this.#onHostMessage(event.data);
-  };
-  readonly #handleHostPortMessageError = (): void => this.#markFailed("port-failed");
-  readonly #handleWorkletMessage = (event: MessageEvent<{ readonly pcm16?: unknown }>): void => {
-    if (this.#finishRequested || this.#failed) return;
-    const pcm16 = event.data.pcm16;
-    if (!(pcm16 instanceof ArrayBuffer) || pcm16.byteLength === 0) return;
-    const byteLength = pcm16.byteLength;
-    if (this.#outstandingBytes + byteLength > DICTATION_STREAM_MAX_OUTSTANDING_AUDIO_BYTES) {
-      this.#markFailed("backpressure-overflow");
-      return;
-    }
-    this.#outstandingBytes += byteLength;
-    this.#port?.postMessage({ type: "audio-frame", sequence: this.#sequence++, pcm16 }, [pcm16]);
-  };
 
-  constructor(sessionId: string) {
-    this.#sessionId = sessionId;
-    this.#finishPromise = new Promise((resolve) => {
-      this.#resolveFinish = resolve;
-    });
+  prepare(): void {
+    this.#preparation ??= this.prepareSession();
+    void this.#preparation.catch((error: unknown) => this.recordFailure(error));
+  }
+
+  private async prepareSession(): Promise<void> {
+    await prepareDictationAudio();
+    if (this.#closed || this.#captureStopped) return;
+    const audio = preparedAudio;
+    if (!audio) throw new DictationStreamingError("audio-worklet-failed");
+    preparedAudio = null;
+    this.#audioContext = audio.context;
+    this.#processor = audio.processor;
+    this.#connection = this.#client.connect(audio.context.sampleRate);
+    void this.#connection.catch((error: unknown) => this.recordFailure(error));
   }
 
   async start(stream: MediaStream): Promise<void> {
-    if (this.#failed) throw new Error("Dictation streaming is unavailable");
-    const audioContext = new AudioContext();
-    this.#audioContext = audioContext;
+    this.prepare();
+    await this.#preparation;
+    if (this.#closed || this.#captureStopped) throw new DictationStreamingError("aborted");
+    const context = this.#audioContext;
+    const processor = this.#processor;
+    if (!context || !processor) throw new DictationStreamingError("audio-worklet-failed");
+    const firstAudio = createDeferred<void>();
+    const audioStart = createDeferred<void>();
+    this.#audioStart = audioStart;
+    void audioStart.promise.catch(() => undefined);
+    const timeout = setTimeout(
+      () => audioStart.reject(new DictationStreamingError("audio-start-timeout")),
+      FIRST_AUDIO_TIMEOUT_MS,
+    );
     try {
-      await audioContext.audioWorklet.addModule(dictationPcmWorkletUrl);
-      if (this.#failed) return;
-      const channel = new MessageChannel();
-      this.#port = channel.port1;
-      channel.port1.addEventListener("message", this.#handleHostPortMessage);
-      channel.port1.addEventListener("messageerror", this.#handleHostPortMessageError);
-      channel.port1.start();
-      window.postMessage(
-        {
-          type: DICTATION_STREAMING_WINDOW_MESSAGE,
-          sessionId: this.#sessionId,
-          sampleRateHz: audioContext.sampleRate,
-        },
-        window.location.origin,
-        [channel.port2],
+      this.#source = context.createMediaStreamSource(stream);
+      processor.port.onmessage = (event: MessageEvent<Float32Array | "stopped">) => {
+        if (this.#closed || this.#processor !== processor) return;
+        if (event.data === "stopped") {
+          this.#completeAudioStop?.();
+          return;
+        }
+        if (event.data.length === 0) return;
+        const frame = encodeDictationPcm16(event.data, this.#gain);
+        this.#gain = frame.gain;
+        this.#hasSignal = this.#hasSignal === true || frame.rms >= 0.003;
+        this.#client.appendPCM16(frame.pcm16);
+        firstAudio.resolve();
+      };
+      this.#source.connect(processor);
+      const running = (async () => {
+        if (context.state !== "running") await context.resume();
+        if (this.#captureStopped && !this.#closed && this.#hasSignal !== null) return;
+        if (this.#audioContext !== context || context.state !== "running")
+          throw new DictationStreamingError("audio-worklet-failed");
+      })();
+      void Promise.all([running, firstAudio.promise]).then(
+        () => audioStart.resolve(),
+        audioStart.reject,
       );
-      const source = audioContext.createMediaStreamSource(stream);
-      const worklet = new AudioWorkletNode(audioContext, "nodex-dictation-pcm", {
-        numberOfInputs: 1,
-        numberOfOutputs: 0,
-        channelCount: 1,
-      });
-      this.#source = source;
-      this.#worklet = worklet;
-      worklet.port.addEventListener("message", this.#handleWorkletMessage);
-      worklet.port.start();
-      source.connect(worklet);
-      if (this.#finishRequested) {
-        // oxlint-disable-next-line unicorn/require-post-message-target-origin -- MessagePort has no target origin.
-        this.#port.postMessage({ type: "finish" });
-      }
+      await Promise.all([this.#connection, audioStart.promise]);
     } catch (error) {
-      this.#markFailed("audio-worklet-failed");
+      this.recordFailure(error);
+      this.close();
       throw error;
+    } finally {
+      clearTimeout(timeout);
+      if (this.#audioStart === audioStart) this.#audioStart = null;
     }
   }
 
   finish(): Promise<string | null> {
-    this.#finishRequested = true;
-    this.#stopAudioGraph();
-    if (this.#failed) return Promise.resolve(null);
-    this.#port?.postMessage({ type: "finish" });
-    this.#finishTimer ??= setTimeout(
-      () => this.#markFailed("renderer-finish-timeout"),
-      RENDERER_STREAM_FINISH_TIMEOUT_MS,
-    );
-    return this.#finishPromise;
+    this.#finish ??= this.finishTranscript().catch((error: unknown) => {
+      this.recordFailure(error);
+      this.close();
+      return this.#hasSignal === false ? "" : null;
+    });
+    return this.#finish;
+  }
+
+  private async finishTranscript(): Promise<string | null> {
+    await this.stopAndFlush();
+    await this.#connection?.catch((error: unknown) => {
+      if (!this.#closed) throw error;
+    });
+    if (this.#closed) return this.#hasSignal === false ? "" : null;
+    await this.#client.finish();
+    if (this.#closed) return null;
+    this.#closed = true;
+    return readDictationStreamingFinalText(this.#transcripts);
+  }
+
+  stopAndFlush(): Promise<void> {
+    if (this.#audioStop) return this.#audioStop;
+    this.#captureStopped = true;
+    const processor = this.#processor;
+    if (!processor || !this.#source) {
+      this.disposeAudioCapture();
+      this.#audioStop = Promise.resolve();
+      return this.#audioStop;
+    }
+    this.#audioStop = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => this.#completeAudioStop?.(new DictationStreamingError("audio-flush-timeout")),
+        AUDIO_FLUSH_TIMEOUT_MS,
+      );
+      this.#completeAudioStop = (error) => {
+        clearTimeout(timeout);
+        this.#completeAudioStop = null;
+        this.disposeAudioCapture();
+        if (!error) {
+          resolve();
+          return;
+        }
+        this.#hasSignal = null;
+        this.recordFailure(error);
+        this.close();
+        reject(error);
+      };
+      // oxlint-disable-next-line unicorn/require-post-message-target-origin -- This is an AudioWorklet MessagePort.
+      processor.port.postMessage("stop");
+    });
+    return this.#audioStop;
   }
 
   abort(): void {
-    if (!this.#failed) this.#port?.postMessage({ type: "abort" });
-    this.#markFailed("aborted");
+    this.#diagnostics.failureCode ??= "aborted";
+    this.close();
   }
-
-  #onHostMessage(input: unknown): void {
-    if (!isHostMessage(input) || this.#failed) return;
-    switch (input.type) {
-      case "diagnostics": {
-        const parsed = DictationStreamDiagnosticsSchema.safeParse(input.diagnostics);
-        if (parsed.success) this.#diagnostics = parsed.data;
-        return;
-      }
-      case "audio-ack":
-        this.#outstandingBytes = Math.max(0, input.outstandingBytes);
-        return;
-      case "final":
-        this.#finalText = input.text.trim();
-        return;
-      case "failed":
-        this.#markFailed(input.error.code);
-        return;
-      case "closed":
-        if (input.outcome.kind === "completed") {
-          this.#resolveFinish(this.#finalText || null);
-          this.#cleanupPort();
-          return;
-        }
-        this.#markFailed();
-        return;
-      default:
-        return;
+  private close(): void {
+    this.#closed = true;
+    this.#captureStopped = true;
+    this.#completeAudioStop?.();
+    this.disposeAudioCapture();
+    this.#client.close();
+  }
+  private disposeAudioCapture(): void {
+    if (!this.#closed && this.#hasSignal !== null) this.#audioStart?.resolve();
+    else this.#audioStart?.reject(new DictationStreamingError("aborted"));
+    if (this.#processor) {
+      this.#processor.port.onmessage = null;
+      this.#processor.port.close();
     }
-  }
-
-  #markFailed(code: DictationStreamDiagnostics["failureCode"] = "port-failed"): void {
-    if (this.#failed) return;
-    this.#diagnostics.failureCode ??= code;
-    this.#failed = true;
-    if (this.#finishTimer) clearTimeout(this.#finishTimer);
-    this.#finishTimer = null;
-    this.#resolveFinish(null);
-    this.#stopAudioGraph();
-    this.#cleanupPort();
-  }
-
-  #stopAudioGraph(): void {
+    this.#processor?.disconnect();
     this.#source?.disconnect();
-    this.#worklet?.disconnect();
-    this.#worklet?.port.removeEventListener("message", this.#handleWorkletMessage);
+    this.#processor = null;
     this.#source = null;
-    this.#worklet = null;
-    const context = this.#audioContext;
+    void this.#audioContext?.close().catch(() => undefined);
     this.#audioContext = null;
-    void context?.close();
+    void prepareDictationAudio().catch(() => undefined);
   }
-
-  #cleanupPort(): void {
-    if (this.#finishTimer) clearTimeout(this.#finishTimer);
-    this.#finishTimer = null;
-    this.#port?.removeEventListener("message", this.#handleHostPortMessage);
-    this.#port?.removeEventListener("messageerror", this.#handleHostPortMessageError);
-    this.#port?.close();
-    this.#port = null;
+  private recordFailure(error: unknown): void {
+    this.#diagnostics.failureCode ??=
+      error instanceof DictationStreamingError ? error.code : "audio-worklet-failed";
   }
 }
 
-export const mainDictationStreamingPort: DictationControllerPorts["streaming"] = {
-  prepare: async (sessionId) => new MainDictationStreamingAttempt(sessionId),
-};
+export const createBrowserDictationStreamingPort = (
+  readConnectInfo: () => Promise<DictationStreamingConnectInfo>,
+): DictationControllerPorts["streaming"] => ({
+  prepare: async () => {
+    const attempt = new BrowserDictationStreamingAttempt(readConnectInfo);
+    attempt.prepare();
+    return attempt;
+  },
+});

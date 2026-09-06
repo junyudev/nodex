@@ -48,36 +48,12 @@ import {
   type GitWorkerMessageFromView,
 } from "../shared/git-worker-protocol";
 import type { McpAppSandboxHostMessageChannel } from "../shared/mcp-app/mcp-app-sandbox-contract";
-import type { DictationStreamingPortHandshake } from "../shared/dictation-streaming";
 import {
   RENDERER_DELIVERY_ACK_CHANNEL,
   RENDERER_DELIVERY_DATA_CHANNEL,
 } from "../shared/renderer-delivery-transport";
 import { createRendererDeliveryPreloadBridge } from "../shared/renderer-delivery-preload-bridge";
 import type { IpcApi } from "../shared/ipc-api";
-
-// Sandboxed Electron preloads must stay single-file bundles. Keep this tiny wire
-// guard local and type-checked so sharing it cannot create an emitted preload chunk.
-const DICTATION_STREAMING_PORT_CHANNEL: typeof import("../shared/dictation-streaming").DICTATION_STREAMING_PORT_CHANNEL =
-  "codex:dictation:streaming:port";
-const DICTATION_STREAMING_WINDOW_MESSAGE: typeof import("../shared/dictation-streaming").DICTATION_STREAMING_WINDOW_MESSAGE =
-  "nodex:dictation:streaming:port";
-
-const isDictationStreamingPortHandshake = (
-  input: unknown,
-): input is DictationStreamingPortHandshake => {
-  if (!input || typeof input !== "object") return false;
-  const value = input as Partial<DictationStreamingPortHandshake>;
-  return (
-    value.type === DICTATION_STREAMING_WINDOW_MESSAGE &&
-    typeof value.sessionId === "string" &&
-    /^[0-9a-f-]{36}$/iu.test(value.sessionId) &&
-    typeof value.sampleRateHz === "number" &&
-    Number.isFinite(value.sampleRateHz) &&
-    value.sampleRateHz >= 8_000 &&
-    value.sampleRateHz <= 192_000
-  );
-};
 
 // Sandboxed Electron preloads cannot require Rollup's local shared chunks.
 // Keep the wire literal type-checked without creating a runtime dependency on
@@ -93,14 +69,6 @@ ipcRenderer.on(MCP_APP_SANDBOX_HOST_MESSAGE_CHANNEL, (event, message) => {
   const targetOrigin = window.location.origin;
   if (targetOrigin === "null") return;
   window.postMessage(message, targetOrigin, event.ports);
-});
-
-window.addEventListener("message", (event) => {
-  if (event.source !== window || event.origin !== window.location.origin) return;
-  if (!isDictationStreamingPortHandshake(event.data) || event.ports.length !== 1) return;
-  const port = event.ports[0];
-  if (!port) return;
-  ipcRenderer.postMessage(DICTATION_STREAMING_PORT_CHANNEL, event.data, [port]);
 });
 
 function resolveManagedAssetPath(source: string): string | null {

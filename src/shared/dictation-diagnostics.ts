@@ -23,9 +23,12 @@ export const DictationStreamDiagnosticsSchema = z
     failureCode: z
       .enum([
         ...DICTATION_STREAMING_FAILURE_CODES,
+        // Persisted recordings retain diagnostic outcomes from retired transports.
+        "backpressure-overflow",
+        "invalid-audio-frame",
         "audio-worklet-failed",
-        "port-failed",
-        "renderer-finish-timeout",
+        "audio-start-timeout",
+        "audio-flush-timeout",
         "stream-unavailable",
         "aborted",
       ])

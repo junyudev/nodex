@@ -21,7 +21,7 @@ import {
   DictationSessionController,
   type DictationControllerPorts,
 } from "./dictation-session-controller";
-import { mainDictationStreamingPort } from "./dictation-streaming-client";
+import { createBrowserDictationStreamingPort } from "./dictation-streaming-client";
 import {
   browserGlobalDictationCompactWaveformPort,
   GLOBAL_DICTATION_COMPACT_BAR_COUNT,
@@ -409,7 +409,9 @@ export function GlobalDictationRoot() {
         },
         recorder: browserDictationRecorderFactory,
         waveform: browserGlobalDictationCompactWaveformPort,
-        streaming: mainDictationStreamingPort,
+        streaming: createBrowserDictationStreamingPort(
+          globalDictationTransport.readStreamingConnectInfo,
+        ),
         buffered: { transcribe },
         cleanup: {
           enabled: true,

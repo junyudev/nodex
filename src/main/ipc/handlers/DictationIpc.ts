@@ -8,7 +8,7 @@ import * as FiberMap from "effect/FiberMap";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import { writeFile } from "node:fs/promises";
-import { ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import { createKeyboardLayoutSnapshot } from "../../../shared/command-keybindings";
 import type { GlobalDictationContextMenuAction } from "../../../shared/global-dictation";
@@ -19,11 +19,9 @@ import {
 } from "../../../shared/dictation-history";
 import type { DictationSurface } from "../../../shared/dictation";
 import { MainConfig } from "../../app/MainConfig";
-import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
 import { CodexMedia } from "../../codex-application/CodexMedia";
 import { validateDictationTranscriptionInput } from "../../dictation-transcription-input";
 import { parseDictationSettingsPatch } from "../../dictation/dictation-settings-store";
-import { registerDictationStreamingElectronAdapter } from "../../dictation/dictation-streaming-electron-adapter";
 import { DictationRuntime } from "../../host-runtime/DictationRuntime";
 import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -155,22 +153,14 @@ export const live = (
       capability: string,
       developmentOrigin: string | null,
     ) => void;
-    readonly registerStreaming?: typeof registerDictationStreamingElectronAdapter;
   } = {},
 ): Layer.Layer<
   never,
   never,
-  | CodexMedia
-  | DictationRuntime
-  | ElectronDesktop
-  | ElectronIpc
-  | MainConfig
-  | ScopedCallbackRuntime
-  | WindowRuntime
+  CodexMedia | DictationRuntime | ElectronDesktop | ElectronIpc | MainConfig | WindowRuntime
 > =>
   Layer.effectDiscard(
     Effect.gen(function* () {
-      const callbacks = yield* ScopedCallbackRuntime;
       const config = yield* MainConfig;
       const desktop = yield* ElectronDesktop;
       const dictation = yield* DictationRuntime;
@@ -180,9 +170,6 @@ export const live = (
       const transcriptionFibers = yield* FiberMap.make<string, DictationTextResult>();
       const transcriptionOwners = new Map<string, number>();
       const authorizeRenderer = options.authorize ?? requireTrustedAppRendererSender;
-      const registerStreaming =
-        options.registerStreaming ?? registerDictationStreamingElectronAdapter;
-
       const trusted = (event: IpcMainInvokeEvent, capability: string) =>
         validate("authorize-renderer", () =>
           authorizeRenderer(event, capability, config.rendererUrl),
@@ -223,17 +210,8 @@ export const live = (
         );
       });
 
-      yield* Effect.acquireRelease(
-        Effect.sync(() =>
-          registerStreaming({
-            ipcMain,
-            readConnectInfo: (signal) =>
-              callbacks.runPromise(media.prepareStreamingConnectInfo, { signal }),
-            requireTrustedSender: (event) =>
-              authorizeRenderer(event, "Dictation streaming", config.rendererUrl),
-          }),
-        ),
-        (release) => Effect.sync(release),
+      yield* ipc.handleQuery("codex:dictation:streaming-connect-info:read", (event) =>
+        authorized(event, "Dictation streaming connection", media.prepareStreamingConnectInfo),
       );
 
       yield* ipc.handleQuery("codex:dictation:state:read", (event) =>

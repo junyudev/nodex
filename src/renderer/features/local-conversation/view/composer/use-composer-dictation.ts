@@ -13,13 +13,14 @@ import {
   acquireDictationMicrophoneLease,
   readBuiltInMicrophoneRouteHint,
   readDictationSettings,
+  readDictationStreamingConnectInfo,
   requestMicrophoneAccess,
   releaseDictationMicrophoneLease,
 } from "@/lib/api";
 import { acquireMicrophone } from "@/features/dictation/microphone-acquirer";
 import { browserDictationRecorderFactory } from "@/features/dictation/dictation-recorder";
 import { mainDictationHistoryPort } from "@/features/dictation/dictation-history-client";
-import { mainDictationStreamingPort } from "@/features/dictation/dictation-streaming-client";
+import { createBrowserDictationStreamingPort } from "@/features/dictation/dictation-streaming-client";
 import {
   DictationSessionController,
   type DictationControllerPorts,
@@ -136,7 +137,7 @@ export function useComposerDictation(
         },
         recorder: browserDictationRecorderFactory,
         waveform: browserDictationWaveformPort,
-        streaming: mainDictationStreamingPort,
+        streaming: createBrowserDictationStreamingPort(readDictationStreamingConnectInfo),
         buffered: {
           transcribe: async (blob, signal, _sessionId, onDiagnostics) => {
             if (signal.aborted) throw new DOMException("Dictation was aborted", "AbortError");
