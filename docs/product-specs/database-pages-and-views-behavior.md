@@ -712,6 +712,8 @@ Closing a modified draft provides short-lived reversible recovery using only
 serializable authored data. Live editors, Y.Docs, DOM nodes, and authority
 tokens never enter draft recovery state. `Create more` starts a clean title/body
 while retaining the user's selected properties and presentation choice.
+Recreating the composer's temporary editor preserves its authored description;
+each mounted editor receives a live draft Document, never a previously closed one.
 
 ## Page Stage
 

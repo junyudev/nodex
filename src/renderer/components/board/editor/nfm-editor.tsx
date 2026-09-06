@@ -11,8 +11,7 @@ import {
   type Ref,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { SideMenuController, type LinkToolbarProps, useCreateBlockNote } from "@blocknote/react";
-import { BlockNoteEditor } from "@blocknote/core";
+import { SideMenuController, type LinkToolbarProps } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { useSurfaceHistoryFocus } from "@/lib/surface-history/use-surface-history-focus";
 import { CornerDownLeft } from "@/components/shared/icons/generic-icons";
@@ -20,14 +19,8 @@ import { ChevronDownIcon, CloseIcon, ReplaceIcon } from "@/components/shared/ico
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/shadcn/style.css";
 
-import { nfmSchema } from "./nfm-schema";
+import { NfmEditorOwnerBoundary, type NfmEditorOwner } from "./nfm-editor-owner";
 import { ownsNfmEditorEvent } from "./nfm-editor-event-owner";
-import {
-  createNfmEditorExtensions,
-  createNfmPasteHandler,
-  NFM_DISABLED_EXTENSIONS,
-} from "./nfm-editor-extensions";
-import { createNfmLinkExtension } from "./nfm-link-extension";
 import { captureNfmPasteTarget, clearNfmPasteTargets } from "./nfm-paste-target";
 import { readNativePastePayload } from "./nfm-paste-event";
 import { readNfmLinkHrefAtElement } from "./nfm-link-element";
@@ -206,10 +199,7 @@ import {
 } from "@/features/local-conversation/local-conversation-store";
 import type { ModifyShortcutEditor } from "./modify-block-shortcut";
 import { handleNfmEditorModEnterShortcut } from "./nfm-editor-mod-enter-shortcut";
-import { PAGE_DESCRIPTION_PLACEHOLDER } from "@/lib/page-description-placeholder";
-import { createNfmEditorPlaceholders } from "./nfm-editor-placeholders";
 import {
-  createNfmEditorModeOptions,
   getNfmEditorInstanceKey,
   resolveNfmEditorBlockActionCapabilities,
   type NfmEditorSource,
@@ -228,7 +218,6 @@ import {
   hasTypedOwnerType,
   resolveTypedOwnerDocumentChanges,
 } from "@/lib/typed-owner-blocks";
-import { NfmStructuralEditingController } from "./nfm-structural-editing-extension";
 import type { NfmReceivingPageTransferIntent } from "./nfm-history-command";
 import { readNodexClipboardFragment } from "../../../../shared/clipboard-paste";
 import { applyLocalNfmTurnInto, type NfmTurnBlocksIntoInput } from "@/lib/nfm-turn-into-targets";
@@ -301,6 +290,7 @@ export interface NfmEditorProps extends NfmEditorCommonProps {
 interface NfmEditorInstanceProps extends NfmEditorCommonProps {
   source: NfmEditorSource;
   editorInstanceKey: string;
+  owner: NfmEditorOwner;
 }
 
 interface InlineViewHostContextRuntimeEditor {
@@ -421,18 +411,33 @@ export function NfmEditor(props: NfmEditorProps) {
   });
 
   return (
-    <NfmEditorInstance
+    <NfmEditorOwnerBoundary
       key={editorInstanceKey}
-      {...props}
-      source={source}
-      editorInstanceKey={editorInstanceKey}
-    />
+      input={{
+        source,
+        accessContext: props.contentAccessContext,
+        editorInstanceKey,
+        libraryId: props.surfaceMutationBarrier?.libraryId,
+        placeholder: props.placeholder,
+        editorSession: props.editorSession,
+      }}
+    >
+      {(owner) => (
+        <NfmEditorInstance
+          {...props}
+          source={source}
+          editorInstanceKey={editorInstanceKey}
+          owner={owner}
+        />
+      )}
+    </NfmEditorOwnerBoundary>
   );
 }
 
 const EMPTY_LINKED_CODEX_THREADS: readonly PageStageLinkedThread[] = [];
 
 function NfmEditorInstance({
+  owner,
   contentAccessContext,
   projectName = null,
   projectWorkspacePath,
@@ -452,7 +457,6 @@ function NfmEditorInstance({
   onSendThreadSectionPrompt,
   isActivePanelTab = true,
   headingRail,
-  placeholder = PAGE_DESCRIPTION_PLACEHOLDER,
   className,
   surfaceMutationBarrier,
   embeddedBoundary,
@@ -612,8 +616,6 @@ function NfmEditorInstance({
     },
     [resolveCopiedFileReferences],
   );
-  const resolveCopiedFileReferencesRef = useRef(resolveCopiedFileReferences);
-  resolveCopiedFileReferencesRef.current = resolveCopiedFileReferences;
 
   const threadMentionSummaryMap = useMemo(
     () => ({
@@ -689,83 +691,15 @@ function NfmEditorInstance({
       void pageBlockId;
     },
   });
-  const structuralEditingController = useMemo(
-    () =>
-      editorSession?.getOrCreateRetainedResource(
-        "nfm-structural-editing-controller",
-        () => new NfmStructuralEditingController(),
-      ) ?? new NfmStructuralEditingController(),
-    [editorSession],
+  const {
+    editor,
+    controller: structuralEditingController,
+    structuralSession: structuralEditingSession,
+  } = owner;
+  useLayoutEffect(
+    () => owner.bindCallbacks({ uploadFile, resolveFileUrl, resolveCopiedFileReferences }),
+    [owner, uploadFile, resolveFileUrl, resolveCopiedFileReferences],
   );
-  const pasteHandler = useMemo(
-    () =>
-      createNfmPasteHandler({
-        onStructuralClaimPaste: ({ descriptor, portableBlocks }) =>
-          structuralEditingController.current?.handleStructuralClaimPaste(
-            descriptor,
-            portableBlocks,
-          ) ?? false,
-        onStructuralPaste: (envelope) => {
-          const session = structuralEditingController.current;
-          if (session) return session.handlePaste(envelope);
-          if (
-            envelope.libraryId !== surfaceMutationBarrier?.libraryId ||
-            envelope.storeEpoch !== source.storeEpoch
-          ) {
-            return false;
-          }
-          toast.danger("This structural content is still preparing. Try pasting again.");
-          return true;
-        },
-        onStructuralBlockPaste: (blocks) =>
-          structuralEditingController.current?.handleBlockPaste(blocks) ?? false,
-        shouldHandleStructuralBlockPaste: () =>
-          structuralEditingController.current?.hasTypedOwnerSelection() ?? false,
-      }),
-    [source.storeEpoch, structuralEditingController, surfaceMutationBarrier?.libraryId],
-  );
-  const extensions = useMemo(
-    () =>
-      createNfmEditorExtensions({
-        resolveCopiedFileReferences: (payload) => resolveCopiedFileReferencesRef.current(payload),
-        onStructuralClipboard: (action, { rootBlockIds, presentation, writeClaim }) =>
-          structuralEditingController.current?.handleClipboard(
-            action,
-            rootBlockIds,
-            presentation,
-            writeClaim,
-          ) ?? false,
-        onStructuralClipboardUnavailable: () =>
-          toast.danger("Structural editing is initializing. Try the action again."),
-      }),
-    [structuralEditingController],
-  );
-  const tiptapExtensions = useMemo(() => [createNfmLinkExtension()], []);
-
-  const editorOptions = createNfmEditorModeOptions(source, {
-    schema: nfmSchema,
-    generateBlockId: createUuidV7,
-    tabBehavior: "prefer-indent" as const,
-    placeholders: createNfmEditorPlaceholders(placeholder),
-    uploadFile,
-    resolveFileUrl,
-    pasteHandler,
-    tables: {
-      headers: true,
-      cellBackgroundColor: true,
-      cellTextColor: false,
-      splitCells: false,
-    },
-    disableExtensions: [...NFM_DISABLED_EXTENSIONS, "link"],
-    extensions,
-    _tiptapOptions: {
-      extensions: tiptapExtensions,
-    },
-  });
-  const retainedEditor = editorSession?.getOrCreateEditor(editorInstanceKey, () =>
-    BlockNoteEditor.create(editorOptions),
-  );
-  const editor = useCreateBlockNote(editorOptions, [editorInstanceKey], retainedEditor);
   useLayoutEffect(() => {
     const view = editor.prosemirrorView;
     if (!isActivePanelTab) clearNfmPasteTargets(view);
@@ -1651,28 +1585,6 @@ function NfmEditorInstance({
     );
   }, [source.clientSessionId, structuralMutationParticipant]);
 
-  const structuralEditingSession = useMemo(
-    () =>
-      structuralEditingController.attachEditor(
-        editor,
-        editorSession?.descriptor ??
-          (surfaceMutationBarrier?.libraryId
-            ? {
-                libraryId: surfaceMutationBarrier.libraryId,
-                accessContext: contentAccessContext,
-                storeEpoch: source.storeEpoch,
-              }
-            : undefined),
-      ),
-    [
-      contentAccessContext,
-      editor,
-      editorSession,
-      source.storeEpoch,
-      structuralEditingController,
-      surfaceMutationBarrier?.libraryId,
-    ],
-  );
   const historyEditableRoot = useCallback(() => editor.domElement ?? null, [editor]);
   useSurfaceHistoryFocus(
     containerRef,
@@ -1714,14 +1626,6 @@ function NfmEditorInstance({
   useLayoutEffect(
     () => () => structuralEditingController.deactivate(structuralEditingSession),
     [structuralEditingController, structuralEditingSession],
-  );
-
-  useEffect(
-    () => () => {
-      if (editorSession) return;
-      void structuralEditingController.dispose();
-    },
-    [editorSession, structuralEditingController],
   );
 
   useEffect(() => {

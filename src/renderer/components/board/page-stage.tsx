@@ -145,6 +145,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   focusIntent,
 }: PageStageDescriptionEditorProps) {
   const navigationRef = useRef<NfmEditorBoundaryHandle | null>(null);
+  const consumedFocusIntentRef = useRef<number | null>(null);
   const rawContentRootRef = useRef<HTMLDivElement | null>(null);
   const viewportLeaseRef = useRef<PageStageViewportLease | null>(null);
   const documentScopeKey = contentAccessContextKey(contentAccessContext);
@@ -171,18 +172,32 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
     };
   }, [viewportSession, viewportSessionRef]);
 
-  useEffect(() => {
-    if (!focusIntent) return;
+  const focusPendingBlock = useCallback(() => {
+    if (!focusIntent || consumedFocusIntentRef.current === focusIntent.id) return;
+    if (!viewportLeaseRef.current) return;
     if (!navigationRef.current?.focusBlock(focusIntent.blockId)) return;
+    consumedFocusIntentRef.current = focusIntent.id;
     viewportSession.adoptCurrentViewport();
     consumePageBlockFocus(focusIntent);
   }, [focusIntent, viewportSession]);
+  useEffect(focusPendingBlock, [focusPendingBlock]);
+
+  // Navigation and mounted DOM become ready in separate child layout effects.
+  // Either arrival retries the intent, after viewport restoration has finished.
+  const bindNavigation = useCallback(
+    (handle: NfmEditorBoundaryHandle | null) => {
+      navigationRef.current = handle;
+      if (handle) focusPendingBlock();
+    },
+    [focusPendingBlock],
+  );
 
   useEffect(
     () => () => {
-      viewportLeaseRef.current?.release();
-      viewportLeaseRef.current = null;
-      if (!editorSession) viewportSession.dispose();
+      // View cleanup can be replayed while React retains this session. Its
+      // listeners/timers belong to the view, not to terminal model disposal.
+      // Only release this session: a replacement view may already own the ref.
+      if (!editorSession) viewportSession.unmount();
     },
     [editorSession, viewportSession],
   );
@@ -206,8 +221,9 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
       if (!scrollElement) return;
       viewportLeaseRef.current?.release();
       viewportLeaseRef.current = viewportSession.mount(scrollElement, editorRoot);
+      focusPendingBlock();
     },
-    [scrollContainerRef, viewportSession],
+    [focusPendingBlock, scrollContainerRef, viewportSession],
   );
   const handleEditorViewUnmount = useCallback(() => {
     viewportLeaseRef.current?.release();
@@ -272,7 +288,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
       }}
       placeholder={PAGE_DESCRIPTION_PLACEHOLDER}
       editorSession={editorSession}
-      navigationRef={navigationRef}
+      navigationRef={bindNavigation}
       onEditorViewMount={handleEditorViewMount}
       onEditorViewUnmount={handleEditorViewUnmount}
     />

@@ -1,6 +1,6 @@
-import { act, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, render as renderReact, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -12,6 +12,9 @@ import { projectPageDetailToStageModel, type PageStagePageModel } from "@/lib/pa
 import { readPageStageSemanticProperties } from "@/lib/page-stage-properties";
 import type { PageStageDocumentAuthority, PageStageProps } from "./page-stage/types";
 import { renderWithMaitai as render } from "@/test/thread-maitai";
+import { MaitaiProvider } from "@/lib/maitai/maitai-scope";
+import { createMaitaiStore, disposeMaitaiStore } from "@/lib/maitai/maitai-store";
+import { TestThreadRouteScopePath } from "@/test/maitai-scope-harness";
 import { settleAsyncRender } from "@/test/dom";
 import {
   PAGE_DOCUMENT_SCHEMA_VERSION,
@@ -21,8 +24,15 @@ import { plainTextToPortableRichText } from "../../../shared/block-documents/por
 import { populateBlockDocumentBodyFromNfm } from "../../../shared/block-documents/block-document-codec";
 import { projectContentAccess } from "../../../shared/content-access-context";
 import { buildPageDetailStoryResult } from "./page-stage/page-stage-story-page-detail";
+import { consumePageBlockFocus, requestPageBlockFocus } from "@/lib/page-block-focus-intents";
+import type { NfmEditorBoundaryHandle } from "./editor/nfm-editor";
+import {
+  savePageStageViewportSnapshot,
+  loadPageStageViewportSnapshot,
+} from "@/lib/page-stage-viewport-storage";
 
 let lastNfmEditorProps: Record<string, unknown> | null = null;
+let simulateMountedEditor = false;
 let lastRawContent: string | null = null;
 let publishCollaborativeTitle: ((title: string) => void) | null = null;
 let surfaceDocument = createPageDocument({
@@ -33,7 +43,16 @@ let surfaceDocument = createPageDocument({
 vi.mock("./editor/nfm-editor", () => ({
   NfmEditor: (props: Record<string, unknown>) => {
     lastNfmEditorProps = props;
-    return <div>Mock collaborative editor</div>;
+    const root = useRef<HTMLDivElement>(null);
+    const pageId = (props.sourcePageContext as { pageId: string }).pageId;
+    const onMount = props.onEditorViewMount as (root: HTMLElement) => void;
+    const onUnmount = props.onEditorViewUnmount as () => void;
+    useLayoutEffect(() => {
+      if (!simulateMountedEditor || !root.current) return;
+      onMount(root.current);
+      return onUnmount;
+    }, [onMount, onUnmount, pageId]);
+    return <div ref={root}>Mock collaborative editor</div>;
   },
 }));
 
@@ -162,9 +181,10 @@ function documentAuthority(): PageStageDocumentAuthority {
 function renderStage(
   page: PageStagePageModel = toStageModel(buildPage()),
   breadcrumbProps: Pick<PageStageProps, "breadcrumb"> = {},
+  renderView = render,
 ) {
   const { PageStage } = requirePageStage();
-  return render(
+  return renderView(
     <NodexTooltipProvider>
       <PageStage
         contentAccessContext={projectContentAccess("default")}
@@ -195,6 +215,7 @@ describe("page stage", () => {
   beforeEach(async () => {
     localStorage.clear();
     lastNfmEditorProps = null;
+    simulateMountedEditor = false;
     lastRawContent = null;
     publishCollaborativeTitle = null;
     surfaceDocument.document.destroy();
@@ -205,6 +226,107 @@ describe("page stage", () => {
     populateBlockDocumentBodyFromNfm(surfaceDocument.body, "# Live collaborative body\n\n- item");
     loadedPageStage = await import("./page-stage");
   });
+
+  test("keeps the new Page viewport subscribed after the previous Page cleanup", async () => {
+    simulateMountedEditor = true;
+    const view = renderStage();
+    await settleAsyncRender();
+    const scrollElement = view.getByTestId("page-stage-scroll-container");
+    const editorRoot = view.getByText("Mock collaborative editor");
+    Object.defineProperties(scrollElement, {
+      clientHeight: { value: 400, configurable: true },
+      scrollHeight: { value: 1600, configurable: true },
+    });
+    const rects = [new DOMRect(0, 0, 400, 400)] as unknown as DOMRectList;
+    vi.spyOn(scrollElement, "getClientRects").mockReturnValue(rects);
+    vi.spyOn(editorRoot, "getClientRects").mockReturnValue(rects);
+    renderStage(toStageModel(buildPage({ id: "page-next" })), {}, (ui) => {
+      view.rerender(ui);
+      return view;
+    });
+    await act(async () => {
+      fireEvent.wheel(scrollElement);
+      scrollElement.scrollTop = 240;
+      fireEvent.scroll(scrollElement);
+      await Promise.resolve();
+    });
+    expect(loadPageStageViewportSnapshot("project:default", "page-next")).toEqual({
+      version: 2,
+      kind: "offset",
+      scrollTop: 240,
+    });
+  });
+
+  test.each(["view-first", "navigation-first"] as const)(
+    "consumes delayed block focus once after both editor capabilities arrive: %s",
+    async (order) => {
+      savePageStageViewportSnapshot("project:default", "page-1", {
+        version: 2,
+        kind: "offset",
+        scrollTop: 80,
+      });
+      const intent = requestPageBlockFocus({
+        projectId: "default",
+        pageId: "page-1",
+        blockId: "target-block",
+      });
+      const view = renderStage();
+      try {
+        await settleAsyncRender();
+        const editorRoot = view.getByText("Mock collaborative editor");
+        const scrollElement = view.getByTestId("page-stage-scroll-container");
+        Object.defineProperties(scrollElement, {
+          clientHeight: { value: 400, configurable: true },
+          scrollHeight: { value: 1600, configurable: true },
+        });
+        const rects = [new DOMRect(0, 0, 400, 400)] as unknown as DOMRectList;
+        vi.spyOn(scrollElement, "getClientRects").mockReturnValue(rects);
+        vi.spyOn(editorRoot, "getClientRects").mockReturnValue(rects);
+        const focusBlock = vi.fn(() => {
+          scrollElement.scrollTop = 240;
+          return true;
+        });
+        const navigation: NfmEditorBoundaryHandle = {
+          focusBlock,
+          focus: () => true,
+          focusBoundary: () => true,
+        };
+        const attachNavigation = () => {
+          const ref =
+            lastNfmEditorProps?.navigationRef as import("react").Ref<NfmEditorBoundaryHandle>;
+          if (typeof ref === "function") ref(navigation);
+          else if (ref) ref.current = navigation;
+        };
+        const mountView = () => {
+          (lastNfmEditorProps?.onEditorViewMount as (root: HTMLElement) => void)(editorRoot);
+        };
+        await act(async () => {
+          (order === "view-first" ? mountView : attachNavigation)();
+          await Promise.resolve();
+        });
+        expect(focusBlock).not.toHaveBeenCalled();
+        await act(async () => {
+          (order === "view-first" ? attachNavigation : mountView)();
+          await Promise.resolve();
+        });
+        expect(focusBlock).toHaveBeenCalledExactlyOnceWith("target-block");
+        expect(scrollElement.scrollTop).toBe(240);
+        expect(loadPageStageViewportSnapshot("project:default", "page-1")).toEqual({
+          version: 2,
+          kind: "offset",
+          scrollTop: 240,
+        });
+        await act(async () => {
+          attachNavigation();
+          await Promise.resolve();
+        });
+        expect(focusBlock).toHaveBeenCalledTimes(1);
+      } finally {
+        view.unmount();
+        consumePageBlockFocus(intent);
+      }
+    },
+  );
 
   test("mounts the rich editor only from the collaborative Document source", async () => {
     writePageStageContentWidthPreference(true);
@@ -227,6 +349,40 @@ describe("page stage", () => {
     expect(
       container.querySelector('[data-page-stage-heading-navigation-portal-target="true"]'),
     ).not.toBeNull();
+  });
+
+  test("reattaches the standalone raw viewport after StrictMode view cleanup", async () => {
+    writePageStageShowRawContentPreference(false);
+    const store = createMaitaiStore();
+    const view = renderStage(toStageModel(buildPage()), {}, (ui) =>
+      renderReact(ui, {
+        reactStrictMode: true,
+        wrapper: ({ children }) => (
+          <MaitaiProvider store={store}>
+            <TestThreadRouteScopePath>{children}</TestThreadRouteScopePath>
+          </MaitaiProvider>
+        ),
+      }),
+    );
+    try {
+      await settleAsyncRender();
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Show raw" }));
+        await Promise.resolve();
+      });
+      await act(async () => {
+        populateBlockDocumentBodyFromNfm(surfaceDocument.body, "Updated after view replay");
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(view.getByLabelText("Raw page source").textContent).toBe(
+          "Updated after view replay",
+        );
+      });
+    } finally {
+      view.unmount();
+      disposeMaitaiStore(store);
+    }
   });
 
   test("renders the current breadcrumb item from the live Y.Text title", async () => {

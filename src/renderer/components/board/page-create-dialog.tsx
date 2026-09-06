@@ -32,11 +32,10 @@ import {
   buildPageCreateInput,
   capturePageCreateDraftSnapshot,
   createEmptyPageCreateDraftSnapshot,
-  createPageCreateDescriptionDraft,
   pageCreateDraftSnapshotsEqual,
-  type PageCreateDescriptionDraft,
   type PageCreateDraftSnapshot,
 } from "@/lib/page-create-draft";
+import { usePageCreateDescriptionDraft } from "@/lib/use-page-create-description-draft";
 import { restorePageCreateFocus, type PageCreateOrigin } from "@/lib/page-create-focus";
 import { createBoardPage } from "@/lib/board-page-create-command";
 import { BOARD_PRIORITY_OPTIONS } from "@/lib/board-options";
@@ -140,8 +139,9 @@ function PageCreateDialogContent({
   const [selectedTagIds, setSelectedTagIds] = useState<readonly string[]>(
     restoredTagOptionsRef.current.map((option) => option.id),
   );
-  const [descriptionDraft, setDescriptionDraft] = useState<PageCreateDescriptionDraft>(() =>
-    createPageCreateDescriptionDraft(requestId, 0, restoredSnapshot?.descriptionNfm ?? ""),
+  const { draft: descriptionDraft, reset: resetDescriptionDraft } = usePageCreateDescriptionDraft(
+    requestId,
+    restoredSnapshot?.descriptionNfm ?? "",
   );
   const [createMore, setCreateMore] = useState(restoredSnapshot?.createMore ?? false);
   const [expanded, setExpanded] = useState(restoredSnapshot?.expanded ?? initialExpanded);
@@ -179,7 +179,7 @@ function PageCreateDialogContent({
       : createEmptyPageCreateDraftSnapshot(initialStatus),
   );
 
-  useEffect(() => () => descriptionDraft.document.destroy(), [descriptionDraft]);
+  if (!descriptionDraft) return null;
 
   const captureSnapshot = (): PageCreateDraftSnapshot =>
     capturePageCreateDraftSnapshot({
@@ -241,9 +241,7 @@ function PageCreateDialogContent({
     baselineRef.current = nextBaseline;
     setTitle("");
     setError(null);
-    setDescriptionDraft((current) =>
-      createPageCreateDescriptionDraft(requestId, current.generation + 1),
-    );
+    resetDescriptionDraft();
     requestAnimationFrame(() => titleInputRef.current?.focus());
   };
 
