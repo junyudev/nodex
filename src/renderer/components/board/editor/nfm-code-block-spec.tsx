@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { getCodeBlockPlainText } from "@/lib/nfm/code-block-model";
 import { CodeBlockReadOnlyHeader } from "@/components/shared/code-block-readonly-header";
 import { useTheme } from "@/lib/use-theme";
+import { resolveCodeLanguage } from "../../../../shared/nfm/code-language-catalog";
 import { MermaidCodePreview } from "./mermaid-code-preview";
 
 export interface NfmCodeBlockSpecOptions extends CodeBlockOptions {
@@ -115,7 +116,7 @@ export const createNfmCodeBlockSpec = createReactBlockSpec(
       code: true,
       defining: true,
       isolating: false,
-      highlight: (block) => block.props.language,
+      highlight: (block) => resolveCodeLanguage(block.props.language).shikiLanguage ?? undefined,
     },
     parse: parsePreCode,
     parseContent: (options) => parsePreCodeContent(options, "codeBlock"),

@@ -419,9 +419,9 @@ fn validate_candidate_semantics(
     validate_codex_thread_timestamp_invariants(connection)?;
     if validate_documents {
         validate_restore_documents(connection)?;
+        validate_document_authorities(connection)?;
     }
     validate_identity(connection, profile_id, library_id)?;
-    validate_document_authorities(connection)?;
     let store_schema_version =
         connection.query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))?;
     let schema_owner = connection

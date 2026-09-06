@@ -952,7 +952,7 @@ fn asset_name(uri: &str) -> Result<String, StoreError> {
     Ok(name.to_owned())
 }
 
-fn infer_mime_type(name: &str) -> &'static str {
+pub(crate) fn infer_mime_type(name: &str) -> &'static str {
     match Path::new(name)
         .extension()
         .and_then(|value| value.to_str())

@@ -40,11 +40,24 @@ for (const language of catalog.languages) {
   productLanguageIdsByShikiLanguage.set(shikiLanguage, productLanguageIds);
 }
 
-const languageLoaders = [...loaderByLanguageId]
+// Grammar names are the highlighting contract. Product IDs may be aliases, but
+// must never shadow another grammar (JavaScript/JSX and Flow share this boundary).
+const loaders = new Map(
+  [...productLanguageIdsByShikiLanguage.keys()].map((grammar) => [grammar, grammar]),
+);
+for (const [languageId, grammar] of loaderByLanguageId) {
+  if (!loaders.has(languageId)) loaders.set(languageId, grammar);
+}
+
+const languageLoaders = [...loaders]
   .map(([languageId, shikiLanguage]) => {
     const productAliases = productLanguageIdsByShikiLanguage
       .get(shikiLanguage)
-      .filter((productLanguageId) => productLanguageId !== shikiLanguage);
+      .filter(
+        (productLanguageId) =>
+          productLanguageId !== shikiLanguage &&
+          !productLanguageIdsByShikiLanguage.has(productLanguageId),
+      );
     const modulePath = serializeGeneratedCodeString(`@shikijs/langs-precompiled/${shikiLanguage}`);
     if (productAliases.length === 0) {
       return `  ${serializeGeneratedCodeString(languageId)}: () => import(${modulePath}),`;

@@ -13,6 +13,7 @@ export function registerNodexPrivilegedSchemes(
     {
       scheme: APP_PROTOCOL_SCHEME,
       privileges: {
+        corsEnabled: true,
         secure: true,
         standard: true,
         stream: true,

@@ -43,6 +43,7 @@ const BASELINE_STORE_REVISION: i64 = 130;
 const CURRENT_DOCUMENT_SCHEMA_REVISION: i64 = 135;
 const DATABASE_VIEW_V5_STORE_REVISION: i64 = 144;
 const DATABASE_VIEW_V6_STORE_REVISION: i64 = 146;
+const LIBRARY_FILES_STORE_REVISION: i64 = 152;
 const CORE_SCHEMA_OWNER: &str = "rust_core";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -204,6 +205,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         from_revision: 152,
         to_revision: 159,
         apply: migrate_v152_to_v159,
+    },
+    MigrationStep {
+        from_revision: 159,
+        to_revision: 160,
+        apply: migrate_v159_to_v160,
     },
 ];
 
@@ -428,7 +434,7 @@ fn validate_migration_source(
     validate_migration_source_semantics(
         connection,
         view_contract,
-        source_revision >= CURRENT_STORE_REVISION,
+        source_revision >= LIBRARY_FILES_STORE_REVISION,
     )?;
     if source_revision >= CURRENT_DOCUMENT_SCHEMA_REVISION {
         validate_restore_documents(connection)?;
@@ -2024,6 +2030,35 @@ fn migrate_v152_to_v159(
             context.target_schema_fingerprint,
             context.backup_name,
             context.completed_at_unix_ms
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v159_to_v160(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    let now: String = connection.query_row(
+        "SELECT strftime('%Y-%m-%dT%H:%M:%fZ', ?1 / 1000.0, 'unixepoch')",
+        [context.completed_at_unix_ms],
+        |row| row.get(0),
+    )?;
+    let evidence = crate::document::migrate_document_assets(connection, &now)?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision, target_revision,
+           source_schema_fingerprint, target_schema_fingerprint, backup_name,
+           completed_at_unix_ms, evidence_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+            serde_json::to_string(&evidence)
+                .map_err(|_| internal("Asset migration evidence cannot be encoded"))?
         ],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
@@ -4109,7 +4144,7 @@ mod tests {
             .expect("v136 migration history");
         assert_eq!(
             (source_revision, target_revision),
-            (152, CURRENT_STORE_REVISION)
+            (159, CURRENT_STORE_REVISION)
         );
         assert!(backup_name.starts_with(&format!("v136-to-v{CURRENT_STORE_REVISION}-")));
         let backup_path = directory
@@ -5044,7 +5079,7 @@ mod tests {
         let preparation =
             prepare_profile_store(&mut reopened, profile.path()).expect("reopen Profile");
         assert_eq!(preparation.migrated_from_version, None);
-        assert_eq!(preparation.schema_version, 159);
+        assert_eq!(preparation.schema_version, CURRENT_STORE_REVISION);
         validate_current_store(&reopened).expect("valid reopened Store");
     }
 

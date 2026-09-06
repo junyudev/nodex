@@ -346,6 +346,35 @@ mod tests {
                          )",
                         [],
                     )?;
+                    // A diagnostic fork preserves source anomalies. Restore and
+                    // ordinary Document reads still require an owning Block.
+                    transaction.execute_batch(
+                        "INSERT INTO documents(id, library_id, generation, head_seq, schema_key,
+                           schema_version, state_vector, state_hash, readiness, authority,
+                           created_at, updated_at, sync_engine)
+                         VALUES ('unowned-source', 'library:clone-test', 1, 0, 'nodex.page', 3,
+                           X'', '', 'ready', 'ydoc_primary', '2026-08-21T00:00:00.000Z',
+                           '2026-08-21T00:00:00.000Z', 'yjs');",
+                    )?;
+                    let document = crate::document::prepare_page_yjs_genesis("unowned-source", "Retained", "retained-root")?;
+                    transaction.execute("UPDATE documents SET state_vector = ?1 WHERE id = 'unowned-source'", [&document.state_vector_v1])?;
+                    transaction.execute(
+                        "INSERT INTO document_snapshots(document_id, generation, snapshot_seq, state_vector,
+                           snapshot_update, snapshot_hash, schema_version, created_at)
+                         VALUES ('unowned-source', 1, 0, ?1, ?2, ?3, 3, '2026-08-21T00:00:00.000Z')",
+                        rusqlite::params![document.state_vector_v1, document.update_v1, crate::document::sha256(&document.update_v1)],
+                    )?;
+                    let materialization = &document.materialization;
+                    let title = serde_json::to_string(&materialization.rich_title).unwrap();
+                    transaction.execute(
+                        "INSERT INTO document_materializations(document_id, generation, projected_seq,
+                           schema_version, title, title_rich_json, title_rich_hash, nfm, plain_text, preview,
+                           block_tree_json, updated_at)
+                         VALUES ('unowned-source', 1, 0, 3, ?1, ?2, ?3, ?4, ?5, ?6, ?7, '2026-08-21T00:00:00.000Z')",
+                        rusqlite::params![materialization.title, title, crate::document::sha256(title.as_bytes()),
+                            materialization.nfm, materialization.plain_text, materialization.preview,
+                            serde_json::to_string(&materialization.block_tree).unwrap()],
+                    )?;
                     Ok(())
                 })
             })
@@ -404,6 +433,17 @@ mod tests {
         assert_eq!(receipt.source_store_epoch, "epoch:profile-clone-source");
         assert_eq!(receipt.store_epoch, receipt.source_store_epoch);
         let clone = open_writer(&target.join(STORE_FILE_NAME)).expect("cloned Store");
+        assert!(crate::document::read_document_authority(&clone, "unowned-source").is_err());
+        assert_eq!(
+            clone
+                .query_row(
+                    "SELECT count(*) FROM documents WHERE id = 'unowned-source'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1,
+        );
         let clone_secrets = clone
             .query_row(
                 "SELECT token.key_material, runtime.jitter_salt \

@@ -6060,6 +6060,7 @@ fn sqlite_now(connection: &rusqlite::Connection) -> Result<String, StoreError> {
 
 #[cfg(test)]
 mod tests {
+    mod asset_migration;
     mod recovery;
     use std::fs;
 

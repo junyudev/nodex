@@ -15,6 +15,7 @@ it.effect("keeps temporary media outside the Core Blob namespace", () =>
       fs.writeFileSync(path.join(home, "assets", "retained.png"), "Core-owned bytes");
       yield* Effect.gen(function* () {
         const media = yield* TemporaryAssets;
+        assert.throws(() => media.resolveAssetPath("retained.png"));
         assert.throws(() => media.readManagedAssetImage("nodex://assets/retained.png"));
         const saved = media.saveUploadedImage({
           name: "capture.png",

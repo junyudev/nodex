@@ -1,3 +1,5 @@
+mod asset_migration;
+pub(crate) use asset_migration::migrate_document_assets;
 mod block_document;
 mod canvas;
 mod canvas_files;

@@ -41,6 +41,7 @@ export interface AppProtocolHandlerOptions
   readonly rendererRoot: string;
   readonly platform?: NodeJS.Platform;
   readonly netFetch?: (url: string) => Promise<Response>;
+  readonly getDevelopmentRendererUrl?: () => string | null;
 }
 
 export interface AppProtocolRegistrationOptions extends AppProtocolHandlerOptions {
@@ -240,6 +241,7 @@ export async function createRangeFileResponse(
   } catch {
     return notFoundResponse();
   }
+  if (!metadata.isFile()) return notFoundResponse();
 
   const mimeType = (dependencies.lookupMimeType ?? lookupMimeType)(filePath);
   const headers = new Headers({
@@ -286,7 +288,7 @@ export function createAppProtocolHandler(
     stat: options.stat,
   };
 
-  return async (request) => {
+  const serve = async (request: Request): Promise<Response> => {
     const filePath = resolveAppRequestPath(request.url, options.rendererRoot, {
       lookupMimeType: mimeLookup,
       resolvePath: options.resolvePath,
@@ -297,6 +299,31 @@ export function createAppProtocolHandler(
     }
     if (platform === "win32") return await netFetch(pathToFileURL(filePath).toString());
     return await createOrdinaryFileResponse(filePath, fileDependencies);
+  };
+
+  return async (request) => {
+    const response = await serve(request);
+    if (new URL(request.url).host !== APP_FILESYSTEM_HOST) return response;
+
+    // The filesystem host is cross-origin even in a packaged app. Keep Fetch
+    // and anonymous canvas images behind the same origin policy as the frame gate.
+    const origin = request.headers.get("origin");
+    if (
+      !isAllowedAppFilesystemFrame(
+        { url: origin ?? "" },
+        options.getDevelopmentRendererUrl?.() ?? null,
+      )
+    ) {
+      return response;
+    }
+    const headers = new Headers(response.headers);
+    headers.set("Access-Control-Allow-Origin", origin!);
+    headers.set("Vary", "Origin");
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
   };
 }
 

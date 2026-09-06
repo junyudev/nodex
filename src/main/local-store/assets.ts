@@ -605,7 +605,11 @@ export function makeTemporaryAssets(input: {
   const rootPath = path.resolve(input.assetsRootPath);
   const service: TemporaryAssetsService = {
     rootPath,
-    resolveAssetPath: (fileName) => resolveAssetPathInRoot(rootPath, fileName),
+    resolveAssetPath: (fileName) => {
+      const resolved = resolveAssetPathInRoot(rootPath, fileName);
+      if (!fs.lstatSync(resolved).isFile()) throw new Error("Temporary media is unavailable");
+      return resolved;
+    },
     materializeCanvasImage: (upload) => materializeCanvasImageAtRoot(upload, rootPath),
     saveUploadedImage: (upload) => saveUploadedImageAtRoot(upload, rootPath),
     saveUploadedResource: (upload) => saveUploadedResourceAtRoot(upload, rootPath),

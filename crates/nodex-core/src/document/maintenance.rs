@@ -130,7 +130,19 @@ pub(crate) fn finalize_idle_document_revisions(
             continue;
         }
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let Some(authority) = read_document_authority(&transaction, &document_id)? else {
+        // Retained unowned Documents are recovery state. Their old edit sessions
+        // cannot create owner-scoped history or block unrelated idle checkpoints.
+        let has_owner = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM block_documents WHERE document_id = ?1)",
+            [&document_id],
+            |row| row.get::<_, bool>(0),
+        )?;
+        let authority = if has_owner {
+            read_document_authority(&transaction, &document_id)?
+        } else {
+            None
+        };
+        let Some(authority) = authority else {
             transaction.execute(
                 "DELETE FROM document_revision_sessions WHERE document_id = ?1",
                 [&document_id],
@@ -351,7 +363,7 @@ mod tests {
     use super::finalize_idle_document_revisions;
 
     #[test]
-    fn finalizes_an_idle_revision_session_at_the_current_document_head() {
+    fn finalizes_idle_history_past_retained_unowned_document_sessions() {
         let home = tempfile::tempdir().expect("Profile home");
         let kernel = SqliteStoreKernel::open_test(home.path()).expect("fresh store");
         kernel
@@ -452,6 +464,19 @@ mod tests {
                         "client:revision-maintenance"
                     ],
                 )?;
+                // Historical ownership anomaly: retain its content row, but
+                // make the obsolete session sort before the live Page's edit.
+                connection.execute(
+                    "INSERT INTO documents(id, library_id, schema_key, schema_version, created_at, updated_at)
+                     VALUES ('document:unowned', 'library:revision-maintenance', 'nodex.page', 3, ?1, ?1)",
+                    ["2019-01-01T00:00:00.000Z"],
+                )?;
+                connection.execute(
+                    "INSERT INTO document_revision_sessions(document_id, generation, dirty_head_seq,
+                       burst_started_at, last_edit_at, client_session_id)
+                     VALUES ('document:unowned', 1, 0, ?1, ?1, 'client:obsolete')",
+                    ["2019-01-01T00:00:00.000Z"],
+                )?;
                 let finalized = finalize_idle_document_revisions(
                     connection,
                     &BoundModuleContext {
@@ -464,6 +489,13 @@ mod tests {
                     },
                 )?;
                 assert_eq!(finalized, 1);
+                assert_eq!(connection.query_row(
+                    "SELECT count(*) FROM document_revision_sessions", [], |row| row.get::<_, i64>(0),
+                )?, 0);
+                assert!(read_document_authority(connection, "document:unowned").is_err());
+                assert_eq!(connection.query_row(
+                    "SELECT count(*) FROM documents WHERE id = 'document:unowned'", [], |row| row.get::<_, i64>(0),
+                )?, 1);
                 assert_eq!(
                     connection.query_row(
                         "SELECT count(*) FROM document_revision_sessions \

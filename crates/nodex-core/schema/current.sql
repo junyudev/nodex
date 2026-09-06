@@ -5049,7 +5049,7 @@ CREATE TABLE block_mutation_body_gc (
   check_after_ms INTEGER NOT NULL DEFAULT 0 CHECK (check_after_ms >= 0)
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX idx_block_mutation_body_gc_due ON block_mutation_body_gc(check_after_ms, mutation_id);
-PRAGMA user_version = 159;
+PRAGMA user_version = 160;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

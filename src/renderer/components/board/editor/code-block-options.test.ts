@@ -5,6 +5,7 @@ import { codeLanguagePreference } from "@/lib/nfm/code-language-preference";
 import { editorCodeBlockOptions } from "./code-block-options";
 import { createNfmEditorExtensions } from "./nfm-editor-extensions";
 import { nfmSchema } from "./nfm-schema";
+import { CODE_LANGUAGE_CATALOG } from "../../../../shared/nfm/code-language-catalog";
 
 const shikiParserSymbol = Symbol.for("blocknote.shikiParser");
 const shikiHighlighterPromiseSymbol = Symbol.for("blocknote.shikiHighlighterPromise");
@@ -21,6 +22,21 @@ function clearBlockNoteShikiState(): void {
 }
 
 describe("editorCodeBlockOptions", () => {
+  test("maps every stored language spelling to a bundled grammar or no highlighting", async () => {
+    const highlight = nfmSchema.blockSpecs.codeBlock.implementation.meta!.highlight!;
+    const highlighter = await preloadBlockNoteDualThemeParser();
+    for (const language of CODE_LANGUAGE_CATALOG) {
+      for (const spelling of [language.id, language.label, ...language.aliases]) {
+        const grammar = highlight({ type: "codeBlock", props: { language: spelling } });
+        expect(grammar).toBe(language.shikiLanguage ?? undefined);
+        if (grammar) await highlighter.loadLanguage(grammar as never);
+      }
+    }
+    expect(
+      highlight({ type: "codeBlock", props: { language: "unknown-language" } }),
+    ).toBeUndefined();
+  });
+
   test("offers exactly the shared 88-language product catalog", () => {
     const names = Object.values(editorCodeBlockOptions.supportedLanguages ?? {}).map(
       ({ name }) => name,

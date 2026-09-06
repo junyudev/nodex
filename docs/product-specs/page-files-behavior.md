@@ -2,7 +2,7 @@
 
 Status: Active
 
-Last Updated: 2026-09-05
+Last Updated: 2026-09-06
 
 Page Files is the Page-local view of Library Files related to one Page. It lets a
 person organize a File under a portable path, see Files used in the Page body,
@@ -20,6 +20,11 @@ A Page can relate to a File in two independent ways:
 - A Page File entry assigns one optional logical path to that File in this Page.
 - An image or attachment occurrence in the canonical Page Document references
   `nodex://files/<file-id>` directly.
+
+New local images and attachments are imported as Library Files before insertion.
+Temporary cache locators, browser object URLs, and display transport URLs are not
+durable Document sources. A missing File authority rejects the upload instead
+of creating an attachment that depends on a disposable cache.
 
 A Page/File pair has at most one explicit entry, while the body may contain any
 number of occurrences. An entry does not have to appear in the body, and a body

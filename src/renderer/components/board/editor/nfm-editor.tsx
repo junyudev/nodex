@@ -161,12 +161,7 @@ interface PageStageLinkedThread {
   readonly archived: boolean;
   readonly updatedAt: number;
 }
-import {
-  materializeLocalResourceAsset,
-  resolveAssetSourceToDisplayUrl,
-  uploadImageAsset,
-  uploadResourceAsset,
-} from "@/lib/assets";
+import { resolveAssetSourceToDisplayUrl } from "@/lib/assets";
 import { readImageFileSourceDimensions } from "@/lib/image-source-dimensions";
 import { parseFileSource } from "../../../../shared/file-resources";
 import { useSpellcheck } from "@/lib/use-spellcheck";
@@ -631,8 +626,9 @@ function NfmEditorInstance({
 
   const uploadFile = useCallback(
     async (file: File) => {
+      if (!fileRuntime) throw new Error("File authority is unavailable");
       const [url, dimensions] = await Promise.all([
-        fileRuntime ? fileRuntime.upload({ kind: "browser_file", file }) : uploadImageAsset(file),
+        fileRuntime.upload({ kind: "browser_file", file }),
         readImageFileSourceDimensions(file),
       ]);
 
@@ -1192,15 +1188,14 @@ function NfmEditorInstance({
 
         for (const item of pasteResourceDialog.items) {
           if (item.kind === "text") {
+            if (!fileRuntime) throw new Error("File authority is unavailable");
             const text = pasteResourceDialog.textPayload ?? "";
             const upload = createPastedTextUploadFile(text);
-            const uploaded = fileRuntime
-              ? {
-                  source: await fileRuntime.upload({ kind: "browser_file", file: upload }),
-                  mimeType: upload.type || "text/plain",
-                  bytes: upload.size,
-                }
-              : await uploadResourceAsset(upload);
+            const uploaded = {
+              source: await fileRuntime.upload({ kind: "browser_file", file: upload }),
+              mimeType: upload.type || "text/plain",
+              bytes: upload.size,
+            };
             nextAttachments.push({
               type: "attachment",
               props: {
@@ -1233,17 +1228,13 @@ function NfmEditorInstance({
           }
 
           if (item.path) {
-            const uploaded = fileRuntime
-              ? {
-                  source: await fileRuntime.upload(
-                    { kind: "local_path", path: item.path },
-                    item.name,
-                  ),
-                  name: item.name,
-                  mimeType: item.mimeType ?? "application/octet-stream",
-                  bytes: item.bytes,
-                }
-              : await materializeLocalResourceAsset(item.path);
+            if (!fileRuntime) throw new Error("File authority is unavailable");
+            const uploaded = {
+              source: await fileRuntime.upload({ kind: "local_path", path: item.path }, item.name),
+              name: item.name,
+              mimeType: item.mimeType ?? "application/octet-stream",
+              bytes: item.bytes,
+            };
             nextAttachments.push({
               type: "attachment",
               props: {
@@ -1260,14 +1251,13 @@ function NfmEditorInstance({
           }
 
           if (item.file) {
-            const uploaded = fileRuntime
-              ? {
-                  source: await fileRuntime.upload({ kind: "browser_file", file: item.file }),
-                  name: item.file.name,
-                  mimeType: item.file.type || "application/octet-stream",
-                  bytes: item.file.size,
-                }
-              : await uploadResourceAsset(item.file);
+            if (!fileRuntime) throw new Error("File authority is unavailable");
+            const uploaded = {
+              source: await fileRuntime.upload({ kind: "browser_file", file: item.file }),
+              name: item.file.name,
+              mimeType: item.file.type || "application/octet-stream",
+              bytes: item.file.size,
+            };
             nextAttachments.push({
               type: "attachment",
               props: {

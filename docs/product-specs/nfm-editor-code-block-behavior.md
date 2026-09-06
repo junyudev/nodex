@@ -1,7 +1,7 @@
 # NFM Editor Code Block Behavior
 
 Status: Active
-Last updated: 2026-08-27
+Last updated: 2026-09-06
 
 ## Purpose
 
@@ -12,6 +12,11 @@ This contract owns editable Code Blocks, read-only BlockNote previews, NFM previ
 ## Durable content and local presentation
 
 Language is durable Block content and round-trips through the Block Document and the NFM fence. Unsupported or historical language identifiers normalize to Plain Text at import boundaries instead of creating hidden catalog entries.
+
+Editable and read-only highlighting resolve catalog IDs, labels, and aliases to
+the same bundled grammar. Plain Text and unsupported values bypass syntax
+highlighting; display labels are never passed to the grammar loader. Every
+catalog grammar must be loadable from the bundled runtime.
 
 Line wrapping is renderer-local presentation state keyed by durable Block ID as `code-wrap-${blockId}`. It is not a Block prop, NFM attribute, database value, collaborative update, or Undo/Redo entry. The state rules are:
 

@@ -171,7 +171,11 @@ APFS copy-on-write. Preserving the imported lineage and reusing published
 integrity evidence avoid replaying LocalCommit history or rescanning every
 SQLite page during provisioning. Existing dangling asset references are
 preserved as part of the real production state and reported by count instead of
-being silently repaired or replaced with synthetic files. Select a specific
+being silently repaired or replaced with synthetic files. A diagnostic clone also
+preserves unattached Documents and their source bytes so ownership defects can be
+reproduced locally. Cloning does not certify those Documents for restore or grant
+them editing authority; restore and normal reads retain their strict validation.
+Select a specific
 current backup with `--backup <backup-id>` when reproducibility matters; create
 a fresh backup first when the Profile has only an older manifest.
 

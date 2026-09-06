@@ -130,6 +130,24 @@ pub(crate) fn remap_block_files(
     blocks: &mut [super::block_materialization::MaterializedBlockNode],
     mapping: &BTreeMap<String, String>,
 ) {
+    let sources = mapping
+        .iter()
+        .map(|(source, target)| {
+            (
+                format!("nodex://files/{source}"),
+                format!("nodex://files/{target}"),
+            )
+        })
+        .collect();
+    remap_block_asset_sources(blocks, &sources);
+}
+
+/// Rewrites only image and attachment source fields, including captions. Code,
+/// ordinary links, names and other metadata remain verbatim.
+pub(crate) fn remap_block_asset_sources(
+    blocks: &mut [super::block_materialization::MaterializedBlockNode],
+    mapping: &BTreeMap<String, String>,
+) {
     for block in blocks {
         if block.block_type == "image" {
             if let Some(source) = block.props.get_mut("url") {
@@ -155,7 +173,7 @@ pub(crate) fn remap_block_files(
         if let Some(content) = &mut block.content {
             remap_inline_files(content, mapping);
         }
-        remap_block_files(&mut block.children, mapping);
+        remap_block_asset_sources(&mut block.children, mapping);
     }
 }
 
@@ -192,9 +210,10 @@ fn remap_source(value: &mut serde_json::Value, mapping: &BTreeMap<String, String
 }
 
 fn mapped_source(source: &str, mapping: &BTreeMap<String, String>) -> Option<String> {
-    let id = super::derived_records::parse_page_file_source(source)?;
-    let target = mapping.get(&id)?;
-    (target != &id).then(|| format!("nodex://files/{target}"))
+    mapping
+        .get(source)
+        .filter(|target| *target != source)
+        .cloned()
 }
 
 fn invalid(message: &'static str) -> StoreError {

@@ -28,6 +28,30 @@ function createSilentWaveBuffer(): Buffer {
   return buffer;
 }
 
+async function readImageInRenderer(page: import("playwright").Page, source: string) {
+  return await page.evaluate(async (url) => {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const bitmap = await createImageBitmap(blob);
+    const dimensions = [bitmap.width, bitmap.height];
+    bitmap.close();
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.src = url;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    canvas.getContext("2d")!.drawImage(image, 0, 0);
+    return {
+      status: response.status,
+      mimeType: blob.type,
+      dimensions,
+      canExport: canvas.toDataURL().startsWith("data:image/png;base64,"),
+    };
+  }, source);
+}
+
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
@@ -120,6 +144,29 @@ describe("production app renderer origin", () => {
           }),
         )
         .toBeGreaterThanOrEqual(1);
+      await expect(readImageInRenderer(page, imageUrl)).resolves.toEqual({
+        status: 200,
+        mimeType: "image/png",
+        dimensions: [1, 1],
+        canExport: true,
+      });
+      await expect(
+        page.evaluate(async (url) => {
+          const response = await fetch(url, { headers: { Range: "bytes=0-3" } });
+          return { status: response.status, text: await response.text() };
+        }, audioUrl),
+      ).resolves.toEqual({ status: 206, text: "RIFF" });
+      await page.goto("data:text/html,<title>Untrusted origin</title>");
+      await expect(
+        page.evaluate(async (url) => {
+          try {
+            await fetch(url);
+            return true;
+          } catch {
+            return false;
+          }
+        }, imageUrl),
+      ).resolves.toBe(false);
     } finally {
       if (application) await application.close();
     }
@@ -256,6 +303,12 @@ describe("development HTTP renderer origin", () => {
           ),
         )
         .toEqual([1, 1]);
+      await expect(readImageInRenderer(page, buildAppFilesystemUrl(imagePath))).resolves.toEqual({
+        status: 200,
+        mimeType: "image/png",
+        dimensions: [1, 1],
+        canExport: true,
+      });
     } finally {
       if (application) await application.close();
       if (developmentServer) await developmentServer.close();

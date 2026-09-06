@@ -1864,6 +1864,24 @@ fn validate_page_file_placements(
     materialization: &DocumentMaterialization,
     authorized_file_ids: &[String],
 ) -> Result<(), StoreError> {
+    let existing_sources = base_materialization
+        .into_iter()
+        .flat_map(|base| {
+            base.asset_refs
+                .iter()
+                .map(|reference| reference.source.as_str())
+        })
+        .collect::<BTreeSet<_>>();
+    if materialization.asset_refs.iter().any(|reference| {
+        !existing_sources.contains(reference.source.as_str())
+            && (reference.managed_file_name.is_some()
+                || reference.source.starts_with("blob:")
+                || reference.source.starts_with("app:"))
+    }) {
+        return Err(invalid(
+            "Document files must be imported into the Library before insertion".to_owned(),
+        ));
+    }
     let existing_file_ids = base_materialization
         .into_iter()
         .flat_map(|base| base.asset_refs.iter())

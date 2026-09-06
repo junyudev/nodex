@@ -9,14 +9,14 @@ import { createJavaScriptRegexEngine } from "@shikijs/engine-javascript";
 
 const bundledLanguages = {
   "abap": () => import("@shikijs/langs-precompiled/abap"),
-  "arduino": () => import("@shikijs/langs-precompiled/cpp").then((module) => ({
+  "cpp": () => import("@shikijs/langs-precompiled/cpp").then((module) => ({
     default: module.default.map((language) =>
       language.name === "cpp"
         ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "arduino"])] }
         : language,
     ),
   })),
-  "assembly": () => import("@shikijs/langs-precompiled/asm").then((module) => ({
+  "asm": () => import("@shikijs/langs-precompiled/asm").then((module) => ({
     default: module.default.map((language) =>
       language.name === "asm"
         ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "assembly"])] }
@@ -26,13 +26,6 @@ const bundledLanguages = {
   "bash": () => import("@shikijs/langs-precompiled/bash"),
   "c": () => import("@shikijs/langs-precompiled/c"),
   "csharp": () => import("@shikijs/langs-precompiled/csharp"),
-  "cpp": () => import("@shikijs/langs-precompiled/cpp").then((module) => ({
-    default: module.default.map((language) =>
-      language.name === "cpp"
-        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "arduino"])] }
-        : language,
-    ),
-  })),
   "clojure": () => import("@shikijs/langs-precompiled/clojure"),
   "coffeescript": () => import("@shikijs/langs-precompiled/coffeescript"),
   "css": () => import("@shikijs/langs-precompiled/css"),
@@ -43,14 +36,14 @@ const bundledLanguages = {
   "elm": () => import("@shikijs/langs-precompiled/elm"),
   "erlang": () => import("@shikijs/langs-precompiled/erlang"),
   "fsharp": () => import("@shikijs/langs-precompiled/fsharp"),
-  "flow": () => import("@shikijs/langs-precompiled/javascript").then((module) => ({
+  "javascript": () => import("@shikijs/langs-precompiled/javascript").then((module) => ({
     default: module.default.map((language) =>
       language.name === "javascript"
         ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "flow"])] }
         : language,
     ),
   })),
-  "fortran": () => import("@shikijs/langs-precompiled/fortran-free-form").then((module) => ({
+  "fortran-free-form": () => import("@shikijs/langs-precompiled/fortran-free-form").then((module) => ({
     default: module.default.map((language) =>
       language.name === "fortran-free-form"
         ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "fortran"])] }
@@ -72,19 +65,13 @@ const bundledLanguages = {
     ),
   })),
   "java": () => import("@shikijs/langs-precompiled/java"),
-  "javascript": () => import("@shikijs/langs-precompiled/jsx").then((module) => ({
-    default: module.default.map((language) =>
-      language.name === "jsx"
-        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "javascript"])] }
-        : language,
-    ),
-  })),
+  "jsx": () => import("@shikijs/langs-precompiled/jsx"),
   "json": () => import("@shikijs/langs-precompiled/json"),
   "julia": () => import("@shikijs/langs-precompiled/julia"),
   "kotlin": () => import("@shikijs/langs-precompiled/kotlin"),
   "latex": () => import("@shikijs/langs-precompiled/latex"),
   "less": () => import("@shikijs/langs-precompiled/less"),
-  "lisp": () => import("@shikijs/langs-precompiled/common-lisp").then((module) => ({
+  "common-lisp": () => import("@shikijs/langs-precompiled/common-lisp").then((module) => ({
     default: module.default.map((language) =>
       language.name === "common-lisp"
         ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "lisp"])] }
@@ -95,14 +82,7 @@ const bundledLanguages = {
   "lua": () => import("@shikijs/langs-precompiled/lua"),
   "makefile": () => import("@shikijs/langs-precompiled/makefile"),
   "markdown": () => import("@shikijs/langs-precompiled/markdown"),
-  "markup": () => import("@shikijs/langs-precompiled/html").then((module) => ({
-    default: module.default.map((language) =>
-      language.name === "html"
-        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "markup"])] }
-        : language,
-    ),
-  })),
-  "mathematica": () => import("@shikijs/langs-precompiled/wolfram").then((module) => ({
+  "wolfram": () => import("@shikijs/langs-precompiled/wolfram").then((module) => ({
     default: module.default.map((language) =>
       language.name === "wolfram"
         ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "mathematica"])] }
@@ -124,7 +104,7 @@ const bundledLanguages = {
   "python": () => import("@shikijs/langs-precompiled/python"),
   "r": () => import("@shikijs/langs-precompiled/r"),
   "racket": () => import("@shikijs/langs-precompiled/racket"),
-  "rocq": () => import("@shikijs/langs-precompiled/coq").then((module) => ({
+  "coq": () => import("@shikijs/langs-precompiled/coq").then((module) => ({
     default: module.default.map((language) =>
       language.name === "coq"
         ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "rocq"])] }
@@ -137,7 +117,7 @@ const bundledLanguages = {
   "scala": () => import("@shikijs/langs-precompiled/scala"),
   "scheme": () => import("@shikijs/langs-precompiled/scheme"),
   "scss": () => import("@shikijs/langs-precompiled/scss"),
-  "shell": () => import("@shikijs/langs-precompiled/shellscript").then((module) => ({
+  "shellscript": () => import("@shikijs/langs-precompiled/shellscript").then((module) => ({
     default: module.default.map((language) =>
       language.name === "shellscript"
         ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "shell"])] }
@@ -149,6 +129,88 @@ const bundledLanguages = {
   "sql": () => import("@shikijs/langs-precompiled/sql"),
   "swift": () => import("@shikijs/langs-precompiled/swift"),
   "toml": () => import("@shikijs/langs-precompiled/toml"),
+  "tsx": () => import("@shikijs/langs-precompiled/tsx").then((module) => ({
+    default: module.default.map((language) =>
+      language.name === "tsx"
+        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "typescript"])] }
+        : language,
+    ),
+  })),
+  "vb": () => import("@shikijs/langs-precompiled/vb").then((module) => ({
+    default: module.default.map((language) =>
+      language.name === "vb"
+        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "vbnet", "visual-basic"])] }
+        : language,
+    ),
+  })),
+  "verilog": () => import("@shikijs/langs-precompiled/verilog"),
+  "vhdl": () => import("@shikijs/langs-precompiled/vhdl"),
+  "wasm": () => import("@shikijs/langs-precompiled/wasm"),
+  "xml": () => import("@shikijs/langs-precompiled/xml"),
+  "yaml": () => import("@shikijs/langs-precompiled/yaml"),
+  "arduino": () => import("@shikijs/langs-precompiled/cpp").then((module) => ({
+    default: module.default.map((language) =>
+      language.name === "cpp"
+        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "arduino"])] }
+        : language,
+    ),
+  })),
+  "assembly": () => import("@shikijs/langs-precompiled/asm").then((module) => ({
+    default: module.default.map((language) =>
+      language.name === "asm"
+        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "assembly"])] }
+        : language,
+    ),
+  })),
+  "flow": () => import("@shikijs/langs-precompiled/javascript").then((module) => ({
+    default: module.default.map((language) =>
+      language.name === "javascript"
+        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "flow"])] }
+        : language,
+    ),
+  })),
+  "fortran": () => import("@shikijs/langs-precompiled/fortran-free-form").then((module) => ({
+    default: module.default.map((language) =>
+      language.name === "fortran-free-form"
+        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "fortran"])] }
+        : language,
+    ),
+  })),
+  "lisp": () => import("@shikijs/langs-precompiled/common-lisp").then((module) => ({
+    default: module.default.map((language) =>
+      language.name === "common-lisp"
+        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "lisp"])] }
+        : language,
+    ),
+  })),
+  "markup": () => import("@shikijs/langs-precompiled/html").then((module) => ({
+    default: module.default.map((language) =>
+      language.name === "html"
+        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "markup"])] }
+        : language,
+    ),
+  })),
+  "mathematica": () => import("@shikijs/langs-precompiled/wolfram").then((module) => ({
+    default: module.default.map((language) =>
+      language.name === "wolfram"
+        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "mathematica"])] }
+        : language,
+    ),
+  })),
+  "rocq": () => import("@shikijs/langs-precompiled/coq").then((module) => ({
+    default: module.default.map((language) =>
+      language.name === "coq"
+        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "rocq"])] }
+        : language,
+    ),
+  })),
+  "shell": () => import("@shikijs/langs-precompiled/shellscript").then((module) => ({
+    default: module.default.map((language) =>
+      language.name === "shellscript"
+        ? { ...language, aliases: [...new Set([...(language.aliases ?? []), "shell"])] }
+        : language,
+    ),
+  })),
   "typescript": () => import("@shikijs/langs-precompiled/tsx").then((module) => ({
     default: module.default.map((language) =>
       language.name === "tsx"
@@ -163,8 +225,6 @@ const bundledLanguages = {
         : language,
     ),
   })),
-  "verilog": () => import("@shikijs/langs-precompiled/verilog"),
-  "vhdl": () => import("@shikijs/langs-precompiled/vhdl"),
   "visual-basic": () => import("@shikijs/langs-precompiled/vb").then((module) => ({
     default: module.default.map((language) =>
       language.name === "vb"
@@ -172,9 +232,6 @@ const bundledLanguages = {
         : language,
     ),
   })),
-  "wasm": () => import("@shikijs/langs-precompiled/wasm"),
-  "xml": () => import("@shikijs/langs-precompiled/xml"),
-  "yaml": () => import("@shikijs/langs-precompiled/yaml"),
 } as const satisfies Record<string, DynamicImportLanguageRegistration>;
 
 const bundledThemes = {

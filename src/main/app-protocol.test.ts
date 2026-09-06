@@ -228,14 +228,12 @@ describe("app file responses", () => {
     ).resolves.toMatchObject({ status: 404, statusText: "Not Found" });
   });
 
-  test("does not add an isFile guard to the audio/video responder", async () => {
+  test("rejects non-file audio/video paths before starting a stream", async () => {
     let streamRequested = false;
     const response = await createRangeFileResponse(new Request("app://fs/sound"), "/folder.mp3", {
       stat: async () => ({
         size: 5,
-        isFile: () => {
-          throw new Error("Range response must not inspect isFile");
-        },
+        isFile: () => false,
       }),
       createStream: () => {
         streamRequested = true;
@@ -243,9 +241,8 @@ describe("app file responses", () => {
       },
     });
 
-    expect(streamRequested).toBe(true);
-    expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe("audio");
+    expect(streamRequested).toBe(false);
+    expect(response.status).toBe(404);
   });
 });
 

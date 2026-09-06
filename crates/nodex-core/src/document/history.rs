@@ -1036,6 +1036,100 @@ pub(crate) fn backfill_migrated_document_history(
     Ok(indexed)
 }
 
+/// Rewrites canonical historical source fields with the same imported File
+/// identity as current content. Existing exact bindings stay frozen; an older
+/// checkpoint with unresolved File versions never borrows today's head.
+pub(super) fn migrate_managed_asset_versions(
+    connection: &Connection,
+    imports: &mut super::asset_migration::AssetImports<'_>,
+) -> Result<usize, StoreError> {
+    let versions = connection
+        .prepare(
+            "SELECT version.version_id, version.document_id, document.library_id
+         FROM document_versions version JOIN documents document ON document.id = version.document_id
+         WHERE document.sync_engine = 'yjs' ORDER BY version.version_id",
+        )?
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let immutable_trigger: String = connection.query_row(
+        "SELECT sql FROM sqlite_schema WHERE type = 'trigger' AND name = 'document_versions_are_immutable'",
+        [], |row| row.get(0),
+    )?;
+    connection.execute_batch("DROP TRIGGER document_versions_are_immutable")?;
+    let mut changed = 0;
+    for (version_id, document_id, library_id) in versions {
+        let row = read_document_version(connection, &document_id, &version_id)?
+            .ok_or_else(|| corrupt("Migrated Document version disappeared"))?;
+        let created_at = row.created_at.clone();
+        let stored = decode_document_version(row)?;
+        let Some(mut materialization) = stored.block_materialization else {
+            continue;
+        };
+        let targets = imports.rewrite(&library_id, &mut materialization)?;
+        if targets.is_empty() {
+            continue;
+        }
+        let manifest = stored.file_snapshot.map(|mut manifest| {
+            manifest.files.extend(targets);
+            manifest
+        });
+        let format = if manifest.is_some() {
+            CHECKPOINT_FORMAT
+        } else {
+            "block_tree_snapshot_v2"
+        };
+        let snapshot = BlockTreeSnapshot {
+            format_version: if manifest.is_some() { 3 } else { 2 },
+            kind: materialization.kind,
+            rich_title: (materialization.kind == BlockDocumentKind::Page)
+                .then_some(materialization.rich_title),
+            block_tree: materialization.block_tree,
+            file_snapshot: manifest,
+        };
+        let bytes = canonical_json_bytes(
+            serde_json::to_value(snapshot)
+                .map_err(|_| internal("Migrated Document checkpoint cannot be encoded"))?,
+        )?;
+        let hash = sha256(&bytes);
+        for table in [
+            "document_version_retention_members",
+            "document_version_retention_index",
+            "document_version_file_refs",
+            "document_version_file_index",
+        ] {
+            connection.execute(
+                &format!("DELETE FROM {table} WHERE version_id = ?1"),
+                [&version_id],
+            )?;
+        }
+        connection.execute(
+            "UPDATE document_versions SET checkpoint_format = ?1, full_update_blob = ?2,
+               state_vector = X'', checkpoint_hash = ?3, byte_length = ?4 WHERE version_id = ?5",
+            params![format, bytes, hash, bytes.len() as i64, version_id],
+        )?;
+        let migrated = decode_document_version(
+            read_document_version(connection, &document_id, &version_id)?
+                .ok_or_else(|| corrupt("Migrated Document version disappeared"))?,
+        )?;
+        ensure_document_version_retention_index(
+            connection,
+            &version_id,
+            &hash,
+            &created_at,
+            &migrated,
+        )?;
+        changed += 1;
+    }
+    connection.execute_batch(&immutable_trigger)?;
+    Ok(changed)
+}
+
 /// Captures one exact post-migration checkpoint per current Document without
 /// pruning any legacy history. Retained unowned Documents are recovery state,
 /// not current content, and must not acquire an owner-scoped checkpoint.

@@ -13,6 +13,7 @@ describe("privileged application schemes", () => {
     expect(registered.find((entry) => entry.scheme === APP_PROTOCOL_SCHEME)).toEqual({
       scheme: "app",
       privileges: {
+        corsEnabled: true,
         secure: true,
         standard: true,
         stream: true,
