@@ -17,7 +17,7 @@ import { toast } from "@/components/ui/toast";
 import {
   DeleteIcon,
   DownloadIcon,
-  LinkToolbarCopyIcon,
+  CopyIcon,
   MoreActionsIcon,
   PlusIcon,
 } from "@/components/shared/icons";
@@ -617,7 +617,7 @@ export function VoiceSettingsPage(_props: { readonly onPathChange: (path: string
                     variant="ghost"
                     onClick={() => void navigator.clipboard.writeText(recording.transcript ?? "")}
                   >
-                    <LinkToolbarCopyIcon className="icon-2xs" />
+                    <CopyIcon className="icon-2xs" />
                   </NodexButton>
                 ) : recording.status !== "recording" && recording.sizeBytes > 0 ? (
                   <NodexButton

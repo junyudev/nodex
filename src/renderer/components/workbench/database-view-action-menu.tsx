@@ -7,7 +7,6 @@ import {
   DatabaseIcon,
   DeleteIcon,
   EditIcon,
-  LinkToolbarCopyIcon,
 } from "@/components/shared/icons";
 import { SlidersHorizontal } from "@/components/shared/icons/generic-icons";
 import {
@@ -145,7 +144,7 @@ export function DatabaseViewActionMenuOverlay({
         <NodexDropdown.Separator paddingClassName="py-1" />
         <NodexContextMenuItem
           disabled={session.busy}
-          leftSlot={<LinkToolbarCopyIcon />}
+          leftSlot={<CopyIcon />}
           onSelect={() => invokeAfterClose(onMenuOpenChange, session.onCopyLink)}
         >
           Copy link to view

@@ -3357,19 +3357,6 @@ export function GlobeIcon({ className }: IconProps) {
   );
 }
 
-export function LinkToolbarCopyIcon({ className }: IconProps) {
-  return (
-    <svg
-      viewBox="2.88 0 14.24 20"
-      className={cn("shrink-0", className)}
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path d="M9.294 2.325h3.103c.484 0 .948.192 1.29.534l2.897 2.898c.343.342.535.806.535 1.29v5.903a1.825 1.825 0 0 1-1.825 1.825H12.53v1.075a1.825 1.825 0 0 1-1.825 1.825h-6A1.825 1.825 0 0 1 2.88 15.85v-8.8c0-1.008.817-1.825 1.825-1.825H7.47V4.15c0-1.008.817-1.825 1.825-1.825M9.1 5.76l2.897 2.897c.342.342.534.806.534 1.29v3.578h2.763a.575.575 0 0 0 .575-.575V7.3h-1.975a1.75 1.75 0 0 1-1.75-1.75V3.575h-2.85a.575.575 0 0 0-.575.575v1.318q.208.12.38.292m6.16.44-2.016-2.016V5.55c0 .359.29.65.65.65zm-10.554.275a.575.575 0 0 0-.575.575v8.8c0 .318.258.575.575.575h6a.575.575 0 0 0 .575-.575V10.2H9.306a1.75 1.75 0 0 1-1.75-1.75V6.475zm3.95.609V8.45c0 .359.291.65.65.65h1.366z" />
-    </svg>
-  );
-}
-
 export function NfmLinkToolbarEditIcon({ className }: IconProps) {
   return (
     <svg

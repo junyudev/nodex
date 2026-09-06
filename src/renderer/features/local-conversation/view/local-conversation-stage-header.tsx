@@ -6,7 +6,7 @@ import {
   SessionPinFilledIcon,
   SessionPinIcon,
   SidePanelSideChatIcon,
-  LinkToolbarCopyIcon,
+  CopyIcon,
 } from "@/components/shared/icons";
 import {
   NodexDropdownFlyoutSubmenuItem,
@@ -149,19 +149,19 @@ function ThreadStageHeaderComponent({ model, actions, onErrorMessage }: ThreadSt
               ) : null}
               <NodexDropdownFlyoutSubmenuItem
                 label="Copy"
-                leftSlot={<LinkToolbarCopyIcon className={menuIconClassName} />}
+                leftSlot={<CopyIcon className={menuIconClassName} />}
                 contentMotion="none"
               >
                 <NodexDropdownItem
                   disabled={!model.cwd}
-                  leftSlot={<LinkToolbarCopyIcon className={menuIconClassName} />}
+                  leftSlot={<CopyIcon className={menuIconClassName} />}
                   onSelect={() => void handleCopyText(model.cwd, "Working directory copied")}
                 >
                   Copy working directory
                 </NodexDropdownItem>
                 {model.threadId ? (
                   <NodexDropdownItem
-                    leftSlot={<LinkToolbarCopyIcon className={menuIconClassName} />}
+                    leftSlot={<CopyIcon className={menuIconClassName} />}
                     onSelect={() => void handleCopyText(model.threadId, "Session ID copied")}
                   >
                     Copy session ID
@@ -169,7 +169,7 @@ function ThreadStageHeaderComponent({ model, actions, onErrorMessage }: ThreadSt
                 ) : null}
                 {model.sessionId ? (
                   <NodexDropdownItem
-                    leftSlot={<LinkToolbarCopyIcon className={menuIconClassName} />}
+                    leftSlot={<CopyIcon className={menuIconClassName} />}
                     onSelect={() =>
                       void handleCopyText(
                         buildSessionDeepLink({ sessionId: model.sessionId as string }),
@@ -182,7 +182,7 @@ function ThreadStageHeaderComponent({ model, actions, onErrorMessage }: ThreadSt
                 ) : null}
                 {model.threadId && actions.onCopyConversationMarkdown ? (
                   <NodexDropdownItem
-                    leftSlot={<LinkToolbarCopyIcon className={menuIconClassName} />}
+                    leftSlot={<CopyIcon className={menuIconClassName} />}
                     keyboardShortcut={model.shortcuts?.copyConversationMarkdown}
                     onSelect={() => void actions.onCopyConversationMarkdown?.()}
                   >
