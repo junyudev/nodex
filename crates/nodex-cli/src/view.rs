@@ -187,9 +187,9 @@ fn validate_group_key(value: String) -> Result<String, CliError> {
     validate_stable_id(&value, "View group key")
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
-struct ViewQueryOutput {
+pub(crate) struct ViewQueryOutput {
     schema_version: u32,
     database: NamedIdentity,
     data_source: NamedIdentity,
@@ -203,13 +203,13 @@ struct ViewQueryOutput {
     page_info: ViewPageInfo,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 struct NamedIdentity {
     id: String,
     name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 struct ViewIdentity {
     id: String,
@@ -220,7 +220,7 @@ struct ViewIdentity {
     config: DatabaseViewDefinition,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 struct ViewGroupOutput {
     key: Option<String>,
@@ -228,7 +228,7 @@ struct ViewGroupOutput {
     total_rows: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 struct ViewRowOutput {
     page_id: String,
@@ -242,7 +242,7 @@ struct ViewRowOutput {
     etags: ViewRowEtags,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 struct ViewRowPosition {
     rank_key: Option<String>,
@@ -250,12 +250,12 @@ struct ViewRowPosition {
     order: Option<i64>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 struct ViewRowEtags {
     r#move: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 struct ViewPageInfo {
     has_next_page: bool,

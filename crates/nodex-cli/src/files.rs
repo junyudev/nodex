@@ -9,14 +9,33 @@ use nodex_core_contracts::library::{
 use nodex_core_contracts::{ModuleApplyRequest, StoreEpoch};
 use nodex_core_protocol::ResponseEnvelope;
 use nodex_core_protocol::client::CoreClient;
-use serde_json::json;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
+use utoipa::ToSchema;
 
 use crate::cli::{FileCommand, MutationArgs};
 use crate::error::{CliError, CliErrorCode};
 use crate::runtime::{
     CommandOutput, map_client_error, map_core_error, operation_id, selected_project, unwrap_library,
 };
+
+#[derive(Serialize, ToSchema)]
+pub(crate) struct FileMutationResult {
+    operation_id: String,
+    duplicate: bool,
+    file_mutation: Option<nodex_core_contracts::library::LibraryFileMutationResult>,
+    page_file_entries: Vec<nodex_core_contracts::library::LibraryPageFileEntryReceipt>,
+    commit_seq: i64,
+}
+#[derive(Serialize, ToSchema)]
+pub(crate) struct FileDownloadResult {
+    file_id: String,
+    source: LibraryFileReadSource,
+    byte_length: usize,
+    mime_type: String,
+    etag: String,
+    output: String,
+}
 
 pub(crate) struct FileSession<'a> {
     pub client: &'a CoreClient,
@@ -73,13 +92,15 @@ impl<'a> FileSession<'a> {
             ResponseEnvelope::Ok(value) => value,
             ResponseEnvelope::Error(error) => return Err(map_core_error(error)),
         };
-        Ok(CommandOutput::Json(json!({
-            "operation_id": committed.receipt().mutation.operation_id,
-            "duplicate": committed.receipt().mutation.duplicate,
-            "file_mutation": committed.outcome().file_mutation,
-            "page_file_entries": committed.outcome().page_file_entries,
-            "commit_seq": committed.commit_cursor(),
-        })))
+        serde_json::to_value(FileMutationResult {
+            operation_id: committed.receipt().mutation.operation_id.clone(),
+            duplicate: committed.receipt().mutation.duplicate,
+            file_mutation: committed.outcome().file_mutation.clone(),
+            page_file_entries: committed.outcome().page_file_entries.clone(),
+            commit_seq: committed.commit_cursor(),
+        })
+        .map(CommandOutput::Json)
+        .map_err(|error| internal(error.to_string()))
     }
 
     pub fn change(
@@ -159,11 +180,16 @@ impl<'a> FileSession<'a> {
         file.set_len(0).map_err(io_error)?;
         file.write_all(&blob.bytes).map_err(io_error)?;
         file.sync_all().map_err(io_error)?;
-        Ok(CommandOutput::Json(
-            json!({ "file_id": file_id, "source": source,
-            "byte_length": blob.bytes.len(), "mime_type": blob.mime_type,
-            "etag": blob.etag, "output": output }),
-        ))
+        serde_json::to_value(FileDownloadResult {
+            file_id: file_id.to_owned(),
+            source,
+            byte_length: blob.bytes.len(),
+            mime_type: blob.mime_type,
+            etag: blob.etag,
+            output: output.to_string_lossy().into_owned(),
+        })
+        .map(CommandOutput::Json)
+        .map_err(|error| internal(error.to_string()))
     }
 }
 
@@ -208,7 +234,7 @@ pub(crate) fn execute(
             limit: args.pagination.limit,
         }),
         FileCommand::Import(args) => {
-            let operation = mutation_id(&args.mutation, json_output)?;
+            let operation = mutation_id(&args.mutation)?;
             let name = input_name(&args.source, args.name)?;
             let mime_type = args
                 .mime
@@ -226,7 +252,7 @@ pub(crate) fn execute(
             )
         }
         FileCommand::Rename(args) => {
-            let operation = mutation_id(&args.write.mutation, json_output)?;
+            let operation = mutation_id(&args.write.mutation)?;
             session.change(
                 operation,
                 Change::Rename {
@@ -238,7 +264,7 @@ pub(crate) fn execute(
             )
         }
         FileCommand::Replace(args) => {
-            let operation = mutation_id(&args.write.mutation, json_output)?;
+            let operation = mutation_id(&args.write.mutation)?;
             let mime_type = input_mime(&args.source, args.mime)?;
             let prepared_blob_receipt_id = session.prepare(&operation, &args.source)?;
             session.change(
@@ -254,7 +280,7 @@ pub(crate) fn execute(
             )
         }
         FileCommand::Fork(args) => {
-            let operation = mutation_id(&args.mutation, json_output)?;
+            let operation = mutation_id(&args.mutation)?;
             session.change(
                 operation.clone(),
                 Change::Fork {
@@ -268,7 +294,7 @@ pub(crate) fn execute(
             )
         }
         FileCommand::Restore(args) => {
-            let operation = mutation_id(&args.write.mutation, json_output)?;
+            let operation = mutation_id(&args.write.mutation)?;
             let blob = client
                 .read_file_blob(
                     Some(&session.project_id),
@@ -291,7 +317,7 @@ pub(crate) fn execute(
             )
         }
         FileCommand::Trash(args) => {
-            let operation = mutation_id(&args.mutation, json_output)?;
+            let operation = mutation_id(&args.mutation)?;
             session.change(
                 operation,
                 Change::Trash {
@@ -302,7 +328,7 @@ pub(crate) fn execute(
             )
         }
         FileCommand::Untrash(args) => {
-            let operation = mutation_id(&args.mutation, json_output)?;
+            let operation = mutation_id(&args.mutation)?;
             session.change(
                 operation,
                 Change::Restore {
@@ -313,7 +339,7 @@ pub(crate) fn execute(
             )
         }
         FileCommand::Purge(args) => {
-            let operation = mutation_id(&args.mutation, json_output)?;
+            let operation = mutation_id(&args.mutation)?;
             session.change(
                 operation,
                 Change::Purge {
@@ -326,11 +352,11 @@ pub(crate) fn execute(
     }
 }
 
-pub(crate) fn mutation_id(args: &MutationArgs, json_output: bool) -> Result<String, CliError> {
+pub(crate) fn mutation_id(args: &MutationArgs) -> Result<String, CliError> {
     if !args.r#return.is_empty() {
         return Err(invalid("File commands do not accept --return fields"));
     }
-    operation_id(args.idempotency_key.as_deref(), json_output)
+    operation_id(args.idempotency_key.as_deref())
 }
 
 pub(crate) fn file_id_for_operation(operation: &str) -> String {
@@ -340,7 +366,7 @@ pub(crate) fn file_id_for_operation(operation: &str) -> String {
     )
 }
 
-const MAX_FILE_BYTES: usize = 64 * 1024 * 1024;
+pub(crate) const MAX_FILE_BYTES: usize = 64 * 1024 * 1024;
 
 // Validate the opened handle, not a preceding path stat. Never follow final symlinks or block on a FIFO.
 fn open_regular(path: &Path, write: bool) -> Result<File, CliError> {

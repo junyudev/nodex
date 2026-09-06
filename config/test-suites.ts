@@ -12,7 +12,8 @@ export const APP_TEST_SUITES = [
 ] as const;
 export type SuiteId = (typeof APP_TEST_SUITES)[number];
 export type TestRuntime = "host-node" | "electron-node" | "jsdom" | "chromium";
-export type NativeArtifactId = "core-server" | "yjs-yrs-bridge";
+export type NativeArtifactId = "core-server" | "yjs-yrs-bridge" | "cli";
+export const NODEX_CLI_BOOTSTRAP_TEST = "src/main/platform/node/NodexCliBootstrap.node.test.ts";
 export const YJS_YRS_TEST = "src/shared/block-documents/yjs-yrs-conformance.test.ts";
 
 const blocknoteTests = [
@@ -91,7 +92,7 @@ const suites: Readonly<Record<SuiteId, TestSuite>> = {
     include: ["src/main/**/*.node.test.ts", YJS_YRS_TEST],
     exclude: [],
     stress: ["src/main/**/*.stress.node.test.ts"],
-    native: ["core-server", "yjs-yrs-bridge"],
+    native: ["core-server", "yjs-yrs-bridge", "cli"],
   },
   main: {
     config: "vitest.main.config.ts",
@@ -184,6 +185,7 @@ export function nativeRequirements(
   return [
     ...(files.some((file) => file !== YJS_YRS_TEST) ? ["core-server" as const] : []),
     ...(files.includes(YJS_YRS_TEST) ? ["yjs-yrs-bridge" as const] : []),
+    ...(files.includes(NODEX_CLI_BOOTSTRAP_TEST) ? ["cli" as const] : []),
   ];
 }
 

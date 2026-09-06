@@ -1,21 +1,36 @@
 # Agent Interface Behavior
 
-## Two local interfaces
+## CLI-first local interface
 
-Nodex exposes local product capabilities to agents through two typed Adapters:
+The packaged native `nodex` CLI and official Agent Skill are the default content
+interface for local shell-capable Agents and scripts. Direct reads, stdin
+writes, typed queries, property edits, and atomic Page creation share Core
+semantics with the desktop. See [CLI Reference](../CLI.md) for command behavior.
 
-- Project-bound `nodex_app` tools injected into eligible Codex tasks;
-- the packaged native `nodex` CLI and official Agent Skill for local shell-
-  capable agents and scripts.
+Native CLI calls use the selected Profile and Project access context. They do
+not carry a verified Codex Turn identity. Internal dynamic tools use trusted
+host Turn authorization; the two authorization paths are not interchangeable.
+Neither exposes SQL or private storage as a content-editing interface.
 
-Both use semantic Core Module contracts. Neither receives a database path,
-raw SQL, renderer state, filesystem-derived authority, or internal storage
-coordinates. Project, Profile, Library, actor, Turn, store epoch, mutation
-identity, and authorization are bound by trusted host context.
+The host supplies an executable/Skill and pinned Profile/Project prefix for each
+eligible Turn, including resumed tasks. Automatic connection is limited to
+local, Project-bound, non-Plan tasks using the verified built-in Full access
+mode and an available CLI/Skill build. Missing context, remote execution, or
+restricted modes produce explicit unavailable context, replacing old connection
+instructions. This is connection availability, not an additional permission
+grant. CLI access remains checked by Core for every operation.
+
+`nodex_app` is an experimental, default-off interface controlled by the
+`nodex-dynamic-tools` development feature. The same startup setting gates new
+catalog registration and execution before authority reads, approval UI, or
+Core preparation. Historical calls remain readable. Restoring a task with an
+old catalog cannot bypass the gate; disabled execution reports
+`tool_catalog_stale` with domain code `NODEX_DYNAMIC_TOOLS_DISABLED`, without
+suggesting that a new task or automatic CLI fallback will restore access.
 
 ## `nodex_app`
 
-An eligible task keeps the catalog revision with which it started. A retired
+When the development feature is enabled, an eligible task keeps the catalog revision with which it started. A retired
 catalog fails explicitly and asks the user to start a new task; resume never
 silently changes the tool contract.
 

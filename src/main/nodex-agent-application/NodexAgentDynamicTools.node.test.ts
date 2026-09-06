@@ -13,7 +13,8 @@ import { NodexAgentApplication } from "./NodexAgentApplication";
 import { executeNodexAgentV3Tool } from "./NodexAgentDynamicExecution";
 import {
   buildNodexAgentDynamicToolSpecs,
-  live,
+  layer,
+  selectNodexAgentDynamicToolSpecs,
   NodexAgentDynamicTools,
   type NodexAgentDynamicToolCallContext,
 } from "./NodexAgentDynamicTools";
@@ -247,7 +248,7 @@ it.effect("publishes and enforces the current Nodex tool catalog at the protocol
       );
 
       const context = yield* Layer.build(
-        live.pipe(Layer.provide(Layer.succeed(NodexAgentApplication, application))),
+        layer(true).pipe(Layer.provide(Layer.succeed(NodexAgentApplication, application))),
       );
       const tools = Context.get(context, NodexAgentDynamicTools);
       const stale = yield* tools.execute(
@@ -285,3 +286,56 @@ it.effect("publishes and enforces the current Nodex tool catalog at the protocol
     }),
   );
 });
+
+it.effect(
+  "rejects restored catalog calls while disabled before reading or authorizing content",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const unexpected = () =>
+          Effect.die("disabled tools must not touch application or authorization");
+        const application = NodexAgentApplication.of({
+          read: unexpected,
+          prepare: unexpected,
+          apply: unexpected,
+          completePageUpdate: unexpected,
+        });
+        const context = yield* Layer.build(
+          layer(false).pipe(Layer.provide(Layer.succeed(NodexAgentApplication, application))),
+        );
+        const tools = Context.get(context, NodexAgentDynamicTools);
+        assert.deepEqual(selectNodexAgentDynamicToolSpecs(false), []);
+        assert.deepEqual(selectNodexAgentDynamicToolSpecs(true), buildNodexAgentDynamicToolSpecs());
+        const result = yield* tools.execute(
+          {
+            threadId: "historical",
+            turnId: "turn",
+            callId: "call",
+            namespace: "nodex_app",
+            tool: "create_pages",
+            arguments: {},
+          },
+          {
+            toolsetRevision: NODEX_APP_TOOLSET_REVISION,
+            authority: null,
+            access: { read: "allowed", write: "granted", domains: ["document"] },
+            resolveResourceAccess: unexpected,
+            authorize: unexpected,
+          },
+        );
+        assert.isFalse(result.success);
+        const content = result.contentItems[0];
+        assert.strictEqual(content?.type, "inputText");
+        if (content?.type !== "inputText") return;
+        assert.deepEqual(JSON.parse(content.text), {
+          error: {
+            code: "tool_catalog_stale",
+            message: "Nodex dynamic tools are disabled in this instance.",
+            retryable: false,
+            recovery: "none",
+            details: { domainCode: "NODEX_DYNAMIC_TOOLS_DISABLED" },
+          },
+        });
+      }),
+    ),
+);

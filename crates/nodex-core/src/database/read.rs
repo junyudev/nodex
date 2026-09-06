@@ -893,6 +893,37 @@ pub(crate) fn read_at_commit_head(
                 )?),
             }
         }
+        DatabaseRead::DataSourceQuery {
+            data_source_id,
+            query,
+        } => {
+            let database_id = database_for_source(connection, library_id, &data_source_id)?;
+            authorize_required(
+                connection,
+                project_id,
+                primary_database_id.as_deref(),
+                &database_id,
+            )?;
+            let window = CollectionWindowRequest {
+                after: query.cursor.clone(),
+                first: query.limit,
+            };
+            DatabaseReadValue::DataSourceQuery {
+                value: super::window::data_source_window(
+                    connection,
+                    library_id,
+                    &data_source_id,
+                    &query,
+                    super::window::ViewWindowRead {
+                        commit_head,
+                        project_id,
+                        store_epoch: &store_epoch,
+                        window: &window,
+                        group_scope: None,
+                    },
+                )?,
+            }
+        }
         DatabaseRead::AgentDataSourceQuery {
             data_source_id,
             query,
@@ -912,11 +943,17 @@ pub(crate) fn read_at_commit_head(
                 first: query.limit,
             };
             DatabaseReadValue::AgentDataSourceQuery {
-                value: super::window::agent_data_source_window(
+                value: super::window::data_source_window(
                     connection,
                     library_id,
                     &data_source_id,
-                    &query,
+                    &nodex_core_contracts::database::DatabaseDataSourceQuery {
+                        cursor: query.cursor.clone(),
+                        limit: query.limit,
+                        projection_property_ids: query.projection_property_ids.clone(),
+                        filter: query.filter.clone(),
+                        sort: query.sort.clone(),
+                    },
                     super::window::ViewWindowRead {
                         commit_head,
                         project_id,
@@ -1166,14 +1203,33 @@ fn hydrate_relation_previews(
                 &mut value.rows.items,
             )
         }
-        DatabaseReadValue::AgentDataSourceQuery { value } => {
+        DatabaseReadValue::DataSourceQuery { value }
+        | DatabaseReadValue::AgentDataSourceQuery { value } => {
+            let selected = value
+                .rows
+                .items
+                .iter()
+                .map(|row| {
+                    row.database_values
+                        .keys()
+                        .cloned()
+                        .collect::<std::collections::BTreeSet<_>>()
+                })
+                .collect::<Vec<_>>();
+            if selected.iter().all(std::collections::BTreeSet::is_empty) {
+                return Ok(());
+            }
             super::relation_projection::hydrate_row_previews(
                 connection,
                 library_id,
                 project_id,
                 &value.data_source_id,
                 &mut value.rows.items,
-            )
+            )?;
+            for (row, selected) in value.rows.items.iter_mut().zip(selected) {
+                row.database_values.retain(|id, _| selected.contains(id));
+            }
+            Ok(())
         }
         DatabaseReadValue::ListWindow { value } => {
             let mut summaries = value

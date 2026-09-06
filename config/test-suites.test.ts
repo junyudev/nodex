@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   filesForSuite,
   nativeRequirements,
+  NODEX_CLI_BOOTSTRAP_TEST,
   ownersOfTest,
   STRESS_TEST_SUITES,
   YJS_YRS_TEST,
@@ -38,8 +39,12 @@ describe("application test ownership", () => {
 
   test("distinguishes full, empty and bridge-only native preparation", () => {
     expect(nativeRequirements("unit")).toEqual([]);
-    expect(nativeRequirements("core-client")).toEqual(["core-server", "yjs-yrs-bridge"]);
+    expect(nativeRequirements("core-client")).toEqual(["core-server", "yjs-yrs-bridge", "cli"]);
     expect(nativeRequirements("core-client", [])).toEqual([]);
+    expect(nativeRequirements("core-client", [NODEX_CLI_BOOTSTRAP_TEST])).toEqual([
+      "core-server",
+      "cli",
+    ]);
     expect(nativeRequirements("core-client", [YJS_YRS_TEST])).toEqual(["yjs-yrs-bridge"]);
     expect(nativeRequirements("core-client", ["src/main/new/behavior.node.test.ts"])).toEqual([
       "core-server",

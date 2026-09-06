@@ -1,92 +1,84 @@
-# Project database Views and Board
+# Data Sources, properties, and saved Views
 
-Use saved Views as the authority for filters, sorts, grouping, visible
-properties, row order, and pagination. Never reconstruct a View with SQL or an
-ad-hoc query.
+A Database contains Data Sources; a Data Source owns its Property schema and
+Page row values; a View saves a presentation/query over one Data Source. These
+IDs are not interchangeable. Discover actual identities, types, and options
+before constructing unfamiliar queries or edits. Reuse current schema context.
 
-## Query a saved View
-
-Resolve a unique View name to its stable ID, then query it:
-
-```sh
-nodex view query --json @VIEW_ID --limit 50
-nodex view query --json @VIEW_ID --group STABLE_GROUP_KEY --limit 50
-nodex view query --json @VIEW_ID --unassigned --limit 50
-nodex view query --json @VIEW_ID --after 'OPAQUE_CURSOR' --limit 50
-```
-
-Use `groups[].key` for mutations; `groups[].label` is display-only. Continue
-with `pageInfo.endCursor` only when `hasNextPage` is true. Cursors are opaque
-and bound to the saved View snapshot.
-
-Each row can include `etags.move`. That narrow ETag binds the Page shell,
-membership, grouping value, saved View, and position authority needed for an
-atomic Board move.
-
-Rows also include the current nullable `page_key`. Use it when reporting or
-disambiguating work for the user, but retain the row's canonical Page ID for
-every mutation, anchor, and deeplink. A View may hide keys visually without
-removing them from CLI output.
-
-## Create directly in a View group
+## Discover and query
 
 ```sh
-nodex page create --json \
-  --parent data_source:@DATA_SOURCE_ID \
-  --view @VIEW_ID \
-  --group STABLE_GROUP_KEY \
-  --title "Ship public beta" \
-  --file /tmp/card.nested.md \
-  --idempotency-key card-create-public-beta-v1
+nodex data-source list --database DATABASE_ID
+nodex data-source describe @DATA_SOURCE_ID
+nodex data-source options @DATA_SOURCE_ID --property PROPERTY_ID
+nodex data-source query @DATA_SOURCE_ID --input - <<'JSON'
+{"filter":{"kind":"group","operator":"and","children":[]},"sort":[],"limit":50}
+JSON
 ```
 
-Use `--unassigned` instead of `--group` only when the user explicitly wants the
-unassigned group.
+Use the actual typed filter/sort and projection schema from machine help.
+Omitting property projection requests the default values; an empty projection
+requests no property values. Lists, schema, options, and query results are
+bounded windows: continue using returned opaque cursors. Reuse the same query
+with `--after CURSOR`; changed query or access conditions can invalidate cursors.
+Use stdout, pipes, or subprocess results directly for computation; save files
+only when the workflow needs persistent or repeated processing.
 
-## Move a Board card atomically
-
-Take the move ETag from the current `view query` row:
+A temporary query never changes a saved View or inherits its filters/grouping.
+Use the saved View itself for questions about what the user's Board shows:
 
 ```sh
-nodex page move --json @PAGE_ID \
-  --to data_source:@DATA_SOURCE_ID \
-  --view @VIEW_ID \
-  --group TARGET_STABLE_GROUP_KEY \
-  --at end \
-  --if-match 'MOVE_ETAG' \
-  --idempotency-key card-move-PAGE_ID-target-v1
+nodex view query @VIEW_ID --limit 50
+nodex view query @VIEW_ID --group STABLE_GROUP_KEY
+nodex view query @VIEW_ID --after OPAQUE_CURSOR
 ```
 
-Use exactly one placement anchor: `--at start|end`, `--before @PAGE_ID`, or
-`--after @PAGE_ID`. The mutation updates grouping property and View position in
-one Core transaction. Do not split it into a property edit followed by an order
-edit.
+Follow each result's declared pagination shape. Labels are presentation;
+stable group keys and Page IDs drive mutations.
 
-If the ETag is stale, the entire move fails without a partial placement. Query
-the View again, inspect the current group/order, and ask or adapt only if the
-user's intent still applies.
-
-## Duplicate into a View
+## Update properties
 
 ```sh
-nodex page duplicate --json @SOURCE_PAGE_ID \
-  --to data_source:@DATA_SOURCE_ID \
-  --view @VIEW_ID \
-  --group STABLE_GROUP_KEY \
-  --at end \
-  --idempotency-key card-duplicate-SOURCE_PAGE_ID-v1
+nodex page properties get @PAGE_ID
+nodex page properties set @PAGE_ID --data-source DATA_SOURCE_ID \
+  --property PROPERTY_ID --option OPTION_ID --if-revision VALUE_REVISION
 ```
 
-The returned receipt is the authority for the new Page ID, current Page key,
-and final placement. Use the ID for later writes; the key is the concise
-human/Agent reference.
+The short setter supports schema-checked select, text, and number replacements.
+Use `--text` or `--number` in place of `--option` for those types. Data Source
+can be omitted only when the Page identifies its source unambiguously.
 
-## Open the saved View
+For multiple edits, complex values, or relation/set changes, use
+`page properties apply --input -` with the typed input from machine help.
+A replacement carries the current value revision. Relation and multiselect
+changes use their own declared mutation kinds. One apply is atomic; separate
+CLI processes are separate commits. System-managed properties cannot be set
+through an ordinary value edit.
+
+`page create-batch --input -` creates 1–16 Pages at one explicit destination in
+one transaction. Drafts use `title_markdown`, `nested_markdown`, and typed
+initial `values`. Use the command schema for the destination and value shapes.
+A failing draft rolls back the whole batch. For resumable writes, save one key
+and exact input before submitting, rather than regenerating them after failure.
+
+## Board creation and movement
 
 ```sh
-nodex open view --json @VIEW_ID
-nodex open view --json @VIEW_ID --print
+nodex page create --parent data_source:@DATA_SOURCE_ID \
+  --view @VIEW_ID --group STABLE_GROUP_KEY --title 'Ship beta' --empty
+nodex page move @PAGE_ID --to data_source:@DATA_SOURCE_ID \
+  --view @VIEW_ID --group TARGET_GROUP_KEY --at end --if-match MOVE_ETAG
+nodex page duplicate @PAGE_ID --to data_source:@DATA_SOURCE_ID \
+  --view @VIEW_ID --group TARGET_GROUP_KEY --at end
 ```
 
-The CLI first validates the selected Project's access. It never accepts an
-arbitrary URL.
+Obtain the move ETag from a current View row or
+`nodex --json read @PAGE_ID --prepare page.move --view @VIEW_ID`. It binds the
+relevant grouping and placement state. Use one placement anchor: `--at`,
+`--before`, or `--after`. Use `--unassigned` only for an intended unassigned group.
+Core moves ownership, grouping, and position together; do not simulate this
+with a property change followed by a second ordering write.
+
+On a conflict, reread the affected state and decide whether the original move
+still makes sense. Keep the returned new identity after duplication. Use
+`nodex open view @VIEW_ID` to open the View, or add `--print` to return its link.

@@ -25,7 +25,7 @@ use crate::document::{
     BlockDocumentSchema, DocumentAuthorityRow, DocumentBlockOperation, DocumentBlockUpdatePatch,
     DocumentMaterialization, DocumentPlacementEvidence, PAGE_SCHEMA_KEY, PAGE_SCHEMA_VERSION,
     PersistYjsCommit, PersistYjsGenesis, YrsDocumentEngine, decode_block_document,
-    materialize_decoded_document, mint_document_semantic_etags, parse_inline_markdown_title,
+    materialize_decoded_document, mint_document_semantic_etags,
     persist_yjs_commit_with_local_commit, persist_yjs_genesis_with_local_commit,
     prepare_document_operation_update, prepare_page_yjs_genesis,
     prepare_page_yjs_genesis_with_content, read_document_authority, read_store_epoch,
@@ -291,21 +291,12 @@ pub(super) fn apply(
                     mention_host,
                     destination,
                 ),
+                LibraryIntent::CreatePagesFromNfm { request: create_request } => super::agent_page_create::create_native_pages(transaction, &context, &store_epoch, &library_id, &request.operation_id, &request_hash, create_request, false, None),
                 LibraryIntent::CreatePageFromNfm {
                     title_markdown,
                     nfm,
                     destination,
                 } => {
-                    let page_id = stable_uuid_v7(
-                        &request.operation_id,
-                        "page",
-                        &format!("{library_id}:semantic"),
-                    );
-                    let document_id = stable_uuid_v7(
-                        &request.operation_id,
-                        "page_document",
-                        &format!("{library_id}:semantic"),
-                    );
                     super::page_write_semantic::create_page(
                         transaction,
                         &context,
@@ -313,8 +304,6 @@ pub(super) fn apply(
                         &library_id,
                         &request.operation_id,
                         &request_hash,
-                        &page_id,
-                        &document_id,
                         title_markdown,
                         nfm,
                         destination,
@@ -2659,20 +2648,6 @@ fn create_page_records_and_genesis(
             let root_block_id = deterministic_block_id(operation_id);
             prepare_page_yjs_genesis(document_id, title, &root_block_id)?
         }
-        PageGenesisInput::NestedMarkdown {
-            title_markdown,
-            nfm,
-        } => {
-            let rich_title = parse_inline_markdown_title(title_markdown)
-                .map_err(|error| invalid(&error.to_string()))?;
-            let mut ordinal = 0_u64;
-            prepare_page_yjs_genesis_with_content(document_id, &rich_title, nfm, &mut || {
-                let block_id =
-                    stable_uuid_v7(operation_id, "page_body_block", &ordinal.to_string());
-                ordinal += 1;
-                block_id
-            })?
-        }
     };
 
     connection.execute(
@@ -3310,37 +3285,6 @@ fn create_page_mention(
     library_commit_result(connection, commit_result)
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn create_page_from_nfm(
-    connection: &Connection,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    library_id: &str,
-    operation_id: &str,
-    request_hash: &str,
-    page_id: &str,
-    document_id: &str,
-    title_markdown: &str,
-    nfm: &str,
-    parent: &LibraryWriteParent,
-) -> Result<LibraryApplyOutcome, StoreError> {
-    create_page(
-        connection,
-        context,
-        store_epoch,
-        library_id,
-        operation_id,
-        request_hash,
-        page_id,
-        document_id,
-        PageGenesisInput::NestedMarkdown {
-            title_markdown,
-            nfm,
-        },
-        parent,
-    )
-}
-
 enum PageGenesisInput<'a> {
     Retained {
         rich_title: &'a serde_json::Value,
@@ -3348,10 +3292,6 @@ enum PageGenesisInput<'a> {
         authorized_file_ids: &'a [String],
     },
     PlainTitle(&'a str),
-    NestedMarkdown {
-        title_markdown: &'a str,
-        nfm: &'a str,
-    },
 }
 
 pub(crate) fn insert_creator_resource_grant(
@@ -3401,7 +3341,6 @@ impl PageGenesisInput<'_> {
         match self {
             Self::PlainTitle(title) => title.len(),
             Self::Retained { rich_title, .. } => rich_title.to_string().len(),
-            Self::NestedMarkdown { title_markdown, .. } => title_markdown.len(),
         }
     }
 }
@@ -7364,6 +7303,89 @@ mod tests {
                     nodex_core_contracts::library::LibraryCanvasTarget::Deleted { .. }
                 )
         ));
+    }
+
+    #[test]
+    fn native_batch_creation_is_atomic_and_replay_preserves_every_identity() {
+        use nodex_core_contracts::library::{
+            LibraryAgentCreatePageDraft, LibraryAgentCreatePagesRequest,
+            LibraryAgentPageDestination,
+        };
+        let (_directory, kernel, module) = seeded_library();
+        let request = |key: &str, second: &str| ModuleApplyRequest {
+            contract_version: LIBRARY_CONTRACT_VERSION,
+            operation_id: key.to_owned(),
+            store_epoch: StoreEpoch("epoch-1".to_owned()),
+            intent: LibraryIntent::CreatePagesFromNfm {
+                request: LibraryAgentCreatePagesRequest {
+                    destination: LibraryAgentPageDestination::Library { at: None },
+                    pages: vec![
+                        LibraryAgentCreatePageDraft {
+                            title_markdown: "First batch Page".to_owned(),
+                            nfm: "First body".to_owned(),
+                            values: Vec::new(),
+                        },
+                        LibraryAgentCreatePageDraft {
+                            title_markdown: second.to_owned(),
+                            nfm: "Second body".to_owned(),
+                            values: Vec::new(),
+                        },
+                    ],
+                    include_block_ids: true,
+                    include_etags: true,
+                },
+            },
+        };
+        let before = kernel
+            .readers()
+            .read_default(|connection| {
+                Ok(connection
+                    .query_row("SELECT COUNT(*) FROM pages", [], |row| row.get::<_, i64>(0))?)
+            })
+            .unwrap();
+        let invalid = module.apply(
+            &context(),
+            request("native-batch:invalid", "\n# invalid title"),
+        );
+        assert!(invalid.is_err());
+        let after = kernel
+            .readers()
+            .read_default(|connection| {
+                Ok(connection
+                    .query_row("SELECT COUNT(*) FROM pages", [], |row| row.get::<_, i64>(0))?)
+            })
+            .unwrap();
+        assert_eq!(before, after);
+        let first = module
+            .apply(
+                &context(),
+                request("native-batch:valid", "Second batch Page"),
+            )
+            .expect("atomic creation");
+        let created = first
+            .committed
+            .value
+            .agent_create_pages
+            .clone()
+            .expect("batch result");
+        assert_eq!(created.pages.len(), 2);
+        assert_ne!(created.pages[0].page_id, created.pages[1].page_id);
+        let replay = module
+            .apply(
+                &context(),
+                request("native-batch:valid", "Second batch Page"),
+            )
+            .expect("exact replay");
+        assert!(replay.committed.receipt.mutation.duplicate);
+        assert_eq!(replay.committed.value.agent_create_pages, Some(created));
+        assert_eq!(replay.committed.commit_seq, first.committed.commit_seq);
+        let reused = module
+            .apply(&context(), request("native-batch:valid", "Changed title"))
+            .expect_err("changed input cannot replay");
+        assert_eq!(
+            reused.code,
+            nodex_core_contracts::CoreErrorCode::IdempotencyKeyReused
+        );
     }
 
     #[test]

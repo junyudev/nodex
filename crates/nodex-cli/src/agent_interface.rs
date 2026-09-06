@@ -1,3 +1,6 @@
+mod arguments;
+pub(crate) mod schema;
+
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 
@@ -8,10 +11,10 @@ use crate::error::{CliError, CliErrorCode};
 
 pub const AGENT_API_MIN_REVISION: u32 = 1;
 pub const AGENT_API_MAX_REVISION: u32 = 1;
-const MACHINE_HELP_SCHEMA_VERSION: u32 = 1;
+const MACHINE_HELP_SCHEMA_VERSION: u32 = 2;
 const NESTED_MARKDOWN_REVISION: u32 = 2;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CommandEffect {
     Read,
@@ -82,6 +85,133 @@ const SKILL_ERRORS: &[&str] = &[
 ];
 
 const COMMANDS: &[CommandMetadata] = &[
+    CommandMetadata {
+        path: &["docs", "nested-markdown"],
+        capability: "nestedMarkdown",
+        effect: CommandEffect::Local,
+        validators: &[],
+        result: "nested_markdown_reference",
+        errors: READ_ERRORS,
+        example: "nodex docs nested-markdown",
+        example_argv: &["docs", "nested-markdown"],
+    },
+    CommandMetadata {
+        path: &["ls"],
+        capability: "browse",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "child_window",
+        errors: READ_ERRORS,
+        example: "nodex ls @page-id",
+        example_argv: &["ls", "@page-id"],
+    },
+    CommandMetadata {
+        path: &["search"],
+        capability: "search",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "ranked_page_search",
+        errors: READ_ERRORS,
+        example: "nodex search planning",
+        example_argv: &["search", "planning"],
+    },
+    CommandMetadata {
+        path: &["data-source", "list"],
+        capability: "dataSource",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "data_source_window",
+        errors: READ_ERRORS,
+        example: "nodex data-source list --database @database-id",
+        example_argv: &["data-source", "list", "--database", "@database-id"],
+    },
+    CommandMetadata {
+        path: &["data-source", "describe"],
+        capability: "dataSource",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "data_source_description",
+        errors: READ_ERRORS,
+        example: "nodex data-source describe @data-source-id",
+        example_argv: &["data-source", "describe", "@data-source-id"],
+    },
+    CommandMetadata {
+        path: &["data-source", "options"],
+        capability: "dataSource",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "property_option_window",
+        errors: READ_ERRORS,
+        example: "nodex data-source options @data-source-id --property @property-id",
+        example_argv: &[
+            "data-source",
+            "options",
+            "@data-source-id",
+            "--property",
+            "@property-id",
+        ],
+    },
+    CommandMetadata {
+        path: &["data-source", "query"],
+        capability: "dataSource",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "data_source_query_window",
+        errors: READ_ERRORS,
+        example: "nodex data-source query @data-source-id --input - <<'JSON'\n{\"filter\":{\"kind\":\"group\",\"operator\":\"and\",\"children\":[]},\"sort\":[],\"limit\":50}\nJSON",
+        example_argv: &["data-source", "query", "@data-source-id", "--input", "-"],
+    },
+    CommandMetadata {
+        path: &["page", "properties", "get"],
+        capability: "properties",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "page_property_values",
+        errors: READ_ERRORS,
+        example: "nodex page properties get @page-id",
+        example_argv: &["page", "properties", "get", "@page-id"],
+    },
+    CommandMetadata {
+        path: &["page", "properties", "apply"],
+        capability: "properties",
+        effect: CommandEffect::Write,
+        validators: IDEMPOTENCY_VALIDATOR,
+        result: "property_mutation_receipt",
+        errors: WRITE_ERRORS,
+        example: "nodex page properties apply --input -",
+        example_argv: &["page", "properties", "apply", "--input", "-"],
+    },
+    CommandMetadata {
+        path: &["page", "properties", "set"],
+        capability: "properties",
+        effect: CommandEffect::Write,
+        validators: IDEMPOTENCY_VALIDATOR,
+        result: "property_mutation_receipt",
+        errors: WRITE_ERRORS,
+        example: "nodex page properties set @page-id --property @property-id --option @option-id --if-revision 0",
+        example_argv: &[
+            "page",
+            "properties",
+            "set",
+            "@page-id",
+            "--property",
+            "@property-id",
+            "--option",
+            "@option-id",
+            "--if-revision",
+            "0",
+        ],
+    },
+    CommandMetadata {
+        path: &["page", "create-batch"],
+        capability: "pageWrite",
+        effect: CommandEffect::Write,
+        validators: IDEMPOTENCY_VALIDATOR,
+        result: "page_batch_receipt",
+        errors: WRITE_ERRORS,
+        example: "nodex page create-batch --input -",
+        example_argv: &["page", "create-batch", "--input", "-"],
+    },
     CommandMetadata {
         path: &["capabilities"],
         capability: "capabilities",
@@ -173,7 +303,7 @@ const COMMANDS: &[CommandMetadata] = &[
         path: &["read"],
         capability: "read",
         effect: CommandEffect::Read,
-        validators: &["prepare_only_when_writing"],
+        validators: &["read_validators", "specialized_prepare_when_needed"],
         result: "canonical_page_file",
         errors: READ_ERRORS,
         example: "nodex --json read @page-id",
@@ -242,15 +372,8 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "page_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json patch --file ./change.patch --idempotency-key patch-1",
-        example_argv: &[
-            "--json",
-            "patch",
-            "--file",
-            "./change.patch",
-            "--idempotency-key",
-            "patch-1",
-        ],
+        example: "nodex patch <<'PATCH'\n*** Begin Patch\n*** Update Page: @page-id\n@@\n-Old note\n+Updated note\n*** End Patch\nPATCH",
+        example_argv: &["patch"],
     },
     CommandMetadata {
         path: &["page", "create"],
@@ -280,19 +403,8 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "page_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json page insert @page-id --at end --file body.nested.md --idempotency-key insert-1",
-        example_argv: &[
-            "--json",
-            "page",
-            "insert",
-            "@page-id",
-            "--at",
-            "end",
-            "--file",
-            "body.nested.md",
-            "--idempotency-key",
-            "insert-1",
-        ],
+        example: "nodex page insert @page-id <<'MARKDOWN'\n## Next steps\n- Review the proposal.\nMARKDOWN",
+        example_argv: &["page", "insert", "@page-id"],
     },
     CommandMetadata {
         path: &["page", "replace"],
@@ -301,40 +413,24 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: ETAG_AND_IDEMPOTENCY_VALIDATORS,
         result: "page_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json page replace @page-id --if-match body-etag --file body.nested.md --idempotency-key replace-1",
-        example_argv: &[
-            "--json",
-            "page",
-            "replace",
-            "@page-id",
-            "--if-match",
-            "body-etag",
-            "--file",
-            "body.nested.md",
-            "--idempotency-key",
-            "replace-1",
-        ],
+        example: "nodex page replace @page-id --if-match body-etag <<'MARKDOWN'\n## Updated plan\nReview the proposal.\nMARKDOWN",
+        example_argv: &["page", "replace", "@page-id", "--if-match", "body-etag"],
     },
     CommandMetadata {
-        path: &["page", "title", "set"],
+        path: &["page", "rename"],
         capability: "pageWrite",
         effect: CommandEffect::Write,
         validators: ETAG_AND_IDEMPOTENCY_VALIDATORS,
         result: "page_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json page title set @page-id --if-match title-etag --value Title --idempotency-key title-1",
+        example: "nodex page rename @page-id Title --if-match title-etag",
         example_argv: &[
-            "--json",
             "page",
-            "title",
-            "set",
+            "rename",
             "@page-id",
+            "Title",
             "--if-match",
             "title-etag",
-            "--value",
-            "Title",
-            "--idempotency-key",
-            "title-1",
         ],
     },
     CommandMetadata {
@@ -913,18 +1009,15 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "block_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json block insert @page-id --at end --block-json block.json --idempotency-key block-insert-1",
+        example: "nodex block insert @page-id --at end --block-json - <<'JSON'\n{\"local_id\":\"note\",\"block_type\":\"paragraph\",\"props\":{},\"content\":{\"kind\":\"absent\"},\"children\":[]}\nJSON",
         example_argv: &[
-            "--json",
             "block",
             "insert",
             "@page-id",
             "--at",
             "end",
             "--block-json",
-            "block.json",
-            "--idempotency-key",
-            "block-insert-1",
+            "-",
         ],
     },
     CommandMetadata {
@@ -934,20 +1027,17 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: ETAG_AND_IDEMPOTENCY_VALIDATORS,
         result: "block_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json block update @page-id --block @block-id --if-match block-etag --patch-json patch.json --idempotency-key block-update-1",
+        example: "nodex block update @page-id --block block-id --if-match block-etag --patch-json - <<'JSON'\n{\"block_type\":\"heading\",\"props\":{\"level\":2},\"content\":{\"kind\":\"absent\"},\"unset_content\":false}\nJSON",
         example_argv: &[
-            "--json",
             "block",
             "update",
             "@page-id",
             "--block",
-            "@block-id",
+            "block-id",
             "--if-match",
             "block-etag",
             "--patch-json",
-            "patch.json",
-            "--idempotency-key",
-            "block-update-1",
+            "-",
         ],
     },
     CommandMetadata {
@@ -1142,7 +1232,7 @@ const COMMANDS: &[CommandMetadata] = &[
     },
 ];
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentCapabilitiesV1 {
     pub schema_version: u32,
@@ -1153,27 +1243,27 @@ pub struct AgentCapabilitiesV1 {
     pub bundle: AgentBundleCapability,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentApiRange {
     pub minimum_revision: u32,
     pub maximum_revision: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentFormatCapabilities {
     pub nested_markdown_revision: u32,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum AgentBundleStatus {
     Available,
     Unavailable,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentBundleCapability {
     pub status: AgentBundleStatus,
@@ -1183,7 +1273,7 @@ pub struct AgentBundleCapability {
     pub tree_sha256: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MachineHelp {
     pub schema_version: u32,
@@ -1195,9 +1285,21 @@ pub struct MachineHelp {
     pub result: &'static str,
     pub errors: Vec<&'static str>,
     pub examples: Vec<&'static str>,
+    pub arguments: Vec<arguments::ArgumentHelp>,
+    pub content_input: Option<arguments::ContentInputHelp>,
+    pub output: OutputHelp,
+    pub semantics: Vec<&'static str>,
+    pub forwarded_arguments: Option<ForwardedArgumentHelp>,
+    pub argument_groups: Vec<arguments::ArgumentGroupHelp>,
+    pub usage: String,
+    pub result_schema: Value,
+    pub error_schema: Value,
+    pub payload_schemas: BTreeMap<String, Value>,
+    pub exit_codes: BTreeMap<i32, &'static str>,
+    pub nested_markdown: &'static str,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MachineHelpIndex {
     pub schema_version: u32,
@@ -1205,7 +1307,7 @@ pub struct MachineHelpIndex {
     pub commands: Vec<MachineHelpSummary>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MachineHelpSummary {
     pub command: String,
@@ -1214,7 +1316,7 @@ pub struct MachineHelpSummary {
     pub result_schema_revision: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(untagged)]
 pub enum MachineHelpDocument {
     Index(MachineHelpIndex),
@@ -1269,24 +1371,136 @@ pub fn machine_help(arguments: &[OsString]) -> Result<MachineHelpDocument, CliEr
     ))
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputHelp {
+    pub result_schema_applies_to: &'static str,
+    pub stdout: &'static str,
+    pub diagnostics: &'static str,
+}
+
+fn output_help(path: &[&str]) -> OutputHelp {
+    let stdout = match path {
+        ["read"] | ["sed"] | ["rg"] | ["docs", _] | ["draft", "diff"] => {
+            "content stream by default; --json selects a result envelope"
+        }
+        ["file", "read"] | ["page", "file", "read"] => {
+            "--output - returns exact bytes; --output PATH returns a download receipt; --json requires PATH"
+        }
+        _ => {
+            "JSON envelope when stdout is redirected; human-readable text on a terminal; --output-format overrides"
+        }
+    };
+    OutputHelp {
+        result_schema_applies_to: "JSON envelope.result",
+        stdout,
+        diagnostics: "stderr; JSON error envelope for non-terminal auto output or --json; exit 2",
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ForwardedArgumentHelp {
+    pub positionals: &'static str,
+    pub boolean_flags: &'static [&'static str],
+    pub value_flags: &'static [&'static str],
+    pub maximum_arguments: usize,
+    pub maximum_bytes: usize,
+}
+
+fn forwarded_arguments(path: &[&str]) -> Option<ForwardedArgumentHelp> {
+    if path != ["rg"] {
+        return None;
+    }
+    Some(ForwardedArgumentHelp {
+        positionals: "one pattern, followed by an optional Nodex scope selector; -- ends flags",
+        boolean_flags: crate::ripgrep::BOOLEAN_FLAGS,
+        value_flags: crate::ripgrep::VALUE_FLAGS,
+        maximum_arguments: crate::ripgrep::MAX_ARGUMENTS,
+        maximum_bytes: crate::ripgrep::MAX_ARGUMENT_BYTES,
+    })
+}
+
+fn command_semantics(path: &[&str]) -> Vec<&'static str> {
+    match path {
+        ["data-source", "query"] => vec![
+            "--after and --limit override the input cursor and limit; they do not change filter or sort rules.",
+            "Omitted projection_property_ids requests the supported default Property set; [] requests no Property values.",
+            "Rows are a bounded window. Continue with the emitted cursor and unchanged query rules.",
+        ],
+        ["data-source", "describe" | "options" | "list"] => vec![
+            "A non-null next_cursor means this is an incomplete window; continue before treating the schema or option inventory as complete.",
+        ],
+        ["search"] => {
+            vec!["Matches are ranked evidence snippets, never a complete Page editing baseline."]
+        }
+        ["read"] => vec![
+            "JSON returns the selected complete Page projection and reusable title/body validators; raw output contains only the selected file content.",
+            "Specialized move/delete prepare validators apply only to their declared operation and scope.",
+        ],
+        ["sed"] => vec![
+            "The program is one positive numeric <start>[,<end>]p range; content is a line slice, not a complete Page editing baseline.",
+        ],
+        ["ls"] => vec![
+            "List direct children only; continuation identifies additional children, not deeper descendants.",
+        ],
+        ["patch"]
+        | ["page", "insert" | "replace" | "rename"]
+        | ["page", "properties", "apply" | "set"]
+        | ["page", "create-batch"] => vec![
+            "Output format never changes write authorization, concurrency conditions, or idempotency.",
+            "Without an idempotency key each call is a new operation. Reuse an explicit key and identical input when retrying an uncertain result.",
+        ],
+        _ => Vec::new(),
+    }
+}
+
+fn result_revision(path: &[&str]) -> u32 {
+    match path {
+        ["read"] => 2,
+        _ => 1,
+    }
+}
+
 fn capability_revisions() -> BTreeMap<&'static str, u32> {
     COMMANDS
         .iter()
-        .map(|metadata| (metadata.capability, 1))
-        .collect()
+        .fold(BTreeMap::new(), |mut revisions, metadata| {
+            let revision = revisions.entry(metadata.capability).or_insert(1);
+            *revision = (*revision).max(result_revision(metadata.path));
+            revisions
+        })
 }
 
 fn machine_help_for(metadata: &CommandMetadata) -> MachineHelp {
+    let (arguments, argument_groups, usage) = arguments::describe(metadata.path);
     MachineHelp {
         schema_version: MACHINE_HELP_SCHEMA_VERSION,
         command: command_name(metadata.path),
         capability: metadata.capability,
         effect: metadata.effect,
         validators: metadata.validators.to_vec(),
-        result_schema_revision: 1,
+        result_schema_revision: result_revision(metadata.path),
         result: metadata.result,
         errors: metadata.errors.to_vec(),
         examples: vec![metadata.example],
+        arguments,
+        argument_groups,
+        usage,
+        content_input: arguments::content_input(metadata.path),
+        output: output_help(metadata.path),
+        semantics: command_semantics(metadata.path),
+        forwarded_arguments: forwarded_arguments(metadata.path),
+        result_schema: schema::result(metadata.path),
+        error_schema: schema::document::<crate::error::ErrorEnvelope>(),
+        payload_schemas: schema::payloads(metadata.path),
+        exit_codes: BTreeMap::from([
+            (0, "success"),
+            (1, "rg found no matches"),
+            (2, "rejected operation or invalid invocation"),
+            (130, "interrupted"),
+        ]),
+        nested_markdown: "nodex docs nested-markdown",
     }
 }
 
@@ -1298,7 +1512,7 @@ fn machine_help_index(prefix: &[&str]) -> MachineHelpIndex {
             command: command_name(metadata.path),
             capability: metadata.capability,
             effect: metadata.effect,
-            result_schema_revision: 1,
+            result_schema_revision: result_revision(metadata.path),
         })
         .collect();
     MachineHelpIndex {
@@ -1336,7 +1550,7 @@ fn command_tokens(arguments: &[OsString]) -> Vec<String> {
         }
         if matches!(
             argument,
-            "--profile" | "--project" | "--database" | "--page"
+            "--profile" | "--project" | "--database" | "--page" | "--output-format"
         ) {
             skip_global_value = true;
             continue;

@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 use std::env;
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -22,7 +22,8 @@ use nodex_core_contracts::workspace::{
     ProjectLifecycle, ProjectWorkspaceProject, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
 };
 use nodex_core_contracts::{
-    CoreError, CoreErrorCode, ModuleApplyRequest, StoreEpoch, VersionedModuleContract,
+    ApplyResponse, CoreError, CoreErrorCode, ModuleApplyRequest, StoreEpoch,
+    VersionedModuleContract,
 };
 use nodex_core_protocol::client::{ClientError, CoreClient, connect_or_launch};
 use nodex_core_protocol::{
@@ -34,9 +35,8 @@ use serde_json::{Value, json};
 
 use crate::cli::{
     BackupCommand, BlockArgs, BlockCommand, Cli, Command, DraftArgs, DraftCommand, HistoryArgs,
-    OpenArgs, OpenCommand, PageArgs, PageCommand, PageTitleArgs, PageTitleCommand, PrepareKind,
-    ProfileArgs, ProfileCloneArgs, ProfileCommand, ReadArgs, RgArgs, SedArgs, ServiceArgs,
-    ViewArgs, ViewCommand,
+    OpenArgs, OpenCommand, PageArgs, PageCommand, PrepareKind, ProfileArgs, ProfileCloneArgs,
+    ProfileCommand, ReadArgs, RgArgs, SedArgs, ServiceArgs, ViewArgs, ViewCommand,
 };
 use crate::error::{CliError, CliErrorCode};
 
@@ -71,15 +71,16 @@ impl CommandOutput {
                 Self::Process {
                     stdout,
                     exit_status,
-                } => json!({
-                    "stdout": String::from_utf8(stdout).map_err(|_| {
+                } => serde_json::to_value(crate::agent_interface::schema::ProcessResult {
+                    stdout: String::from_utf8(stdout).map_err(|_| {
                         CliError::new(
                             CliErrorCode::Internal,
                             "command returned non-UTF-8 process output for JSON output",
                         )
                     })?,
-                    "exit_status": exit_status,
-                }),
+                    exit_status,
+                })
+                .map_err(internal)?,
             };
             serde_json::to_writer(
                 &mut stdout,
@@ -117,14 +118,36 @@ fn write_line_terminated(writer: &mut impl Write, bytes: &[u8]) -> Result<(), Cl
 }
 
 pub fn execute(cli: Cli) -> Result<CommandOutput, CliError> {
+    let presentation = crate::presentation::resolve(
+        cli.requested_output(),
+        crate::presentation::output_kind(&cli.command),
+        io::stdin().is_terminal(),
+        io::stdout().is_terminal(),
+    );
+    execute_with_presentation(cli, presentation)
+}
+
+pub(crate) fn execute_with_presentation(
+    mut cli: Cli,
+    presentation: crate::presentation::Presentation,
+) -> Result<CommandOutput, CliError> {
+    if matches!(&cli.command, Command::Docs(_)) {
+        return Ok(CommandOutput::Bytes(
+            include_bytes!("../../../agent-skills/nodex/references/nested-markdown.md").to_vec(),
+        ));
+    }
     if matches!(&cli.command, Command::Capabilities) {
         return crate::agent_interface::capabilities().map(CommandOutput::Json);
     }
     if matches!(&cli.command, Command::Setup(_) | Command::Skills(_)) {
         reject_skill_scope_flags(&cli)?;
         return match cli.command {
-            Command::Setup(arguments) => crate::skills::execute_setup(arguments, cli.json),
-            Command::Skills(arguments) => crate::skills::execute_skills(arguments, cli.json),
+            Command::Setup(arguments) => {
+                crate::skills::execute_setup(arguments, !presentation.interactive)
+            }
+            Command::Skills(arguments) => {
+                crate::skills::execute_skills(arguments, !presentation.interactive)
+            }
             _ => unreachable!("guarded by the Skill command match"),
         };
     }
@@ -135,6 +158,17 @@ pub fn execute(cli: Cli) -> Result<CommandOutput, CliError> {
         reject_profile_clone_scope_flags(&cli)?;
         return clone_profile(arguments).map(CommandOutput::Json);
     }
+    match &mut cli.command {
+        Command::DataSource(args) => crate::data_source::prepare(args)?,
+        Command::Page(PageArgs {
+            command: PageCommand::Properties(args),
+        }) => crate::page_properties::prepare(args)?,
+        Command::Page(PageArgs {
+            command: PageCommand::CreateBatch(args),
+        }) => crate::page_batch::prepare(args)?,
+        _ => {}
+    }
+    crate::page_mutation::prepare_block_input(&mut cli.command)?;
     let cwd = env::current_dir().map_err(core_unavailable)?;
     match &cli.command {
         Command::Draft(DraftArgs {
@@ -160,6 +194,21 @@ pub fn execute(cli: Cli) -> Result<CommandOutput, CliError> {
     validate_profile_selector(cli.profile.as_deref(), &client)?;
 
     match cli.command {
+        Command::Page(PageArgs {
+            command: PageCommand::CreateBatch(arguments),
+        }) => crate::page_batch::execute(&client, cli.project.as_deref(), &cwd, arguments),
+        Command::Search(arguments) => {
+            crate::search::execute(&client, cli.project.as_deref(), &cwd, arguments)
+        }
+        Command::Ls(arguments) => {
+            crate::browse::execute(&client, cli.project.as_deref(), &cwd, arguments)
+        }
+        Command::DataSource(arguments) => {
+            crate::data_source::execute(&client, cli.project.as_deref(), &cwd, arguments)
+        }
+        Command::Page(PageArgs {
+            command: PageCommand::Properties(arguments),
+        }) => crate::page_properties::execute(&client, cli.project.as_deref(), &cwd, arguments),
         Command::Context => context(
             &client,
             cli.project.as_deref(),
@@ -168,12 +217,20 @@ pub fn execute(cli: Cli) -> Result<CommandOutput, CliError> {
             &home,
             &cwd,
         ),
-        Command::Read(arguments) => {
-            read_page(&client, cli.project.as_deref(), &cwd, arguments, cli.json)
-        }
-        Command::Sed(arguments) => {
-            sed_page(&client, cli.project.as_deref(), &cwd, arguments, cli.json)
-        }
+        Command::Read(arguments) => read_page(
+            &client,
+            cli.project.as_deref(),
+            &cwd,
+            arguments,
+            presentation.json_result,
+        ),
+        Command::Sed(arguments) => sed_page(
+            &client,
+            cli.project.as_deref(),
+            &cwd,
+            arguments,
+            presentation.json_result,
+        ),
         Command::Rg(arguments) => rg_pages(
             &client,
             cli.project.as_deref(),
@@ -183,58 +240,50 @@ pub fn execute(cli: Cli) -> Result<CommandOutput, CliError> {
             arguments,
         ),
         Command::History(arguments) => history(&client, cli.project.as_deref(), &cwd, arguments),
-        Command::Patch(arguments) => crate::page_mutation::patch_page(
-            &client,
-            cli.project.as_deref(),
-            &cwd,
-            arguments,
-            cli.json,
-        ),
+        Command::Patch(arguments) => {
+            crate::page_mutation::patch_page(&client, cli.project.as_deref(), &cwd, arguments)
+        }
         Command::View(ViewArgs {
             command: ViewCommand::Query(arguments),
-        }) => crate::view::query(&client, cli.project.as_deref(), &cwd, arguments, cli.json),
+        }) => crate::view::query(
+            &client,
+            cli.project.as_deref(),
+            &cwd,
+            arguments,
+            presentation.json_result,
+        ),
         Command::Open(OpenArgs {
             command: OpenCommand::Page(arguments),
-        }) => crate::open::page(&client, cli.project.as_deref(), &cwd, arguments, cli.json),
+        }) => crate::open::page(
+            &client,
+            cli.project.as_deref(),
+            &cwd,
+            arguments,
+            presentation.json_result,
+        ),
         Command::Open(OpenArgs {
             command: OpenCommand::View(arguments),
-        }) => crate::open::view(&client, cli.project.as_deref(), &cwd, arguments, cli.json),
+        }) => crate::open::view(
+            &client,
+            cli.project.as_deref(),
+            &cwd,
+            arguments,
+            presentation.json_result,
+        ),
         Command::Page(PageArgs {
             command: PageCommand::Create(arguments),
-        }) => crate::page_lifecycle::create_page(
-            &client,
-            cli.project.as_deref(),
-            &cwd,
-            arguments,
-            cli.json,
-        ),
+        }) => crate::page_lifecycle::create_page(&client, cli.project.as_deref(), &cwd, arguments),
         Command::Page(PageArgs {
             command: PageCommand::Move(arguments),
-        }) => crate::page_lifecycle::move_page(
-            &client,
-            cli.project.as_deref(),
-            &cwd,
-            arguments,
-            cli.json,
-        ),
+        }) => crate::page_lifecycle::move_page(&client, cli.project.as_deref(), &cwd, arguments),
         Command::Page(PageArgs {
             command: PageCommand::Duplicate(arguments),
-        }) => crate::page_lifecycle::duplicate_page(
-            &client,
-            cli.project.as_deref(),
-            &cwd,
-            arguments,
-            cli.json,
-        ),
+        }) => {
+            crate::page_lifecycle::duplicate_page(&client, cli.project.as_deref(), &cwd, arguments)
+        }
         Command::Page(PageArgs {
             command: PageCommand::Delete(arguments),
-        }) => crate::page_lifecycle::delete_page(
-            &client,
-            cli.project.as_deref(),
-            &cwd,
-            arguments,
-            cli.json,
-        ),
+        }) => crate::page_lifecycle::delete_page(&client, cli.project.as_deref(), &cwd, arguments),
         Command::Page(PageArgs {
             command: PageCommand::File(arguments),
         }) => crate::page_files::execute(
@@ -242,14 +291,14 @@ pub fn execute(cli: Cli) -> Result<CommandOutput, CliError> {
             cli.project.as_deref(),
             &cwd,
             arguments.command,
-            cli.json,
+            presentation.json_result,
         ),
         Command::File(arguments) => crate::files::execute(
             &client,
             cli.project.as_deref(),
             &cwd,
             arguments.command,
-            cli.json,
+            presentation.json_result,
         ),
         Command::Page(PageArgs {
             command: PageCommand::Insert(arguments),
@@ -258,65 +307,27 @@ pub fn execute(cli: Cli) -> Result<CommandOutput, CliError> {
             cli.project.as_deref(),
             &cwd,
             arguments,
-            cli.json,
         ),
         Command::Page(PageArgs {
             command: PageCommand::Replace(arguments),
-        }) => crate::page_mutation::replace_page(
-            &client,
-            cli.project.as_deref(),
-            &cwd,
-            arguments,
-            cli.json,
-        ),
+        }) => crate::page_mutation::replace_page(&client, cli.project.as_deref(), &cwd, arguments),
         Command::Page(PageArgs {
-            command:
-                PageCommand::Title(PageTitleArgs {
-                    command: PageTitleCommand::Set(arguments),
-                }),
-        }) => crate::page_mutation::set_page_title(
-            &client,
-            cli.project.as_deref(),
-            &cwd,
-            arguments,
-            cli.json,
-        ),
+            command: PageCommand::Rename(arguments),
+        }) => {
+            crate::page_mutation::set_page_title(&client, cli.project.as_deref(), &cwd, arguments)
+        }
         Command::Block(BlockArgs {
             command: BlockCommand::Insert(arguments),
-        }) => crate::page_mutation::insert_block(
-            &client,
-            cli.project.as_deref(),
-            &cwd,
-            arguments,
-            cli.json,
-        ),
+        }) => crate::page_mutation::insert_block(&client, cli.project.as_deref(), &cwd, arguments),
         Command::Block(BlockArgs {
             command: BlockCommand::Update(arguments),
-        }) => crate::page_mutation::update_block(
-            &client,
-            cli.project.as_deref(),
-            &cwd,
-            arguments,
-            cli.json,
-        ),
+        }) => crate::page_mutation::update_block(&client, cli.project.as_deref(), &cwd, arguments),
         Command::Block(BlockArgs {
             command: BlockCommand::Move(arguments),
-        }) => crate::page_mutation::move_block(
-            &client,
-            cli.project.as_deref(),
-            &cwd,
-            arguments,
-            cli.json,
-        ),
+        }) => crate::page_mutation::move_block(&client, cli.project.as_deref(), &cwd, arguments),
         Command::Block(BlockArgs {
             command: BlockCommand::Delete(arguments),
-        }) => crate::page_mutation::delete_block(
-            &client,
-            cli.project.as_deref(),
-            &cwd,
-            arguments,
-            cli.json,
-        ),
+        }) => crate::page_mutation::delete_block(&client, cli.project.as_deref(), &cwd, arguments),
         Command::Tree { scope } => tree(
             &client,
             cli.project.as_deref(),
@@ -324,12 +335,12 @@ pub fn execute(cli: Cli) -> Result<CommandOutput, CliError> {
             cli.page.as_deref(),
             scope.as_deref(),
             &cwd,
-            cli.json,
+            presentation.json_result,
         ),
         Command::Backup(backup) => match backup.command {
             BackupCommand::List => backup_list(&client),
             BackupCommand::Create { label, mutation } => {
-                let operation_id = operation_id(mutation.idempotency_key.as_deref(), cli.json)?;
+                let operation_id = operation_id(mutation.idempotency_key.as_deref())?;
                 backup_create(&client, operation_id, label)
             }
         },
@@ -337,7 +348,6 @@ pub fn execute(cli: Cli) -> Result<CommandOutput, CliError> {
             &client,
             arguments.full,
             arguments.mutation.idempotency_key.as_deref(),
-            cli.json,
         ),
         Command::Draft(DraftArgs {
             command: DraftCommand::Create { page, output },
@@ -859,12 +869,17 @@ fn sed_page(
     };
     let selected = crate::sed::select_lines(&value.content, range);
     if json_output {
-        return Ok(CommandOutput::Json(json!({
-            "content": selected,
-            "range": { "start": range.start, "end": range.end },
-            "page_id": value.page_id,
-            "page_key": value.page_key,
-        })));
+        return serde_json::to_value(SedOutput {
+            content: selected,
+            range: LineRangeOutput {
+                start: range.start,
+                end: range.end,
+            },
+            page_id: value.page_id,
+            page_key: value.page_key,
+        })
+        .map(CommandOutput::Json)
+        .map_err(internal);
     }
     Ok(CommandOutput::Bytes(selected.into_bytes()))
 }
@@ -1278,9 +1293,9 @@ impl TreeBudget {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-enum TreeRoot {
+pub(crate) enum TreeRoot {
     Database {
         database_id: String,
         name: String,
@@ -1291,12 +1306,13 @@ enum TreeRoot {
     },
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-enum TreeNode {
+pub(crate) enum TreeNode {
     Page {
         page_id: String,
         title: String,
+        #[schema(no_recursion)]
         children: Vec<TreeNode>,
     },
     Database {
@@ -1573,7 +1589,9 @@ fn backup_list(client: &CoreClient) -> Result<CommandOutput, CliError> {
             break;
         }
     }
-    Ok(CommandOutput::Json(json!({ "backups": items })))
+    serde_json::to_value(BackupListOutput { backups: items })
+        .map(CommandOutput::Json)
+        .map_err(internal)
 }
 
 fn backup_create(
@@ -1600,10 +1618,9 @@ fn doctor(
     client: &CoreClient,
     full: bool,
     idempotency_key: Option<&str>,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
     let maintenance = if full {
-        let operation_id = operation_id(idempotency_key, json_output)?;
+        let operation_id = operation_id(idempotency_key)?;
         Some(unwrap_administration_apply(client.administration_apply(
             ModuleApplyRequest {
                 contract_version: StoreAdministrationContract::VERSION,
@@ -1625,11 +1642,13 @@ fn doctor(
     let status =
         unwrap_administration(client.administration_read(StoreAdministrationRead::Status))?;
     let health = client.health().map_err(map_client_error)?;
-    Ok(CommandOutput::Json(json!({
-        "status": status.value,
-        "health": health,
-        "maintenance": maintenance,
-    })))
+    serde_json::to_value(DoctorOutput {
+        status: status.value,
+        health,
+        maintenance,
+    })
+    .map(CommandOutput::Json)
+    .map_err(internal)
 }
 
 fn resolve_project(
@@ -1810,7 +1829,7 @@ fn resolve_home(cwd: &Path) -> Result<PathBuf, CliError> {
     )
 }
 
-pub(crate) fn operation_id(explicit: Option<&str>, json_output: bool) -> Result<String, CliError> {
+pub(crate) fn operation_id(explicit: Option<&str>) -> Result<String, CliError> {
     if let Some(explicit) = explicit {
         if explicit.is_empty() || explicit.len() > 512 {
             return Err(CliError::new(
@@ -1832,14 +1851,6 @@ pub(crate) fn operation_id(explicit: Option<&str>, json_output: bool) -> Result<
         .map_err(internal)?
         .as_millis();
     let key = format!("cli-{timestamp}-{}", hex::encode(random));
-    if json_output {
-        eprintln!(
-            "{}",
-            json!({ "version": 1, "diagnostic": "generated_idempotency_key", "value": key })
-        );
-    } else {
-        eprintln!("idempotency key: {key}");
-    }
     Ok(key)
 }
 
@@ -1934,8 +1945,8 @@ fn internal(error: impl std::fmt::Display) -> CliError {
     CliError::new(CliErrorCode::Internal, error.to_string())
 }
 
-#[derive(Serialize)]
-struct ContextOutput {
+#[derive(Serialize, utoipa::ToSchema)]
+pub(crate) struct ContextOutput {
     profile: ContextProfile,
     project: ProjectWorkspaceProject,
     matched_by: &'static str,
@@ -1946,20 +1957,20 @@ struct ContextOutput {
     background_registration: String,
 }
 
-#[derive(Serialize)]
-struct ContextProfile {
+#[derive(Serialize, utoipa::ToSchema)]
+pub(crate) struct ContextProfile {
     id: String,
     library_id: String,
 }
 
-#[derive(Serialize)]
-struct ContextScope {
+#[derive(Serialize, utoipa::ToSchema)]
+pub(crate) struct ContextScope {
     kind: &'static str,
     id: String,
 }
 
-#[derive(Serialize)]
-struct ContextCore {
+#[derive(Serialize, utoipa::ToSchema)]
+pub(crate) struct ContextCore {
     pid: u32,
     build_id: String,
     transport_version: u32,
@@ -2181,4 +2192,32 @@ mod tests {
             .expect("line-oriented output");
         assert_eq!(text, b"status\n");
     }
+}
+
+#[derive(Serialize, utoipa::ToSchema)]
+pub(crate) struct SedOutput {
+    content: String,
+    range: LineRangeOutput,
+    page_id: String,
+    page_key: Option<String>,
+}
+#[derive(Serialize, utoipa::ToSchema)]
+pub(crate) struct LineRangeOutput {
+    start: usize,
+    end: usize,
+}
+#[derive(Serialize, utoipa::ToSchema)]
+pub(crate) struct BackupListOutput {
+    backups: Vec<nodex_core_contracts::administration::BackupRecord>,
+}
+#[derive(Serialize, utoipa::ToSchema)]
+pub(crate) struct DoctorOutput {
+    status: StoreAdministrationReadValue,
+    health: nodex_core_protocol::HealthResponse,
+    maintenance: Option<
+        nodex_core_contracts::ApplyResponse<
+            nodex_core_contracts::administration::StoreAdministrationCommitValue,
+            nodex_core_contracts::administration::StoreAdministrationReceipt,
+        >,
+    >,
 }

@@ -8116,6 +8116,48 @@
           }
         }
       },
+      "DatabaseDataSourceQuery": {
+        "type": "object",
+        "required": [
+          "filter",
+          "sort"
+        ],
+        "properties": {
+          "cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filter": {
+            "$ref": "#/components/schemas/DatabaseViewFilter"
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "projection_property_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "sort": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseViewSort"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "DatabaseDataSourceQueryWindow": {
         "type": "object",
         "required": [
@@ -10074,7 +10116,8 @@
           "property_id": {
             "type": "string"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "DatabasePagePropertyVisibility": {
         "type": "string",
@@ -10793,7 +10836,8 @@
           "edit": {
             "$ref": "#/components/schemas/DatabasePropertyValueEdit"
           }
-        }
+        },
+        "additionalProperties": false
       },
       "DatabaseReadRequest": {
         "$ref": "#/components/schemas/ModuleReadRequest_DatabaseRead"
@@ -18656,7 +18700,8 @@
             "type": "string"
           },
           "value": {}
-        }
+        },
+        "additionalProperties": false
       },
       "LibraryPageCopyViewPlacement": {
         "type": "object",
@@ -25222,6 +25267,24 @@
               {
                 "type": "object",
                 "required": [
+                  "request",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "create_pages_from_nfm"
+                    ]
+                  },
+                  "request": {
+                    "$ref": "#/components/schemas/LibraryAgentCreatePagesRequest"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "title_markdown",
                   "nfm",
                   "destination",
@@ -29585,6 +29648,28 @@
                   },
                   "view_id": {
                     "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "data_source_id",
+                  "query",
+                  "kind"
+                ],
+                "properties": {
+                  "data_source_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "data_source_query"
+                    ]
+                  },
+                  "query": {
+                    "$ref": "#/components/schemas/DatabaseDataSourceQuery"
                   }
                 }
               },
@@ -39661,6 +39746,24 @@
                           },
                           "value": {
                             "$ref": "#/components/schemas/DatabaseViewRecord"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "data_source_query"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/DatabaseDataSourceQueryWindow"
                           }
                         }
                       },

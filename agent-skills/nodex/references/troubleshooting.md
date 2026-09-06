@@ -1,55 +1,56 @@
 # Troubleshooting
 
-## `nodex` is not found
+## CLI or Core unavailable
 
-Nodex operations require a local CLI and desktop/Core runtime. Ask the user to
-install or open Nodex and ensure `nodex` is on the Agent process `PATH`. Do not
-download a replacement binary, inspect application storage, or edit Agent
-configuration.
+Use the host-supplied executable path when present; an empty PATH does not mean
+the bundled CLI is absent. Ordinary content operations start Core on demand and
+do not require a desktop window. If the binary or selected Profile is actually
+unavailable, explain that condition. A remote Agent cannot use a local Core
+unless its command really runs on that machine. Installation and configuration
+changes require the user's intent to make those changes.
 
-## Agent API revision is incompatible
+## Capability unavailable
 
-This Skill requires Agent API revision 1. If
-`nodex capabilities --json` does not include revision 1 in its supported range,
-stop and ask the user to update Nodex or use a Skill version compatible with
-their installed app. Never guess renamed commands.
+Read `nodex capabilities` for the current binary and request leaf help only for
+supported commands. A supported Agent API revision does not imply every newer
+command exists. Use a compatible operation or explain the missing capability;
+do not guess parameters from a different release.
 
-## Core or Profile is unavailable
+## Project missing or ambiguous
 
-Ask the user to open the local Nodex desktop app and confirm the intended
-Profile. A cloud-only or remote Agent session cannot access a user's local
-Nodex Core unless the CLI is actually running on that same machine.
+Use known task context, or run `nodex context` from the intended source/worktree.
+Pass the selected Project's exact ID or unique name with `--project PROJECT_ID`.
+Ask only if the intended context is unknown. Keep the selected Profile pinned
+across directory changes. Neither a Page ID nor a filesystem path grants data
+access; do not select another Project to work around a denial.
 
-## Project is missing or ambiguous
+## Conflict or response loss
 
-Run `nodex context --json` from the intended managed worktree or ask the user
-which Project to use. Pass the exact choice with `--project @PROJECT_ID` when
-available. Do not choose a candidate by list order and do not search another
-Project to work around authorization.
+For an explicit ETag/revision conflict, reread the affected current state and
+reassess the original intent before constructing a new mutation. For a lost
+response, retry the original unchanged input with its saved idempotency key.
+These are different recovery paths. A duplicate receipt confirms the original
+operation. Without a saved key, inspect the result before repeating a write
+that could create duplicate content.
 
-## ETag or cursor is stale
+A Page attachment conflict requires rereading `page file list` and checking its
+`revision` and File/path identity. Removing an entry retains the File and its
+body occurrences. Trashing/purging a shared File follows the separate File
+retention and permission contract; do not expand a detach into file deletion.
 
-ETags and cursors are scoped validators, not durable IDs. Reread the Page or
-saved View and reconsider the mutation against current state. Do not strip the
-validator, retry an old ETag, or substitute another command's ETag.
+Cursors are opaque and tied to their query/access context. Continue with the
+same query or restart it when the cursor is stale. Search evidence and paged
+results do not promise a complete editable document.
 
-## A Page File manifest changed
+## Resource missing or content unsupported
 
-Rerun `nodex page file list --json @PAGE_ID`, compare the current File identity,
-path, and version with the requested change, then issue a new logical mutation
-with a new idempotency key. Reuse the prior key only when the prior response was
-lost and the payload is identical. If deletion reports that the File is in use,
-remove the intended Page-body placements first; do not bypass the reference
-guard.
+Rediscover within the selected context. Do not use deleted rows or raw storage
+as fallback. Preserve native Nested Markdown structure; a lossy or partial
+projection is not a complete replacement baseline. Use explicit semantic
+ownership commands for Page moves/deletion rather than editing owning shells.
 
-## The Skill is externally managed
+## Skill managed elsewhere
 
-A project-local or copied Skill may be managed by an external Skills installer.
-Do not overwrite, relink, remove, or repair it. Explain the detected state and
-let the user manage it with the installer that created it.
-
-## A target is missing or deleted
-
-Fail closed. Rediscover the resource within the selected Project. Do not use
-raw storage, deleted rows, deep-link location lookup, or another Project as a
-fallback.
+Explain whether the Skill is a managed link or an external copy. Use its owning
+installer for user-requested changes; do not overwrite a foreign installation
+as a side effect of an ordinary content task.

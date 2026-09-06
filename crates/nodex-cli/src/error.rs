@@ -127,14 +127,14 @@ impl CliError {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ErrorEnvelope<'a> {
     pub version: u32,
     pub ok: bool,
     pub error: ErrorBody<'a>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ErrorBody<'a> {
     pub code: &'static str,
     pub message: &'a str,

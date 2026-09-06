@@ -19,7 +19,10 @@ import {
 import { CodexRendererConversationRegistry } from "../codex-application/CodexRendererConversationRegistry";
 import { resolveNodexAgentWriteAccess } from "../codex/nodex-agent-access";
 import { CoreModules } from "../core-runtime/CoreModules";
-import { NodexAgentDynamicTools } from "./NodexAgentDynamicTools";
+import {
+  NodexAgentDynamicTools,
+  nodexDynamicToolsDisabledResponse,
+} from "./NodexAgentDynamicTools";
 import { NodexAgentResourceAccess } from "./NodexAgentResourceAccess";
 
 export class NodexAgentProtocolTools extends Context.Service<
@@ -138,6 +141,7 @@ export const live: Layer.Layer<
     return NodexAgentProtocolTools.of({
       execute: (params) =>
         Effect.gen(function* () {
+          if (!tools.enabled) return nodexDynamicToolsDisabledResponse();
           const lineage = yield* conversationContext.read(params.threadId);
           const authority = yield* capture(params);
           const projectId = authority?.actorProjectId ?? lineage.projectId;

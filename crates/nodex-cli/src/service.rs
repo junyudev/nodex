@@ -18,7 +18,7 @@ const ADAPTER_PROTOCOL_VERSION: u32 = 1;
 const MAX_ADAPTER_OUTPUT_BYTES: usize = 64 * 1024;
 const ADAPTER_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 pub(crate) struct ServiceReport {
     pub version: u32,
     pub adapter: &'static str,

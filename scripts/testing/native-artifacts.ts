@@ -5,6 +5,13 @@ import type { NativeArtifactId } from "../../config/test-suites.ts";
 import { runCommand, type Command } from "../tooling/process.ts";
 
 const targets = {
+  cli: {
+    package: "nodex-cli",
+    name: "nodex",
+    kind: "bin",
+    source: "crates/nodex-cli/src/main.rs",
+    environment: "NODEX_TEST_CLI_EXECUTABLE",
+  },
   "core-server": {
     package: "nodex-core-server",
     name: "nodex-core",

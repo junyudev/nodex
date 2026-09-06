@@ -61,7 +61,7 @@ import {
 } from "./nodex-agent-application/NodexAgentApplication";
 import {
   NodexAgentDynamicTools,
-  live as nodexAgentDynamicToolsLive,
+  layer as nodexAgentDynamicToolsLive,
 } from "./nodex-agent-application/NodexAgentDynamicTools";
 import {
   NodexAgentResourceAccess,
@@ -183,7 +183,7 @@ const withFinalDataApplications = <A, E>(
           ),
         );
         const dynamicToolsContext = yield* Layer.build(
-          nodexAgentDynamicToolsLive.pipe(
+          nodexAgentDynamicToolsLive(true).pipe(
             Layer.provide(Layer.succeed(NodexAgentApplication, agent)),
           ),
         );

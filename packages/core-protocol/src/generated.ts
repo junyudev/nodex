@@ -2014,6 +2014,14 @@ export interface components {
         readonly DatabaseDataSourceDescriptor: {
             readonly data_source: components["schemas"]["DatabaseDataSourceRecord"];
         };
+        readonly DatabaseDataSourceQuery: {
+            readonly cursor?: string | null;
+            readonly filter: components["schemas"]["DatabaseViewFilter"];
+            /** Format: int32 */
+            readonly limit?: number | null;
+            readonly projection_property_ids?: readonly string[] | null;
+            readonly sort: readonly components["schemas"]["DatabaseViewSort"][];
+        };
         readonly DatabaseDataSourceQueryWindow: {
             readonly data_source_id: string;
             readonly database_id: string;
@@ -6144,6 +6152,10 @@ export interface components {
                 readonly page_id: string;
                 readonly title: string;
             } | {
+                /** @enum {string} */
+                readonly kind: "create_pages_from_nfm";
+                readonly request: components["schemas"]["LibraryAgentCreatePagesRequest"];
+            } | {
                 readonly destination: components["schemas"]["LibraryPageWriteDestination"];
                 /** @enum {string} */
                 readonly kind: "create_page_from_nfm";
@@ -7164,6 +7176,11 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "view";
                 readonly view_id: string;
+            } | {
+                readonly data_source_id: string;
+                /** @enum {string} */
+                readonly kind: "data_source_query";
+                readonly query: components["schemas"]["DatabaseDataSourceQuery"];
             } | {
                 readonly data_source_id: string;
                 /** @enum {string} */
@@ -9410,6 +9427,10 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "view";
                     readonly value: components["schemas"]["DatabaseViewRecord"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "data_source_query";
+                    readonly value: components["schemas"]["DatabaseDataSourceQueryWindow"];
                 } | {
                     /** @enum {string} */
                     readonly kind: "agent_data_source_query";

@@ -21,6 +21,8 @@ export interface CoreScenarioContext {
   readonly manifest: ScenarioManifest;
   readonly facts: ScenarioFacts;
   readonly seed: CoreClientSeedAdapter;
+  /** Runs a cold-start assertion, then reattaches the harness to the current Core generation. */
+  readonly withStoppedCore: <Value>(run: () => Promise<Value>) => Promise<Value>;
 }
 
 const waitForCoreRemoval = async (nodexHome: string): Promise<void> => {
@@ -75,7 +77,11 @@ export const withCoreScenario = async <Value>(
       isPackaged: false,
       nodexHome: profile.nodexHome,
     });
-    const seed = new CoreClientSeedAdapter(runtime);
+    let seed = new CoreClientSeedAdapter(runtime);
+    const currentRuntime = () => {
+      if (!runtime) throw new Error("Scenario Core is unavailable");
+      return runtime;
+    };
     const manifest = await materializeScenario(
       input.scenarioId,
       seed,
@@ -83,12 +89,33 @@ export const withCoreScenario = async <Value>(
     );
     const facts = await inspectScenario(manifest, seed);
     value = await run({
-      client: runtime.rootClient,
-      runtime,
+      get client() {
+        return currentRuntime().rootClient;
+      },
+      get runtime() {
+        return currentRuntime();
+      },
       profile,
       manifest,
       facts,
-      seed,
+      get seed() {
+        return seed;
+      },
+      withStoppedCore: async (run) => {
+        if (!runtime) throw new Error("Scenario Core is unavailable");
+        await runtime.rootClient.shutdown();
+        await waitForCoreRemoval(profile.nodexHome);
+        try {
+          return await run();
+        } finally {
+          runtime = await initializeStandaloneDataAuthority({
+            buildId: `scenario:${input.scenarioId}`,
+            isPackaged: false,
+            nodexHome: profile.nodexHome,
+          });
+          seed = new CoreClientSeedAdapter(runtime);
+        }
+      },
     });
     completed = true;
   } catch (error) {

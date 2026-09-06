@@ -55,6 +55,7 @@
     "agent-runtime:relock": "tsx scripts/relock-agent-runtime.ts",
     "browser-runtime:probe": "tsx scripts/run-browser-runtime-probe.ts",
     "browser-runtime:conformance": "tsx scripts/run-browser-runtime-probe.ts --conformance",
+    "test:agent-cli-bootstrap": "vp run stage:codex-runtime:mac:cached && tsx scripts/testing/probe-agent-cli-bootstrap.ts",
     "test:agent-runtime-conformance": "vp run stage:codex-runtime:mac && vp run test:agent-runtime-conformance:staged",
     "test:agent-runtime-conformance:staged": "vp run agent-runtime:probe && vp run agent-runtime:probe:multi-agent && vp run agent-runtime:probe:handoff",
     "test:browser-runtime-conformance": "vp run stage:codex-runtime:mac && vp run browser-runtime:probe && vp run browser-runtime:conformance",

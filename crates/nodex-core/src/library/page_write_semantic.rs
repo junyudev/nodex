@@ -1,29 +1,21 @@
-use std::collections::BTreeMap;
 use std::path::Path;
 
+use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::database::DatabaseGroupScope;
 use nodex_core_contracts::library::{
     LibraryAgentSiblingAnchor, LibraryBlockTransferDataSourcePlacement,
     LibraryBlockTransferLogicalIntent, LibraryBlockTransferMode, LibraryBlockTransferSource,
     LibraryBlockTransferTarget, LibraryPageCopyDestination, LibraryPageCopyPositionAnchor,
     LibraryPageCopyValue, LibraryPageCopyViewPlacement, LibraryPageWriteDestination,
-    LibraryResourceTarget,
 };
-use nodex_core_contracts::{BoundModuleContext, ModuleName};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Value, json};
 
-use crate::database::{
-    resolve_page_transfer_data_source_destination, validate_page_copy_data_source_destination,
-};
-use crate::infrastructure::durable_mutation::{self, OperationIdentity};
+use crate::database::resolve_page_transfer_data_source_destination;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::LibraryApplyOutcome;
-use super::mutation::{
-    LibraryMutationAuthority, MutationEffects, library_commit_result,
-    resolve_library_mutation_authority, seal_mutation, sqlite_now,
-};
+use super::mutation::{LibraryMutationAuthority, resolve_library_mutation_authority};
 
 const MAX_ID_BYTES: usize = 512;
 
@@ -54,152 +46,69 @@ pub(super) fn create_page(
     library_id: &str,
     operation_id: &str,
     request_hash: &str,
-    page_id: &str,
-    document_id: &str,
     title_markdown: &str,
     nfm: &str,
     destination: &LibraryPageWriteDestination,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    validate_id(page_id, "page_id")?;
-    validate_id(document_id, "document_id")?;
-    validate_id(operation_id, "operation_id")?;
-    let project_id = bound_project_id(context)?;
-    let resolved = resolve_destination(
-        connection,
-        library_id,
-        destination,
-        None,
-        DestinationAuthority::ProjectBound(project_id),
-    )?;
-    if !matches!(resolved, LibraryPageCopyDestination::DataSource { .. }) {
-        let parent = super::page_copy::write_parent(&resolved)?;
-        return super::mutation::create_page_from_nfm(
-            connection,
-            context,
-            store_epoch,
-            library_id,
-            operation_id,
-            request_hash,
-            page_id,
-            document_id,
-            title_markdown,
-            nfm,
-            &parent,
-        );
-    }
-    create_page_in_data_source(
+    use nodex_core_contracts::library::{
+        LibraryAgentCreatePageDraft, LibraryAgentCreatePagesRequest, LibraryAgentPageDestination,
+    };
+    let native_destination = destination;
+    let destination = match destination {
+        LibraryPageWriteDestination::Library { at } => {
+            LibraryAgentPageDestination::Library { at: at.clone() }
+        }
+        LibraryPageWriteDestination::Page { page_id, at } => LibraryAgentPageDestination::Page {
+            page_id: page_id.clone(),
+            at: at.clone(),
+        },
+        LibraryPageWriteDestination::DataSource {
+            data_source_id,
+            view_id,
+            group,
+            at,
+        } => {
+            let group_key = match group {
+                Some(DatabaseGroupScope::Path {
+                    group_key,
+                    subgroup_key,
+                }) => {
+                    if subgroup_key.is_some() {
+                        return Err(invalid("Page creation does not accept a subgroup"));
+                    }
+                    group_key.clone()
+                }
+                None => None,
+            };
+            LibraryAgentPageDestination::DataSource {
+                data_source_id: data_source_id.clone(),
+                view_id: view_id.clone(),
+                values: Vec::new(),
+                group_key,
+                at: at.clone(),
+            }
+        }
+    };
+    super::agent_page_create::create_native_pages(
         connection,
         context,
         store_epoch,
         library_id,
         operation_id,
         request_hash,
-        page_id,
-        document_id,
-        title_markdown,
-        nfm,
-        &resolved,
+        &LibraryAgentCreatePagesRequest {
+            destination,
+            pages: vec![LibraryAgentCreatePageDraft {
+                title_markdown: title_markdown.to_owned(),
+                nfm: nfm.to_owned(),
+                values: Vec::new(),
+            }],
+            include_block_ids: true,
+            include_etags: true,
+        },
+        true,
+        Some(native_destination),
     )
-}
-
-#[allow(clippy::too_many_arguments)]
-fn create_page_in_data_source(
-    connection: &Connection,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    library_id: &str,
-    operation_id: &str,
-    request_hash: &str,
-    page_id: &str,
-    document_id: &str,
-    title_markdown: &str,
-    nfm: &str,
-    destination: &LibraryPageCopyDestination,
-) -> Result<LibraryApplyOutcome, StoreError> {
-    let requesting_project_id = bound_project_id(context)?;
-    let destination = super::page_copy::data_source_destination(destination)
-        .ok_or_else(|| corrupt("Created Page lost its Data Source destination"))?;
-    validate_page_copy_data_source_destination(
-        connection,
-        library_id,
-        requesting_project_id,
-        &destination.data_source_id,
-        destination.expected_data_source_revision,
-    )?;
-    let now = sqlite_now(connection)?;
-    let commit_result = durable_mutation::run(
-        connection,
-        OperationIdentity {
-            module: ModuleName::Library,
-            module_name: "library",
-            operation_id,
-            intent_hash: request_hash,
-            store_epoch,
-            committed_at: &now,
-            context,
-        },
-        |scope| {
-            let created = super::page_genesis::create_page_in_data_source(
-                connection,
-                super::page_genesis::PageGenesisInput {
-                    commit_context: scope.evidence(),
-                    library_id,
-                    actor_project_id: requesting_project_id,
-                    placement_access_project_id: Some(requesting_project_id),
-                    operation_id,
-                    store_epoch,
-                    page_id,
-                    document_id,
-                    title_markdown,
-                    nfm,
-                    destination: &destination,
-                    now: &now,
-                },
-            )?;
-            let affected_block_ids = created.page_create.block_ids.clone();
-            let affected_document_id = created.page_create.document_id.clone();
-
-            seal_mutation(
-                scope,
-                context,
-                operation_id,
-                MutationEffects {
-                    page_file_entries: Vec::new(),
-                    file_revisions: BTreeMap::new(),
-                    file_mutation: Default::default(),
-                    project_id: requesting_project_id.to_owned(),
-                    operation_kind: "create_page",
-                    change_kind: "library.changed",
-                    did_mutate: true,
-                    created_target: Some(LibraryResourceTarget::Page {
-                        page_id: page_id.to_owned(),
-                    }),
-                    affected_parent_keys: vec![format!("data_source:{}", created.data_source_id)],
-                    affected_block_ids,
-                    affected_page_ids: vec![page_id.to_owned()],
-                    affected_database_ids: vec![created.database_id],
-                    affected_view_ids: created.affected_view_ids,
-                    affected_document_ids: vec![affected_document_id],
-                    committed_revisions: created.committed_revisions,
-                    page_create: Some(created.page_create),
-                    page_copy: None,
-                    canvas_mutation: None,
-                    block_transfer: None,
-                    block_transfer_undo: None,
-                    page_relocation_undo: None,
-                    structural_edit: None,
-                    page_lifecycle: None,
-                    block_property_mutation: None,
-                    agent_page_copy: None,
-                    agent_create_pages: None,
-                    agent_move_pages: None,
-                    change_payload: None,
-                    committed_at: now.clone(),
-                },
-            )
-        },
-    )?;
-    library_commit_result(connection, commit_result)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -592,6 +501,22 @@ fn resolve_destination(
             })
         }
     }
+}
+
+/// Resolves native batch placement through the same Project write boundary as a single Page.
+pub(super) fn resolve_batch_destination(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    destination: &LibraryPageWriteDestination,
+) -> Result<LibraryPageCopyDestination, StoreError> {
+    resolve_destination(
+        connection,
+        library_id,
+        destination,
+        None,
+        DestinationAuthority::ProjectBound(bound_project_id(context)?),
+    )
 }
 
 fn read_canonical_group_key(

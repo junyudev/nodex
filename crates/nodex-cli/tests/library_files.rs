@@ -51,6 +51,21 @@ fn run(home: &Path, args: &[&str]) -> Value {
 fn success(home: &Path, args: &[&str]) -> Value {
     let envelope = run(home, args);
     assert_eq!(envelope["ok"], true, "{args:?}: {envelope}");
+    let arguments = std::iter::once("nodex")
+        .chain(args.iter().copied())
+        .chain(std::iter::once("--help"))
+        .map(std::ffi::OsString::from)
+        .collect::<Vec<_>>();
+    let help = nodex_cli::agent_interface::machine_help(&arguments).expect("machine help");
+    let nodex_cli::agent_interface::MachineHelpDocument::Command(help) = help else {
+        panic!("leaf command help")
+    };
+    let validator = jsonschema::validator_for(&help.result_schema).expect("compile result schema");
+    validator
+        .validate(&envelope["result"])
+        .unwrap_or_else(|error| {
+            panic!("{args:?} returned a result outside its published schema: {error}")
+        });
     envelope["result"].clone()
 }
 

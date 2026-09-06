@@ -1,24 +1,32 @@
 #![forbid(unsafe_code)]
 
 use std::ffi::OsString;
+use std::io::IsTerminal;
 
 use clap::Parser;
 
 pub mod agent_interface;
+mod browse;
 pub mod cli;
 mod config;
+mod data_source;
 pub mod deeplink;
 mod draft;
 pub mod error;
 mod files;
+mod input;
 pub mod meta_yaml;
 mod open;
+mod page_batch;
 mod page_files;
 mod page_lifecycle;
 mod page_mutation;
+mod page_properties;
 pub mod patch;
+pub mod presentation;
 mod ripgrep;
 pub mod runtime;
+mod search;
 pub mod sed;
 mod service;
 pub mod skills;
@@ -34,41 +42,85 @@ pub const EXIT_INTERRUPTED: i32 = 130;
 
 pub fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
     let arguments = arguments.into_iter().collect::<Vec<_>>();
-    let json_requested = arguments.iter().any(|argument| argument == "--json");
+    let stdout_is_tty = std::io::stdout().is_terminal();
+    let stdin_is_tty = std::io::stdin().is_terminal();
+    let requested = requested_output_before_parse(&arguments);
     let help_requested = arguments
         .iter()
+        .take_while(|value| *value != "--")
         .any(|argument| argument == "--help" || argument == "-h");
-
-    if json_requested && help_requested {
+    if requested == presentation::OutputFormat::Json && help_requested {
         return print_machine_help(&arguments);
     }
-
     let cli = match Cli::try_parse_from(arguments) {
         Ok(cli) => cli,
         Err(error) => {
             let exit_status = error.exit_code();
-            let _ = error.print();
-            return exit_status;
+            if exit_status == EXIT_SUCCESS {
+                let _ = error.print();
+                return exit_status;
+            }
+            let format = presentation::resolve(
+                requested,
+                presentation::OutputKind::Structured,
+                stdin_is_tty,
+                stdout_is_tty,
+            );
+            render_error(
+                &CliError::new(CliErrorCode::InvalidInput, error.to_string()),
+                format.json_diagnostics,
+            );
+            return EXIT_REJECTED;
         }
     };
-
-    let json = cli.json;
-    match runtime::execute(cli) {
+    let format = presentation::resolve(
+        cli.requested_output(),
+        presentation::output_kind(&cli.command),
+        stdin_is_tty,
+        stdout_is_tty,
+    );
+    match runtime::execute_with_presentation(cli, format) {
         Ok(output) => {
             let exit_status = output.exit_status();
-            match output.write(json) {
+            match output.write(format.json_result) {
                 Ok(()) => exit_status,
                 Err(error) => {
-                    render_error(&error, json);
+                    render_error(&error, format.json_diagnostics);
                     EXIT_REJECTED
                 }
             }
         }
         Err(error) => {
-            render_error(&error, json);
+            render_error(&error, format.json_diagnostics);
             EXIT_REJECTED
         }
     }
+}
+
+// Parse errors must honor output selection even when Clap cannot construct Cli.
+fn requested_output_before_parse(arguments: &[OsString]) -> presentation::OutputFormat {
+    use presentation::OutputFormat;
+    let mut values = arguments.iter().skip(1).take_while(|value| *value != "--");
+    let mut format = OutputFormat::Auto;
+    while let Some(argument) = values.next() {
+        if argument == "--json" {
+            return OutputFormat::Json;
+        }
+        let value = if argument == "--output-format" {
+            values.next().and_then(|value| value.to_str())
+        } else {
+            argument
+                .to_str()
+                .and_then(|value| value.strip_prefix("--output-format="))
+        };
+        format = match value {
+            Some("json") => OutputFormat::Json,
+            Some("text") => OutputFormat::Text,
+            Some("auto") => OutputFormat::Auto,
+            _ => format,
+        };
+    }
+    format
 }
 
 fn print_machine_help(arguments: &[OsString]) -> i32 {

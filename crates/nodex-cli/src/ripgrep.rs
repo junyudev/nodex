@@ -17,8 +17,8 @@ use signal_hook::iterator::Signals;
 
 use crate::error::{CliError, CliErrorCode};
 
-const MAX_ARGUMENTS: usize = 64;
-const MAX_ARGUMENT_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_ARGUMENTS: usize = 64;
+pub(crate) const MAX_ARGUMENT_BYTES: usize = 64 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RipgrepInvocation {
@@ -121,57 +121,61 @@ fn validate_flag(argument: &OsStr, next: Option<&OsString>) -> Result<bool, CliE
     )))
 }
 
+pub(crate) const BOOLEAN_FLAGS: &[&str] = &[
+    "-n",
+    "--line-number",
+    "-i",
+    "--ignore-case",
+    "-s",
+    "--case-sensitive",
+    "-S",
+    "--smart-case",
+    "-F",
+    "--fixed-strings",
+    "-w",
+    "--word-regexp",
+    "-x",
+    "--line-regexp",
+    "-v",
+    "--invert-match",
+    "-c",
+    "--count",
+    "--count-matches",
+    "-l",
+    "--files-with-matches",
+    "--files-without-match",
+    "-q",
+    "--quiet",
+    "--column",
+    "--crlf",
+    "-U",
+    "--multiline",
+    "--multiline-dotall",
+    "-P",
+    "--pcre2",
+    "--trim",
+];
+
 fn allowed_boolean_flag(value: &str) -> bool {
-    matches!(
-        value,
-        "-n" | "--line-number"
-            | "-i"
-            | "--ignore-case"
-            | "-s"
-            | "--case-sensitive"
-            | "-S"
-            | "--smart-case"
-            | "-F"
-            | "--fixed-strings"
-            | "-w"
-            | "--word-regexp"
-            | "-x"
-            | "--line-regexp"
-            | "-v"
-            | "--invert-match"
-            | "-c"
-            | "--count"
-            | "--count-matches"
-            | "-l"
-            | "--files-with-matches"
-            | "--files-without-match"
-            | "-q"
-            | "--quiet"
-            | "--column"
-            | "--crlf"
-            | "-U"
-            | "--multiline"
-            | "--multiline-dotall"
-            | "-P"
-            | "--pcre2"
-            | "--trim"
-    )
+    BOOLEAN_FLAGS.contains(&value)
 }
 
+pub(crate) const VALUE_FLAGS: &[&str] = &[
+    "-A",
+    "--after-context",
+    "-B",
+    "--before-context",
+    "-C",
+    "--context",
+    "-m",
+    "--max-count",
+    "-g",
+    "--glob",
+    "--max-columns",
+];
+
 fn allowed_value_flag(value: &str) -> bool {
-    matches!(
-        value,
-        "-A" | "--after-context"
-            | "-B"
-            | "--before-context"
-            | "-C"
-            | "--context"
-            | "-m"
-            | "--max-count"
-            | "-g"
-            | "--glob"
-            | "--max-columns"
-    )
+    VALUE_FLAGS.contains(&value)
 }
 
 fn allowed_long_value_flag(value: &str) -> bool {

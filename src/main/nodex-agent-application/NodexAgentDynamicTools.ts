@@ -68,6 +68,20 @@ export function buildNodexAgentDynamicToolSpecs() {
   return buildNodexAgentV3DynamicToolCatalog();
 }
 
+export const selectNodexAgentDynamicToolSpecs = (enabled: boolean) =>
+  enabled ? buildNodexAgentDynamicToolSpecs() : [];
+
+export const nodexDynamicToolsDisabledResponse = (): DynamicToolCallResponse =>
+  serializeFailure({
+    error: {
+      code: "tool_catalog_stale",
+      message: "Nodex dynamic tools are disabled in this instance.",
+      retryable: false,
+      recovery: "none",
+      details: { domainCode: "NODEX_DYNAMIC_TOOLS_DISABLED" },
+    },
+  });
+
 export interface NodexAgentDynamicToolCallContext {
   readonly toolsetRevision: number | null;
   readonly authority: FrozenNodexAgentTurnAuthority | null;
@@ -81,6 +95,7 @@ export interface NodexAgentDynamicToolCallContext {
 export class NodexAgentDynamicTools extends Context.Service<
   NodexAgentDynamicTools,
   {
+    readonly enabled: boolean;
     readonly execute: (
       params: DynamicToolCallParams,
       context: NodexAgentDynamicToolCallContext,
@@ -172,13 +187,23 @@ const execute = (
   );
 };
 
-export const live: Layer.Layer<NodexAgentDynamicTools, never, NodexAgentApplication> = Layer.effect(
-  NodexAgentDynamicTools,
-  Effect.gen(function* () {
-    const application = yield* NodexAgentApplication;
-    return NodexAgentDynamicTools.of({
-      execute: (params, context) =>
-        execute(params, context).pipe(Effect.provideService(NodexAgentApplication, application)),
-    });
-  }),
-);
+export const layer = (
+  enabled: boolean,
+): Layer.Layer<NodexAgentDynamicTools, never, NodexAgentApplication> =>
+  Layer.effect(
+    NodexAgentDynamicTools,
+    Effect.gen(function* () {
+      const application = yield* NodexAgentApplication;
+      return NodexAgentDynamicTools.of({
+        enabled,
+        execute: (params, context) =>
+          enabled
+            ? execute(params, context).pipe(
+                Effect.provideService(NodexAgentApplication, application),
+              )
+            : Effect.succeed(nodexDynamicToolsDisabledResponse()),
+      });
+    }),
+  );
+
+export const live = layer(false);

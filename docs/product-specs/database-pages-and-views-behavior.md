@@ -405,6 +405,24 @@ title or any non-interactive part of a Page card opens that Page; card Property
 controls, menus, and drag gestures keep their own interaction instead of
 opening the Page.
 
+Data Source queries accept typed filters, sorts, and an explicit Property
+projection without creating or changing a View. Native CLI calls authorize the
+selected Project through Core; Agent calls validate their bound Turn before
+entering the same query implementation. An omitted projection includes active
+Properties; an empty projection includes none, including Relation previews.
+Saved View display fields and manual ordering never expand an explicit Data
+Source projection. Continuation cursors bind query rules and projected Property
+identities, so changing either requires starting a new query.
+
+The CLI exposes Source, Property, and Option discovery as bounded windows with
+stable identities and explicit continuation. `ls` on a Page reads only direct
+navigable children; on a Database it reads Page rows from its uniquely active
+Data Source, without borrowing a saved View's filters. Multiple active Sources
+require selecting a Source explicitly. Property reads return canonical values
+and per-value revisions, including null/revision zero for unset active fields.
+Scalar `properties set` and typed multi-edit `properties apply` share Core's
+atomic mutation; a stale replacement revision rejects the whole edit group.
+
 Database row authority always carries canonical Property values. In particular,
 select and multi-select values remain stable option IDs through View windows,
 List occurrence windows, optimistic row patches, Page Stage, filtering, sorting,

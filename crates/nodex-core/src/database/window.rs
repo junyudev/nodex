@@ -5,7 +5,7 @@ use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
 };
 use nodex_core_contracts::database::{
-    DatabaseAgentDataSourceQuery, DatabaseDataSourceQueryWindow, DatabaseGroupScope,
+    DatabaseDataSourceQuery, DatabaseDataSourceQueryWindow, DatabaseGroupScope,
     DatabaseListGroupSummary, DatabaseListProjectionRow, DatabaseListTransientKind,
     DatabaseListWindow, DatabaseRowDetail, DatabaseRowSummary, DatabaseRowsById,
     DatabaseViewAdvancedFilterOverrideInput, DatabaseViewCompletedRange,
@@ -190,18 +190,18 @@ pub(super) fn agent_view_window(
     )
 }
 
-pub(super) fn agent_data_source_window(
+pub(super) fn data_source_window(
     connection: &Connection,
     library_id: &str,
     data_source_id: &str,
-    query: &DatabaseAgentDataSourceQuery,
+    query: &DatabaseDataSourceQuery,
     read: ViewWindowRead<'_>,
 ) -> Result<DatabaseDataSourceQueryWindow, StoreError> {
     let project_id = read
         .project_id
-        .ok_or_else(|| unauthorized("Agent Data Source query requires a bound Project"))?;
+        .ok_or_else(|| unauthorized("Data Source query requires a bound Project"))?;
     let view =
-        resolve_agent_data_source_query(connection, library_id, project_id, data_source_id, query)?;
+        resolve_data_source_query(connection, library_id, project_id, data_source_id, query)?;
     let projection_property_ids = resolve_agent_projection_property_ids(
         connection,
         data_source_id,
@@ -1491,8 +1491,14 @@ fn row_window_for(
     let effective_filter = super::view_contract::effective_filter(&view.config.rules);
     let filter = compile_filter(&effective_filter, &mut parameters, 1, &mut 0)?;
     let completion = compile_completion_predicate(view, &mut parameters)?;
-    let (database_values_projection, property_revisions_projection) =
-        compact_value_projections_with(&view.config, projection_property_ids, &mut parameters)?;
+    let (database_values_projection, property_revisions_projection) = match view.query_scope {
+        RowQueryScope::View => {
+            compact_value_projections_with(&view.config, projection_property_ids, &mut parameters)?
+        }
+        RowQueryScope::DataSource => {
+            compact_value_projections_for_ids(projection_property_ids.clone(), &mut parameters)?
+        }
+    };
     let effective_group_select = effective_group.as_deref().unwrap_or("NULL");
     let effective_subgroup_select = effective_subgroup.as_deref().unwrap_or("NULL");
     let sort_projection = sort_components
@@ -2602,12 +2608,12 @@ fn resolve_view(
         .ok_or_else(|| not_found("Database View is unavailable"))
 }
 
-fn resolve_agent_data_source_query(
+fn resolve_data_source_query(
     connection: &Connection,
     library_id: &str,
     project_id: &str,
     data_source_id: &str,
-    query: &DatabaseAgentDataSourceQuery,
+    query: &DatabaseDataSourceQuery,
 ) -> Result<ResolvedView, StoreError> {
     validate_identity(data_source_id, "Data Source identity")?;
     if query
@@ -3229,6 +3235,13 @@ fn compact_value_projections_with(
     parameters: &mut Vec<SqlValue>,
 ) -> Result<(String, String), StoreError> {
     let property_ids = projected_property_ids_with(config, additional_property_ids)?;
+    compact_value_projections_for_ids(property_ids, parameters)
+}
+
+fn compact_value_projections_for_ids(
+    property_ids: BTreeSet<String>,
+    parameters: &mut Vec<SqlValue>,
+) -> Result<(String, String), StoreError> {
     if property_ids.is_empty() {
         return Ok(("'{}'".to_owned(), "'{\"database\":{}}'".to_owned()));
     }

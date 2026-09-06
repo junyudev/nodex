@@ -598,6 +598,16 @@ pub struct DatabaseAgentViewQuery {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
+pub struct DatabaseDataSourceQuery {
+    pub cursor: Option<String>,
+    pub limit: Option<u32>,
+    pub projection_property_ids: Option<Vec<String>>,
+    pub filter: DatabaseViewFilter,
+    pub sort: Vec<DatabaseViewSort>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct DatabaseAgentDataSourceQuery {
     pub authorization: AgentExecutionAuthorization,
     pub cursor: Option<String>,
@@ -682,6 +692,10 @@ pub enum DatabaseRead {
     },
     View {
         view_id: String,
+    },
+    DataSourceQuery {
+        data_source_id: String,
+        query: DatabaseDataSourceQuery,
     },
     AgentDataSourceQuery {
         data_source_id: String,
@@ -861,6 +875,9 @@ pub enum DatabaseReadValue {
     },
     View {
         value: DatabaseViewRecord,
+    },
+    DataSourceQuery {
+        value: DatabaseDataSourceQueryWindow,
     },
     AgentDataSourceQuery {
         value: DatabaseDataSourceQueryWindow,
@@ -1360,6 +1377,7 @@ pub enum DatabaseIntent {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct DatabasePagePropertyAddress {
     pub page_id: String,
     pub data_source_id: String,
@@ -1367,7 +1385,7 @@ pub struct DatabasePagePropertyAddress {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DatabasePropertyValueInput {
     Empty,
     Text { value: String },
@@ -1380,7 +1398,7 @@ pub enum DatabasePropertyValueInput {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DatabasePropertySetDelta {
     MultiSelect {
         add_option_ids: Vec<String>,
@@ -1393,7 +1411,7 @@ pub enum DatabasePropertySetDelta {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DatabasePropertyValueEdit {
     Replace {
         expected_value_revision: i64,
@@ -1412,6 +1430,7 @@ pub enum DatabasePropertyValueEdit {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct DatabasePropertyValueMutation {
     pub address: DatabasePagePropertyAddress,
     pub edit: DatabasePropertyValueEdit,

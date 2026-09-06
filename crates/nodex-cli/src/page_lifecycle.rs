@@ -11,7 +11,6 @@ use nodex_core_contracts::workspace::ProjectWorkspaceProject;
 use nodex_core_contracts::{CoreErrorCode, ModuleApplyRequest, StoreEpoch};
 use nodex_core_protocol::ResponseEnvelope;
 use nodex_core_protocol::client::CoreClient;
-use serde_json::json;
 
 use crate::cli::{
     BoundaryPlacement, DataSourcePlacementArgs, MutationArgs, PageCreateArgs, PageDeleteArgs,
@@ -26,12 +25,101 @@ use crate::runtime::{
     selected_project, unwrap_database, unwrap_library,
 };
 
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct PageCreationResult<'a> {
+    operation_id: &'a str,
+    duplicate: bool,
+    page_id: &'a str,
+    page_key: &'a Option<String>,
+    document_id: &'a str,
+    generation: i64,
+    head_seq: i64,
+    commit_seq: i64,
+    affected: CreatedBlocks<'a>,
+    etags: PageBodyEtags<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commit: Option<&'a nodex_core_contracts::library::LibraryCommitValue>,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct CreatedBlocks<'a> {
+    created_block_ids: &'a [String],
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct PageBodyEtags<'a> {
+    title: &'a str,
+    body: &'a str,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct PageCopyResult<'a> {
+    operation_id: &'a str,
+    duplicate: bool,
+    source_page_id: &'a str,
+    page_id: &'a str,
+    page_key: &'a Option<String>,
+    document_id: &'a str,
+    generation: i64,
+    head_seq: i64,
+    commit_seq: i64,
+    affected: CopiedBlocks<'a>,
+    etags: PageBodyEtags<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commit: Option<&'a nodex_core_contracts::library::LibraryCommitValue>,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct CopiedBlocks<'a> {
+    page_ids: &'a [String],
+    block_ids: &'a std::collections::BTreeMap<String, String>,
+    document_ids: &'a std::collections::BTreeMap<String, String>,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct PageMoveResult<'a> {
+    operation_id: &'a str,
+    duplicate: bool,
+    page_id: &'a str,
+    page_key: &'a Option<String>,
+    commit_seq: i64,
+    affected: MovedBlocks<'a>,
+    etags: PageMoveEtags<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commit: Option<&'a nodex_core_contracts::library::LibraryCommitValue>,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct MovedBlocks<'a> {
+    page_ids: &'a [String],
+    database_ids: &'a [String],
+    document_ids: Vec<&'a String>,
+    location: Option<&'a nodex_core_contracts::library::LibraryBlockLocation>,
+    view_placement: Option<&'a nodex_core_contracts::library::LibraryPageViewPlacementResult>,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct PageMoveEtags<'a> {
+    page: &'a str,
+    r#move: &'a str,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct PageDeletionResult<'a> {
+    operation_id: &'a str,
+    duplicate: bool,
+    page_id: &'a str,
+    lifecycle: &'a nodex_core_contracts::library::LibraryPageLifecycleState,
+    metadata_revision: i64,
+    parent_revision: i64,
+    commit_seq: i64,
+    affected: DeletedPages<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    commit: Option<&'a nodex_core_contracts::library::LibraryCommitValue>,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct DeletedPages<'a> {
+    page_ids: &'a [String],
+    database_ids: &'a [String],
+}
+
 pub(crate) fn create_page(
     client: &CoreClient,
     explicit_project: Option<&str>,
     cwd: &Path,
     arguments: PageCreateArgs,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
     validate_return_fields(&arguments.mutation.r#return)?;
     let title_markdown = validate_title(arguments.title)?;
@@ -52,7 +140,7 @@ pub(crate) fn create_page(
         None,
         &arguments.data_source,
     )?;
-    let operation_id = operation_id(arguments.mutation.idempotency_key.as_deref(), json_output)?;
+    let operation_id = operation_id(arguments.mutation.idempotency_key.as_deref())?;
     let response = client
         .library_apply(
             Some(&project.id),
@@ -78,23 +166,25 @@ pub(crate) fn create_page(
             "Core semantic Page creation omitted its exact result",
         )
     })?;
-    let mut result = json!({
-        "operation_id": committed.receipt().mutation.operation_id,
-        "duplicate": committed.receipt().mutation.duplicate,
-        "page_id": created.page_id,
-        "page_key": created.page_key,
-        "document_id": created.document_id,
-        "generation": created.document_generation,
-        "head_seq": created.document_head_seq,
-        "commit_seq": committed.commit_cursor(),
-        "affected": {
-            "created_block_ids": created.block_ids,
+    let mut result = serde_json::to_value(PageCreationResult {
+        operation_id: &committed.receipt().mutation.operation_id,
+        duplicate: committed.receipt().mutation.duplicate,
+        page_id: &created.page_id,
+        page_key: &created.page_key,
+        document_id: &created.document_id,
+        generation: created.document_generation,
+        head_seq: created.document_head_seq,
+        commit_seq: committed.commit_cursor(),
+        affected: CreatedBlocks {
+            created_block_ids: &created.block_ids,
         },
-        "etags": {
-            "title": created.title_etag,
-            "body": created.body_etag,
+        etags: PageBodyEtags {
+            title: &created.title_etag,
+            body: &created.body_etag,
         },
-    });
+        commit: None,
+    })
+    .map_err(internal)?;
     if arguments
         .mutation
         .r#return
@@ -114,7 +204,6 @@ pub(crate) fn move_page(
     explicit_project: Option<&str>,
     cwd: &Path,
     arguments: PageMoveArgs,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
     transfer_page(
         client,
@@ -127,7 +216,6 @@ pub(crate) fn move_page(
             expected_etag: Some(arguments.if_match),
             duplicate: false,
         },
-        json_output,
     )
 }
 
@@ -136,7 +224,6 @@ pub(crate) fn duplicate_page(
     explicit_project: Option<&str>,
     cwd: &Path,
     arguments: PageDuplicateArgs,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
     transfer_page(
         client,
@@ -149,7 +236,6 @@ pub(crate) fn duplicate_page(
             expected_etag: None,
             duplicate: true,
         },
-        json_output,
     )
 }
 
@@ -166,7 +252,6 @@ fn transfer_page(
     explicit_project: Option<&str>,
     cwd: &Path,
     request: PageTransferRequest,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
     let PageTransferRequest {
         page,
@@ -186,7 +271,7 @@ fn transfer_page(
         anchor,
         &destination_arguments.data_source,
     )?;
-    let operation_id = operation_id(mutation.idempotency_key.as_deref(), json_output)?;
+    let operation_id = operation_id(mutation.idempotency_key.as_deref())?;
     let intent = if duplicate {
         LibraryIntent::DuplicatePage {
             source_page_id: page_id.clone(),
@@ -222,26 +307,28 @@ fn transfer_page(
                 "Core semantic Page duplication omitted its exact result",
             )
         })?;
-        json!({
-            "operation_id": committed.receipt().mutation.operation_id,
-            "duplicate": committed.receipt().mutation.duplicate,
-            "source_page_id": copied.source_page_id,
-            "page_id": copied.page_id,
-            "page_key": copied.page_key,
-            "document_id": copied.document_id,
-            "generation": copied.document_generation,
-            "head_seq": copied.document_head_seq,
-            "commit_seq": committed.commit_cursor(),
-            "affected": {
-                "page_ids": committed.receipt().affected_page_ids,
-                "block_ids": copied.block_ids,
-                "document_ids": copied.document_ids,
+        serde_json::to_value(PageCopyResult {
+            operation_id: &committed.receipt().mutation.operation_id,
+            duplicate: committed.receipt().mutation.duplicate,
+            source_page_id: &copied.source_page_id,
+            page_id: &copied.page_id,
+            page_key: &copied.page_key,
+            document_id: &copied.document_id,
+            generation: copied.document_generation,
+            head_seq: copied.document_head_seq,
+            commit_seq: committed.commit_cursor(),
+            affected: CopiedBlocks {
+                page_ids: &committed.receipt().affected_page_ids,
+                block_ids: &copied.block_ids,
+                document_ids: &copied.document_ids,
             },
-            "etags": {
-                "title": copied.title_etag,
-                "body": copied.body_etag,
+            etags: PageBodyEtags {
+                title: &copied.title_etag,
+                body: &copied.body_etag,
             },
+            commit: None,
         })
+        .map_err(internal)?
     } else {
         let moved = committed.outcome().block_transfer.as_ref().ok_or_else(|| {
             CliError::new(
@@ -267,24 +354,30 @@ fn transfer_page(
                 "Core semantic Page movement omitted its current Page key",
             )
         })?;
-        json!({
-            "operation_id": committed.receipt().mutation.operation_id,
-            "duplicate": committed.receipt().mutation.duplicate,
-            "page_id": page_id,
-            "page_key": page_key,
-            "commit_seq": committed.commit_cursor(),
-            "affected": {
-                "page_ids": committed.receipt().affected_page_ids,
-                "database_ids": committed.receipt().affected_database_ids,
-                "document_ids": moved.document_commits.iter().map(|commit| &commit.document_id).collect::<Vec<_>>(),
-                "location": moved.final_locations.get(&page_id),
-                "view_placement": moved.page_view_placements.get(&page_id),
+        serde_json::to_value(PageMoveResult {
+            operation_id: &committed.receipt().mutation.operation_id,
+            duplicate: committed.receipt().mutation.duplicate,
+            page_id: &page_id,
+            page_key,
+            commit_seq: committed.commit_cursor(),
+            affected: MovedBlocks {
+                page_ids: &committed.receipt().affected_page_ids,
+                database_ids: &committed.receipt().affected_database_ids,
+                document_ids: moved
+                    .document_commits
+                    .iter()
+                    .map(|commit| &commit.document_id)
+                    .collect(),
+                location: moved.final_locations.get(&page_id),
+                view_placement: moved.page_view_placements.get(&page_id),
             },
-            "etags": {
-                "page": page_etag,
-                "move": move_etag,
+            etags: PageMoveEtags {
+                page: page_etag,
+                r#move: move_etag,
             },
+            commit: None,
         })
+        .map_err(internal)?
     };
     maybe_include_commit(&mut result, &mutation.r#return, committed.outcome())?;
     Ok(CommandOutput::Json(result))
@@ -295,12 +388,11 @@ pub(crate) fn delete_page(
     explicit_project: Option<&str>,
     cwd: &Path,
     arguments: PageDeleteArgs,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
     validate_return_fields(&arguments.mutation.r#return)?;
     let project = selected_project(client, explicit_project, cwd)?;
     let page_id = resolve_page_selector(client, &project.id, &arguments.page)?;
-    let operation_id = operation_id(arguments.mutation.idempotency_key.as_deref(), json_output)?;
+    let operation_id = operation_id(arguments.mutation.idempotency_key.as_deref())?;
     let response = client
         .library_apply(
             Some(&project.id),
@@ -325,19 +417,21 @@ pub(crate) fn delete_page(
             "Core semantic Page deletion omitted its lifecycle receipt",
         )
     })?;
-    let mut result = json!({
-        "operation_id": committed.receipt().mutation.operation_id,
-        "duplicate": committed.receipt().mutation.duplicate,
-        "page_id": page_id,
-        "lifecycle": lifecycle.lifecycle,
-        "metadata_revision": lifecycle.metadata_revision,
-        "parent_revision": lifecycle.parent_revision,
-        "commit_seq": committed.commit_cursor(),
-        "affected": {
-            "page_ids": committed.receipt().affected_page_ids,
-            "database_ids": committed.receipt().affected_database_ids,
+    let mut result = serde_json::to_value(PageDeletionResult {
+        operation_id: &committed.receipt().mutation.operation_id,
+        duplicate: committed.receipt().mutation.duplicate,
+        page_id: &page_id,
+        lifecycle: &lifecycle.lifecycle,
+        metadata_revision: lifecycle.metadata_revision,
+        parent_revision: lifecycle.parent_revision,
+        commit_seq: committed.commit_cursor(),
+        affected: DeletedPages {
+            page_ids: &committed.receipt().affected_page_ids,
+            database_ids: &committed.receipt().affected_database_ids,
         },
-    });
+        commit: None,
+    })
+    .map_err(internal)?;
     maybe_include_commit(
         &mut result,
         &arguments.mutation.r#return,

@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use nodex_core_contracts::events::PageDocumentHeadImpact;
 use nodex_core_contracts::library::LibraryPageCreateResult;
 use rusqlite::Connection;
@@ -32,11 +30,9 @@ pub(crate) struct PageGenesisInput<'a> {
 
 pub(crate) struct CreatedPageGenesis {
     pub(crate) page_create: LibraryPageCreateResult,
-    pub(crate) database_id: String,
     pub(crate) data_source_id: String,
     pub(crate) affected_view_ids: Vec<String>,
     pub(crate) document_head: PageDocumentHeadImpact,
-    pub(crate) committed_revisions: BTreeMap<String, i64>,
 }
 
 pub(crate) fn create_page_in_data_source(
@@ -110,54 +106,8 @@ pub(crate) fn create_page_in_data_source(
         title_etag,
         body_etag,
     };
-    let mut committed_revisions = BTreeMap::from([
-        (
-            format!("blockLocation:{}", input.page_id),
-            placement.location_revision,
-        ),
-        (
-            format!("blockMetadata:{}", input.page_id),
-            placement.metadata_revision,
-        ),
-        (
-            format!("pageParent:{}", input.page_id),
-            placement.parent_revision,
-        ),
-        (
-            format!("documentHead:{}", staged.document_id),
-            staged.document_head_seq,
-        ),
-        (
-            format!(
-                "membership:{}:{}",
-                placement.data_source_id, placement.membership_id
-            ),
-            1,
-        ),
-    ]);
-    committed_revisions.extend(
-        placement
-            .value_revisions
-            .iter()
-            .map(|(property_id, revision)| {
-                (
-                    format!(
-                        "propertyValue:{}:{}:{property_id}",
-                        placement.data_source_id, input.page_id
-                    ),
-                    *revision,
-                )
-            }),
-    );
-    if let (Some(view), Some(revision)) = (&input.destination.view, placement.position_revision) {
-        committed_revisions.insert(
-            format!("viewPosition:{}:{}", view.view_id, input.page_id),
-            revision,
-        );
-    }
     Ok(CreatedPageGenesis {
         page_create,
-        database_id: placement.database_id,
         data_source_id: placement.data_source_id,
         affected_view_ids: placement.affected_view_ids,
         document_head: PageDocumentHeadImpact {
@@ -166,7 +116,6 @@ pub(crate) fn create_page_in_data_source(
             generation: 1,
             head_seq: staged.document_head_seq,
         },
-        committed_revisions,
     })
 }
 

@@ -54,7 +54,7 @@ pub(crate) fn execute(
             )
         }
         PageFileCommand::Put(args) => {
-            let operation = mutation_id(&args.mutation, json_output)?;
+            let operation = mutation_id(&args.mutation)?;
             let page_id = resolve_page(&args.page)?;
             let mime_type = args
                 .mime
@@ -81,23 +81,23 @@ pub(crate) fn execute(
                 source: LibraryFileReadSource::Direct,
                 collision_policy: LibraryPageFileCollisionPolicy::Reject,
             };
-            apply_entry(&session, args.write, change, json_output)
+            apply_entry(&session, args.write, change)
         }
         PageFileCommand::RenamePath(args) => {
             let change = Change::Rename {
                 file_id: args.write.file_id.clone(),
                 logical_path: args.path,
             };
-            apply_entry(&session, args.write, change, json_output)
+            apply_entry(&session, args.write, change)
         }
         PageFileCommand::Remove(args) => {
             let change = Change::Remove {
                 file_id: args.file_id.clone(),
             };
-            apply_entry(&session, args, change, json_output)
+            apply_entry(&session, args, change)
         }
         PageFileCommand::ReplaceEntry(args) => {
-            let operation = mutation_id(&args.write.mutation, json_output)?;
+            let operation = mutation_id(&args.write.mutation)?;
             let page_id = resolve_page(&args.write.page)?;
             let mime_type = input_mime(&args.source, args.mime)?;
             let prepared_blob_receipt_id = session.prepare(&operation, &args.source)?;
@@ -116,8 +116,8 @@ pub(crate) fn execute(
                 },
             )
         }
-        PageFileCommand::Move(args) => transfer(&session, args, false, json_output),
-        PageFileCommand::Copy(args) => transfer(&session, args, true, json_output),
+        PageFileCommand::Move(args) => transfer(&session, args, false),
+        PageFileCommand::Copy(args) => transfer(&session, args, true),
     }
 }
 
@@ -125,9 +125,8 @@ fn apply_entry(
     session: &FileSession<'_>,
     args: PageFileWriteArgs,
     change: Change,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
-    let operation = mutation_id(&args.mutation, json_output)?;
+    let operation = mutation_id(&args.mutation)?;
     let page_id = resolve_page_selector(session.client, &session.project_id, &args.page)?;
     session.apply(
         operation,
@@ -144,9 +143,8 @@ fn transfer(
     session: &FileSession<'_>,
     args: crate::cli::PageFileTransferArgs,
     copy: bool,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
-    let operation = mutation_id(&args.mutation, json_output)?;
+    let operation = mutation_id(&args.mutation)?;
     let source_page_id = resolve_page_selector(session.client, &session.project_id, &args.page)?;
     let target_page_id = resolve_page_selector(session.client, &session.project_id, &args.to)?;
     session.apply(

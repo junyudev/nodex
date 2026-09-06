@@ -16,11 +16,11 @@ use nodex_core_contracts::{
 use nodex_core_protocol::ResponseEnvelope;
 use nodex_core_protocol::client::CoreClient;
 use serde::de::DeserializeOwned;
-use serde_json::{Map, Value, json};
+use serde_json::Value;
 
 use crate::cli::{
     BlockDeleteArgs, BlockInsertArgs, BlockMoveArgs, BlockUpdateArgs, PageInsertArgs,
-    PageReplaceArgs, PageTitleSetArgs, PatchArgs,
+    PageRenameArgs, PageReplaceArgs, PatchArgs,
 };
 use crate::error::{CliError, CliErrorCode};
 use crate::patch::PatchDocument;
@@ -30,8 +30,8 @@ use crate::runtime::{
 };
 
 pub(crate) const MAX_BODY_INPUT_BYTES: usize = nodex_core_protocol::MAX_DOCUMENT_JSON_STRING_BYTES;
-const MAX_BLOCK_JSON_BYTES: usize = 1024 * 1024;
-const MAX_TITLE_INPUT_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_BLOCK_JSON_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_TITLE_INPUT_BYTES: usize = 64 * 1024;
 const MAX_HEAD_REBASE_ATTEMPTS: usize = 3;
 
 pub(crate) fn patch_page(
@@ -39,7 +39,6 @@ pub(crate) fn patch_page(
     explicit_project: Option<&str>,
     cwd: &Path,
     arguments: PatchArgs,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
     validate_return_fields(&arguments.r#return)?;
     let input = read_content_input(
@@ -55,7 +54,6 @@ pub(crate) fn patch_page(
         cwd,
         &page_selector,
         arguments.idempotency_key.as_deref(),
-        json_output,
         SemanticWrite::Patch(patch),
         &arguments.r#return,
     )
@@ -66,7 +64,6 @@ pub(crate) fn replace_page(
     explicit_project: Option<&str>,
     cwd: &Path,
     arguments: PageReplaceArgs,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
     validate_return_fields(&arguments.mutation.r#return)?;
     let body = read_content_input(arguments.file.as_deref(), MAX_BODY_INPUT_BYTES, "Page body")?;
@@ -76,7 +73,6 @@ pub(crate) fn replace_page(
         cwd,
         &arguments.page,
         arguments.mutation.idempotency_key.as_deref(),
-        json_output,
         SemanticWrite::Replace {
             body,
             expected_etag: arguments.if_match,
@@ -90,7 +86,6 @@ pub(crate) fn insert_page_content(
     explicit_project: Option<&str>,
     cwd: &Path,
     arguments: PageInsertArgs,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
     validate_return_fields(&arguments.mutation.r#return)?;
     let fragment = validate_nfm_fragment(read_content_input(
@@ -105,7 +100,6 @@ pub(crate) fn insert_page_content(
         cwd,
         &arguments.page,
         arguments.mutation.idempotency_key.as_deref(),
-        json_output,
         SemanticWrite::Insert { fragment, anchor },
         &arguments.mutation.r#return,
     )
@@ -125,11 +119,10 @@ pub(crate) fn set_page_title(
     client: &CoreClient,
     explicit_project: Option<&str>,
     cwd: &Path,
-    arguments: PageTitleSetArgs,
-    json_output: bool,
+    arguments: PageRenameArgs,
 ) -> Result<CommandOutput, CliError> {
     validate_return_fields(&arguments.mutation.r#return)?;
-    let title = match (arguments.value, arguments.file.as_deref()) {
+    let title = match (arguments.title, arguments.file.as_deref()) {
         (Some(value), None) => validate_title(value)?,
         (None, Some(path)) => validate_title(read_content_input(
             Some(path),
@@ -139,7 +132,7 @@ pub(crate) fn set_page_title(
         _ => {
             return Err(CliError::new(
                 CliErrorCode::InvalidInput,
-                "Page title requires exactly one --value or --file input",
+                "Page title requires exactly one title or --file input",
             ));
         }
     };
@@ -149,7 +142,6 @@ pub(crate) fn set_page_title(
         cwd,
         &arguments.page,
         arguments.mutation.idempotency_key.as_deref(),
-        json_output,
         SemanticWrite::Title {
             title,
             expected_etag: arguments.if_match,
@@ -158,23 +150,45 @@ pub(crate) fn set_page_title(
     )
 }
 
+/// Decode semantic payloads once, before starting or connecting to Core.
+pub(crate) fn prepare_block_input(command: &mut crate::cli::Command) -> Result<(), CliError> {
+    use crate::cli::{BlockArgs, BlockCommand, Command};
+    match command {
+        Command::Block(BlockArgs {
+            command: BlockCommand::Insert(args),
+        }) => {
+            validate_return_fields(&args.mutation.r#return)?;
+            parse_anchor(&args.at)?;
+            args.prepared = Some(read_json_file(&args.block_json, "Block draft")?);
+        }
+        Command::Block(BlockArgs {
+            command: BlockCommand::Update(args),
+        }) => {
+            validate_return_fields(&args.mutation.r#return)?;
+            args.prepared = Some(read_json_file(&args.patch_json, "Block update patch")?);
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 pub(crate) fn insert_block(
     client: &CoreClient,
     explicit_project: Option<&str>,
     cwd: &Path,
     arguments: BlockInsertArgs,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
     validate_return_fields(&arguments.mutation.r#return)?;
     let anchor = parse_anchor(&arguments.at)?;
-    let block = read_json_file(&arguments.block_json, "Block draft")?;
+    let block = arguments
+        .prepared
+        .ok_or_else(|| internal("Block input was not prepared"))?;
     apply_selected_semantic_write(
         client,
         explicit_project,
         cwd,
         &arguments.page,
         arguments.mutation.idempotency_key.as_deref(),
-        json_output,
         SemanticWrite::BlockInsert { anchor, block },
         &arguments.mutation.r#return,
     )
@@ -185,18 +199,18 @@ pub(crate) fn update_block(
     explicit_project: Option<&str>,
     cwd: &Path,
     arguments: BlockUpdateArgs,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
     validate_return_fields(&arguments.mutation.r#return)?;
     let block_id = validate_block_id(arguments.block)?;
-    let patch = read_json_file(&arguments.patch_json, "Block update patch")?;
+    let patch = arguments
+        .prepared
+        .ok_or_else(|| internal("Block input was not prepared"))?;
     apply_selected_semantic_write(
         client,
         explicit_project,
         cwd,
         &arguments.page,
         arguments.mutation.idempotency_key.as_deref(),
-        json_output,
         SemanticWrite::BlockUpdate {
             block_id,
             expected_etag: arguments.if_match,
@@ -211,7 +225,6 @@ pub(crate) fn move_block(
     explicit_project: Option<&str>,
     cwd: &Path,
     arguments: BlockMoveArgs,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
     validate_return_fields(&arguments.mutation.r#return)?;
     let block_id = validate_block_id(arguments.block)?;
@@ -222,7 +235,6 @@ pub(crate) fn move_block(
         cwd,
         &arguments.page,
         arguments.mutation.idempotency_key.as_deref(),
-        json_output,
         SemanticWrite::BlockMove { block_id, anchor },
         &arguments.mutation.r#return,
     )
@@ -233,7 +245,6 @@ pub(crate) fn delete_block(
     explicit_project: Option<&str>,
     cwd: &Path,
     arguments: BlockDeleteArgs,
-    json_output: bool,
 ) -> Result<CommandOutput, CliError> {
     validate_return_fields(&arguments.mutation.r#return)?;
     let block_id = validate_block_id(arguments.block)?;
@@ -243,7 +254,6 @@ pub(crate) fn delete_block(
         cwd,
         &arguments.page,
         arguments.mutation.idempotency_key.as_deref(),
-        json_output,
         SemanticWrite::BlockDelete {
             block_id,
             expected_etag: arguments.if_match,
@@ -447,13 +457,12 @@ fn apply_selected_semantic_write(
     cwd: &Path,
     page_selector: &str,
     idempotency_key: Option<&str>,
-    json_output: bool,
     write: SemanticWrite,
     return_fields: &[String],
 ) -> Result<CommandOutput, CliError> {
     let project = selected_project(client, explicit_project, cwd)?;
     let page_id = resolve_page_selector(client, &project.id, page_selector)?;
-    let operation_id = operation_id(idempotency_key, json_output)?;
+    let operation_id = operation_id(idempotency_key)?;
     apply_semantic_write(
         client,
         &project.id,
@@ -562,6 +571,42 @@ fn mutation_output(
     )?))
 }
 
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct SemanticMutationResult<'a> {
+    pub operation_id: String,
+    pub duplicate: bool,
+    pub page_id: String,
+    pub document_id: String,
+    pub generation: i64,
+    pub head_seq: i64,
+    pub commit_seq: i64,
+    pub outcome: DocumentCommitOutcome,
+    pub affected: SemanticAffected,
+    pub etags: SemanticEtags,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit: Option<&'a nodex_core_contracts::document::OwnedDocumentCommitValue>,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct SemanticAffected {
+    pub created_block_ids: Vec<String>,
+    pub updated_block_ids: Vec<String>,
+    pub moved_block_ids: Vec<String>,
+    pub deleted_block_ids: Vec<String>,
+    pub title_changed: bool,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct SemanticEtags {
+    pub title: String,
+    pub body: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocks: Option<
+        std::collections::BTreeMap<
+            String,
+            nodex_core_contracts::document::DocumentSemanticBlockEtags,
+        >,
+    >,
+}
+
 pub(crate) fn semantic_mutation_result(
     page_id: &str,
     committed: &nodex_core_contracts::ApplyResponse<
@@ -577,62 +622,41 @@ pub(crate) fn semantic_mutation_result(
         .semantic_etags
         .as_ref()
         .ok_or_else(|| internal("Core native CLI semantic receipt omitted post-commit ETags"))?;
-    let mut etag_result = Map::from_iter([
-        ("title".to_owned(), Value::String(etags.title.clone())),
-        ("body".to_owned(), Value::String(etags.body.clone())),
-    ]);
-    if let Some(blocks) = outcome.semantic_block_etags.as_ref() {
-        etag_result.insert(
-            "blocks".to_owned(),
-            serde_json::to_value(blocks).map_err(internal)?,
-        );
-    }
-    let mut result = Map::from_iter([
-        (
-            "operation_id".to_owned(),
-            Value::String(receipt.mutation.operation_id.clone()),
-        ),
-        (
-            "duplicate".to_owned(),
-            Value::Bool(receipt.mutation.duplicate),
-        ),
-        ("page_id".to_owned(), Value::String(page_id.to_owned())),
-        (
-            "document_id".to_owned(),
-            Value::String(outcome.document_id.clone()),
-        ),
-        ("generation".to_owned(), json!(outcome.generation)),
-        ("head_seq".to_owned(), json!(outcome.head_seq)),
-        ("commit_seq".to_owned(), json!(committed.commit_cursor())),
-        (
-            "outcome".to_owned(),
-            Value::String(
-                match &outcome.outcome {
-                    DocumentCommitOutcome::Committed => "committed",
-                    DocumentCommitOutcome::NoChange => "no_change",
-                }
-                .to_owned(),
-            ),
-        ),
-        (
-            "affected".to_owned(),
-            json!({
-                "created_block_ids": effect.map(|value| &value.created_block_ids).cloned().unwrap_or_default(),
-                "updated_block_ids": effect.map(|value| &value.updated_block_ids).cloned().unwrap_or_default(),
-                "moved_block_ids": effect.map(|value| &value.moved_block_ids).cloned().unwrap_or_default(),
-                "deleted_block_ids": effect.map(|value| &value.deleted_block_ids).cloned().unwrap_or_default(),
-                "title_changed": effect.is_some_and(|value| value.title_changed),
-            }),
-        ),
-        ("etags".to_owned(), Value::Object(etag_result)),
-    ]);
-    if return_fields.iter().any(|field| field == "commit") {
-        result.insert(
-            "commit".to_owned(),
-            serde_json::to_value(outcome).map_err(internal)?,
-        );
-    }
-    Ok(Value::Object(result))
+    serde_json::to_value(SemanticMutationResult {
+        operation_id: receipt.mutation.operation_id.clone(),
+        duplicate: receipt.mutation.duplicate,
+        page_id: page_id.to_owned(),
+        document_id: outcome.document_id.clone(),
+        generation: outcome.generation,
+        head_seq: outcome.head_seq,
+        commit_seq: committed.commit_cursor(),
+        outcome: outcome.outcome,
+        affected: SemanticAffected {
+            created_block_ids: effect
+                .map(|v| v.created_block_ids.clone())
+                .unwrap_or_default(),
+            updated_block_ids: effect
+                .map(|v| v.updated_block_ids.clone())
+                .unwrap_or_default(),
+            moved_block_ids: effect
+                .map(|v| v.moved_block_ids.clone())
+                .unwrap_or_default(),
+            deleted_block_ids: effect
+                .map(|v| v.deleted_block_ids.clone())
+                .unwrap_or_default(),
+            title_changed: effect.is_some_and(|v| v.title_changed),
+        },
+        etags: SemanticEtags {
+            title: etags.title.clone(),
+            body: etags.body.clone(),
+            blocks: outcome.semantic_block_etags.clone(),
+        },
+        commit: return_fields
+            .iter()
+            .any(|field| field == "commit")
+            .then_some(outcome),
+    })
+    .map_err(internal)
 }
 
 pub(crate) fn validate_return_fields(fields: &[String]) -> Result<(), CliError> {
@@ -661,7 +685,7 @@ pub(crate) fn read_content_input(
     limit: usize,
     label: &str,
 ) -> Result<String, CliError> {
-    let bytes = if let Some(path) = path {
+    let bytes = if let Some(path) = path.filter(|path| path.as_os_str() != "-") {
         let mut file = File::open(path).map_err(|error| input_error(path, error))?;
         read_bounded(&mut file, limit, label)
             .map_err(|error| error.at_path(path.display().to_string()))?
@@ -691,9 +715,7 @@ pub(crate) fn read_content_input(
 }
 
 fn read_json_file<T: DeserializeOwned>(path: &Path, label: &str) -> Result<T, CliError> {
-    let mut file = File::open(path).map_err(|error| input_error(path, error))?;
-    let bytes = read_bounded(&mut file, MAX_BLOCK_JSON_BYTES, label)
-        .map_err(|error| error.at_path(path.display().to_string()))?;
+    let bytes = crate::input::read_bytes(path, MAX_BLOCK_JSON_BYTES, label)?;
     serde_json::from_slice(&bytes).map_err(|error| {
         CliError::new(
             CliErrorCode::InvalidInput,

@@ -1,3 +1,5 @@
+import { MainConfig } from "../app/MainConfig";
+import { buildNodexCliBootstrap } from "../platform/node/NodexCliBootstrap";
 import { randomUUID } from "node:crypto";
 import * as path from "node:path";
 import type { TurnStartParams, TurnSteerParams } from "@nodex/codex-app-server-protocol/v2";
@@ -195,6 +197,7 @@ export function projectCodexTurnServiceTier(
 export const make: Effect.Effect<
   CodexTurnPreparation["Service"],
   never,
+  | MainConfig
   | CodexAgentConfigRuntime
   | CodexAttachments
   | CodexConversationContext
@@ -206,6 +209,7 @@ export const make: Effect.Effect<
   | CodexInputAssets
   | CodexThreadHostResolver
 > = Effect.gen(function* () {
+  const config = yield* MainConfig;
   const agentConfig = yield* CodexAgentConfigRuntime;
   const attachments = yield* CodexAttachments;
   const conversationContext = yield* CodexConversationContext;
@@ -334,11 +338,19 @@ export const make: Effect.Effect<
         prepared,
         (yield* hosts.resolve(input.threadId)) === CODEX_APP_LOCAL_HOST_ID,
       );
+      const cliBootstrap = yield* buildNodexCliBootstrap(config, {
+        hostId: yield* hosts.resolve(input.threadId),
+        projectId,
+        verifiedBuiltinFullAccess: permission.verifiedBuiltinFullAccess,
+        sandboxPolicy: turnPermissions.sandboxPolicy,
+        planMode: (selectedCollaborationMode ?? fallbackCollaboration)?.mode === "plan",
+      });
+      const additionalContext = { ...prepared.additionalContext, "nodex-cli": cliBootstrap };
       const request: TurnStartParams = {
         threadId: input.threadId,
         clientUserMessageId,
         ...(cwd ? { cwd } : {}),
-        ...(prepared.additionalContext ? { additionalContext: prepared.additionalContext } : {}),
+        additionalContext,
         ...turnPermissions,
         ...(model ? { model } : {}),
         ...serviceTierRequest,
@@ -391,9 +403,7 @@ export const make: Effect.Effect<
               threadId: input.threadId,
               clientUserMessageId,
               input: prepared.inputItems,
-              ...(prepared.additionalContext
-                ? { additionalContext: prepared.additionalContext }
-                : {}),
+              additionalContext,
               ...(input.overrides?.responsesapiClientMetadata
                 ? { responsesapiClientMetadata: input.overrides.responsesapiClientMetadata }
                 : {}),

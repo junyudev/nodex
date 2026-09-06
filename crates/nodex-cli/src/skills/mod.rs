@@ -1,5 +1,5 @@
 pub mod bundle;
-mod install;
+pub(crate) mod install;
 mod prompt;
 mod target;
 
@@ -13,20 +13,22 @@ pub use target::{InstallerEnvironment, SkillAgent};
 
 pub fn execute_setup(
     arguments: SkillMutationArgs,
-    json_output: bool,
+    non_interactive: bool,
 ) -> Result<CommandOutput, CliError> {
     let environment = InstallerEnvironment::current()?;
-    execute_setup_with_environment(arguments, json_output, &environment)
+    execute_setup_with_environment(arguments, non_interactive, &environment)
 }
 
 #[doc(hidden)]
 pub fn execute_setup_with_environment(
     mut arguments: SkillMutationArgs,
-    json_output: bool,
+    non_interactive: bool,
     environment: &InstallerEnvironment,
 ) -> Result<CommandOutput, CliError> {
-    let selected_interactively =
-        arguments.targets.agents.is_empty() && !arguments.yes && !arguments.dry_run && !json_output;
+    let selected_interactively = arguments.targets.agents.is_empty()
+        && !arguments.yes
+        && !arguments.dry_run
+        && !non_interactive;
     if selected_interactively {
         arguments.targets.agents = prompt::select_agents()?;
         if arguments.targets.agents.is_empty() {
@@ -36,7 +38,7 @@ pub fn execute_setup_with_environment(
         }
     }
     require_selected_agents(&arguments)?;
-    require_confirmation(&arguments, json_output, selected_interactively, false)?;
+    require_confirmation(&arguments, non_interactive, selected_interactively, false)?;
     let bundle = verified_bundle(environment)?;
     let result = install::install(
         &bundle,
@@ -47,15 +49,18 @@ pub fn execute_setup_with_environment(
     to_value(result).map(CommandOutput::Json).map_err(internal)
 }
 
-pub fn execute_skills(arguments: SkillsArgs, json_output: bool) -> Result<CommandOutput, CliError> {
+pub fn execute_skills(
+    arguments: SkillsArgs,
+    non_interactive: bool,
+) -> Result<CommandOutput, CliError> {
     let environment = InstallerEnvironment::current()?;
-    execute_skills_with_environment(arguments, json_output, &environment)
+    execute_skills_with_environment(arguments, non_interactive, &environment)
 }
 
 #[doc(hidden)]
 pub fn execute_skills_with_environment(
     arguments: SkillsArgs,
-    json_output: bool,
+    non_interactive: bool,
     environment: &InstallerEnvironment,
 ) -> Result<CommandOutput, CliError> {
     let bundle = verified_bundle(environment)?;
@@ -74,7 +79,7 @@ pub fn execute_skills_with_environment(
         )?,
         SkillsCommand::Install(arguments) => {
             require_selected_agents(&arguments)?;
-            require_confirmation(&arguments, json_output, false, false)?;
+            require_confirmation(&arguments, non_interactive, false, false)?;
             install::install(
                 &bundle,
                 environment,
@@ -84,7 +89,7 @@ pub fn execute_skills_with_environment(
         }
         SkillsCommand::Remove(arguments) => {
             require_selected_agents(&arguments)?;
-            require_confirmation(&arguments, json_output, false, true)?;
+            require_confirmation(&arguments, non_interactive, false, true)?;
             install::remove(
                 &bundle,
                 environment,
@@ -121,17 +126,17 @@ fn require_selected_agents(arguments: &SkillMutationArgs) -> Result<(), CliError
 
 fn require_confirmation(
     arguments: &SkillMutationArgs,
-    json_output: bool,
+    non_interactive: bool,
     selected_interactively: bool,
     removing: bool,
 ) -> Result<(), CliError> {
     if arguments.dry_run || arguments.yes || selected_interactively {
         return Ok(());
     }
-    if json_output {
+    if non_interactive {
         return Err(CliError::new(
             CliErrorCode::InvalidInput,
-            "JSON Skill mutations require --yes; use --dry-run for read-only planning",
+            "Non-interactive Skill mutations require --yes; use --dry-run for read-only planning",
         ));
     }
     let confirmed = if removing {

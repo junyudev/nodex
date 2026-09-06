@@ -2410,8 +2410,8 @@ mod tests {
         };
         assert_eq!(body_file.content, "Native body\n");
         assert!(body_file.metadata.is_none());
-        assert_eq!(body_file.validators.title_etag, None);
-        assert_eq!(body_file.validators.body_etag, None);
+        assert!(body_file.validators.title_etag.is_some());
+        assert!(body_file.validators.body_etag.is_some());
         assert_eq!(body_file.validators.page_etag, None);
 
         let LibraryReadValue::PageProjectionFile { value: meta_file } = module
@@ -2455,7 +2455,14 @@ mod tests {
         )));
         assert!(meta_file.content.ends_with("schedule: null\n"));
         assert!(meta_file.validators.title_etag.is_some());
-        assert_eq!(meta_file.validators.body_etag, None);
+        assert_eq!(
+            meta_file.validators.body_etag,
+            body_file.validators.body_etag
+        );
+        assert_eq!(
+            meta_file.validators.title_etag,
+            body_file.validators.title_etag
+        );
         assert_eq!(meta_file.validators.page_etag, None);
 
         let invalid_prepare = module
@@ -3244,6 +3251,33 @@ mod tests {
             )
             .expect_err("Project-bound clients cannot claim multi-Project search");
         assert_eq!(project_search_error.code, CoreErrorCode::Unauthorized);
+        let mut native_context = persistent_context.clone();
+        native_context.adapter = AdapterKind::NativeCli;
+        let native_search = |project_ids: Vec<String>| ModuleReadRequest {
+            contract_version: LIBRARY_CONTRACT_VERSION,
+            read: LibraryRead::ProjectPageSearch {
+                project_ids,
+                query: "say hi".to_owned(),
+                filters: None,
+                preferred_project_id: None,
+                recent_page_ids: Vec::new(),
+                limit: None,
+            },
+        };
+        let native = module
+            .read(&native_context, native_search(vec!["project-1".to_owned()]))
+            .expect("native search stays within its selected Project");
+        assert!(matches!(
+            native.value,
+            LibraryReadValue::ProjectPageSearch { .. }
+        ));
+        let cross_project = module
+            .read(
+                &native_context,
+                native_search(vec!["project-1".to_owned(), "project-2".to_owned()]),
+            )
+            .expect_err("native cannot expand Project search authority");
+        assert_eq!(cross_project.code, CoreErrorCode::Unauthorized);
         let mut untrusted_root_context = context();
         untrusted_root_context.adapter = AdapterKind::Agent;
         let untrusted_target_error = module

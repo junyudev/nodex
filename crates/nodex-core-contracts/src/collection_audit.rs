@@ -69,6 +69,7 @@ fn database_policy(read: &DatabaseRead) -> ReadBudgetPolicy {
         | DatabaseRead::PropertyWindow { .. }
         | DatabaseRead::OptionWindow { .. }
         | DatabaseRead::ViewDescriptorWindow { .. }
+        | DatabaseRead::DataSourceQuery { .. }
         | DatabaseRead::AgentDataSourceQuery { .. }
         | DatabaseRead::AgentViewQuery { .. }
         | DatabaseRead::ViewWindow { .. }

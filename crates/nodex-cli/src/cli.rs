@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
+use crate::presentation::OutputFormat;
 use crate::skills::SkillAgent;
 
 #[derive(Clone, Debug, Parser, PartialEq)]
@@ -21,20 +22,36 @@ pub struct Cli {
     pub database: Option<String>,
     #[arg(long, global = true, value_name = "ID_OR_TITLE_PATH")]
     pub page: Option<String>,
-    #[arg(long, global = true)]
+    #[arg(long, global = true, conflicts_with = "output_format")]
     pub json: bool,
+    #[arg(long, global = true, value_enum)]
+    pub output_format: Option<OutputFormat>,
     #[arg(long, global = true)]
     pub no_color: bool,
     #[command(subcommand)]
     pub command: Command,
 }
 
+impl Cli {
+    pub fn requested_output(&self) -> OutputFormat {
+        if self.json {
+            return OutputFormat::Json;
+        }
+        self.output_format.unwrap_or_default()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum Command {
     Capabilities,
+    /// Read the bundled content format documentation without connecting to Core.
+    Docs(DocsArgs),
     Setup(SkillMutationArgs),
     Skills(SkillsArgs),
     Context,
+    Search(crate::search::SearchArgs),
+    Ls(crate::browse::BrowseArgs),
+    DataSource(crate::data_source::DataSourceArgs),
     Tree {
         #[arg(value_name = "SCOPE_SELECTOR")]
         scope: Option<String>,
@@ -54,6 +71,18 @@ pub enum Command {
     Doctor(DoctorArgs),
     Draft(DraftArgs),
     Service(ServiceArgs),
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct DocsArgs {
+    #[command(subcommand)]
+    pub command: DocsCommand,
+}
+
+#[derive(Clone, Debug, PartialEq, Subcommand)]
+pub enum DocsCommand {
+    /// Canonical Nested Markdown syntax for Page bodies.
+    NestedMarkdown,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
@@ -188,9 +217,11 @@ pub struct PageArgs {
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum PageCommand {
     Create(PageCreateArgs),
+    CreateBatch(crate::page_batch::PageCreateBatchArgs),
     Insert(PageInsertArgs),
     Replace(PageReplaceArgs),
-    Title(PageTitleArgs),
+    Rename(PageRenameArgs),
+    Properties(crate::page_properties::PagePropertiesArgs),
     Move(PageMoveArgs),
     Duplicate(PageDuplicateArgs),
     Delete(PageDeleteArgs),
@@ -375,11 +406,12 @@ pub struct PageFileListArgs {
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
+#[command(group(clap::ArgGroup::new("file_selector").required(true).multiple(false).args(["file_id", "path"])))]
 pub struct PageFileReadArgs {
     pub page: String,
-    #[arg(long, required_unless_present = "path", conflicts_with = "path")]
+    #[arg(long, conflicts_with = "path")]
     pub file_id: Option<String>,
-    #[arg(long, required_unless_present = "file_id", conflicts_with = "file_id")]
+    #[arg(long, conflicts_with = "file_id")]
     pub path: Option<String>,
     #[arg(long, default_value = "-", value_name = "PATH_OR_DASH")]
     pub output: PathBuf,
@@ -469,7 +501,7 @@ pub struct PageCreateArgs {
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageInsertArgs {
     pub page: String,
-    #[arg(long)]
+    #[arg(long, default_value = "end")]
     pub at: String,
     #[arg(long)]
     pub file: Option<PathBuf>,
@@ -489,24 +521,14 @@ pub struct PageReplaceArgs {
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
-pub struct PageTitleArgs {
-    #[command(subcommand)]
-    pub command: PageTitleCommand,
-}
-
-#[derive(Clone, Debug, PartialEq, Subcommand)]
-pub enum PageTitleCommand {
-    Set(PageTitleSetArgs),
-}
-
-#[derive(Clone, Debug, Args, PartialEq)]
-pub struct PageTitleSetArgs {
+#[command(group(clap::ArgGroup::new("title_input").required(true).multiple(false).args(["title", "file"])))]
+pub struct PageRenameArgs {
     pub page: String,
     #[arg(long = "if-match")]
     pub if_match: String,
-    #[arg(long, required_unless_present = "file", conflicts_with = "file")]
-    pub value: Option<String>,
-    #[arg(long, required_unless_present = "value", conflicts_with = "value")]
+    #[arg(conflicts_with = "file")]
+    pub title: Option<String>,
+    #[arg(long, conflicts_with = "title")]
     pub file: Option<PathBuf>,
     #[command(flatten)]
     pub mutation: MutationArgs,
@@ -634,6 +656,8 @@ pub struct BlockInsertArgs {
     pub at: String,
     #[arg(long)]
     pub block_json: PathBuf,
+    #[arg(skip)]
+    pub prepared: Option<nodex_core_contracts::document::DocumentSemanticBlockDraft>,
     #[command(flatten)]
     pub mutation: MutationArgs,
 }
@@ -647,6 +671,8 @@ pub struct BlockUpdateArgs {
     pub if_match: String,
     #[arg(long)]
     pub patch_json: PathBuf,
+    #[arg(skip)]
+    pub prepared: Option<nodex_core_contracts::document::DocumentBlockUpdatePatch>,
     #[command(flatten)]
     pub mutation: MutationArgs,
 }
@@ -756,12 +782,10 @@ mod tests {
             "Docs",
             "--json",
             "page",
-            "title",
-            "set",
+            "rename",
             "@page_1",
             "--if-match",
             "title-etag",
-            "--value",
             "New **title**",
             "--idempotency-key",
             "operation-1",
@@ -771,16 +795,13 @@ mod tests {
         assert_eq!(cli.project.as_deref(), Some("Docs"));
         assert!(cli.json);
         let Command::Page(PageArgs {
-            command:
-                PageCommand::Title(PageTitleArgs {
-                    command: PageTitleCommand::Set(command),
-                }),
+            command: PageCommand::Rename(command),
         }) = cli.command
         else {
-            panic!("expected title set command")
+            panic!("expected rename command")
         };
         assert_eq!(command.page, "@page_1");
-        assert_eq!(command.value.as_deref(), Some("New **title**"));
+        assert_eq!(command.title.as_deref(), Some("New **title**"));
         assert_eq!(
             command.mutation.idempotency_key.as_deref(),
             Some("operation-1")

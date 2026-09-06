@@ -1,3 +1,5 @@
+import { buildNodexCliBootstrap } from "../platform/node/NodexCliBootstrap";
+import { isDevelopmentFeatureEnabled } from "../../shared/development-features";
 import { randomUUID } from "node:crypto";
 import { open as openFile } from "node:fs/promises";
 import * as path from "node:path";
@@ -72,7 +74,7 @@ import {
   type CodexScheduledAutomationRunContext,
 } from "../host-runtime/ScheduledAutomationPolicy";
 import { getLogger } from "../logging/logger";
-import { buildNodexAgentDynamicToolSpecs } from "../nodex-agent-application/NodexAgentDynamicTools";
+import { selectNodexAgentDynamicToolSpecs } from "../nodex-agent-application/NodexAgentDynamicTools";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
@@ -114,7 +116,6 @@ const HEARTBEAT_ROLLOUT_TAIL_BYTES = 256 * 1024;
 const HEARTBEAT_TERMINAL_ROLLOUT_EVENTS = new Set(["task_complete", "response_item", "event_msg"]);
 const HEARTBEAT_ACTIVE_ROLLOUT_EVENTS = new Set(["response_item", "event_msg", "item", "unknown"]);
 const THREAD_START_EXPERIMENTAL_RAW_EVENTS = false;
-const NODEX_AGENT_DYNAMIC_TOOL_SPECS = buildNodexAgentDynamicToolSpecs();
 type GatewayThreadStartParams = ClientRequestParamsByMethod["thread/start"];
 type GatewayThreadStartResponse = ClientRequestResponsesByMethod["thread/start"];
 type GatewayTurnStartParams = ClientRequestParamsByMethod["turn/start"];
@@ -441,7 +442,9 @@ export const live = (
             handoffEnabled:
               localHandoff.status === "available" || availableHandoffHosts.length >= 2,
           }),
-          ...NODEX_AGENT_DYNAMIC_TOOL_SPECS,
+          ...selectNodexAgentDynamicToolSpecs(
+            isDevelopmentFeatureEnabled("nodex-dynamic-tools", config.environment),
+          ),
         ] satisfies DynamicToolSpec[];
       });
 
@@ -691,6 +694,19 @@ export const live = (
                 workspaceRoots: [cwd],
               })
             : null;
+        const bootstrappedRequest = {
+          ...request,
+          additionalContext: {
+            ...request.additionalContext,
+            "nodex-cli": yield* buildNodexCliBootstrap(config, {
+              hostId: accepted.durable.executionHostId,
+              projectId: accepted.durable.projectId,
+              verifiedBuiltinFullAccess: actorPermission?.verifiedBuiltinFullAccess ?? false,
+              sandboxPolicy: request.sandboxPolicy,
+              planMode: mode?.mode === "plan",
+            }),
+          },
+        };
         const launch = yield* authority.begin(
           targetThreadId,
           actorPermission?.verifiedBuiltinFullAccess ?? false,
@@ -698,13 +714,13 @@ export const live = (
         const startTurn =
           reason === "scheduled"
             ? heartbeatCompletion
-                .startAndWait(request)
+                .startAndWait(bootstrappedRequest)
                 .pipe(Effect.mapError((cause) => error("start-heartbeat-turn", cause)))
             : gateway
                 .requestForThread(
                   targetThreadId,
                   "turn/start",
-                  request,
+                  bootstrappedRequest,
                   codexGatewayGenerationFence(target.hostGeneration),
                 )
                 .pipe(Effect.mapError((cause) => error("start-heartbeat-turn", cause)));

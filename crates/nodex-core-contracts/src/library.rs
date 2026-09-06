@@ -165,6 +165,7 @@ pub enum LibraryPageCopyDestination {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct LibraryPageCopyValue {
     pub property_id: String,
     pub value: Value,
@@ -212,7 +213,7 @@ pub enum LibraryPageWriteDestination {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LibraryAgentPageDestination {
     Library {
         at: Option<LibraryAgentSiblingAnchor>,
@@ -2846,6 +2847,9 @@ pub enum LibraryIntent {
         title: String,
         mention_host: LibraryPageMentionHost,
         destination: LibraryPageMentionDestination,
+    },
+    CreatePagesFromNfm {
+        request: LibraryAgentCreatePagesRequest,
     },
     CreatePageFromNfm {
         title_markdown: String,

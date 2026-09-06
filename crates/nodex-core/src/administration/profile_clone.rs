@@ -19,7 +19,7 @@ const PROFILE_SNAPSHOT_VERSION: u32 = 4;
 const PRIVATE_DIRECTORY_MODE: u32 = 0o700;
 const PRIVATE_FILE_MODE: u32 = 0o600;
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ProfileCloneBackupSelection {
     Latest,
@@ -33,7 +33,7 @@ pub struct ProfileCloneRequest {
     pub backup: ProfileCloneBackupSelection,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileCloneReceipt {
     pub version: u32,

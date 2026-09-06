@@ -4,6 +4,11 @@ export const NODEX_DEVELOPMENT_FEATURES_ENV = "NODEX_DEV_ENABLED_FEATURES" as co
 // product surface is retired, its launcher alias should disappear with it.
 export const DEVELOPMENT_FEATURE_CATALOG = [
   {
+    slug: "nodex-dynamic-tools",
+    description: "Enable experimental Nodex content tools for Agents.",
+    defaultEnabled: false,
+  },
+  {
     slug: "database-page-reorder-menu",
     description: "Show Database Page rank controls in the context menu.",
     defaultEnabled: false,

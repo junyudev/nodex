@@ -28,7 +28,7 @@ describe("test execution", () => {
       env: {},
       signal: new AbortController().signal,
       prepare: async (artifacts) => {
-        expect(artifacts).toEqual(["core-server", "yjs-yrs-bridge"]);
+        expect(artifacts).toEqual(["core-server", "yjs-yrs-bridge", "cli"]);
         events.push("prepare");
         return { executables: { "core-server": "/tmp/core", "yjs-yrs-bridge": "/tmp/bridge" } };
       },

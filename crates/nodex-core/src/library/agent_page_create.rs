@@ -55,6 +55,7 @@ const MAX_ID_BYTES: usize = 512;
 
 struct PreparedPage {
     page_id: String,
+    document_id: String,
     page_operation_id: String,
     body_block_ids: Vec<String>,
     primary_membership_id: String,
@@ -461,6 +462,209 @@ pub(super) fn execute_create_pages(
     Ok(result.0)
 }
 
+/// Native CLI creation shares preparation and atomic creation with Agent writes, without Turn identity.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn create_native_pages(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    library_id: &str,
+    operation_id: &str,
+    request_hash: &str,
+    request: &LibraryAgentCreatePagesRequest,
+    single: bool,
+    native_destination: Option<&nodex_core_contracts::library::LibraryPageWriteDestination>,
+) -> Result<LibraryApplyOutcome, StoreError> {
+    validate_request(request)?;
+    let destination = match &request.destination {
+        LibraryAgentPageDestination::Library { at } => {
+            nodex_core_contracts::library::LibraryPageWriteDestination::Library { at: at.clone() }
+        }
+        LibraryAgentPageDestination::Page { page_id, at } => {
+            nodex_core_contracts::library::LibraryPageWriteDestination::Page {
+                page_id: page_id.clone(),
+                at: at.clone(),
+            }
+        }
+        LibraryAgentPageDestination::DataSource {
+            data_source_id,
+            view_id,
+            group_key,
+            at,
+            ..
+        } => nodex_core_contracts::library::LibraryPageWriteDestination::DataSource {
+            data_source_id: data_source_id.clone(),
+            view_id: view_id.clone(),
+            group: group_key.as_ref().map(|key| {
+                nodex_core_contracts::database::DatabaseGroupScope::Path {
+                    group_key: Some(key.clone()),
+                    subgroup_key: None,
+                }
+            }),
+            at: at.clone(),
+        },
+    };
+    let destination = native_destination.unwrap_or(&destination);
+    let destination = super::page_write_semantic::resolve_batch_destination(
+        connection,
+        context,
+        library_id,
+        destination,
+    )?;
+    let actor_project_id = context_project_id(context)?;
+    let document_heads = match &destination {
+        LibraryPageCopyDestination::Page {
+            page_id,
+            expected_document_generation,
+            expected_document_head_seq,
+            ..
+        } => vec![LibraryAgentDocumentHead {
+            document_id: connection.query_row(
+                "SELECT document_id FROM pages WHERE block_id = ?1",
+                [page_id],
+                |row| row.get(0),
+            )?,
+            generation: *expected_document_generation,
+            expected_head_seq: *expected_document_head_seq,
+        }],
+        _ => Vec::new(),
+    };
+    let database_id = match &destination {
+        LibraryPageCopyDestination::DataSource { data_source_id, .. } => {
+            Some(connection.query_row(
+                "SELECT home_database_block_id FROM data_sources WHERE id = ?1",
+                [data_source_id],
+                |row| row.get(0),
+            )?)
+        }
+        _ => None,
+    };
+    let mut preflight = compile_resolved_preflight(
+        connection,
+        None,
+        context,
+        library_id,
+        operation_id,
+        store_epoch,
+        request,
+        request_hash.to_owned(),
+        ResolvedDestination {
+            destination,
+            authorization_fingerprint: hash_serializable(context)?,
+            document_heads,
+            database_id,
+            actor_project_id,
+        },
+        single,
+    )?;
+    let committed_at = sqlite_now(connection)?;
+    let result = durable_mutation::run(
+        connection,
+        OperationIdentity {
+            module: ModuleName::Library,
+            module_name: MODULE_NAME,
+            operation_id,
+            intent_hash: request_hash,
+            store_epoch,
+            committed_at: &committed_at,
+            context,
+        },
+        |scope| {
+            let execution = apply_pages(
+                connection,
+                context,
+                scope,
+                library_id,
+                operation_id,
+                store_epoch,
+                request,
+                &mut preflight,
+                &committed_at,
+            )?;
+            let page_create = if single {
+                let page = execution
+                    .result
+                    .pages
+                    .first()
+                    .ok_or_else(|| corrupt("Single Page creation omitted its Page"))?;
+                let etags = page
+                    .etags
+                    .as_ref()
+                    .ok_or_else(|| corrupt("Single Page creation omitted validators"))?;
+                let (document_id, document_generation, document_head_seq) = connection.query_row("SELECT document.id, document.generation, document.head_seq FROM pages page JOIN documents document ON document.id = page.document_id WHERE page.block_id = ?1", [&page.page_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+                Some(nodex_core_contracts::library::LibraryPageCreateResult {
+                    page_id: page.page_id.clone(),
+                    page_key: page.page_key.clone(),
+                    document_id,
+                    document_generation,
+                    document_head_seq,
+                    block_ids: page.block_ids.clone(),
+                    title_etag: etags.title.clone(),
+                    body_etag: etags.body.clone(),
+                })
+            } else {
+                None
+            };
+            let document_batch = execution.document_batch;
+            seal_mutation_with(
+                scope,
+                context,
+                operation_id,
+                MutationEffects {
+                    page_file_entries: Vec::new(),
+                    file_revisions: BTreeMap::new(),
+                    file_mutation: Default::default(),
+                    project_id: preflight.actor_project_id,
+                    operation_kind: "create_pages",
+                    change_kind: "library.changed",
+                    did_mutate: true,
+                    created_target: page_create
+                        .as_ref()
+                        .map(|page| LibraryResourceTarget::Page {
+                            page_id: page.page_id.clone(),
+                        }),
+                    affected_parent_keys: vec![destination_parent_key(
+                        library_id,
+                        &request.destination,
+                    )],
+                    affected_block_ids: execution.affected_block_ids,
+                    affected_page_ids: execution.affected_page_ids,
+                    affected_database_ids: execution.result.affected_database_ids.clone(),
+                    affected_view_ids: execution.affected_view_ids,
+                    affected_document_ids: execution.affected_document_ids,
+                    committed_revisions: execution.committed_revisions,
+                    page_create,
+                    page_copy: None,
+                    canvas_mutation: None,
+                    block_transfer: None,
+                    block_transfer_undo: None,
+                    page_relocation_undo: None,
+                    structural_edit: None,
+                    page_lifecycle: None,
+                    block_property_mutation: None,
+                    agent_page_copy: None,
+                    agent_create_pages: (!single).then_some(execution.result),
+                    agent_move_pages: None,
+                    change_payload: None,
+                    committed_at: execution.committed_at,
+                },
+                |_, event_sequence| {
+                    super::block_transfer::persist_agent_page_document_batch_checkpoints(
+                        connection,
+                        context,
+                        operation_id,
+                        &json!({ "kind": "native_cli", "command": "page_create_batch" }),
+                        &document_batch,
+                        event_sequence,
+                        &committed_at,
+                    )
+                },
+            )
+        },
+    )?;
+    library_commit_result(connection, result)
+}
+
 struct CreateExecution {
     result: LibraryAgentCreatePagesResult,
     affected_block_ids: Vec<String>,
@@ -500,7 +704,7 @@ fn apply_pages(
     .then(|| destination_before_id(&preflight.destination))
     .flatten();
     for page in &mut preflight.pages {
-        let document_id = format!("document:{}", page.page_id);
+        let document_id = page.document_id.clone();
         let staged = super::block_transfer::stage_prepared_fresh_page_in_library(
             connection,
             scope.evidence(),
@@ -536,7 +740,16 @@ fn apply_pages(
         );
 
         match &page.destination {
-            LibraryPageCopyDestination::Library { .. } => {}
+            LibraryPageCopyDestination::Library { .. } => {
+                super::mutation::insert_creator_resource_grant(
+                    connection,
+                    &preflight.actor_project_id,
+                    library_id,
+                    "page",
+                    &page.page_id,
+                    &now,
+                )?;
+            }
             LibraryPageCopyDestination::DataSource { .. } => {
                 let destination = data_source_destination(&page.destination)?;
                 let placement = place_staged_page_in_data_source_prevalidated(
@@ -644,7 +857,11 @@ fn apply_pages(
             location: page_location(library_id, &request.destination),
             body_blocks_created: u32::try_from(page.body_block_ids.len())
                 .map_err(|_| invalid("Created Page body exceeds its block bound"))?,
-            block_ids: page.body_block_ids.clone(),
+            block_ids: if request.include_block_ids {
+                page.body_block_ids.clone()
+            } else {
+                Vec::new()
+            },
             etags,
         });
     }
@@ -705,19 +922,48 @@ fn compile_preflight(
 ) -> Result<CreatePreflight, StoreError> {
     validate_request(request)?;
     let base_destination = destination_without_values(&request.destination)?;
-    let ResolvedDestination {
-        destination,
-        authorization_fingerprint,
-        mut document_heads,
-        database_id: destination_database_id,
-        actor_project_id,
-    } = resolve_destination(
+    let resolved = resolve_destination(
         connection,
         context,
         library_id,
         authorization,
         &base_destination,
     )?;
+    compile_resolved_preflight(
+        connection,
+        document_runtime_cache,
+        context,
+        library_id,
+        operation_id,
+        store_epoch,
+        request,
+        request_hash,
+        resolved,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compile_resolved_preflight(
+    connection: &Connection,
+    document_runtime_cache: Option<&Arc<Mutex<DocumentRuntimeCache>>>,
+    context: &BoundModuleContext,
+    library_id: &str,
+    operation_id: &str,
+    store_epoch: &str,
+    request: &LibraryAgentCreatePagesRequest,
+    request_hash: String,
+    resolved: ResolvedDestination,
+    single: bool,
+) -> Result<CreatePreflight, StoreError> {
+    validate_request(request)?;
+    let ResolvedDestination {
+        destination,
+        authorization_fingerprint,
+        mut document_heads,
+        database_id: destination_database_id,
+        actor_project_id,
+    } = resolved;
     let destination_document = matches!(
         request.destination,
         LibraryAgentPageDestination::Page { .. }
@@ -736,10 +982,22 @@ fn compile_preflight(
     for (index, draft) in request.pages.iter().enumerate() {
         validate_values(connection, &request.destination, &draft.values)?;
         let page_operation_id = format!("{operation_id}:page:{index}");
-        let page_id = stable_uuid_v7(operation_id, "agent_create_page", &index.to_string());
+        let page_id = if single {
+            stable_uuid_v7(operation_id, "page", &format!("{library_id}:semantic"))
+        } else {
+            stable_uuid_v7(operation_id, "agent_create_page", &index.to_string())
+        };
         let rich_title = parse_inline_markdown_title(&draft.title_markdown)
             .map_err(|error| invalid(error.to_string()))?;
-        let document_id = format!("document:{page_id}");
+        let document_id = if single {
+            stable_uuid_v7(
+                operation_id,
+                "page_document",
+                &format!("{library_id}:semantic"),
+            )
+        } else {
+            format!("document:{page_id}")
+        };
         let genesis = super::block_transfer::prepare_fresh_page_genesis(
             &page_operation_id,
             &document_id,
@@ -762,6 +1020,7 @@ fn compile_preflight(
         created_roots.extend(body_block_ids.iter().cloned());
         pages.push(PreparedPage {
             page_id,
+            document_id,
             page_operation_id,
             body_block_ids,
             primary_membership_id,
@@ -908,6 +1167,13 @@ fn revalidate_preflight(
 }
 
 fn validate_request(request: &LibraryAgentCreatePagesRequest) -> Result<(), StoreError> {
+    if request
+        .pages
+        .iter()
+        .any(|page| page.title_markdown.len() > 10_000)
+    {
+        return Err(invalid("Page title exceeds its 10000-byte bound"));
+    }
     if request.pages.is_empty() || request.pages.len() > MAX_PAGES {
         return Err(invalid(
             "create_pages requires between 1 and 16 Page drafts",
@@ -1011,11 +1277,20 @@ fn destination_with_values(
             data_source_id,
             expected_data_source_revision,
             view,
-            ..
+            values: defaults,
         } => LibraryPageCopyDestination::DataSource {
             data_source_id: data_source_id.clone(),
             expected_data_source_revision: *expected_data_source_revision,
-            values: values.to_vec(),
+            values: defaults
+                .iter()
+                .filter(|default| {
+                    !values
+                        .iter()
+                        .any(|value| value.property_id == default.property_id)
+                })
+                .chain(values)
+                .cloned()
+                .collect(),
             view: view.clone(),
         },
         value => value.clone(),

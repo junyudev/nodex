@@ -1,3 +1,4 @@
+import { isDevelopmentFeatureEnabled } from "../../shared/development-features";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import {
@@ -51,7 +52,7 @@ import {
 } from "../nodex-agent-application/NodexAgentApplication";
 import {
   NodexAgentDynamicTools,
-  live as nodexAgentDynamicToolsLive,
+  layer as nodexAgentDynamicToolsLive,
 } from "../nodex-agent-application/NodexAgentDynamicTools";
 import {
   NodexAgentResourceAccess,
@@ -110,7 +111,14 @@ const documentSessions = Layer.unwrap(
   }),
 ).pipe(Layer.provideMerge(Layer.mergeAll(core, canvasPresence, documentLive)));
 const nodexAgent = nodexAgentApplicationLive.pipe(Layer.provideMerge(applicationData));
-const nodexAgentTools = nodexAgentDynamicToolsLive.pipe(Layer.provideMerge(nodexAgent));
+const nodexAgentTools = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    return nodexAgentDynamicToolsLive(
+      isDevelopmentFeatureEnabled("nodex-dynamic-tools", config.environment),
+    );
+  }),
+).pipe(Layer.provideMerge(nodexAgent));
 const nodexAgentResourceAccess = nodexAgentResourceAccessLive.pipe(Layer.provideMerge(core));
 
 /** Core authority and its direct application projections as one declarative dependency cluster. */

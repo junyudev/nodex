@@ -55,38 +55,24 @@ pub(super) fn page_projection_file(
         None => resolve_library_actor_project_id(connection, library_id)?,
     };
     let page_key = crate::database::current_page_key_for_page(connection, library_id, page_id)?;
+    let (title_etag, body_etag) = mint_document_projection_etags(
+        connection,
+        &etag_project_id,
+        store_epoch,
+        &page.document_id,
+        page.rich_title.clone(),
+        &page.body_nfm,
+    )
+    .map_err(etag_error)?;
     let mut validators = LibraryPageProjectionFileValidators {
-        title_etag: None,
-        body_etag: None,
+        title_etag: Some(title_etag),
+        body_etag: Some(body_etag),
         page_etag: None,
         move_etag: None,
     };
 
     match prepare {
-        Some(LibraryPagePrepareKind::TitleSet) => {
-            let (title, _) = mint_document_projection_etags(
-                connection,
-                &etag_project_id,
-                store_epoch,
-                &page.document_id,
-                page.rich_title.clone(),
-                &page.body_nfm,
-            )
-            .map_err(etag_error)?;
-            validators.title_etag = Some(title);
-        }
-        Some(LibraryPagePrepareKind::DocumentReplace) => {
-            let (_, body) = mint_document_projection_etags(
-                connection,
-                &etag_project_id,
-                store_epoch,
-                &page.document_id,
-                page.rich_title.clone(),
-                &page.body_nfm,
-            )
-            .map_err(etag_error)?;
-            validators.body_etag = Some(body);
-        }
+        Some(LibraryPagePrepareKind::TitleSet | LibraryPagePrepareKind::DocumentReplace) => {}
         Some(LibraryPagePrepareKind::PageDelete) => {
             validators.page_etag = Some(mint_page_shell_etag(
                 connection,

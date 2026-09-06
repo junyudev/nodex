@@ -27,6 +27,13 @@ flowchart LR
     Scene --> Catalog["Main-persisted Window Session catalog"]
 ```
 
+The CLI is the default Agent content Interface. Its Native CLI authorization
+uses selected Project access; experimental dynamic tools retain separate verified
+Turn authorization behind a default-off development gate. Per-Turn host connection
+context selects executable, Skill, Profile, and Project without becoming an
+authorization proxy. See [Agent Interface Behavior](product-specs/agent-interface-behavior.md)
+and [ADR 0061](adr/0061-cli-first-agent-content-interface.md).
+
 The principal dependency rule is inward ownership:
 
 ```text

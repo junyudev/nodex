@@ -14,7 +14,7 @@ use crate::error::{CliError, CliErrorCode};
 
 const SKILL_RESULT_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum SkillOperation {
     Status,
@@ -23,7 +23,7 @@ pub enum SkillOperation {
     Doctor,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum SkillTargetOutcome {
     Installed,
@@ -36,7 +36,7 @@ pub enum SkillTargetOutcome {
     Inspected,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillBundleResult {
     pub release_version: String,
@@ -44,7 +44,7 @@ pub struct SkillBundleResult {
     pub source: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillTargetResult {
     pub agent: SkillAgent,
@@ -57,7 +57,7 @@ pub struct SkillTargetResult {
     pub detail: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillOperationResult {
     pub schema_version: u32,

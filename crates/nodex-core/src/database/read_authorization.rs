@@ -74,6 +74,7 @@ fn read_subject(context: &BoundModuleContext, read: &DatabaseRead) -> Option<Res
             database_id: database_id.clone(),
         }),
         DatabaseRead::DataSource { data_source_id }
+        | DatabaseRead::DataSourceQuery { data_source_id, .. }
         | DatabaseRead::PropertyWindow { data_source_id, .. }
         | DatabaseRead::OptionWindow { data_source_id, .. }
         | DatabaseRead::PageLayout { data_source_id }
@@ -154,7 +155,8 @@ fn append_value_dependencies(value: &DatabaseReadValue, output: &mut Vec<Resourc
                 output,
             );
         }
-        DatabaseReadValue::AgentDataSourceQuery { value } => {
+        DatabaseReadValue::DataSourceQuery { value }
+        | DatabaseReadValue::AgentDataSourceQuery { value } => {
             output.push(ResourceKey::Database {
                 database_id: value.database_id.clone(),
             });

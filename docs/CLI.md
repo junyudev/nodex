@@ -41,11 +41,31 @@ menu's `Install Command Line Tool…` action manages its user-local command link
 package-manager installation may link the same bundled binary. Neither path
 copies a separately updatable executable or edits shell startup files.
 
-`nodex capabilities --json` is a side-effect-free compatibility handshake. It
+`nodex capabilities` is a side-effect-free compatibility handshake. It
 runs before Profile/Project discovery and reports the Agent API, Nested Markdown
 revision, command capabilities, deep-link kinds, and packaged Skill identity.
 An unpackaged development binary reports an unavailable bundle rather than
 creating Profile state.
+
+## Direct input, output, and help
+
+Structured results default to text on a terminal and JSON when captured or piped.
+`--output-format auto|json|text` overrides this choice; `--json` is shorthand for
+explicit JSON and conflicts with `--output-format`. Raw Page text, line windows,
+search output, diffs, and stdout File bytes keep their native representation.
+Errors go to stderr; captured errors are structured even for a raw success
+stream. Redirected input/output never enables prompts or pagers, including with
+explicit text output. Skill installation still requires its explicit confirmation.
+
+`nodex --json <command> --help` returns version 2 machine help with arguments,
+input/result schemas, defaults, constraints, and recovery information without
+connecting to Core. `nodex docs nested-markdown` reads the same format reference
+bundled with the official Skill. Read only the help needed for the current task.
+
+Short Page content and patches accept stdin. Block JSON file flags accept `-`
+for stdin. New structured operations accept bounded `--input FILE|-`; unknown
+fields and invalid types are rejected. Use regular files when materializing
+large results, reviewable drafts, real attachments, or persistent retry inputs.
 
 ## Context and reads
 
@@ -56,7 +76,8 @@ or source root; ambiguous matches fail with stable candidates.
 
 The primary read families are:
 
-- `context` and `tree` for bounded Project/Library orientation;
+- `context`, single-layer `ls`, and bounded recursive `tree` for orientation;
+- `search` for bounded ranked Page discovery evidence;
 - `read` for canonical Page metadata and `body.nested.md`;
 - `history` for a retained cursor timeline;
 - `view query` for one saved View's persisted query and row order;
@@ -76,6 +97,32 @@ identities or an explicitly unique supported name or path. Unauthorized
 alternatives are never returned as disambiguation evidence. All growing
 collections are bounded and use opaque continuations.
 
+## Data Sources and properties
+
+`data-source list --database ID` discovers authorized sources. `describe ID`
+returns a source and one Property window; `options ID --property ID` returns a
+separate option window. They expose continuation rather than pretending schema
+and option sets are complete. `ls` on a Database requires an unambiguous active
+Data Source and lists its direct Pages, independently of saved View filters.
+
+`data-source query ID --input -` accepts typed filters, non-manual sorts, and
+optional Property projection without creating a View. `--after` and `--limit`
+override pagination only; the query remains unchanged between windows. Empty
+projection requests no values; omission uses the default active Properties.
+Project authorization is checked by Core, including relation targets.
+
+`page properties get PAGE` returns values and revisions. `properties set`
+provides a narrow select/text/number replacement using `--option`, `--text`, or
+`--number` and `--if-revision`. `properties apply --input -` accepts typed edits
+for other values and atomic batches. They enter the same Database mutation
+contract. Conflicting revisions reject the entire apply.
+
+`page create-batch --input -` atomically creates 1–16 Pages at one destination,
+with at most 2 MiB of combined Nested Markdown. Public drafts use
+`title_markdown`, `nested_markdown`, and typed `values`. Single and batch creation
+share the same Core creation implementation. Separate commands do not share a
+transaction.
+
 ## Drafts and mutations
 
 `draft create` materializes one bounded Page editing workspace with immutable
@@ -85,6 +132,12 @@ not a mounted checkout or authority.
 `draft diff` is local. `draft apply` rereads current authority, semantically
 merges the supported title/body changes when safe, and commits them atomically.
 `draft discard` removes only a validated generated draft.
+
+`page insert PAGE` defaults to the end; explicit anchors select another position.
+`page rename PAGE TITLE --if-match ETAG` changes only the title. Structured
+`read` returns title/body validators from the observed state; operation-specific
+delete/move preparation remains explicit. Reuse these conditions without
+silently refreshing them before a write.
 
 Semantic mutation families create, duplicate, move, rename, replace, patch,
 insert, or delete Pages and stable Blocks. Nested Markdown is the normal bulk
@@ -96,7 +149,7 @@ Move and View placement consume one exact validator and commit membership,
 group value, position, ownership, Documents, projections, and receipt as one
 semantic operation.
 
-Every mutation accepts a stable idempotency key. Narrow ETags bind the current
+Ordinary mutations accept an optional stable idempotency key; drafts manage their own apply identity. Narrow ETags bind the current
 resource and guard kind; they are not capabilities. An exact retry returns the
 first immutable result. A stale or mismatched guard fails before mutation and
 requires a fresh read.
@@ -158,7 +211,7 @@ and retains the File and body uses. Path resolution for `put` occurs inside the
 idempotent Core transaction, so retries return the original result even after
 the Page namespace changes.
 
-All writes accept `--idempotency-key`; it is required with `--json`. Repeat the
+File writes accept optional `--idempotency-key`, independently of output format. Omission creates a new operation; save an explicit key before a retryable operation. Repeat the
 same key with the same arguments, revisions, and bytes. Existing File writes
 require `--if-revision`; content writes also require `--if-head`. `file info`
 returns these current coordinates for one File. Page relation

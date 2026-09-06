@@ -44,6 +44,65 @@ const BODY_FILE: &str = "body.nested.md";
 const APPLY_FILE: &str = "apply.json";
 const APPLY_TEMP_FILE: &str = ".apply.tmp";
 
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct DraftWorkspaceResult {
+    draft_id: String,
+    #[schema(value_type = String)]
+    directory: PathBuf,
+    page_id: String,
+    project_id: String,
+    page_files: nodex_core_contracts::library::LibraryPageFileInventory,
+    files: Vec<&'static str>,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct DraftDiffResult {
+    draft_id: String,
+    page_id: String,
+    #[schema(value_type = String)]
+    directory: PathBuf,
+    changed: bool,
+    title: DraftTitleDiff,
+    body: DraftBodyDiff,
+    apply_status: Option<&'static str>,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct DraftTitleDiff {
+    changed: bool,
+    base: String,
+    work: String,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct DraftBodyDiff {
+    changed: bool,
+    base_sha256: String,
+    work_sha256: String,
+    added_lines: usize,
+    removed_lines: usize,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct DraftDiscardResult {
+    draft_id: String,
+    page_id: String,
+    #[schema(value_type = String)]
+    directory: PathBuf,
+    discarded: bool,
+}
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct DraftApplicationIdentity<'a> {
+    draft_id: &'a str,
+    #[schema(value_type = String)]
+    directory: &'a Path,
+}
+
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(crate) struct DraftNoChangeResult {
+    draft_id: String,
+    page_id: String,
+    #[schema(value_type = String)]
+    directory: PathBuf,
+    outcome: &'static str,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct DraftPaths {
@@ -251,14 +310,22 @@ pub(crate) fn create(
         let _ = remove_generated_tree(&staging);
     }
     let manifest = result?;
-    Ok(CommandOutput::Json(json!({
-        "draft_id": manifest.draft_id,
-        "directory": destination.path,
-        "page_id": manifest.page_id,
-        "project_id": manifest.project_id,
-        "page_files": manifest.base_page_files,
-        "files": [MANIFEST_FILE, "base/meta.yaml", "base/body.nested.md", "work/meta.yaml", "work/body.nested.md"],
-    })))
+    serde_json::to_value(DraftWorkspaceResult {
+        draft_id: manifest.draft_id,
+        directory: destination.path,
+        page_id: manifest.page_id,
+        project_id: manifest.project_id,
+        page_files: manifest.base_page_files,
+        files: vec![
+            MANIFEST_FILE,
+            "base/meta.yaml",
+            "base/body.nested.md",
+            "work/meta.yaml",
+            "work/body.nested.md",
+        ],
+    })
+    .map(CommandOutput::Json)
+    .map_err(internal)
 }
 
 pub(crate) fn diff(directory: &Path) -> Result<CommandOutput, CliError> {
@@ -266,22 +333,28 @@ pub(crate) fn diff(directory: &Path) -> Result<CommandOutput, CliError> {
     let metadata_change =
         crate::meta_yaml::compare_draft_metadata(&loaded.base_metadata, &loaded.work_metadata)?;
     let body = body_diff_summary(&loaded.base_body, &loaded.work_body);
-    Ok(CommandOutput::Json(json!({
-        "draft_id": loaded.layout.manifest.draft_id,
-        "page_id": loaded.layout.manifest.page_id,
-        "directory": loaded.layout.root,
-        "changed": metadata_change.title.is_some() || body["changed"].as_bool() == Some(true),
-        "title": {
-            "changed": metadata_change.title.is_some(),
-            "base": loaded.base_metadata.title_markdown,
-            "work": loaded.work_metadata.title_markdown,
+    serde_json::to_value(DraftDiffResult {
+        draft_id: loaded.layout.manifest.draft_id,
+        page_id: loaded.layout.manifest.page_id,
+        directory: loaded.layout.root,
+        changed: metadata_change.title.is_some() || body.changed,
+        title: DraftTitleDiff {
+            changed: metadata_change.title.is_some(),
+            base: loaded.base_metadata.title_markdown,
+            work: loaded.work_metadata.title_markdown,
         },
-        "body": body,
-        "apply_status": loaded.layout.apply_state.as_ref().map(|state| match state.status {
-            DraftApplyStatus::Pending => "pending",
-            DraftApplyStatus::Applied => "applied",
-        }),
-    })))
+        body,
+        apply_status: loaded
+            .layout
+            .apply_state
+            .as_ref()
+            .map(|state| match state.status {
+                DraftApplyStatus::Pending => "pending",
+                DraftApplyStatus::Applied => "applied",
+            }),
+    })
+    .map(CommandOutput::Json)
+    .map_err(internal)
 }
 
 pub(crate) fn apply(
@@ -319,12 +392,14 @@ pub(crate) fn apply(
     let title_changed = metadata_change.title.is_some();
     let body_changed = loaded.base_body != loaded.work_body;
     if !title_changed && !body_changed {
-        return Ok(CommandOutput::Json(json!({
-            "draft_id": loaded.layout.manifest.draft_id,
-            "page_id": loaded.layout.manifest.page_id,
-            "directory": loaded.layout.root,
-            "outcome": "no_change",
-        })));
+        return serde_json::to_value(DraftNoChangeResult {
+            draft_id: loaded.layout.manifest.draft_id,
+            page_id: loaded.layout.manifest.page_id,
+            directory: loaded.layout.root,
+            outcome: "no_change",
+        })
+        .map(CommandOutput::Json)
+        .map_err(internal);
     }
 
     let current = read_projection(
@@ -400,12 +475,14 @@ pub(crate) fn discard(directory: &Path) -> Result<CommandOutput, CliError> {
     remove_known_directory(&layout.root.join(BASE_DIRECTORY))?;
     let root = layout.root.clone();
     remove_known_directory(&root)?;
-    Ok(CommandOutput::Json(json!({
-        "draft_id": layout.manifest.draft_id,
-        "page_id": layout.manifest.page_id,
-        "directory": root,
-        "discarded": true,
-    })))
+    serde_json::to_value(DraftDiscardResult {
+        draft_id: layout.manifest.draft_id,
+        page_id: layout.manifest.page_id,
+        directory: root,
+        discarded: true,
+    })
+    .map(CommandOutput::Json)
+    .map_err(internal)
 }
 
 fn read_projection(
@@ -480,14 +557,15 @@ fn submit_apply_state(
     let Value::Object(result_object) = &mut result else {
         return Err(internal("draft mutation result is not an object"));
     };
-    result_object.insert(
-        "draft_id".to_owned(),
-        Value::String(loaded.layout.manifest.draft_id.clone()),
-    );
-    result_object.insert(
-        "directory".to_owned(),
-        Value::String(loaded.layout.root.to_string_lossy().into_owned()),
-    );
+    let identity = serde_json::to_value(DraftApplicationIdentity {
+        draft_id: &loaded.layout.manifest.draft_id,
+        directory: &loaded.layout.root,
+    })
+    .map_err(internal)?;
+    let Value::Object(identity) = identity else {
+        return Err(internal("draft identity is not an object"));
+    };
+    result_object.extend(identity);
     state.status = DraftApplyStatus::Applied;
     state.result = Some(result.clone());
     write_apply_state(&loaded.layout.root, &state)?;
@@ -677,7 +755,7 @@ fn midpoint(left: usize, right: usize) -> usize {
     left + right.saturating_sub(left) / 2
 }
 
-fn body_diff_summary(base: &str, work: &str) -> Value {
+fn body_diff_summary(base: &str, work: &str) -> DraftBodyDiff {
     let diff = TextDiff::configure()
         .algorithm(Algorithm::Histogram)
         .timeout(Duration::from_secs(2))
@@ -695,13 +773,13 @@ fn body_diff_summary(base: &str, work: &str) -> Value {
             DiffTag::Equal => {}
         }
     }
-    json!({
-        "changed": base != work,
-        "base_sha256": digest(base.as_bytes()),
-        "work_sha256": digest(work.as_bytes()),
-        "added_lines": added_lines,
-        "removed_lines": removed_lines,
-    })
+    DraftBodyDiff {
+        changed: base != work,
+        base_sha256: digest(base.as_bytes()),
+        work_sha256: digest(work.as_bytes()),
+        added_lines,
+        removed_lines,
+    }
 }
 
 fn load_draft(directory: &Path) -> Result<LoadedDraft, CliError> {
@@ -1696,6 +1774,7 @@ mod tests {
             meta_yaml: String::new(),
             body_nested_markdown: body.to_owned(),
             page_files: nodex_core_contracts::library::LibraryPageFileInventory {
+                can_write: true,
                 page_id: "page-1".to_owned(),
                 revision: 0,
                 body_usage_revision: 0,
@@ -1735,6 +1814,7 @@ mod tests {
             base_title_etag: "title-etag".to_owned(),
             base_body_etag: "body-etag".to_owned(),
             base_page_files: nodex_core_contracts::library::LibraryPageFileInventory {
+                can_write: true,
                 page_id: "page-1".to_owned(),
                 revision: 0,
                 body_usage_revision: 0,

@@ -14,7 +14,7 @@ describe("development feature catalog", () => {
       "runtime-metrics",
     ]);
     expect(() => resolveDevelopmentFeatureOverrides(["missing"])).toThrow(
-      /Available features: database-page-reorder-menu, runtime-metrics/u,
+      /Available features: nodex-dynamic-tools, database-page-reorder-menu, runtime-metrics/u,
     );
   });
 
@@ -26,5 +26,12 @@ describe("development feature catalog", () => {
     expect(parseDevelopmentFeatureEnvironment(environment)).toEqual(new Set(["runtime-metrics"]));
     expect(isDevelopmentFeatureEnabled("runtime-metrics", environment)).toBe(true);
     expect(isDevelopmentFeatureEnabled("runtime-metrics", {})).toBe(false);
+    expect(isDevelopmentFeatureEnabled("nodex-dynamic-tools", {})).toBe(false);
+    expect(
+      isDevelopmentFeatureEnabled(
+        "nodex-dynamic-tools",
+        developmentFeatureEnvironment(["nodex-dynamic-tools"]),
+      ),
+    ).toBe(true);
   });
 });

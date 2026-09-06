@@ -1,3 +1,4 @@
+import { agentCliWorkflowScenario } from "./scenarios/agent-cli-workflow";
 import { documentSyncRecoveryScenario } from "./scenarios/document-sync-recovery";
 import type { ScenarioDomainRecipe } from "./contracts";
 import { boardDenseScenario } from "./scenarios/board-dense";
@@ -11,6 +12,7 @@ import { sidebarCustomSectionsScenario } from "./scenarios/sidebar-custom-sectio
 import { libraryFilesScenario } from "./scenarios/library-files";
 
 const scenarios = new Map<string, ScenarioDomainRecipe>([
+  [agentCliWorkflowScenario.id, agentCliWorkflowScenario],
   [documentSyncRecoveryScenario.id, documentSyncRecoveryScenario],
   [boardDenseScenario.id, boardDenseScenario],
   [databaseContextMenuPerformanceScenario.id, databaseContextMenuPerformanceScenario],

@@ -1213,6 +1213,73 @@ mod tests {
         assert_eq!(row_detail.summary.page_id, "page:database-row");
         assert_eq!(row_detail.body_nfm, BODY_SENTINEL);
 
+        let native_query = nodex_core_contracts::database::DatabaseDataSourceQuery {
+            cursor: None,
+            limit: Some(1),
+            projection_property_ids: Some(Vec::new()),
+            filter: DatabaseViewFilter::Group {
+                operator: DatabaseViewFilterGroupOperator::And,
+                children: Vec::new(),
+            },
+            sort: Vec::new(),
+        };
+        let native = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::DataSourceQuery {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        query: native_query.clone(),
+                    },
+                },
+            )
+            .expect("Native CLI query uses bound Project authority");
+        assert!(native.authorization.is_some());
+        let DatabaseReadValue::DataSourceQuery { value: native } = native.value else {
+            panic!("native query result");
+        };
+        assert_eq!(native.rows.items.len(), 1);
+        assert!(native.rows.items[0].database_values.is_empty());
+        let next = module
+            .read(
+                &context(),
+                ModuleReadRequest {
+                    contract_version: DATABASE_CONTRACT_VERSION,
+                    read: DatabaseRead::DataSourceQuery {
+                        data_source_id: SOURCE_ID.to_owned(),
+                        query: nodex_core_contracts::database::DatabaseDataSourceQuery {
+                            cursor: native.rows.next_cursor.clone(),
+                            ..native_query.clone()
+                        },
+                    },
+                },
+            )
+            .expect("continue native query");
+        let DatabaseReadValue::DataSourceQuery { value: next } = next.value else {
+            panic!("native continuation");
+        };
+        assert_eq!(next.rows.items.len(), 1);
+        assert_ne!(native.rows.items[0].page_id, next.rows.items[0].page_id);
+        let changed = module.read(
+            &context(),
+            ModuleReadRequest {
+                contract_version: DATABASE_CONTRACT_VERSION,
+                read: DatabaseRead::DataSourceQuery {
+                    data_source_id: SOURCE_ID.to_owned(),
+                    query: nodex_core_contracts::database::DatabaseDataSourceQuery {
+                        cursor: native.rows.next_cursor,
+                        projection_property_ids: None,
+                        ..native_query
+                    },
+                },
+            },
+        );
+        assert!(
+            changed.is_err(),
+            "query cursor must bind projection selection"
+        );
+
         let agent_query = module
             .read(
                 &context(),

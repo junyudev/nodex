@@ -11,7 +11,9 @@ use serde::Serialize;
 use super::bundle::{VerifiedSkillBundle, digest_skill_tree};
 use crate::error::{CliError, CliErrorCode};
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, ValueEnum)]
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, ValueEnum, utoipa::ToSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 #[value(rename_all = "kebab-case")]
 pub enum SkillAgent {
@@ -30,7 +32,7 @@ impl SkillAgent {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum SkillTargetState {
     Missing,
@@ -56,7 +58,7 @@ pub struct ClassifiedSkillTarget {
     pub detail: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct LegacySkillTarget {
     pub path: String,

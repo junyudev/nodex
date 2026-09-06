@@ -573,11 +573,20 @@ pub(super) fn read(
             recent_page_ids,
             limit,
         } => {
-            require_trusted_root_only(
-                requesting_project_id,
-                requesting_adapter,
-                "Project Page search requires a trusted local root Adapter",
-            )?;
+            let native_bound_search = matches!(requesting_adapter, AdapterKind::NativeCli)
+                && requesting_project_id.is_some_and(|project_id| {
+                    project_ids.as_slice() == [project_id]
+                        && preferred_project_id
+                            .as_deref()
+                            .is_none_or(|preferred| preferred == project_id)
+                });
+            if !native_bound_search {
+                require_trusted_root_only(
+                    requesting_project_id,
+                    requesting_adapter,
+                    "Project Page search requires a trusted root or the Native CLI's exact bound Project",
+                )?;
+            }
             let index =
                 page_search_registry.snapshot(connection, library_id, store_epoch, commit_head)?;
             Ok(LibraryReadValue::ProjectPageSearch {
