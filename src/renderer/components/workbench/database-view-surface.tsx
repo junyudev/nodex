@@ -1448,176 +1448,184 @@ function BoardDatabaseViewSurface({
                           } as React.CSSProperties
                         }
                       >
-                        {collapsed ? (
-                          <motion.div
-                            data-database-board-collapsed-header-underlay={
-                              collapsed ? "true" : undefined
-                            }
-                            className="absolute inset-x-0 top-0 z-10 rounded-t-lg bg-(--background)"
-                            initial={reducedMotion ? false : { opacity: 0, x: -4 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={columnContentTransition}
-                          >
-                            <div
-                              data-database-board-column-header={collapsed ? "true" : undefined}
-                              data-database-board-collapsed-header={collapsed ? "true" : undefined}
-                              className="relative flex flex-col items-center rounded-t-lg px-1 pt-3 pb-2"
-                              onDragOver={
-                                collapsedTargetScopeKey
-                                  ? (event) =>
-                                      handleBoardCellDragOver(
-                                        event,
-                                        collapsedTargetScopeKey,
-                                        collapsedTargetRows,
-                                        {
-                                          groupKey: column.groupKey,
-                                          subgroupKey: collapsedTargetSubgroup?.key ?? null,
-                                        },
-                                      )
-                                  : undefined
-                              }
-                              onDragLeave={
-                                collapsedTargetScopeKey
-                                  ? (event) =>
-                                      handleBoardCellDragLeave(event, collapsedTargetScopeKey)
-                                  : undefined
-                              }
-                              onDrop={
-                                collapsedTargetSubgroup && collapsedTargetScopeKey
-                                  ? (event) =>
-                                      handleBoardCellDrop(event, collapsedTargetRows, {
-                                        groupKey: column.groupKey,
-                                        subgroupKey: collapsedTargetSubgroup.key,
-                                      })
-                                  : undefined
-                              }
-                              style={{
-                                backgroundColor: active
-                                  ? group.activeSurfaceColor
-                                  : group.surfaceColor,
-                                boxShadow: active
-                                  ? "inset 1.5px 1.5px 0 color-mix(in srgb, var(--column-accent) 38%, transparent), inset -1.5px 0 0 color-mix(in srgb, var(--column-accent) 38%, transparent)"
-                                  : undefined,
-                              }}
-                            >
-                              <DatabaseBoardGroupMarker group={group} />
-                              <span
-                                data-database-board-collapsed-label={collapsed ? "true" : undefined}
-                                className="mt-2 text-base font-medium whitespace-nowrap opacity-70"
-                                style={{
-                                  color: group.accentColor,
-                                  writingMode: "vertical-lr",
-                                }}
-                              >
-                                {column.name}
-                              </span>
-                              <span
-                                className="mt-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium tabular-nums"
-                                style={{
-                                  color: group.accentColor,
-                                  background:
-                                    "color-mix(in srgb, var(--column-accent) 14%, transparent)",
-                                }}
-                              >
-                                {totalRows}
-                              </span>
-                              <div className="pointer-events-auto mt-2">
-                                <ColumnActionPopover
-                                  columnName={column.name}
-                                  collapsed={layout.collapsed}
-                                  width={layout.width}
-                                  accentColor={group.accentColor}
-                                  alwaysVisible
-                                  onCollapsedChange={(nextCollapsed) =>
-                                    patchColumnLayout(group.pathKey, {
-                                      collapsed: nextCollapsed,
-                                    })
-                                  }
-                                  onWidthChange={(width) =>
-                                    patchColumnLayout(group.pathKey, { width })
-                                  }
-                                />
-                              </div>
-                              {active ? (
-                                <div
-                                  data-board-collapsed-drop-indicator="true"
-                                  className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5"
-                                >
-                                  <DropIndicator
-                                    className="relative"
-                                    label={dropIndicator?.label}
-                                  />
-                                </div>
-                              ) : null}
-                            </div>
-                          </motion.div>
-                        ) : null}
-                        {!collapsed ? (
-                          <div className="h-10 overflow-hidden rounded-t-lg">
+                        {/* Mounting a Board is not a collapse/expand interaction. */}
+                        <AnimatePresence initial={false}>
+                          {collapsed ? (
                             <motion.div
-                              data-database-board-column-header={collapsed ? undefined : "true"}
-                              className="group/column flex h-10 items-center rounded-t-lg px-2"
-                              initial={reducedMotion ? false : { opacity: 0, x: -8 }}
+                              key="collapsed"
+                              data-database-board-collapsed-header-underlay={
+                                collapsed ? "true" : undefined
+                              }
+                              className="absolute inset-x-0 top-0 z-10 rounded-t-lg bg-(--background)"
+                              initial={reducedMotion ? false : { opacity: 0, x: -4 }}
                               animate={{ opacity: 1, x: 0 }}
                               transition={columnContentTransition}
-                              style={{
-                                width: databaseBoardColumnSurfaceWidth(layout.width, false),
-                                backgroundColor: active
-                                  ? group.activeSurfaceColor
-                                  : group.surfaceColor,
-                                boxShadow: active
-                                  ? "inset 0 0 0 1.5px color-mix(in srgb, var(--column-accent) 38%, transparent)"
-                                  : undefined,
-                              }}
                             >
-                              <DatabaseBoardGroupMarker group={group} />
-                              <span
-                                data-database-board-column-label="true"
-                                className="ml-1.5 min-w-0 truncate text-sm font-normal text-token-text-primary"
+                              <div
+                                data-database-board-column-header={collapsed ? "true" : undefined}
+                                data-database-board-collapsed-header={
+                                  collapsed ? "true" : undefined
+                                }
+                                className="relative flex flex-col items-center rounded-t-lg px-1 pt-3 pb-2"
+                                onDragOver={
+                                  collapsedTargetScopeKey
+                                    ? (event) =>
+                                        handleBoardCellDragOver(
+                                          event,
+                                          collapsedTargetScopeKey,
+                                          collapsedTargetRows,
+                                          {
+                                            groupKey: column.groupKey,
+                                            subgroupKey: collapsedTargetSubgroup?.key ?? null,
+                                          },
+                                        )
+                                    : undefined
+                                }
+                                onDragLeave={
+                                  collapsedTargetScopeKey
+                                    ? (event) =>
+                                        handleBoardCellDragLeave(event, collapsedTargetScopeKey)
+                                    : undefined
+                                }
+                                onDrop={
+                                  collapsedTargetSubgroup && collapsedTargetScopeKey
+                                    ? (event) =>
+                                        handleBoardCellDrop(event, collapsedTargetRows, {
+                                          groupKey: column.groupKey,
+                                          subgroupKey: collapsedTargetSubgroup.key,
+                                        })
+                                    : undefined
+                                }
+                                style={{
+                                  backgroundColor: active
+                                    ? group.activeSurfaceColor
+                                    : group.surfaceColor,
+                                  boxShadow: active
+                                    ? "inset 1.5px 1.5px 0 color-mix(in srgb, var(--column-accent) 38%, transparent), inset -1.5px 0 0 color-mix(in srgb, var(--column-accent) 38%, transparent)"
+                                    : undefined,
+                                }}
                               >
-                                {column.name}
-                              </span>
-                              <span
-                                data-database-board-column-count="true"
-                                className="ml-1.5 text-sm tabular-nums text-token-description-foreground"
-                              >
-                                {totalRows}
-                              </span>
-                              <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover/column:opacity-100 focus-within:opacity-100">
-                                <ColumnActionPopover
-                                  columnName={column.name}
-                                  collapsed={layout.collapsed}
-                                  width={layout.width}
-                                  accentColor={group.accentColor}
-                                  alwaysVisible
-                                  onCollapsedChange={(nextCollapsed) =>
-                                    patchColumnLayout(group.pathKey, {
-                                      collapsed: nextCollapsed,
-                                    })
+                                <DatabaseBoardGroupMarker group={group} />
+                                <span
+                                  data-database-board-collapsed-label={
+                                    collapsed ? "true" : undefined
                                   }
-                                  onWidthChange={(width) =>
-                                    patchColumnLayout(group.pathKey, { width })
-                                  }
-                                />
-                                {!subgroupProperty &&
-                                groupPropertyId === "status" &&
-                                column.groupKey !== null &&
-                                onRequestCreatePage ? (
-                                  <button
-                                    type="button"
-                                    aria-label={`Create Page in ${column.name}`}
-                                    data-page-create-trigger="header"
-                                    data-page-create-column-id={column.groupKey}
-                                    className="flex size-6 shrink-0 items-center justify-center rounded-xs text-(--column-accent) hover:bg-token-foreground/5"
-                                    onClick={() => onRequestCreatePage(column.groupKey!)}
+                                  className="mt-2 text-base font-medium whitespace-nowrap opacity-70"
+                                  style={{
+                                    color: group.accentColor,
+                                    writingMode: "vertical-lr",
+                                  }}
+                                >
+                                  {column.name}
+                                </span>
+                                <span
+                                  className="mt-2 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-medium tabular-nums"
+                                  style={{
+                                    color: group.accentColor,
+                                    background:
+                                      "color-mix(in srgb, var(--column-accent) 14%, transparent)",
+                                  }}
+                                >
+                                  {totalRows}
+                                </span>
+                                <div className="pointer-events-auto mt-2">
+                                  <ColumnActionPopover
+                                    columnName={column.name}
+                                    collapsed={layout.collapsed}
+                                    width={layout.width}
+                                    accentColor={group.accentColor}
+                                    alwaysVisible
+                                    onCollapsedChange={(nextCollapsed) =>
+                                      patchColumnLayout(group.pathKey, {
+                                        collapsed: nextCollapsed,
+                                      })
+                                    }
+                                    onWidthChange={(width) =>
+                                      patchColumnLayout(group.pathKey, { width })
+                                    }
+                                  />
+                                </div>
+                                {active ? (
+                                  <div
+                                    data-board-collapsed-drop-indicator="true"
+                                    className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5"
                                   >
-                                    <PlusIcon className="size-3.5" />
-                                  </button>
+                                    <DropIndicator
+                                      className="relative"
+                                      label={dropIndicator?.label}
+                                    />
+                                  </div>
                                 ) : null}
                               </div>
                             </motion.div>
-                          </div>
-                        ) : null}
+                          ) : null}
+                          {!collapsed ? (
+                            <div key="expanded" className="h-10 overflow-hidden rounded-t-lg">
+                              <motion.div
+                                data-database-board-column-header={collapsed ? undefined : "true"}
+                                className="group/column flex h-10 items-center rounded-t-lg px-2"
+                                initial={reducedMotion ? false : { opacity: 0, x: -8 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={columnContentTransition}
+                                style={{
+                                  width: databaseBoardColumnSurfaceWidth(layout.width, false),
+                                  backgroundColor: active
+                                    ? group.activeSurfaceColor
+                                    : group.surfaceColor,
+                                  boxShadow: active
+                                    ? "inset 0 0 0 1.5px color-mix(in srgb, var(--column-accent) 38%, transparent)"
+                                    : undefined,
+                                }}
+                              >
+                                <DatabaseBoardGroupMarker group={group} />
+                                <span
+                                  data-database-board-column-label="true"
+                                  className="ml-1.5 min-w-0 truncate text-sm font-normal text-token-text-primary"
+                                >
+                                  {column.name}
+                                </span>
+                                <span
+                                  data-database-board-column-count="true"
+                                  className="ml-1.5 text-sm tabular-nums text-token-description-foreground"
+                                >
+                                  {totalRows}
+                                </span>
+                                <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover/column:opacity-100 focus-within:opacity-100">
+                                  <ColumnActionPopover
+                                    columnName={column.name}
+                                    collapsed={layout.collapsed}
+                                    width={layout.width}
+                                    accentColor={group.accentColor}
+                                    alwaysVisible
+                                    onCollapsedChange={(nextCollapsed) =>
+                                      patchColumnLayout(group.pathKey, {
+                                        collapsed: nextCollapsed,
+                                      })
+                                    }
+                                    onWidthChange={(width) =>
+                                      patchColumnLayout(group.pathKey, { width })
+                                    }
+                                  />
+                                  {!subgroupProperty &&
+                                  groupPropertyId === "status" &&
+                                  column.groupKey !== null &&
+                                  onRequestCreatePage ? (
+                                    <button
+                                      type="button"
+                                      aria-label={`Create Page in ${column.name}`}
+                                      data-page-create-trigger="header"
+                                      data-page-create-column-id={column.groupKey}
+                                      className="flex size-6 shrink-0 items-center justify-center rounded-xs text-(--column-accent) hover:bg-token-foreground/5"
+                                      onClick={() => onRequestCreatePage(column.groupKey!)}
+                                    >
+                                      <PlusIcon className="size-3.5" />
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </motion.div>
+                            </div>
+                          ) : null}
+                        </AnimatePresence>
                       </motion.div>
                     );
                   })}

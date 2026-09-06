@@ -179,6 +179,9 @@ interruptible emphasized ease while the compact rail and full Card surface hand
 off through a short directional fade. Header and body stay aligned throughout
 the motion; reduced-motion preference changes the same transition into an
 immediate state change.
+Opening a Board or changing surrounding tab groups presents Column headers and
+content directly in their current state; mounting a surface does not replay
+collapse/expand motion.
 Finite empty groups remain present as canonical collapsed rails instead of
 disappearing, while each populated Status column retains the full-width
 `New page` launcher. Historical Table, top-level Toggle List, and Calendar layouts
@@ -223,7 +226,8 @@ View preferences does not expand collapsed groups.
 
 Filter and Sort authoring lives in one inline rule bar directly below the View
 tabs and toolbar. Its open state is a bounded Profile chrome preference per
-View, not query state, and existing rules do not force the bar open. Toolbar
+View, not query state, and existing rules do not force the bar open. Layout
+changes and surface remounts do not animate the rule bar into view. Toolbar
 Filter and Sort are the direct bar toggles once their relevant authoring state
 exists. A rule-free, closed View is the create-first exception: Filter opens an
 `Add filter` Property picker at the toolbar button, and Sort opens a `New sort`

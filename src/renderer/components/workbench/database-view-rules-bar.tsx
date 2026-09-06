@@ -1038,7 +1038,7 @@ export function DatabaseViewRulesBar({
     <div
       data-testid="database-view-rules-bar"
       data-pulse={controller.pulse}
-      className="relative animate-in border-t-[0.5px] border-token-border/60 pt-1 fade-in-0 slide-in-from-top-1 duration-200 motion-reduce:duration-[1ms]"
+      className="relative border-t-[0.5px] border-token-border/60 pt-1"
     >
       {controller.pulse > 0 ? (
         <span
