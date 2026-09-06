@@ -53,15 +53,22 @@ describe("Browser and app-server compatibility", () => {
     expect(projectBundledAppServerRuntimeIdentity(metadata)).toEqual(pair.appServer);
   });
 
-  test("admits the conformance-tested latest Browser peer on both macOS architectures", () => {
-    const latestPairs = TESTED_BROWSER_APP_SERVER_PAIRS.filter(
-      (pair) => pair.browser.browserPluginVersion === "26.901.20858",
-    );
+  test("admits multiple exact partners without inferring untested combinations", () => {
+    const pair = TESTED_BROWSER_APP_SERVER_PAIRS[0];
+    if (!pair) throw new Error("Expected a committed Browser compatibility pair");
+    const otherAppServer = { ...pair.appServer, entrypointSha256: "a".repeat(64) };
+    const otherBrowser = { ...pair.browser, manifestSha256: "b".repeat(64) };
+    const pairs = [
+      pair,
+      { appServer: otherAppServer, browser: pair.browser },
+      { appServer: pair.appServer, browser: otherBrowser },
+    ];
 
-    expect(latestPairs.map((pair) => pair.browser.targetArch).sort()).toEqual(["arm64", "x64"]);
-    for (const pair of latestPairs) {
-      expect(pair.browser.peerCliVersion).toBe("0.153.0-alpha.5");
-      expect(isTestedBrowserAppServerPair(pair.appServer, pair.browser)).toBe(true);
+    for (const orderedPairs of [pairs, pairs.toReversed()]) {
+      expect(isTestedBrowserAppServerPair(pair.appServer, pair.browser, orderedPairs)).toBe(true);
+      expect(isTestedBrowserAppServerPair(otherAppServer, pair.browser, orderedPairs)).toBe(true);
+      expect(isTestedBrowserAppServerPair(pair.appServer, otherBrowser, orderedPairs)).toBe(true);
+      expect(isTestedBrowserAppServerPair(otherAppServer, otherBrowser, orderedPairs)).toBe(false);
     }
   });
 });

@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { _electron as electron, type ElectronApplication } from "playwright";
@@ -73,6 +74,13 @@ describe("Browser Platform Electron substrate", () => {
         },
       });
       const page = await application.firstWindow();
+      // Window creation precedes navigation; fixture calls require the loaded host document.
+      await page.waitForURL(
+        pathToFileURL(path.join(path.dirname(fixtureMain), "index.html")).href,
+        {
+          waitUntil: "load",
+        },
+      );
       const firstGuestId = await page.evaluate(
         async ({ url }) =>
           await (

@@ -11,7 +11,7 @@ import {
   readCodexAppServerReleaseLock,
   resolveCodexAppServerReleaseLockPath,
 } from "./agent-runtime-release-lock";
-import { TESTED_BROWSER_APP_SERVER_PAIRS } from "../src/shared/browser-app-server-compatibility";
+import { isTestedBrowserAppServerPair } from "../src/shared/browser-app-server-compatibility";
 
 const HASH = "a".repeat(64);
 
@@ -88,30 +88,22 @@ describe("parseBrowserRuntimeReleaseLock", () => {
 
     for (const targetArch of ["arm64", "x64"] as const) {
       const asset = browserLock.assets[`darwin-${targetArch}`];
-      const pair = TESTED_BROWSER_APP_SERVER_PAIRS.find(
-        (candidate) =>
-          candidate.appServer.targetArch === targetArch &&
-          candidate.browser.targetArch === targetArch &&
-          candidate.browser.browserPluginVersion === browserLock.browserPluginVersion &&
-          candidate.browser.manifestSha256 === asset.manifestSha256 &&
-          candidate.browser.peerCliVersion === asset.runtimeVersions.codexCli,
-      );
-      expect(pair).toBeDefined();
-      expect(pair?.appServer).toMatchObject({
+      const appServer = {
         entrypointSha256: agentLock.builds[`darwin-${targetArch}`].entrypointSha256,
         protocolSchemaFingerprint: agentLock.protocolSchema.sha256,
         runtimeVersion: agentLock.appServerRuntimeVersion,
         sourceCommit: agentLock.upstream.commit,
         targetArch,
         targetPlatform: "darwin",
-      });
-      expect(pair?.browser).toMatchObject({
+      };
+      const browser = {
         browserPluginVersion: browserLock.browserPluginVersion,
         manifestSha256: asset.manifestSha256,
         peerCliVersion: asset.runtimeVersions.codexCli,
         targetArch,
         targetPlatform: "darwin",
-      });
+      };
+      expect(isTestedBrowserAppServerPair(appServer, browser)).toBe(true);
     }
   });
 });

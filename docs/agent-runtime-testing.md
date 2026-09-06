@@ -41,6 +41,12 @@ Electron composition.
 
 ## Agent runtime conformance probes
 
+Release-lock tests verify that the committed Agent and Browser artifacts form an
+exact tested pair on each supported architecture. Use the shared compatibility
+matcher with both complete identities: either artifact can have several tested
+partners, and matrix ordering has no meaning. These tests verify admission to
+the recorded relation; they do not replace the runtime probes that establish it.
+
 Run all runtime probes with:
 
 ```bash
