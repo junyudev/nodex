@@ -90,6 +90,15 @@ bounded; large rewrites use smaller patches or explicit whole-body replacement.
 Whole-body replacement has its own identity semantics and is not a substitute
 for an unsuccessful precise edit.
 
+Local draft apply has the same preservation contract. Its sealed baseline binds
+the original Document generation and authoritative Block source locations. Edits
+are inferred from base to work before current text is considered; matching text
+in a newly created Block cannot substitute for the original target. Submission
+uses the observed current Document head, so a change after planning rejects the
+atomic title/body apply. Safe unrelated changes may merge; unsupported alignment,
+structure and resource bounds never select whole-body replacement. Work files
+survive rejection. Pending retries retain their exact operation and edit plan.
+
 Stable Block operations remain the explicit identity-sensitive structural path.
 Ownership never hides in Markdown: create, move, duplicate, and protected deletion
 are typed semantic operations. Exact syntax is documented in

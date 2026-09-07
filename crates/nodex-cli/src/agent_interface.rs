@@ -1129,6 +1129,9 @@ const COMMANDS: &[CommandMetadata] = &[
         errors: &[
             "DRAFT_UNSAFE_PATH",
             "DRAFT_CONFLICT",
+            "DRAFT_AMBIGUOUS_EDIT",
+            "DRAFT_EDIT_LIMIT",
+            "DRAFT_INVALID_MARKDOWN",
             "DRAFT_ALREADY_APPLIED",
             "ETAG_CONFLICT",
         ],
@@ -1437,6 +1440,11 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
         ["page", "insert"] => vec![
             "Insert Nested Markdown at an anchor; existing Blocks retain their identities. Omitted --file reads stdin.",
         ],
+        ["draft", "apply"] => vec![
+            "Applies title and body edits atomically against the original Block identities. Unrelated concurrent edits may merge when targets remain unambiguous. Deleted or replaced targets fail even when their text is unchanged.",
+            "DRAFT_AMBIGUOUS_EDIT means baseline targets cannot be determined; DRAFT_CONFLICT means observed targets changed; DRAFT_EDIT_LIMIT means the atomic edit exceeds a supported bound. Failures keep work files. Use explicit Block operations for unsupported structure; whole-body replacement requires a separate, intentional page replace operation.",
+            "Retry unchanged pending work with the same draft; its original operation is replayed, never recompiled as a replacement. diff is a local text comparison, not a guarantee of current applicability.",
+        ],
         ["page", "replace"] => vec![
             "Read the complete body and its body_etag first. Input is the whole replacement body, not a partial fragment; use patch or insert for local edits.",
         ],
@@ -1466,6 +1474,7 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
         _ => Vec::new(),
     };
     if path != ["data-source", "configure"]
+        && path != ["draft", "apply"]
         && COMMANDS.iter().any(|metadata| {
             metadata.path == path && metadata.validators.contains(&"idempotency_key")
         })
@@ -1652,7 +1661,7 @@ fn group_semantics(path: &[&str]) -> Vec<&'static str> {
             "Use stable Block IDs and typed JSON for precise structural edits; read --help-schema input for the chosen operation.",
         ],
         ["draft"] => vec![
-            "create saves a baseline and editable Page files. Edit the local files, inspect diff, then apply using the stored edit conditions.",
+            "create saves a baseline with original Block identities and editable Page files. Edit work files, inspect the local diff, then apply. Safe edits preserve existing Block identities; ambiguous, conflicting or oversized edits fail atomically and keep the files. apply never falls back to whole-body replacement. Use page replace only for an explicitly intended complete replacement.",
         ],
         ["skills"] | ["setup"] => vec![
             "Inspect status or use --dry-run before installation changes. Select Agents with --agent; --yes confirms the requested change.",

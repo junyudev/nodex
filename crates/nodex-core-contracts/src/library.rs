@@ -2042,6 +2042,21 @@ pub struct LibraryPageProjectionFile {
     pub validators: LibraryPageProjectionFileValidators,
 }
 
+/// UTF-8 byte interval in the draft's exact Nested Markdown body.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryPageDraftSpan {
+    pub start: usize,
+    pub end: usize,
+}
+
+/// Authoritative Block correspondence for a draft; descendants own separate spans.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryPageDraftBlock {
+    pub block_id: String,
+    pub parent_block_id: Option<String>,
+    pub spans: Vec<LibraryPageDraftSpan>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct LibraryPageDraftProjection {
     pub version: u32,
@@ -2056,6 +2071,7 @@ pub struct LibraryPageDraftProjection {
     pub document_head_seq: i64,
     pub meta_yaml: String,
     pub body_nested_markdown: String,
+    pub body_blocks: Vec<LibraryPageDraftBlock>,
     pub page_files: LibraryPageFileInventory,
     pub title_etag: String,
     pub body_etag: String,

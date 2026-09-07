@@ -187,8 +187,21 @@ for the complete relation, authorization, lifecycle and observation contracts.
 base, editable work, a Page File relation inventory, and a private manifest. File
 bytes remain lazy and are read through explicit semantic commands; a draft is
 not a mounted checkout or authority.
-`draft diff` is local. `draft apply` rereads current authority, semantically
-merges the supported title/body changes when safe, and commits them atomically.
+The immutable baseline includes the original Document identity and the exact
+mapping from Nested Markdown byte ranges to Block identities. `draft diff` is
+local and does not promise current applicability. `draft apply` derives edits
+from that baseline, verifies original target identities against current authority,
+and commits supported title/body changes atomically. Unrelated concurrent changes
+may merge when the original targets still correspond safely. Same-text replacement
+Blocks are different targets and cause a conflict.
+
+Ordinary draft plans cannot contain whole-body replacement. Ambiguous baseline
+edits (`DRAFT_AMBIGUOUS_EDIT`), changed targets (`DRAFT_CONFLICT`) and edit/request
+limits (`DRAFT_EDIT_LIMIT`) reject the entire apply and preserve work files. Invalid
+or unsupported Markdown changes also fail before commit. Use explicit Block
+operations for structure that cannot be represented safely; `page replace` remains
+a separate, intentional whole-body operation with its own identity semantics.
+Pending retries replay the exact saved edit plan and operation identity.
 `draft discard` removes only a validated generated draft.
 
 `page insert PAGE` defaults to the end; explicit anchors select another position.
