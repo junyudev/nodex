@@ -1,0 +1,12 @@
+[package]
+name = "nodex-sqlite-query"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rusqlite.workspace = true
+
+# rusqlite requires two layout-checked unsafe trait implementations. The crate
+# denies unsafe code globally and permits only those implementations locally.

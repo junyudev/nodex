@@ -47,5 +47,5 @@ workflow-specific research or report tools.
 ADR 0016's semantic operations, bounded output, stable identity, and progressive
 format disclosure principles remain valid. Its dynamic catalog is retained as
 an experimental Adapter rather than the default development target. A general
-filesystem mount, SQL interface, or internal execution language is unnecessary
-for this decision.
+filesystem mount or internal execution language is unnecessary for this decision.
+ADRs 0062 and 0063 define the public SQL read interface layered on this CLI.

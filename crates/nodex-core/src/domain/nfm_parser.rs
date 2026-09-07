@@ -6,8 +6,8 @@ use thiserror::Error;
 use super::block_materialization::MaterializedBlockNode;
 use super::block_tree::MAX_BLOCK_ID_LENGTH;
 use super::nfm::{
-    NFM_COLORS, NfmBlock, NfmInlineContent, NfmStyleSet, NfmTableCell, NfmTableColumn, NfmTableRow,
-    parse_inline_content, parse_xml_attrs,
+    NFM_COLORS, NfmBlock, NfmInlineContent, NfmSourceBlock, NfmStyleSet, NfmTableCell,
+    NfmTableColumn, NfmTableRow, parse_inline_content, parse_xml_attrs,
 };
 use super::ordinary_block::{default_props, quote_props};
 
@@ -27,13 +27,53 @@ pub enum NfmBlockMaterializationError {
 struct FlatBlock {
     indent: usize,
     block: NfmBlock,
+    locations: Vec<NfmSourceBlock>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LocatedNfm {
+    pub blocks: Vec<NfmBlock>,
+    pub locations: Vec<NfmSourceBlock>,
 }
 
 pub fn parse_nfm(input: &str) -> Result<Vec<NfmBlock>, NfmParseError> {
+    Ok(parse_nfm_with_locations::<false>(input)?.blocks)
+}
+
+/// Parse the existing grammar with preorder Block locations in the original UTF-8 input.
+/// Standalone blank lines have no Block owner; callout delimiters belong to their parent.
+pub fn parse_nfm_located(input: &str) -> Result<LocatedNfm, NfmParseError> {
+    parse_nfm_with_locations::<true>(input)
+}
+
+fn parse_nfm_with_locations<const LOCATED: bool>(input: &str) -> Result<LocatedNfm, NfmParseError> {
     if input.trim().is_empty() {
-        return Ok(Vec::new());
+        return Ok(LocatedNfm {
+            blocks: Vec::new(),
+            locations: Vec::new(),
+        });
     }
     let lines: Vec<_> = input.split('\n').collect();
+    let mut offset = 0;
+    let origins = if LOCATED {
+        lines
+            .iter()
+            .map(|line| {
+                let start = offset;
+                offset = (offset + line.len() + 1).min(input.len());
+                start..offset
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    parse_located_lines::<LOCATED>(&lines, &origins)
+}
+
+fn parse_located_lines<const LOCATED: bool>(
+    lines: &[&str],
+    origins: &[std::ops::Range<usize>],
+) -> Result<LocatedNfm, NfmParseError> {
     let mut flat = Vec::new();
     let mut cursor = 0usize;
     while cursor < lines.len() {
@@ -44,12 +84,59 @@ pub fn parse_nfm(input: &str) -> Result<Vec<NfmBlock>, NfmParseError> {
             cursor += 1;
             continue;
         }
-        let (block, next) = parse_block(&lines, cursor, indent)?;
-        flat.push(FlatBlock { indent, block });
+        let mut descendants = Vec::new();
+        let (block, next) =
+            parse_block::<LOCATED>(lines, cursor, indent, origins, &mut descendants)?;
+        let locations = if LOCATED {
+            let location = own_source_ranges(&origins[cursor..next], &descendants);
+            let mut locations = vec![location];
+            locations.extend(descendants);
+            locations
+        } else {
+            Vec::new()
+        };
+        flat.push(FlatBlock {
+            indent,
+            block,
+            locations,
+        });
         cursor = next;
     }
     let mut cursor = 0usize;
-    Ok(nest_blocks(&mut flat, &mut cursor, None))
+    let mut locations = Vec::new();
+    let blocks = nest_blocks::<LOCATED>(&mut flat, &mut cursor, None, &mut locations);
+    Ok(LocatedNfm { blocks, locations })
+}
+
+fn own_source_ranges(
+    lines: &[std::ops::Range<usize>],
+    descendants: &[NfmSourceBlock],
+) -> NfmSourceBlock {
+    let mut child_ranges: Vec<_> = descendants.iter().flat_map(|child| &child.spans).collect();
+    child_ranges.sort_by_key(|range| range.start);
+    let mut child_cursor = 0;
+    let mut spans: Vec<std::ops::Range<usize>> = Vec::new();
+    for line in lines {
+        while child_cursor < child_ranges.len() && child_ranges[child_cursor].end <= line.start {
+            child_cursor += 1;
+        }
+        if line.is_empty()
+            || child_ranges
+                .get(child_cursor)
+                .is_some_and(|child| child.start <= line.start && child.end >= line.end)
+        {
+            continue;
+        }
+        if let Some(previous) = spans
+            .last_mut()
+            .filter(|previous| previous.end == line.start)
+        {
+            previous.end = line.end;
+            continue;
+        }
+        spans.push(line.clone());
+    }
+    NfmSourceBlock { spans }
 }
 
 pub fn materialize_nfm_blocks_with_ids(
@@ -63,10 +150,12 @@ pub fn materialize_nfm_blocks_with_ids(
         .collect()
 }
 
-fn parse_block(
+fn parse_block<const LOCATED: bool>(
     lines: &[&str],
     index: usize,
     indent: usize,
+    origins: &[std::ops::Range<usize>],
+    descendants: &mut Vec<NfmSourceBlock>,
 ) -> Result<(NfmBlock, usize), NfmParseError> {
     let content = &lines[index][indent..];
     let trimmed = content.trim();
@@ -133,7 +222,7 @@ fn parse_block(
         ));
     }
     if trimmed.starts_with("<callout") {
-        return parse_callout(lines, index, indent);
+        return parse_callout::<LOCATED>(lines, index, indent, origins, descendants);
     }
     if trimmed.starts_with("<table") {
         return parse_xml_table(lines, index, indent);
@@ -265,10 +354,12 @@ fn closing_math_fence(content: &str, fence_length: usize) -> bool {
     trimmed.len() == fence_length && trimmed.bytes().all(|byte| byte == b'$')
 }
 
-fn parse_callout(
+fn parse_callout<const LOCATED: bool>(
     lines: &[&str],
     index: usize,
     indent: usize,
+    origins: &[std::ops::Range<usize>],
+    descendants: &mut Vec<NfmSourceBlock>,
 ) -> Result<(NfmBlock, usize), NfmParseError> {
     let opening = lines[index][indent..].trim();
     let attrs = opening
@@ -293,21 +384,34 @@ fn parse_callout(
     if !closed {
         return Err(syntax(index, "callout is missing its closing tag"));
     }
-    let mut blocks = parse_nfm(&inner.join("\n"))?;
+    let inner_origins = if LOCATED {
+        &origins[index + 1..cursor - 1]
+    } else {
+        &[]
+    };
+    let mut parsed = parse_located_lines::<LOCATED>(&inner, inner_origins)?;
+    let blocks = &mut parsed.blocks;
     let content = if matches!(blocks.first(), Some(NfmBlock::Paragraph { .. })) {
-        match blocks.remove(0) {
+        let removed = blocks.remove(0);
+        if LOCATED {
+            parsed.locations.drain(..block_count(&removed));
+        }
+        match removed {
             NfmBlock::Paragraph { content, .. } => content,
             _ => unreachable!(),
         }
     } else {
         Vec::new()
     };
+    if LOCATED {
+        descendants.extend(parsed.locations);
+    }
     Ok((
         NfmBlock::Callout {
             icon: attrs.get("icon").filter(|value| !value.is_empty()).cloned(),
             content,
             color: valid_color(attrs.get("color")),
-            children: blocks,
+            children: parsed.blocks,
         },
         cursor,
     ))
@@ -567,7 +671,12 @@ fn parse_xml_cell(line: &str) -> Option<NfmTableCell> {
     })
 }
 
-fn nest_blocks(flat: &mut [FlatBlock], cursor: &mut usize, parent: Option<usize>) -> Vec<NfmBlock> {
+fn nest_blocks<const LOCATED: bool>(
+    flat: &mut [FlatBlock],
+    cursor: &mut usize,
+    parent: Option<usize>,
+    locations: &mut Vec<NfmSourceBlock>,
+) -> Vec<NfmBlock> {
     let mut output = Vec::new();
     while *cursor < flat.len() {
         let indent = flat[*cursor].indent;
@@ -580,9 +689,12 @@ fn nest_blocks(flat: &mut [FlatBlock], cursor: &mut usize, parent: Option<usize>
                 children: Vec::new(),
             },
         );
+        if LOCATED {
+            locations.append(&mut flat[*cursor].locations);
+        }
         *cursor += 1;
         let children = if *cursor < flat.len() && flat[*cursor].indent > indent {
-            nest_blocks(flat, cursor, Some(indent))
+            nest_blocks::<LOCATED>(flat, cursor, Some(indent), locations)
         } else {
             Vec::new()
         };
@@ -594,6 +706,26 @@ fn nest_blocks(flat: &mut [FlatBlock], cursor: &mut usize, parent: Option<usize>
         }
     }
     output
+}
+
+fn block_count(block: &NfmBlock) -> usize {
+    let children = match block {
+        NfmBlock::Paragraph { children, .. }
+        | NfmBlock::EmptyBlock { children }
+        | NfmBlock::Heading { children, .. }
+        | NfmBlock::BulletListItem { children, .. }
+        | NfmBlock::NumberedListItem { children, .. }
+        | NfmBlock::CheckListItem { children, .. }
+        | NfmBlock::Toggle { children, .. }
+        | NfmBlock::Blockquote { children, .. }
+        | NfmBlock::CodeBlock { children, .. }
+        | NfmBlock::Callout { children, .. }
+        | NfmBlock::Image { children, .. }
+        | NfmBlock::ThreadSection { children, .. }
+        | NfmBlock::Divider { children } => children,
+        _ => return 1,
+    };
+    1 + children.iter().map(block_count).sum::<usize>()
 }
 
 fn set_children(block: &mut NfmBlock, children: Vec<NfmBlock>) -> bool {
@@ -1339,6 +1471,114 @@ mod tests {
     use crate::domain::nfm::{materialize_nfm, serialize_nfm};
 
     use super::*;
+
+    #[test]
+    fn located_parse_retains_original_unicode_indentation_and_multiline_byte_ranges() {
+        let input = "- Parent 😀\n\tChild 中\n```rust\nlet x = 1;\nx\n```\n| A | B |\n| --- | --- |\n| 1 | 2 |\n";
+        let parsed = parse_nfm_located(input).expect("located parse");
+        assert_eq!(parse_nfm(input).expect("default parser"), parsed.blocks);
+        assert_eq!(parsed.blocks.len(), 3);
+        assert_eq!(parsed.locations.len(), 4);
+        let owned: Vec<Vec<&str>> = parsed
+            .locations
+            .iter()
+            .map(|location| {
+                location
+                    .spans
+                    .iter()
+                    .map(|span| &input[span.clone()])
+                    .collect()
+            })
+            .collect();
+        assert_eq!(
+            owned,
+            vec![
+                vec!["- Parent 😀\n"],
+                vec!["\tChild 中\n"],
+                vec!["```rust\nlet x = 1;\nx\n```\n"],
+                vec!["| A | B |\n| --- | --- |\n| 1 | 2 |\n"],
+            ]
+        );
+    }
+
+    #[test]
+    fn located_parse_preserves_existing_callout_body_absorption_and_child_locations() {
+        let input = "<callout>\n\tBody 😀\n\t\tAbsorbed descendant\n\t- Kept child\n</callout>\n";
+        let parsed = parse_nfm_located(input).expect("callout");
+        assert_eq!(parse_nfm(input).expect("default parser"), parsed.blocks);
+        let [
+            NfmBlock::Callout {
+                content, children, ..
+            },
+        ] = parsed.blocks.as_slice()
+        else {
+            panic!("expected callout");
+        };
+        assert_eq!(content, &parse_inline_content("Body 😀"));
+        assert_eq!(children.len(), 1);
+        assert_eq!(parsed.locations.len(), 2);
+        let owned: Vec<Vec<&str>> = parsed
+            .locations
+            .iter()
+            .map(|location| {
+                location
+                    .spans
+                    .iter()
+                    .map(|span| &input[span.clone()])
+                    .collect()
+            })
+            .collect();
+        assert_eq!(
+            owned,
+            vec![
+                vec![
+                    "<callout>\n\tBody 😀\n\t\tAbsorbed descendant\n",
+                    "</callout>\n"
+                ],
+                vec!["\t- Kept child\n"],
+            ]
+        );
+        let empty = parse_nfm_located("<callout>\n</callout>").expect("empty callout");
+        assert_eq!(
+            parse_nfm("<callout>\n</callout>").expect("default empty callout"),
+            empty.blocks
+        );
+        assert_eq!(
+            empty.locations,
+            vec![NfmSourceBlock {
+                spans: std::iter::once(0..20).collect()
+            }]
+        );
+    }
+
+    #[test]
+    fn located_parse_follows_flattened_heading_and_code_children_without_reassigning_their_bytes() {
+        let input = "# Heading\n\tHeading child\n```\ncode\n```\n\tCode child";
+        let parsed = parse_nfm_located(input).expect("flattened children");
+        assert_eq!(parse_nfm(input).expect("default parser"), parsed.blocks);
+        assert_eq!(parsed.blocks.len(), 4);
+        assert_eq!(parsed.locations.len(), 4);
+        let owned: Vec<String> = parsed
+            .locations
+            .iter()
+            .map(|location| {
+                location
+                    .spans
+                    .iter()
+                    .map(|span| &input[span.clone()])
+                    .collect()
+            })
+            .collect();
+        assert_eq!(
+            owned,
+            vec![
+                "# Heading\n",
+                "\tHeading child\n",
+                "```\ncode\n```\n",
+                "\tCode child"
+            ]
+        );
+    }
 
     #[test]
     fn parses_the_complete_canonical_matrix_back_to_the_same_nfm() {

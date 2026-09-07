@@ -2,89 +2,168 @@
 
 ## Scope and discovery
 
-CLI resource selectors accept stable IDs directly without a prefix. Unique names
-resolve inside the selected resource scope; ambiguity returns authorized stable
-candidates. Page keys and title paths remain secondary selectors. Project context
-comes from an explicit selector or the working directory, never from a Page ID.
+SQL is the primary Agent interface for discovering and reading authorized Nodex
+content. `pages` always contains the selected Project's authorized active Pages,
+including standalone Pages. A Page ID never changes the access Project. Named
+Source bindings add Property columns without changing the meaning of `pages`.
 
-`data-source list` and `view list` default to the Project's Database. An omitted
-Source requires exactly one active Source; an omitted View uses the Project's
-configured default View. Saved View queries retain saved filters, grouping and
-ordering. A temporary Source query uses only its explicit rules.
+```text
+nodex sql schema [RELATION] [--bind ALIAS=SOURCE_ID ...]
+nodex sql query SQL [--param NAME=JSON ...] [--bind ALIAS=SOURCE_ID ...] [--raw]
+nodex sql query --file FILE|- [--param NAME=JSON ...] [--bind ALIAS=SOURCE_ID ...] [--raw]
+```
 
-Query results expose resource identity, titles, requested values and continuation.
-`returned_count` is exactly the number of items in the response. A non-null cursor
-requires continuation before treating the result as complete. Option discovery
-contains IDs and names, not counts from an unrelated lifecycle or query scope.
-Full View configuration belongs to `view describe`.
+Resource IDs need no prefix. CLI semantic resource selectors also accept their
+supported unique names, Page keys or title paths. SQL uses the public columns
+and supplied parameter values directly; a Page key is queried as `page_key`.
+`--database` is only a schema discovery hint. It does not filter `pages` or
+implicitly bind a Source. Bind Sources explicitly using stable IDs; aliases
+cannot collide with built-in relations.
 
-## Offline help
+`sql schema` without a relation returns a compact catalog of purpose, row
+identity and required arguments. Describing one relation returns its column
+types, nullability, identity, ordering, examples and version fields. Describing
+a bound Source additionally publishes exact Property column spellings, stable
+Property IDs and select option IDs/names. Schema discovery does not require
+loading Page bodies or values.
 
-Machine help is a compact guide generated from command definitions. It omits
-large schemas by default. `--help-schema input`, `result`, `error` and `all` are
-offline JSON schema guides. Schemas derive from actual input/output types and
-include accepted success-envelope inputs where piping is supported. Human help
-and machine help share scope rules and examples. Invalid schema selectors report
-the argument and allowed values; scope ambiguity reports authorized candidates.
+Offline command help remains progressive: ordinary machine help gives arguments
+and examples; `--help-schema input|result|error|all` gives only the requested JSON
+schemas. Human and machine help share command definitions. Unknown input fields
+and invalid schema selectors fail explicitly.
 
-## Public read-only SQL
+## Public relations
 
-The Database Module resolves bound Sources under the caller's existing Project
-authority and observes every schema, membership, value and Relation target in
-one Store read snapshot. It materializes complete public inputs in a disposable
-in-memory SQLite database. User SQL never runs on the Store connection. Partial
-materialization fails rather than producing incomplete aggregates or joins.
+| Relation                                                               | One row represents                                | Important columns or meaning                                                                                                                                           |
+| ---------------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pages`                                                                | One authorized active Page                        | `page_id`, `page_key`, `title`, nullable `data_source_id`, timestamps, `title_etag`, `file_manifest_revision`, lazy `intrinsic_properties` JSON; no implicit body read |
+| `page_documents`                                                       | One current Page body                             | `page_id`, `nested_markdown`, `body_etag`; one-to-one with Pages                                                                                                       |
+| Bound Source, e.g. `tasks`                                             | One active member Page                            | `page_id`, `title`, `data_source_id`, `membership_revision`, `value_revisions`, Property columns                                                                       |
+| `view_rows(VIEW_ID)`                                                   | One Page occurrence in a saved View               | `occurrence_id`, `page_id`, `group_key`, `subgroup_key`, `parent_occurrence_id`, `ordinal`; a Page can occur repeatedly                                                |
+| `search_hits(QUERY, K)`                                                | One of the top K authorized Page search hits      | `page_id`, `title`, `snippet`, `ordinal`; Page identities are deduplicated                                                                                             |
+| `databases`, `data_sources`, `properties`, `property_options`, `views` | One public resource                               | Identity, name, ownership and applicable configuration revisions; `schema_json` and `config_json` preserve domain configuration                                        |
+| `property_values`                                                      | One active member Page/Property pair              | `value_json`, `value_revision`, `membership_revision`; unset values keep domain defaults and initial revisions                                                         |
+| `page_relations`                                                       | One visible Source Page/Property/target Page edge | Restricted target identities are omitted; visible edge count is not a total relationship count                                                                         |
+| `library_children`                                                     | One canonical navigation parent/child edge        | Typed parent/child IDs, title, `ordinal`; distinct from View hierarchy                                                                                                 |
+| `page_files`                                                           | One deduplicated current Page/File use            | Nullable `path`, name, MIME, size, version, manifest/body-use revisions                                                                                                |
+| `files`                                                                | One independently authorized File                 | Includes lifecycle, metadata revision and current head version                                                                                                         |
+| `file_versions`, `file_usages`                                         | One retained version or authorized visible use    | Independent File access applies; inaccessible usage targets remain undisclosed                                                                                         |
+| `page_history`                                                         | One retained Page history event                   | Stable event identity, time and public `event_json`; no promise of unretained history                                                                                  |
 
-`sql schema` returns table/column names, Property identities, storage types and
-select option ID/name mappings. The unique default Source is named `pages`.
-`--source ID` selects that table explicitly; repeated `--bind TABLE=SOURCE_ID`
-names multiple tables for joins. Source bindings are stable IDs. Columns include
-`page_id`, `page_key`, `data_source_id`, `title`, `created_at`, `updated_at` and
-active Properties. Unique Property names are quoted SQL columns; colliding names
-use the spelling published by schema discovery. Select values contain option IDs.
-Multi-select and Relation values are JSON arrays; inaccessible Relation targets
-are null. SQL null represents absent scalar values.
+All SQL row ordering is explicit: use `ORDER BY`; natural scan order is not a
+contract. View and search use their public `ordinal`, not physical rank.
+`COUNT(DISTINCT page_id)` counts independent Pages in a View.
 
-`sql query SQL` or `--file FILE|-` accepts one read-only statement. Repeat
-`--param NAME=JSON` for named scalar bindings. SQLite owns expression, null, sort,
-collation, join and aggregation semantics. Results contain column names and rows;
-select Page and Source IDs when results will drive semantic edits.
+Source Property columns use unique display names where possible; collisions use
+the stable spelling published by schema discovery. Quote discovered names.
+Select cells contain option IDs, multi-select cells contain JSON arrays of
+option IDs, and Relation cells retain the domain's restricted-target JSON
+representation. Use `page_relations` for visible relationship joins. Text,
+numbers, booleans and null retain fixed SQLite type mappings. JSON-valued columns,
+including `value_revisions`, are JSON text suitable for SQLite JSON functions.
 
-The SQL boundary denies writes, schema changes, attachment, extension loading and
-private tables through an allowlisted authorizer and a read-only statement check.
-Inputs have explicit limits: 16 Sources, 200 Properties per Source, 100 options
-per Property, 100,000 rows and 16 MiB across inputs. Statements are at most 64 KiB
-with 100 named parameters. Results are at most 10,000 rows and 8 MiB. Execution
-is bounded by elapsed time and VM work. Exceeding a budget fails the whole query;
-no apparently complete partial result is returned.
+Page access authorizes current Page File metadata/bytes, not independent File
+history or shared writes. Observe `pages.file_manifest_revision` for attachment
+writes even when the Page has no current File uses; an empty `page_files` result
+cannot determine a manifest version.
+
+## Query results and lifecycle
+
+The Core Query Module combines domain-owned reads under one authorization
+snapshot. User SQL executes against public virtual relations, never the private
+Store connection. Domains retain their own content, authorization and ordering
+rules. The CLI transports a query rather than assembling per-Page reads.
+
+A successful structured result contains `columns`, `rows`, `returned_count` and
+`snapshot`. The count is exactly the output row count. Snapshot is an opaque
+observation identifier, not a write validator or a resumable session. Parameters
+are named JSON scalars. One UTF-8 statement may be supplied directly, from a file
+or from stdin.
+
+`--raw` accepts exactly one row and one non-null text column, emits its UTF-8 bytes
+unchanged, and adds no newline. Empty text is valid; empty results, multiple
+cells, null and non-text scalars fail. Explicit JSON output conflicts with raw.
+
+Queries are read-only, complete or failed, and bounded by input, output, elapsed
+time and execution-work budgets. Facts and View results are not pre-truncated.
+A caller's SQL `LIMIT` is part of its query semantics; internal budget exhaustion
+fails the whole query. Writes, private tables, schema changes, attachment and
+extension loading are unavailable. Body columns are read on demand; an indexed
+Page identity lookup and a metadata-only query avoid unrelated body loading.
+
+There are no SQL cursors or long-lived snapshot sessions. Separate
+`LIMIT/OFFSET` calls are separate observations and cannot establish a consistent
+large export. `read PAGE` remains a single-Page convenience with canonical text
+and reusable validators; `ls`, `tree`, `sed`, `history` and `rg` retain their
+terminal-specific roles. `search` remains a bounded ranked search convenience. It returns Page ID,
+current key, title, location, and concise matching evidence with Block/Property
+provenance; repeated title/highlight structures and unrelated Properties are
+omitted. Full Page content remains available through `read` or SQL.
+
+## Search composition
+
+`search_hits(QUERY, K)` reuses Nodex's Page search engine, including indexed
+metadata, Page keys, body FTS and ranking. It returns the top K Page hits under
+the current query observation; it does not load all bodies and search them with
+`LIKE`. K follows the search command's bounds.
+
+Outer SQL conditions run **after** top-K retrieval. Filtering those 20 hits by
+Status is different from searching only that Status for its best 20 hits.
+`COUNT(*) FROM search_hits(:query, 20)` counts returned hits, never all matches.
+No complete-match relation or oversized-K workaround is part of this contract.
+A repeated join over one non-correlated search invocation reuses its results.
+
+```sql
+SELECT s.page_id, s.title, s.snippet, d.nested_markdown
+FROM search_hits(:query, 5) AS s
+JOIN page_documents AS d USING (page_id)
+ORDER BY s.ordinal;
+```
 
 ## Configuration scripts
 
-`data-source configure [SOURCE] --input FILE|-` accepts a typed declarative JSON
-script with an observed `if_schema_revision` and 1–100 operations. Operations add
-or rename Properties, change types, add or rename select options, create Views,
-and partially update Views. Schema/type changes obey the ordinary Database domain
-constraints. Selectors resolve exact IDs before unique names within the Source.
+Read `data_sources.schema_revision` and `views.revision` for configuration
+conditions. `data-source configure [SOURCE] --input FILE|-` accepts a typed JSON
+script with `if_schema_revision` and 1–100 operations. Operations add or rename
+Properties, change types, add or rename options, create Views and partially
+update Views. Domain constraints remain authoritative. IDs resolve before unique
+names within the Source.
 
-`update_view` requires its observed `if_revision`. Omitted fields retain current
-settings; empty sorts clear sorting and explicit null grouping clears grouping.
-A script is one atomic Database mutation: later failure rolls back earlier steps.
-Receipt replay precedes name resolution and revision validation, so a retry with
-the same operation key and identical script returns the committed result even
-after the script renames a referenced resource.
+`update_view` requires `if_revision`; omitted fields retain settings, empty sorts
+clear sorting and null grouping clears grouping. A script is one atomic mutation.
+Receipt replay precedes name resolution and revision validation, so identical
+retries retain their result after a referenced resource has been renamed.
 
-## Selected Property edits
+## Observed Property edits
 
-`page properties prepare-batch --selection FILE|- --set NAME=JSON` accepts SQL
-results selecting `page_id` and `data_source_id` exactly once. Alternatively
-`--values FILE` supplies a map of typed Property values. Preparation deduplicates
-target IDs, resolves Property names and captures each current value revision.
-It is read-only and emits the canonical typed edits accepted by `properties apply`.
-Both boundaries accept their documented raw input or the corresponding successful
-CLI result envelope, allowing direct pipes without intermediate files.
+`page properties prepare-batch --selection FILE|- --set NAME=JSON` requires
+exactly one each of `page_id`, `data_source_id`, `membership_revision` and
+`value_revisions` in the SQL result. Additional columns are accepted. `--values
+FILE` alternatively supplies the typed replacement map. Each requested Property
+must have an observed version, including an explicit initial version when unset.
 
-The selection fixes identities; preparation observes current values. These are
-separate observations. Applying the prepared batch never reevaluates SQL or a
-filter. Every replacement binds its target and observed revision, and any conflict
-rejects the entire atomic apply. To retry an uncertain result, retain the exact
-prepared edits and operation key rather than preparing again.
+Preparation resolves current Source schema to identify named Properties but
+preserves the selected membership and value versions. It never refreshes those
+conditions from current Page values. Identical repeated Page/Source conditions
+may deduplicate; conflicting observations fail. Preparation is read-only and
+emits the typed edits accepted by `page properties apply --input FILE|-`.
+Both accept their documented raw input or corresponding successful CLI envelope.
+
+```sh
+nodex sql query 'SELECT page_id,data_source_id,membership_revision,value_revisions FROM tasks WHERE "Status"=:status' \
+  --bind tasks=SOURCE_ID --param 'status="OPTION_ID"' |
+  nodex page properties prepare-batch --selection - --set 'Priority={"kind":"number","value":1}' |
+  nodex page properties apply --input - --idempotency-key priority-update-1
+```
+
+Apply rechecks current authority, schema, membership and value conditions in one
+atomic operation. A change between query and preparation remains a conflict.
+Conditions protect membership and **edited fields**, not arbitrary SQL predicates
+or JOIN dependencies. Selecting by Status and changing only Priority does not
+lock Status. SQL UPDATE and generic query-dependency locking are not supported.
+Save the exact prepared edits and idempotency key before retryable writes.
+
+Title/body writes reuse `pages.title_etag` and `page_documents.body_etag` directly.
+Move/delete preparation is explicit: `page prepare PAGE --operation move|delete
+[--view VIEW_ID]`; View scope applies only to move. Ordinary content reads do not
+prepare unrelated lifecycle operations.

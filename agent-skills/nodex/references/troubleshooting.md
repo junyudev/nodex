@@ -33,14 +33,17 @@ These are different recovery paths. A duplicate receipt confirms the original
 operation. Without a saved key, inspect the result before repeating a write
 that could create duplicate content.
 
-A Page attachment conflict requires rereading `page file list` and checking its
-`revision` and File/path identity. Removing an entry retains the File and its
+A Page attachment conflict requires rereading `pages.file_manifest_revision`
+and the matching `page_files` File/path identity. An empty use list does not
+imply manifest revision zero. Removing an entry retains the File and its
 body occurrences. Trashing/purging a shared File follows the separate File
 retention and permission contract; do not expand a detach into file deletion.
 
-Cursors are opaque and tied to their query/access context. Continue with the
-same query or restart it when the cursor is stale. Search evidence and paged
-results do not promise a complete editable document.
+SQL results are complete or fail their budget. Reduce selected columns or the
+requested scope after a budget failure; repeated OFFSET queries do not share a
+snapshot. Search top-K counts describe returned hits, not all matches. Terminal
+convenience cursors retain their declared query/access context. Fetch complete
+Page bodies before replacing them.
 
 ## Resource missing or content unsupported
 
@@ -54,3 +57,8 @@ ownership commands for Page moves/deletion rather than editing owning shells.
 Explain whether the Skill is a managed link or an external copy. Use its owning
 installer for user-requested changes; do not overwrite a foreign installation
 as a side effect of an ordinary content task.
+
+`PROFILE_MISMATCH` means the connected home has a different identity from the
+host's `--expect-profile` assertion. Stop and refresh the host connection
+context; do not remove the assertion or switch Profiles to make the call pass.
+`NODEX_HOME` selects the directory; `--expect-profile` accepts only an identity.

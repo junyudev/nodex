@@ -238,7 +238,6 @@ function launchMainApplication(): void {
     nodexHome,
     platform: process.platform,
     profileSettingsPath: bootstrapConfig.profileSettingsPath,
-    profileId: nodexHome,
     projectRootPath: app.getAppPath(),
     rendererUrl: bootstrapConfig.environment.ELECTRON_RENDERER_URL ?? null,
     resourcesPath: process.resourcesPath,

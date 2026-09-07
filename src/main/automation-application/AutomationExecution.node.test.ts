@@ -1,3 +1,4 @@
+import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -141,6 +142,13 @@ const buildExecutionContext = (
           ),
           Layer.succeed(ExecutionHostRuntime, {} as ExecutionHostRuntime["Service"]),
           mainConfigLayer(),
+          Layer.succeed(CoreAuthority, {
+            identity: {
+              profileId: "profile:test",
+              libraryId: "library:test",
+              storeEpoch: "epoch:test",
+            },
+          } as CoreAuthority["Service"]),
           Layer.succeed(
             ManagedWorktreeRetentionRuntime,
             {} as ManagedWorktreeRetentionRuntime["Service"],

@@ -7,22 +7,18 @@ repeating the full capability and context workflow on every command.
 ## Find and read
 
 ```sh
-nodex ls PARENT_PAGE_ID
-nodex tree PARENT_PAGE_ID
-nodex search 'launch plan'
-nodex rg -n 'AUTH_EXPIRED'
-nodex read PAGE_ID
-nodex --json read PAGE_ID
-nodex read --meta PAGE_ID
-nodex sed -n '1,80p' PAGE_ID
-nodex history PAGE_ID
+nodex sql query 'SELECT page_id,title FROM pages WHERE title LIKE :title' --param 'title="%launch%"'
+nodex sql query 'SELECT page_id,nested_markdown,body_etag FROM page_documents WHERE page_id=:id' --param 'id="PAGE_ID"'
+nodex sql query 'SELECT title,title_etag,file_manifest_revision,intrinsic_properties FROM pages WHERE page_id=:id' --param 'id="PAGE_ID"'
 ```
 
-`ls` lists one layer; `tree` expands a bounded hierarchy. Search is ranked
-Page-discovery evidence, while `rg` is exact content search. Neither search
-snippets nor line windows are complete editable Page bodies. Follow declared
-continuation for list/query windows. Resolve names or Page keys such as LAB-13
-to returned stable IDs for writes and links.
+Use the SQL reference for filtering multiple bodies or joining Source values.
+`read PAGE_ID` is a convenient single-Page text read; `--json read` returns content
+with validators, and `read --meta` returns canonical metadata. `search` gives
+ranked discovery evidence; `rg` serves exact regex workflows. Neither snippets
+nor `sed` line slices are complete editing baselines. `ls`, `tree` and `history`
+remain terminal conveniences with their declared bounds/continuations.
+Resolve names or Page keys to stable IDs before writes and links.
 
 ## Direct edits
 
@@ -65,10 +61,11 @@ nodex page create --parent PARENT_PAGE_ID --title 'Release checklist' <<'BODY'
 BODY
 ```
 
-Structured `read` returns title/body validators. Complete replacement uses
+SQL returns `title_etag`/`body_etag`; structured `read` also returns those validators. Complete replacement uses
 `page replace PAGE_ID --if-match BODY_ETAG` with stdin or `--file` and a complete
-body. Page deletion requires explicit user intent and `read --prepare page.delete`
-followed by `page delete --if-match PAGE_ETAG`. Structural ownership cannot be
+body. Page deletion requires explicit user intent and
+`page prepare PAGE_ID --operation delete`, followed by
+`page delete PAGE_ID --if-match PAGE_ETAG` using `validators.page_etag`. Structural ownership cannot be
 changed by deleting or fabricating owning shells in ordinary text edits.
 
 For native Block edits, get the Block ID and its compatible ETag from the
@@ -94,10 +91,11 @@ review or the active policy requires it. Drafts own their retry identity.
 
 Library owns Files. A Page may have entries at logical paths and independent
 File references in its body. Paths organize attachments without creating Pages
-or durable folders. List entries to obtain the current manifest revision:
+or durable folders. Read the Page manifest revision even when there are no File uses:
 
 ```sh
-nodex page file list PAGE_ID
+nodex sql query 'SELECT file_manifest_revision FROM pages WHERE page_id=:id' --param 'id="PAGE_ID"'
+nodex sql query 'SELECT file_id,path,default_name,mime_type,byte_length FROM page_files WHERE page_id=:id' --param 'id="PAGE_ID"'
 nodex page file put PAGE_ID --path exports/summary.csv \
   --from ./summary.csv --if-manifest MANIFEST_REVISION
 nodex page file read PAGE_ID --path exports/summary.csv --output ./download.csv
@@ -112,9 +110,10 @@ Removal detaches this entry; it retains the File and independent body uses.
 permission, current File revision, and head version. They are different intents.
 
 Use `file import --from PATH` for an independent Library File. Inspect direct
-File metadata with `file info FILE_ID`, retained versions with
-`file versions FILE_ID`, and restore with `file restore` using its declared
-revision/head conditions. Binary reads can use raw stdout only when the caller
+File metadata with `SELECT revision,head_version FROM files WHERE file_id=:id`,
+retained versions through `file_versions`, and restore with `file restore` using
+the observed revision/head conditions. Page authority does not grant independent
+File history or shared writes. Binary reads can use raw stdout only when the caller
 preserves bytes; explicit JSON downloads require `--output PATH`.
 
 Keep disposable intermediates in the ordinary Agent workspace. To open a

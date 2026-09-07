@@ -292,6 +292,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/core/v1/modules/query/read": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["query_read"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/core/v1/modules/workspace/apply": {
         readonly parameters: {
             readonly query?: never;
@@ -2758,6 +2774,12 @@ export interface components {
         readonly DatabasePropertyValueMutation: {
             readonly address: components["schemas"]["DatabasePagePropertyAddress"];
             readonly edit: components["schemas"]["DatabasePropertyValueEdit"];
+            /**
+             * Format: int64
+             * @description When present, require the same observed active membership before editing.
+             *     SQL-prepared edits always carry this guard; commutative edits may omit it.
+             */
+            readonly expected_membership_revision?: number | null;
         };
         readonly DatabaseReadRequest: components["schemas"]["ModuleReadRequest_DatabaseRead"];
         readonly DatabaseReadResponse: components["schemas"]["ResponseEnvelope_ModuleReadSnapshot_DatabaseReadValue"];
@@ -5237,6 +5259,25 @@ export interface components {
             readonly page_id: string;
             readonly replacement_content: readonly unknown[];
         };
+        /** @description Page lifecycle preparation is independent of document content. */
+        readonly LibraryPageOperation: {
+            /** @enum {string} */
+            readonly kind: "move";
+            readonly view_id?: string | null;
+        } | {
+            /** @enum {string} */
+            readonly kind: "delete";
+        };
+        readonly LibraryPageOperationPreparation: {
+            readonly page_id: string;
+            readonly page_key?: string | null;
+            readonly validators: components["schemas"]["LibraryPageOperationValidators"];
+        };
+        readonly LibraryPageOperationValidators: {
+            readonly move_etag: string;
+        } | {
+            readonly page_etag: string;
+        };
         readonly LibraryPageOwnershipPath: {
             /** @enum {string} */
             readonly status: "missing";
@@ -7135,7 +7176,7 @@ export interface components {
             readonly operation_id: string;
         };
         /** @enum {string} */
-        readonly ModuleName: "library" | "database" | "owned_document" | "project_workspace" | "automation" | "store_administration";
+        readonly ModuleName: "library" | "database" | "owned_document" | "project_workspace" | "automation" | "store_administration" | "query";
         readonly ModuleReadRequest_AutomationRead: {
             /** Format: int32 */
             readonly contract_version: number;
@@ -7202,14 +7243,6 @@ export interface components {
              *     cross-products cannot cross the module boundary.
              */
             readonly read: {
-                /** @enum {string} */
-                readonly kind: "sql_schema";
-                readonly scope: components["schemas"]["SqlScope"];
-            } | {
-                /** @enum {string} */
-                readonly kind: "sql_query";
-                readonly query: components["schemas"]["SqlQuery"];
-            } | {
                 /** @enum {string} */
                 readonly kind: "catalog_window";
                 readonly window: components["schemas"]["CollectionWindowRequest"];
@@ -7449,6 +7482,11 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "page_content";
+                readonly page_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "prepare_page_operation";
+                readonly operation: components["schemas"]["LibraryPageOperation"];
                 readonly page_id: string;
             } | {
                 readonly file_kind: components["schemas"]["LibraryPageProjectionFileKind"];
@@ -7800,6 +7838,20 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "managed_worktree_lifecycle_snapshot";
+            };
+        };
+        readonly ModuleReadRequest_QueryRead: {
+            /** Format: int32 */
+            readonly contract_version: number;
+            readonly read: {
+                /** @enum {string} */
+                readonly kind: "schema";
+                readonly relation?: string | null;
+                readonly scope: components["schemas"]["SqlScope"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "query";
+                readonly query: components["schemas"]["SqlQuery"];
             };
         };
         readonly ModuleReadRequest_StoreAdministrationRead: {
@@ -8802,6 +8854,8 @@ export interface components {
             readonly thread_id: string;
             readonly turn_id: string;
         };
+        readonly QueryReadRequest: components["schemas"]["ModuleReadRequest_QueryRead"];
+        readonly QueryReadResponse: components["schemas"]["ResponseEnvelope_ModuleReadSnapshot_QueryReadValue"];
         readonly ReadFileBlobQuery: components["schemas"]["LibraryFileReadSource"] & {
             /** Format: int64 */
             readonly version?: number | null;
@@ -9470,14 +9524,6 @@ export interface components {
                 readonly contract_version: number;
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
-                    /** @enum {string} */
-                    readonly kind: "sql_schema";
-                    readonly value: components["schemas"]["SqlSchema"];
-                } | {
-                    /** @enum {string} */
-                    readonly kind: "sql_query";
-                    readonly value: components["schemas"]["SqlResult"];
-                } | {
                     readonly databases: components["schemas"]["CollectionWindow_DatabaseDescriptor"];
                     /** @enum {string} */
                     readonly kind: "catalog_window";
@@ -9701,6 +9747,10 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "page_content";
                     readonly value: components["schemas"]["LibraryPageContent"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "page_operation_preparation";
+                    readonly value: components["schemas"]["LibraryPageOperationPreparation"];
                 } | {
                     /** @enum {string} */
                     readonly kind: "page_projection_file";
@@ -10013,6 +10063,31 @@ export interface components {
             /** @enum {string} */
             readonly status: "error";
         };
+        readonly ResponseEnvelope_ModuleReadSnapshot_QueryReadValue: {
+            readonly payload: {
+                readonly authorization?: null | components["schemas"]["AuthorizedReadStamp"];
+                /** Format: int64 */
+                readonly commit_head: number;
+                /** Format: int32 */
+                readonly contract_version: number;
+                readonly store_epoch: components["schemas"]["StoreEpoch"];
+                readonly value: {
+                    /** @enum {string} */
+                    readonly kind: "schema";
+                    readonly value: components["schemas"]["SqlSchema"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "query";
+                    readonly value: components["schemas"]["SqlResult"];
+                };
+            };
+            /** @enum {string} */
+            readonly status: "ok";
+        } | {
+            readonly payload: components["schemas"]["CoreError"];
+            /** @enum {string} */
+            readonly status: "error";
+        };
         readonly ResponseEnvelope_ModuleReadSnapshot_StoreAdministrationReadValue: {
             readonly payload: {
                 readonly authorization?: null | components["schemas"]["AuthorizedReadStamp"];
@@ -10110,9 +10185,12 @@ export interface components {
             readonly table: string;
         };
         readonly SqlColumn: {
+            readonly description: string;
             readonly name: string;
+            readonly nullable: boolean;
             readonly options: readonly components["schemas"]["SqlOption"][];
             readonly property_id?: string | null;
+            readonly property_schema?: null | components["schemas"]["DatabasePropertySchema"];
             readonly storage_type: string;
         };
         readonly SqlOption: {
@@ -10128,7 +10206,9 @@ export interface components {
         };
         readonly SqlResult: {
             readonly columns: readonly string[];
+            readonly returned_count: number;
             readonly rows: readonly (readonly unknown[])[];
+            readonly snapshot: string;
         };
         readonly SqlSchema: {
             readonly tables: readonly components["schemas"]["SqlTable"][];
@@ -10138,9 +10218,14 @@ export interface components {
             readonly database_id?: string | null;
         };
         readonly SqlTable: {
+            readonly arguments: readonly string[];
             readonly columns: readonly components["schemas"]["SqlColumn"][];
-            readonly data_source_id: string;
+            readonly data_source_id?: string | null;
+            readonly description: string;
+            readonly examples: readonly string[];
             readonly name: string;
+            readonly ordering?: string | null;
+            readonly row_identity: readonly string[];
             readonly table: string;
         };
         readonly StoreAdministrationApplyRequest: components["schemas"]["ModuleApplyRequest_StoreAdministrationIntent"];
@@ -10697,6 +10782,33 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["LibraryReadResponse"];
+                };
+            };
+        };
+    };
+    readonly query_read: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly "x-nodex-request-class"?: null | components["schemas"]["CoreRequestClass"];
+                readonly "x-nodex-request-deadline-ms"?: number | null;
+                readonly "x-nodex-request-id"?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["QueryReadRequest"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["QueryReadResponse"];
                 };
             };
         };

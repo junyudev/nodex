@@ -303,6 +303,38 @@ fn property_config_json(
         .ok_or_else(|| corrupt("Property config is unavailable"))
 }
 
+/// Validate stored configuration without reading Page usage or View management state.
+pub(crate) fn option_count_from_storage(
+    property_id: &str,
+    value_type: &str,
+    config_json: &str,
+    schema: &DatabasePropertySchema,
+) -> Result<usize, StoreError> {
+    if matches!(value_type, "select" | "multi_select") {
+        return Ok(
+            option_config_from_storage(property_id, value_type, config_json)?
+                .options
+                .len(),
+        );
+    }
+    if matches!(
+        schema,
+        DatabasePropertySchema::Number { .. }
+            | DatabasePropertySchema::Date { .. }
+            | DatabasePropertySchema::Datetime { .. }
+    ) {
+        return Ok(0);
+    }
+    let config = serde_json::from_str::<serde_json::Value>(config_json)
+        .map_err(|_| corrupt("Stored Property config is invalid"))?;
+    if config.as_object().is_none_or(|config| !config.is_empty()) {
+        return Err(corrupt(
+            "Stored Property config is not the canonical empty object",
+        ));
+    }
+    Ok(0)
+}
+
 pub(crate) fn schema_from_storage(
     connection: &Connection,
     data_source_id: &str,

@@ -3,8 +3,8 @@ use std::io::{self, Cursor, Read, Write};
 use std::path::Path;
 
 use nodex_core_contracts::library::{
-    LIBRARY_CONTRACT_VERSION, LibraryFileChange as Change, LibraryFileLifecycle,
-    LibraryFileReadSource, LibraryFileUsageFilter, LibraryIntent, LibraryRead, LibraryReadValue,
+    LIBRARY_CONTRACT_VERSION, LibraryFileChange as Change, LibraryFileReadSource, LibraryIntent,
+    LibraryRead, LibraryReadValue,
 };
 use nodex_core_contracts::{ModuleApplyRequest, StoreEpoch};
 use nodex_core_protocol::ResponseEnvelope;
@@ -56,19 +56,6 @@ impl<'a> FileSession<'a> {
 
     pub fn read(&self, read: LibraryRead) -> Result<LibraryReadValue, CliError> {
         Ok(unwrap_library(self.client.library_read(Some(&self.project_id), read))?.value)
-    }
-
-    pub fn query(&self, read: LibraryRead) -> Result<CommandOutput, CliError> {
-        let value = match self.read(read)? {
-            LibraryReadValue::Files { value } => serde_json::to_value(value),
-            LibraryReadValue::File { value } => serde_json::to_value(value),
-            LibraryReadValue::FileVersions { value } => serde_json::to_value(value),
-            LibraryReadValue::FileUsages { value } => serde_json::to_value(value),
-            LibraryReadValue::PageFileInventory { value } => serde_json::to_value(value),
-            _ => return Err(internal("Core returned an unexpected File query result")),
-        }
-        .map_err(|error| internal(error.to_string()))?;
-        Ok(CommandOutput::Json(value))
     }
 
     pub fn apply(
@@ -202,20 +189,6 @@ pub(crate) fn execute(
 ) -> Result<CommandOutput, CliError> {
     let session = FileSession::new(client, project, cwd)?;
     match command {
-        FileCommand::List(args) => session.query(LibraryRead::Files {
-            query: args.query,
-            lifecycle: if args.trashed {
-                LibraryFileLifecycle::Trashed
-            } else {
-                LibraryFileLifecycle::Live
-            },
-            usage: LibraryFileUsageFilter::All,
-            cursor: args.pagination.after,
-            limit: args.pagination.limit,
-        }),
-        FileCommand::Info(args) => session.query(LibraryRead::File {
-            file_id: args.file_id,
-        }),
         FileCommand::Read(args) => session.download(
             &args.file_id,
             LibraryFileReadSource::Direct,
@@ -223,16 +196,6 @@ pub(crate) fn execute(
             &args.output,
             json_output,
         ),
-        FileCommand::Versions(args) => session.query(LibraryRead::FileVersions {
-            file_id: args.file_id,
-            cursor: args.pagination.after,
-            limit: args.pagination.limit,
-        }),
-        FileCommand::Usages(args) => session.query(LibraryRead::FileUsages {
-            file_id: args.file_id,
-            cursor: args.pagination.after,
-            limit: args.pagination.limit,
-        }),
         FileCommand::Import(args) => {
             let operation = mutation_id(&args.mutation)?;
             let name = input_name(&args.source, args.name)?;

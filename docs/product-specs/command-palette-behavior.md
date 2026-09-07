@@ -174,7 +174,9 @@ They are intentionally compact and subdued so they explain why a result appeared
 If the query matched body or Property text, the result renders a contextual preview below the subtitle:
 
 - excerpt is selected by Core from authoritative matched sources
-- a multi-term query keeps up to three distinct matched fragments; spans from the same excerpt are merged so an earlier term cannot suppress later-term highlights
+- a multi-term query keeps up to three matched fragments, each bounded to 240 Unicode characters; evidence for the same source window merges its highlights before selection
+- selection favors information beyond the title, additional query-term coverage, and distinct sources; separate windows in a long Block retain their shared Block identity
+- the same selected evidence feeds complete Core search previews and CLI search; ranking and access filtering are unchanged
 - each excerpt fragment centers around an actual matched term
 - excerpt is trimmed with leading/trailing ellipses when taken from the middle of the source
 - preview is clamped to `3` lines

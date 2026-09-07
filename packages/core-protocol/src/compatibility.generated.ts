@@ -30,6 +30,10 @@ export const CORE_CLIENT_REQUIREMENTS = {
     {
       "module": "store_administration",
       "contract_version": 8
+    },
+    {
+      "module": "query",
+      "contract_version": 1
     }
   ],
   "accepted_store_formats": [

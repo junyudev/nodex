@@ -55,6 +55,75 @@ fn success(home: &Path, args: &[&str]) -> Value {
     envelope["result"].clone()
 }
 
+fn sql_rows(
+    home: &Path,
+    statement: &str,
+    params: &[(&str, &str)],
+    bindings: &[String],
+) -> Vec<Value> {
+    let mut args = vec!["sql".to_owned(), "query".to_owned(), statement.to_owned()];
+    for (name, value) in params {
+        args.extend([
+            "--param".into(),
+            format!("{name}={}", serde_json::to_string(value).unwrap()),
+        ]);
+    }
+    for binding in bindings {
+        args.extend(["--bind".into(), binding.clone()]);
+    }
+    let result = success(home, &args.iter().map(String::as_str).collect::<Vec<_>>());
+    assert_eq!(
+        result["returned_count"].as_u64().unwrap() as usize,
+        result["rows"].as_array().unwrap().len()
+    );
+    assert!(result["snapshot"].is_string());
+    result["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| {
+            Value::Object(
+                result["columns"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .zip(row.as_array().unwrap())
+                    .map(|(key, value)| (key.as_str().unwrap().to_owned(), value.clone()))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+fn source_description(home: &Path, source: &str) -> Value {
+    sql_rows(
+        home,
+        "SELECT * FROM data_sources WHERE data_source_id=:id",
+        &[("id", source)],
+        &[],
+    )
+    .remove(0)
+}
+fn property_state(home: &Path, page: &str) -> Value {
+    let rows = sql_rows(
+        home,
+        "SELECT data_source_id, property_id, value_json, value_revision FROM property_values WHERE page_id=:id",
+        &[("id", page)],
+        &[],
+    );
+    let source = rows.first().expect("member Page")["data_source_id"].clone();
+    let mut values = serde_json::Map::new();
+    let mut revisions = serde_json::Map::new();
+    for row in rows {
+        let id = row["property_id"].as_str().unwrap().to_owned();
+        values.insert(
+            id.clone(),
+            serde_json::from_str(row["value_json"].as_str().unwrap()).unwrap(),
+        );
+        revisions.insert(id, row["value_revision"].clone());
+    }
+    serde_json::json!({"data_source_id":source,"values":values,"value_revisions":revisions})
+}
+
 fn validate_result(args: &[&str], result: &Value) {
     let arguments = std::iter::once("nodex")
         .chain(args.iter().copied())
@@ -182,19 +251,17 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
     let _guard = CoreGuard(client.handshake.generation.pid);
     seed(&client, &home);
     verify_direct_body_and_title_edits(&home);
-    let properties = success(&home, &["page", "properties", "get", PAGE_A]);
+    let properties = property_state(&home, PAGE_A);
     let source_id = properties["data_source_id"].as_str().unwrap().to_owned();
-    let descriptor = success(
-        &home,
-        &["data-source", "describe", &source_id, "--limit", "1"],
-    );
-    assert!(
-        descriptor["next_cursor"].is_string(),
-        "schema window must indicate continuation"
-    );
+    let descriptor = source_description(&home, &source_id);
     let database_id = descriptor["database_id"].as_str().unwrap().to_owned();
-    let sources = success(&home, &["data-source", "list", "--database", &database_id]);
-    assert_eq!(sources["items"][0]["id"], source_id);
+    let sources = sql_rows(
+        &home,
+        "SELECT data_source_id FROM data_sources WHERE database_id=:id",
+        &[("id", &database_id)],
+        &[],
+    );
+    assert_eq!(sources[0]["data_source_id"], source_id);
     for (id, schema) in [
         ("p_clinote0", DatabasePropertySchema::Text),
         (
@@ -204,7 +271,7 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
             },
         ),
     ] {
-        let descriptor = success(&home, &["data-source", "describe", &source_id]);
+        let descriptor = source_description(&home, &source_id);
         let revision = descriptor["schema_revision"].as_i64().unwrap();
         let result = client
             .database_apply(
@@ -227,8 +294,7 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
             .unwrap();
         assert!(matches!(result.0, ResponseEnvelope::Ok(_)), "{result:?}");
     }
-    let schema = success(&home, &["data-source", "describe", &source_id]);
-    assert_eq!(success(&home, &["data-source", "describe"]), schema);
+    let schema = source_description(&home, &source_id);
     let schema_revision = schema["schema_revision"].as_i64().unwrap();
     for index in 0..51 {
         let result = client
@@ -252,30 +318,22 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
             .unwrap();
         assert!(matches!(result.0, ResponseEnvelope::Ok(_)), "{result:?}");
     }
-    let first_schema = success(&home, &["data-source", "describe", &source_id]);
-    assert_eq!(first_schema["properties"].as_array().unwrap().len(), 50);
-    let schema_cursor = first_schema["next_cursor"].as_str().unwrap();
-    let second_schema = success(
+    let properties = sql_rows(
         &home,
-        &[
-            "data-source",
-            "describe",
-            &source_id,
-            "--after",
-            schema_cursor,
-        ],
+        "SELECT property_id FROM properties WHERE data_source_id=:id ORDER BY property_id",
+        &[("id", &source_id)],
+        &[],
     );
-    assert!(second_schema["next_cursor"].is_null());
-    let first_ids = first_schema["properties"]
-        .as_array()
-        .unwrap()
+    assert!(
+        properties.len() > 50,
+        "SQL catalog must not inherit the old default schema window"
+    );
+    let identities = properties
         .iter()
-        .map(|property| property["id"].as_str().unwrap())
+        .map(|property| property["property_id"].as_str().unwrap())
         .collect::<std::collections::BTreeSet<_>>();
-    for property in second_schema["properties"].as_array().unwrap() {
-        assert!(!first_ids.contains(property["id"].as_str().unwrap()));
-    }
-    let before = success(&home, &["page", "properties", "get", PAGE_A]);
+    assert_eq!(identities.len(), properties.len());
+    let before = property_state(&home, PAGE_A);
     assert_eq!(before["value_revisions"]["p_clinote0"], 0);
     assert_eq!(before["values"]["p_clinote0"], Value::Null);
     for (property, flag, value) in [
@@ -298,20 +356,16 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
             ],
         );
     }
-    let options = success(
+    let options = sql_rows(
         &home,
-        &["data-source", "options", &source_id, "--property", "status"],
+        "SELECT option_id,name FROM property_options WHERE data_source_id=:id AND property_id='status'",
+        &[("id", &source_id)],
+        &[],
     );
-    assert_eq!(
-        success(&home, &["data-source", "options", "--property", "Status"]),
-        options
-    );
-    let option = options["items"]
-        .as_array()
-        .unwrap()
+    let option = options
         .iter()
         .find(|option| option["name"] == "Review")
-        .unwrap()["id"]
+        .unwrap()["option_id"]
         .as_str()
         .unwrap();
     let revision = before["value_revisions"]["status"]
@@ -333,80 +387,48 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
             &revision,
         ],
     );
-    let changed = success(&home, &["page", "properties", "get", PAGE_A]);
+    let changed = property_state(&home, PAGE_A);
     assert_eq!(changed["values"]["p_clinote0"], "Readable text");
     assert_eq!(changed["values"]["p_clinum00"], -12.5);
-    let views = success(&home, &["view", "list"]);
-    assert_eq!(
-        views["returned_count"].as_u64().unwrap() as usize,
-        views["items"].as_array().unwrap().len()
+    let views = sql_rows(
+        &home,
+        "SELECT v.* FROM views v JOIN databases d ON d.default_view_id=v.view_id WHERE d.database_id=:id",
+        &[("id", &database_id)],
+        &[],
     );
-    let default_view = views["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|view| view["is_default"] == true)
-        .unwrap();
-    let view_id = default_view["id"].as_str().unwrap();
-    let view = success(&home, &["view", "describe"]);
-    assert_eq!(view["id"], view_id);
-    assert_eq!(success(&home, &["view", "describe", view_id]), view);
-    assert_eq!(
-        success(
-            &home,
-            &["view", "describe", default_view["name"].as_str().unwrap()]
-        ),
-        view
+    let view_id = views[0]["view_id"].as_str().unwrap();
+    let config: Value = serde_json::from_str(views[0]["config_json"].as_str().unwrap()).unwrap();
+    assert!(config.is_object());
+    let binding = vec![format!("tasks={source_id}")];
+    let grouped = sql_rows(
+        &home,
+        "SELECT v.page_id,t.p_clinote0 FROM view_rows(:view) v JOIN tasks t USING(page_id) WHERE v.group_key=:group ORDER BY v.ordinal",
+        &[("view", view_id), ("group", option)],
+        &binding,
     );
-    let grouped = success(
+    assert_eq!(grouped.len(), 1);
+    assert_eq!(grouped[0]["page_id"], PAGE_A);
+    assert_eq!(grouped[0]["p_clinote0"], "Readable text");
+    let prepared_move = success(
         &home,
         &[
-            "view",
-            "query",
-            "--group",
-            "Review",
-            "--property",
-            "p_clinote0",
+            "page",
+            "prepare",
+            PAGE_A,
+            "--operation",
+            "move",
+            "--view",
+            view_id,
         ],
     );
-    assert_eq!(grouped["returned_count"], 1);
-    assert_eq!(grouped["items"][0]["page_id"], PAGE_A);
-    assert_eq!(
-        grouped["items"][0]["properties"]["p_clinote0"],
-        "Readable text"
+    assert!(prepared_move["validators"]["move_etag"].is_string());
+    let projected = sql_rows(
+        &home,
+        "SELECT page_id,Status FROM tasks ORDER BY page_id LIMIT 1",
+        &[],
+        &binding,
     );
-    assert!(grouped["items"][0]["move_etag"].is_string());
-    assert_eq!(
-        success(
-            &home,
-            &[
-                "view",
-                "query",
-                view_id,
-                "--group",
-                "review",
-                "--property",
-                "p_clinote0"
-            ]
-        ),
-        grouped
-    );
-    let default_query = success(&home, &["data-source", "query", "--limit", "1"]);
-    assert_eq!(default_query["data_source_id"], source_id);
-    assert_eq!(default_query["returned_count"], 1);
-    let projected_query = success(&home, &["data-source", "query", "--property", "Status"]);
-    assert_eq!(
-        projected_query["items"][0]["properties"]["status"],
-        "review"
-    );
-    assert_eq!(
-        default_query["items"][0]["properties"],
-        serde_json::json!({})
-    );
-    assert_eq!(
-        success(&home, &["data-source", "list"])["items"],
-        sources["items"]
-    );
+    assert_eq!(projected[0]["Status"], "review");
 
     let mixed = serde_json::json!({ "edits": [
         { "address": { "page_id": PAGE_A, "data_source_id": source_id, "property_id": "p_clinote0" }, "edit": { "kind": "replace", "expected_value_revision": changed["value_revisions"]["p_clinote0"], "value": { "kind": "text", "value": "Must roll back" } } },
@@ -416,7 +438,7 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
         input(&home, &["page", "properties", "apply"], &mixed)["ok"],
         false
     );
-    let after = success(&home, &["page", "properties", "get", PAGE_A]);
+    let after = property_state(&home, PAGE_A);
     assert_eq!(after["values"], changed["values"]);
     let batch = serde_json::json!({ "destination": { "kind": "data_source", "data_source_id": source_id, "values": [] }, "pages": [ { "title_markdown": "Batch twin", "nested_markdown": "One" }, { "title_markdown": "Batch twin", "nested_markdown": "Two" } ] });
     let created = input(
@@ -452,60 +474,29 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
     );
     assert_eq!(replay["result"]["pages"], created["result"]["pages"]);
     assert_eq!(replay["result"]["duplicate"], true);
-    let query = serde_json::json!({ "filter": { "kind": "group", "operator": "and", "children": [] }, "sort": [], "projection_property_ids": [], "limit": 50 });
-    let result = input(
+    let selected = sql_rows(
         &home,
-        &[
-            "data-source",
-            "query",
-            &source_id,
-            "--input",
-            "-",
-            "--limit",
-            "1",
-        ],
-        &query,
+        "SELECT page_id FROM tasks ORDER BY page_id LIMIT 1",
+        &[],
+        &binding,
     );
-    assert_eq!(result["ok"], true, "{result}");
-    let rows = &result["result"];
-    assert_eq!(rows["items"].as_array().unwrap().len(), 1);
-    assert_eq!(rows["returned_count"], 1);
-    validate_result(&["data-source", "query"], rows);
-    assert_eq!(rows["items"][0]["properties"], serde_json::json!({}));
-    let cursor = rows["next_cursor"].as_str().unwrap();
-    let next = input(
+    let next = sql_rows(
         &home,
-        &[
-            "data-source",
-            "query",
-            &source_id,
-            "--input",
-            "-",
-            "--limit",
-            "1",
-            "--after",
-            cursor,
-        ],
-        &query,
+        "SELECT page_id FROM tasks WHERE page_id > :after ORDER BY page_id LIMIT 1",
+        &[("after", selected[0]["page_id"].as_str().unwrap())],
+        &binding,
     );
-    assert_eq!(next["ok"], true, "{next}");
-    assert_ne!(
-        rows["items"][0]["page_id"],
-        next["result"]["items"][0]["page_id"]
-    );
+    assert_eq!(selected.len(), 1);
+    assert_eq!(next.len(), 1);
+    assert_ne!(selected[0]["page_id"], next[0]["page_id"]);
     let listed = success(&home, &["ls", &database_id, "--limit", "1"]);
     assert_eq!(listed["scope"], "direct_data_source_pages");
     assert_eq!(listed["items"].as_array().unwrap().len(), 1);
     assert_eq!(listed["has_more"], true);
     let search = success(&home, &["search", "Batch twin"]);
     assert_eq!(search["items"].as_array().unwrap().len(), 2);
-    let forged = serde_json::json!({ "authorization": {}, "filter": { "kind": "group", "operator": "and", "children": [] }, "sort": [] });
     assert_eq!(
-        input(
-            &home,
-            &["data-source", "query", &source_id, "--input", "-"],
-            &forged
-        )["ok"],
+        run(&home, &["sql", "query", "DELETE FROM pages"])["ok"],
         false
     );
     verify_database_override(&client, &home);
@@ -533,11 +524,20 @@ fn discovered_identities_drive_queries_atomic_edits_and_direct_browsing() {
         "{created_project:?}"
     );
     let denied = client
-        .database_read(
+        .query_read(
             Some(other_project),
-            nodex_core_contracts::database::DatabaseRead::DataSourceQuery {
-                data_source_id: source_id,
-                query: serde_json::from_value(query).unwrap(),
+            nodex_core_contracts::query::QueryRead::Query {
+                query: nodex_core_contracts::sql::SqlQuery {
+                    scope: nodex_core_contracts::sql::SqlScope {
+                        database_id: None,
+                        bindings: vec![nodex_core_contracts::sql::SqlBinding {
+                            table: "tasks".into(),
+                            data_source_id: source_id,
+                        }],
+                    },
+                    sql: "SELECT * FROM tasks".into(),
+                    parameters: Default::default(),
+                },
             },
         )
         .unwrap();
@@ -553,7 +553,7 @@ fn malformed_structured_inputs_fail_before_resolving_or_launching_a_profile() {
     let directory = tempfile::tempdir().unwrap();
     let home = directory.path().join("must-not-exist");
     for args in [
-        vec!["data-source", "query", "source", "--input", "-"],
+        vec!["sql", "query", "SELECT :value", "--param", "value={"],
         vec!["page", "properties", "apply"],
         vec!["page", "create-batch"],
         vec![
@@ -602,7 +602,18 @@ fn malformed_structured_inputs_fail_before_resolving_or_launching_a_profile() {
 fn verify_direct_body_and_title_edits(home: &Path) {
     let page = PAGE_B;
     let initial = success(home, &["read", page]);
-    let title_etag = initial["validators"]["title_etag"].as_str().unwrap();
+    let observation = sql_rows(
+        home,
+        "SELECT p.title_etag,d.nested_markdown,d.body_etag FROM pages p JOIN page_documents d USING(page_id) WHERE p.page_id=:id",
+        &[("id", page)],
+        &[],
+    );
+    assert_eq!(observation[0]["nested_markdown"], initial["content"]);
+    assert_eq!(
+        observation[0]["body_etag"],
+        initial["validators"]["body_etag"]
+    );
+    let title_etag = observation[0]["title_etag"].as_str().unwrap();
     success(
         home,
         &[
@@ -661,6 +672,19 @@ fn verify_direct_body_and_title_edits(home: &Path) {
         &block,
     );
     assert_eq!(inserted["ok"], true, "{inserted}");
+    let search = success(home, &["search", "Inserted block"]);
+    assert_eq!(search["items"].as_array().unwrap().len(), 1);
+    let hit = &search["items"][0];
+    assert_eq!(hit["page_id"], page);
+    assert_eq!(hit["title"], "Renamed Page");
+    assert_eq!(hit["matches"].as_array().unwrap().len(), 1);
+    assert_eq!(hit["matches"][0]["source"], "body");
+    assert_eq!(hit["matches"][0]["text"], "Inserted block");
+    assert_eq!(
+        hit["matches"][0]["block_id"],
+        inserted["result"]["affected"]["created_block_ids"][0]
+    );
+
     let block_id = inserted["result"]["affected"]["created_block_ids"][0]
         .as_str()
         .unwrap();
@@ -711,9 +735,9 @@ fn sql_success_envelopes_freeze_batch_targets_and_preserve_value_revision_fences
         connect_or_launch(&home, "batch-selection-integration", Some(&core_binary)).unwrap();
     let _guard = CoreGuard(client.handshake.generation.pid);
     seed(&client, &home);
-    let page = success(&home, &["page", "properties", "get", PAGE_A]);
+    let page = property_state(&home, PAGE_A);
     let source = page["data_source_id"].as_str().unwrap();
-    let schema = success(&home, &["data-source", "describe", source]);
+    let schema = source_description(&home, source);
     let configured = input(
         &home,
         &["data-source", "configure", source],
@@ -728,9 +752,9 @@ fn sql_success_envelopes_freeze_batch_targets_and_preserve_value_revision_fences
         &[
             "sql",
             "query",
-            "SELECT page_id, data_source_id FROM pages",
-            "--source",
-            source,
+            "SELECT page_id, data_source_id, membership_revision, value_revisions FROM tasks",
+            "--bind",
+            &format!("tasks={source}"),
         ],
     );
     assert_eq!(selected["ok"], true, "{selected}");
@@ -763,16 +787,16 @@ fn sql_success_envelopes_freeze_batch_targets_and_preserve_value_revision_fences
     assert_eq!(added["ok"], true, "{added}");
     let applied = input(&home, &["page", "properties", "apply"], &prepared);
     assert_eq!(applied["ok"], true, "{applied}");
-    let property = success(&home, &["page", "properties", "get", PAGE_A]);
+    let property = property_state(&home, PAGE_A);
     assert_eq!(property["values"][property_id].as_f64(), Some(3.0));
     let selected_after = success(
         &home,
         &[
             "sql",
             "query",
-            "SELECT page_id, data_source_id FROM pages",
-            "--source",
-            source,
+            "SELECT page_id, data_source_id, membership_revision, value_revisions FROM tasks",
+            "--bind",
+            &format!("tasks={source}"),
         ],
     );
     assert_eq!(selected_after["rows"].as_array().unwrap().len(), 2);
@@ -783,23 +807,9 @@ fn sql_success_envelopes_freeze_batch_targets_and_preserve_value_revision_fences
         .find_map(|row| (row[0] != PAGE_A).then(|| row[0].as_str().unwrap()))
         .unwrap();
     assert_eq!(
-        success(&home, &["page", "properties", "get", new_id])["values"][property_id],
+        property_state(&home, new_id)["values"][property_id],
         Value::Null
     );
-    let stale = input(
-        &home,
-        &[
-            "page",
-            "properties",
-            "prepare-batch",
-            "--selection",
-            "-",
-            "--set",
-            r#"Score={"kind":"number","value":4}"#,
-        ],
-        &selected,
-    );
-    assert_eq!(stale["ok"], true, "{stale}");
     success(
         &home,
         &[
@@ -815,10 +825,32 @@ fn sql_success_envelopes_freeze_batch_targets_and_preserve_value_revision_fences
             &property["value_revisions"][property_id].to_string(),
         ],
     );
+    let stale = input(
+        &home,
+        &[
+            "page",
+            "properties",
+            "prepare-batch",
+            "--selection",
+            "-",
+            "--set",
+            r#"Score={"kind":"number","value":4}"#,
+        ],
+        &selected,
+    );
+    assert_eq!(stale["ok"], true, "{stale}");
+    assert_eq!(
+        stale["result"]["edits"][0]["edit"]["expected_value_revision"],
+        0
+    );
+    assert_eq!(
+        stale["result"]["edits"][0]["expected_membership_revision"],
+        1
+    );
     let rejected = input(&home, &["page", "properties", "apply"], &stale);
     assert_eq!(rejected["ok"], false, "{rejected}");
     assert_eq!(
-        success(&home, &["page", "properties", "get", PAGE_A])["values"][property_id].as_f64(),
+        property_state(&home, PAGE_A)["values"][property_id].as_f64(),
         Some(5.0)
     );
 }
@@ -845,48 +877,121 @@ fn verify_database_override(client: &CoreClient, home: &Path) {
         )
         .unwrap();
     assert!(matches!(created.0, ResponseEnvelope::Ok(_)), "{created:?}");
-    let sources = success(home, &["--database", "Alternate", "data-source", "list"]);
-    assert_eq!(sources["items"][0]["id"], source_id);
-    assert_eq!(
-        success(
+    let sources = sql_rows(
+        home,
+        "SELECT * FROM data_sources WHERE database_id=:id",
+        &[("id", database_id)],
+        &[],
+    );
+    assert_eq!(sources.len(), 1);
+    assert_eq!(sources[0]["data_source_id"], source_id);
+    let binding = format!("tasks={source_id}");
+    let schema = success(
+        home,
+        &[
+            "--database",
+            "Alternate",
+            "sql",
+            "schema",
+            "tasks",
+            "--bind",
+            &binding,
+        ],
+    );
+    assert_eq!(schema["tables"][0]["data_source_id"], source_id);
+    assert!(sql_rows(home, "SELECT page_id FROM tasks", &[], &[binding]).is_empty());
+    let views = sql_rows(
+        home,
+        "SELECT view_id FROM views WHERE database_id=:id",
+        &[("id", database_id)],
+        &[],
+    );
+    assert_eq!(views[0]["view_id"], view_id);
+    assert!(
+        sql_rows(
             home,
-            &["--database", "Alternate", "data-source", "describe"]
-        )["id"],
-        source_id
+            "SELECT page_id FROM view_rows(:id)",
+            &[("id", view_id)],
+            &[]
+        )
+        .is_empty()
     );
-    let source_name = sources["items"][0]["name"].as_str().unwrap();
-    let query = success(home, &["--database", database_id, "data-source", "query"]);
-    assert_eq!(query["data_source_id"], source_id);
-    assert_eq!(query["returned_count"], 0);
+    // A discovery hint never narrows the global Pages relation.
+    let pages = success(
+        home,
+        &[
+            "--database",
+            "Alternate",
+            "sql",
+            "query",
+            "SELECT page_id FROM pages",
+        ],
+    );
+    assert!(
+        pages["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row[0] == PAGE_A)
+    );
+}
+
+#[test]
+fn exact_patch_receipt_retains_block_references_and_retries_without_recreating_content() {
+    let directory = tempfile::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    let client =
+        connect_or_launch(&home, "patch-identity-integration", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+    let body = "# Release\nRelease date: Friday.\n- Keep backups\n\t- Verify restore\nTracking: HARBOR-42.\n";
+    let seeded = input_text(&home, &["page", "insert", PAGE_A, "--at", "end"], body);
+    assert_eq!(seeded["ok"], true, "{seeded}");
+    let before = success(&home, &["read", PAGE_A]);
+    let properties = property_state(&home, PAGE_A);
+    let hit = success(&home, &["search", "Release date: Friday"]);
+    let date_id = hit["items"][0]["matches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| {
+            item["source"] == "body"
+                && item["text"]
+                    .as_str()
+                    .is_some_and(|text| text.contains("Friday"))
+        })
+        .unwrap()["block_id"]
+        .clone();
+    let patch = format!(
+        "*** Begin Patch\n*** Update Page: {PAGE_A}\n@@\n-Release date: Friday.\n+Release date: Monday.\n*** End Patch\n"
+    );
+    let args = ["patch", "--idempotency-key", "release-date-change"];
+    let committed = input_text(&home, &args, &patch);
+    assert_eq!(committed["ok"], true, "{committed}");
+    validate_result(&args, &committed["result"]);
     assert_eq!(
-        success(
-            home,
-            &[
-                "--database",
-                database_id,
-                "data-source",
-                "describe",
-                source_name
-            ]
-        )["id"],
-        source_id
+        committed["result"]["affected"],
+        serde_json::json!({
+            "created_block_ids": [], "deleted_block_ids": [], "moved_block_ids": [],
+            "updated_block_ids": [date_id], "title_changed": false,
+        })
     );
-    let views = success(home, &["--database", database_id, "view", "list"]);
-    assert_eq!(views["items"][0]["id"], view_id);
-    let view_name = views["items"][0]["name"].as_str().unwrap();
+    let after = success(&home, &["read", PAGE_A]);
     assert_eq!(
-        success(home, &["--database", "Alternate", "view", "describe"])["id"],
-        view_id
+        after["content"],
+        before["content"]
+            .as_str()
+            .unwrap()
+            .replace("Friday", "Monday")
     );
-    assert_eq!(
-        success(
-            home,
-            &["--database", "Alternate", "view", "describe", view_name]
-        )["id"],
-        view_id
-    );
-    assert_eq!(
-        success(home, &["--database", "Alternate", "view", "query"])["view"]["id"],
-        view_id
-    );
+    assert_eq!(property_state(&home, PAGE_A), properties);
+    let retry = input_text(&home, &args, &patch);
+    assert_eq!(retry["ok"], true, "{retry}");
+    assert_eq!(retry["result"]["duplicate"], true);
+    assert_eq!(retry["result"]["affected"], committed["result"]["affected"]);
+    assert_eq!(retry["result"]["head_seq"], committed["result"]["head_seq"]);
+    let hit = success(&home, &["search", "Release date: Monday"]);
+    assert_eq!(hit["items"][0]["matches"][0]["block_id"], date_id);
 }

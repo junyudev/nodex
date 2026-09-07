@@ -2760,6 +2760,7 @@ fn module_name(module: ModuleName) -> &'static str {
         ModuleName::ProjectWorkspace => "project_workspace",
         ModuleName::Automation => "automation",
         ModuleName::StoreAdministration => "store_administration",
+        ModuleName::Query => "query",
     }
 }
 

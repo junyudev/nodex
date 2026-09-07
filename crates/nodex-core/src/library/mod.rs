@@ -43,6 +43,7 @@ mod page_file_inventory;
 mod page_projection;
 mod page_search;
 mod projection_authorization;
+pub(crate) mod query;
 mod read_authorization;
 mod resource_access;
 mod search_match;
@@ -135,6 +136,10 @@ pub struct LibraryModule {
 }
 
 impl LibraryModule {
+    pub(crate) fn query_search_registry(&self) -> page_search::PageSearchIndexRegistry {
+        self.page_search.clone()
+    }
+
     pub fn tracer(profile_id: String, library_id: String, store_epoch: StoreEpoch) -> Self {
         Self {
             profile_id,
@@ -1145,6 +1150,7 @@ fn unix_timestamp_millis() -> String {
 #[cfg(test)]
 mod tests {
     mod manual_order;
+    mod query;
     use nodex_core_contracts::agent::{
         AgentAuthorizationTarget, AgentExecutionAuthorization, AgentProjectResourceAccess,
         AgentProjectResourceAction, AgentResourceAccessPlan, AgentResourceGrantRoot,
@@ -8586,6 +8592,7 @@ mod tests {
                     ]
                     .into_iter()
                     .map(|(property_id, value)| DatabasePropertyValueMutation {
+                        expected_membership_revision: None,
                         address: DatabasePagePropertyAddress {
                             page_id: PAGE.to_owned(),
                             data_source_id: SOURCE.to_owned(),
@@ -8652,6 +8659,7 @@ mod tests {
 
         let collision_database_intents = vec![DatabaseIntent::EditPropertyValues {
             edits: vec![DatabasePropertyValueMutation {
+                expected_membership_revision: None,
                 address: DatabasePagePropertyAddress {
                     page_id: PAGE.to_owned(),
                     data_source_id: SOURCE.to_owned(),
@@ -8714,6 +8722,7 @@ mod tests {
                     intent: LibraryIntent::ApplyPageMetadataProperties {
                         database_intents: vec![DatabaseIntent::EditPropertyValues {
                             edits: vec![DatabasePropertyValueMutation {
+                                expected_membership_revision: None,
                                 address: DatabasePagePropertyAddress {
                                     page_id: PAGE.to_owned(),
                                     data_source_id: SOURCE.to_owned(),

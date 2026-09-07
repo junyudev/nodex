@@ -365,13 +365,6 @@ impl SemanticWrite {
         }
     }
 
-    fn preflight(&self, snapshot: &LibraryPageProjectionFile) -> Result<(), CliError> {
-        let Self::Patch(patch) = self else {
-            return Ok(());
-        };
-        crate::patch::preflight(patch, &snapshot.content)
-    }
-
     fn enrich_core_error(&self, mut error: CliError) -> CliError {
         let Self::Patch(patch) = self else {
             return error;
@@ -497,7 +490,8 @@ fn apply_semantic_write(
 ) -> Result<CommandOutput, CliError> {
     for attempt in 0..MAX_HEAD_REBASE_ATTEMPTS {
         let snapshot = read_page_file(client, project_id, &page_id, write.file_kind())?;
-        write.preflight(&snapshot)?;
+        // Core resolves an existing receipt before validating content. Local
+        // matching would reject exact retries after the old text was replaced.
         let response = client
             .document_apply(
                 Some(project_id),

@@ -109,12 +109,7 @@ pub(super) fn page_content(
         ));
     }
     let title = require_content(row.title, "Page title")?;
-    let rich_title = parse_json_value_array(
-        row.rich_title_json,
-        "Page rich title",
-        MAX_DERIVED_JSON_BYTES,
-        MAX_DERIVED_RECORDS,
-    )?;
+    let rich_title = parse_rich_title(row.rich_title_json)?;
     let body_nfm = require_content(row.nfm, "Page Nested Markdown")?;
     let plain_text = require_content(row.plain_text, "Page plain text")?;
     let preview = require_content(row.preview, "Page preview")?;
@@ -619,6 +614,15 @@ fn require_content(value: Option<String>, label: &str) -> Result<String, StoreEr
         return Ok(value);
     }
     Err(corrupt(&format!("{label} exceeds its storage bound")))
+}
+
+pub(super) fn parse_rich_title(value: Option<String>) -> Result<Value, StoreError> {
+    parse_json_value_array(
+        value,
+        "Page rich title",
+        MAX_DERIVED_JSON_BYTES,
+        MAX_DERIVED_RECORDS,
+    )
 }
 
 fn parse_json_value_array(

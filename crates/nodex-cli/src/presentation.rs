@@ -45,6 +45,9 @@ pub fn resolve(
 
 pub fn output_kind(command: &Command) -> OutputKind {
     match command {
+        Command::Sql(crate::sql::SqlArgs {
+            command: crate::sql::SqlCommand::Query { raw: true, .. },
+        }) => OutputKind::Content,
         Command::Read(_) | Command::Sed(_) | Command::Rg(_) | Command::Docs(_) => {
             OutputKind::Content
         }

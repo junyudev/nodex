@@ -9,7 +9,7 @@ fn capabilities_succeeds_without_resolving_a_profile_or_starting_core() {
     let unavailable_home = temp.path().join("must-not-be-created");
     let output = Command::new(env!("CARGO_BIN_EXE_nodex"))
         .args([
-            "--profile",
+            "--expect-profile",
             "missing-profile",
             "--project",
             "missing-project",
@@ -135,7 +135,7 @@ fn query_help_is_progressive_and_schema_selection_is_offline() {
             .output()
             .unwrap()
     };
-    for path in [["view", "query"], ["data-source", "query"]] {
+    for path in [["sql", "query"], ["sql", "schema"]] {
         let concise = invoke(&[path[0], path[1], "--json", "--help"]);
         assert!(
             concise.status.success(),
@@ -166,15 +166,14 @@ fn query_help_is_progressive_and_schema_selection_is_offline() {
             );
         }
     }
-    let input = invoke(&["data-source", "query", "--help-schema=input"]);
+    let input = invoke(&["page", "properties", "prepare-batch", "--help-schema=input"]);
     assert!(input.status.success());
     let input: Value = serde_json::from_slice(&input.stdout).unwrap();
-    let validator = jsonschema::validator_for(&input["payloadSchemas"]["--input"]).unwrap();
-    assert!(validator.is_valid(
-        &serde_json::json!({"filter":{"kind":"group","operator":"and","children":[]},"sort":[]})
-    ));
+    let validator = jsonschema::validator_for(&input["payloadSchemas"]["--set value"]).unwrap();
+    assert!(validator.is_valid(&serde_json::json!({"kind":"number","value":2})));
+    assert!(!validator.is_valid(&serde_json::json!({"kind":"number","value":"two"})));
     assert!(input.get("resultSchema").is_none());
-    let invalid = invoke(&["view", "query", "--help-schema", "bogus"]);
+    let invalid = invoke(&["sql", "query", "--help-schema", "bogus"]);
     assert_eq!(invalid.status.code(), Some(2));
     let error: Value = serde_json::from_slice(&invalid.stderr).unwrap();
     assert_eq!(error["error"]["details"]["argument"], "--help-schema");

@@ -173,6 +173,7 @@ pub enum ModuleName {
     ProjectWorkspace,
     Automation,
     StoreAdministration,
+    Query,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -204,6 +205,7 @@ pub mod database_configuration;
 pub mod document;
 pub mod events;
 pub mod library;
+pub mod query;
 pub mod sql;
 pub mod workspace;
 
@@ -228,9 +230,10 @@ pub use events::{
     StreamCheckpoint, VisibilityDelta, VisibilityDeltaKind,
 };
 pub use library::LIBRARY_CONTRACT_VERSION;
+pub use query::QUERY_CONTRACT_VERSION;
 pub use workspace::PROJECT_WORKSPACE_CONTRACT_VERSION;
 
-pub const fn module_contract_manifest() -> [ModuleContractVersion; 6] {
+pub const fn module_contract_manifest() -> [ModuleContractVersion; 7] {
     [
         ModuleContractVersion {
             module: ModuleName::Library,
@@ -256,6 +259,10 @@ pub const fn module_contract_manifest() -> [ModuleContractVersion; 6] {
             module: ModuleName::StoreAdministration,
             contract_version: STORE_ADMINISTRATION_CONTRACT_VERSION,
         },
+        ModuleContractVersion {
+            module: ModuleName::Query,
+            contract_version: QUERY_CONTRACT_VERSION,
+        },
     ]
 }
 
@@ -272,6 +279,7 @@ mod tests {
             ModuleName::ProjectWorkspace,
             ModuleName::Automation,
             ModuleName::StoreAdministration,
+            ModuleName::Query,
         ];
 
         let json = serde_json::to_value(modules).expect("module names serialize");
@@ -283,7 +291,8 @@ mod tests {
                 "owned_document",
                 "project_workspace",
                 "automation",
-                "store_administration"
+                "store_administration",
+                "query"
             ])
         );
     }
@@ -330,6 +339,10 @@ mod tests {
                 ModuleContractVersion {
                     module: ModuleName::StoreAdministration,
                     contract_version: STORE_ADMINISTRATION_CONTRACT_VERSION,
+                },
+                ModuleContractVersion {
+                    module: ModuleName::Query,
+                    contract_version: QUERY_CONTRACT_VERSION
                 },
             ]
         );

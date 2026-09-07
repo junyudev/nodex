@@ -144,7 +144,6 @@ it.effect(
                   nodexHome: "/tmp/nodex-test",
                   profileSettingsPath: "/tmp/nodex-test/config.toml",
                   platform: "darwin",
-                  profileId: "test",
                   projectRootPath: "/repo",
                   rendererUrl: "http://localhost:5173",
                   resourcesPath: "/resources",

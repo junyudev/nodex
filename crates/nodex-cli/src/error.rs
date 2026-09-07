@@ -4,6 +4,7 @@ use thiserror::Error;
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum CliErrorCode {
+    ProfileMismatch,
     ProjectNotFound,
     ProjectAmbiguous,
     ScopeNotFound,
@@ -44,6 +45,7 @@ pub enum CliErrorCode {
 impl CliErrorCode {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::ProfileMismatch => "PROFILE_MISMATCH",
             Self::ProjectNotFound => "PROJECT_NOT_FOUND",
             Self::ProjectAmbiguous => "PROJECT_AMBIGUOUS",
             Self::ScopeNotFound => "SCOPE_NOT_FOUND",

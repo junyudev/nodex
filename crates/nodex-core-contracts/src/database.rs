@@ -653,12 +653,6 @@ pub enum DatabaseRowsTarget {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DatabaseRead {
-    SqlSchema {
-        scope: crate::sql::SqlScope,
-    },
-    SqlQuery {
-        query: crate::sql::SqlQuery,
-    },
     CatalogWindow {
         window: CollectionWindowRequest,
     },
@@ -852,12 +846,6 @@ pub struct DatabasePropertyOption {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DatabaseReadValue {
-    SqlSchema {
-        value: crate::sql::SqlSchema,
-    },
-    SqlQuery {
-        value: crate::sql::SqlResult,
-    },
     CatalogWindow {
         databases: CollectionWindow<DatabaseDescriptor>,
     },
@@ -1451,6 +1439,10 @@ pub enum DatabasePropertyValueEdit {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DatabasePropertyValueMutation {
+    /// When present, require the same observed active membership before editing.
+    /// SQL-prepared edits always carry this guard; commutative edits may omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_membership_revision: Option<i64>,
     pub address: DatabasePagePropertyAddress,
     pub edit: DatabasePropertyValueEdit,
 }

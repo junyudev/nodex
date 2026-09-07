@@ -749,6 +749,24 @@ pub(crate) fn mint_document_semantic_etags(
     )
 }
 
+/// Mints the title edit condition without requiring the Page body.
+pub(crate) fn mint_document_title_etag(
+    connection: &Connection,
+    project_id: &str,
+    store_epoch: &str,
+    document_id: &str,
+    rich_title: Value,
+) -> Result<String, SemanticMutationError> {
+    mint_etag(
+        connection,
+        "title",
+        project_id,
+        store_epoch,
+        &[document_id],
+        json!({ "richTitle": rich_title }),
+    )
+}
+
 pub(crate) fn mint_document_projection_etags(
     connection: &Connection,
     project_id: &str,
@@ -757,14 +775,8 @@ pub(crate) fn mint_document_projection_etags(
     rich_title: Value,
     nfm: &str,
 ) -> Result<(String, String), SemanticMutationError> {
-    let title = mint_etag(
-        connection,
-        "title",
-        project_id,
-        store_epoch,
-        &[document_id],
-        json!({ "richTitle": rich_title }),
-    )?;
+    let title =
+        mint_document_title_etag(connection, project_id, store_epoch, document_id, rich_title)?;
     let body = mint_etag(
         connection,
         "document_body",

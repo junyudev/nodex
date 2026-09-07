@@ -14,9 +14,9 @@ use nodex_core_contracts::database::{
 };
 use nodex_core_contracts::library::{
     LibraryCatalogKind, LibraryLifecycle, LibraryNavigationNode, LibraryNavigationParent,
-    LibraryPageHistoryCursor, LibraryPageKeyTarget, LibraryPageOwnershipPath,
-    LibraryPagePrepareKind, LibraryPageProjectionFileKind, LibraryPlacedResourceTarget,
-    LibraryRead, LibraryReadValue, LibrarySearchSnapshotScope,
+    LibraryPageHistoryCursor, LibraryPageKeyTarget, LibraryPageOperation, LibraryPageOwnershipPath,
+    LibraryPageProjectionFileKind, LibraryPlacedResourceTarget, LibraryRead, LibraryReadValue,
+    LibrarySearchSnapshotScope,
 };
 use nodex_core_contracts::workspace::{
     ProjectLifecycle, ProjectWorkspaceProject, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
@@ -35,8 +35,8 @@ use serde_json::{Value, json};
 
 use crate::cli::{
     BackupCommand, BlockArgs, BlockCommand, Cli, Command, DraftArgs, DraftCommand, HistoryArgs,
-    OpenArgs, OpenCommand, PageArgs, PageCommand, PrepareKind, ProfileArgs, ProfileCloneArgs,
-    ProfileCommand, ReadArgs, RgArgs, SedArgs, ServiceArgs, ViewArgs, ViewCommand,
+    OpenArgs, OpenCommand, PageArgs, PageCommand, PagePrepareArgs, PrepareOperation, ProfileArgs,
+    ProfileCloneArgs, ProfileCommand, ReadArgs, RgArgs, SedArgs, ServiceArgs,
 };
 use crate::error::{CliError, CliErrorCode};
 
@@ -131,6 +131,18 @@ pub(crate) fn execute_with_presentation(
     mut cli: Cli,
     presentation: crate::presentation::Presentation,
 ) -> Result<CommandOutput, CliError> {
+    if matches!(
+        &cli.command,
+        Command::Sql(crate::sql::SqlArgs {
+            command: crate::sql::SqlCommand::Query { raw: true, .. }
+        })
+    ) && cli.requested_output() == crate::presentation::OutputFormat::Json
+    {
+        return Err(CliError::new(
+            CliErrorCode::InvalidInput,
+            "--raw cannot be combined with JSON output",
+        ));
+    }
     if matches!(&cli.command, Command::Docs(_)) {
         return Ok(CommandOutput::Bytes(
             include_bytes!("../../../agent-skills/nodex/references/nested-markdown.md").to_vec(),
@@ -192,7 +204,7 @@ pub(crate) fn execute_with_presentation(
         None,
     )
     .map_err(map_client_error)?;
-    validate_profile_selector(cli.profile.as_deref(), &client)?;
+    validate_expected_profile(cli.expect_profile.as_deref(), &client, &home)?;
 
     match cli.command {
         Command::Sql(args) => crate::sql::execute(
@@ -229,6 +241,9 @@ pub(crate) fn execute_with_presentation(
             &home,
             &cwd,
         ),
+        Command::Page(PageArgs {
+            command: PageCommand::Prepare(arguments),
+        }) => prepare_page(&client, cli.project.as_deref(), &cwd, arguments),
         Command::Read(arguments) => read_page(
             &client,
             cli.project.as_deref(),
@@ -255,34 +270,6 @@ pub(crate) fn execute_with_presentation(
         Command::Patch(arguments) => {
             crate::page_mutation::patch_page(&client, cli.project.as_deref(), &cwd, arguments)
         }
-        Command::View(ViewArgs {
-            command: ViewCommand::List { window },
-        }) => crate::view::list(
-            &client,
-            cli.project.as_deref(),
-            cli.database.as_deref(),
-            &cwd,
-            window,
-        ),
-        Command::View(ViewArgs {
-            command: ViewCommand::Describe { view },
-        }) => crate::view::describe(
-            &client,
-            cli.project.as_deref(),
-            cli.database.as_deref(),
-            &cwd,
-            view,
-        ),
-        Command::View(ViewArgs {
-            command: ViewCommand::Query(arguments),
-        }) => crate::view::query(
-            &client,
-            cli.project.as_deref(),
-            cli.database.as_deref(),
-            &cwd,
-            arguments,
-            presentation.json_result,
-        ),
         Command::Open(OpenArgs {
             command: OpenCommand::Page(arguments),
         }) => crate::open::page(
@@ -411,7 +398,7 @@ fn clone_profile(arguments: &ProfileCloneArgs) -> Result<Value, CliError> {
 }
 
 fn reject_profile_clone_scope_flags(cli: &Cli) -> Result<(), CliError> {
-    if cli.profile.is_none()
+    if cli.expect_profile.is_none()
         && cli.project.is_none()
         && cli.database.is_none()
         && cli.page.is_none()
@@ -439,7 +426,7 @@ fn map_profile_clone_error(error: nodex_core::infrastructure::sqlite::StoreError
 }
 
 fn reject_skill_scope_flags(cli: &Cli) -> Result<(), CliError> {
-    if cli.profile.is_none()
+    if cli.expect_profile.is_none()
         && cli.project.is_none()
         && cli.database.is_none()
         && cli.page.is_none()
@@ -726,12 +713,6 @@ fn read_page(
     arguments: ReadArgs,
     json_output: bool,
 ) -> Result<CommandOutput, CliError> {
-    if arguments.view.is_some() && arguments.prepare != Some(PrepareKind::PageMove) {
-        return Err(CliError::new(
-            CliErrorCode::InvalidInput,
-            "--view is only valid with --prepare page.move",
-        ));
-    }
     let project = selected_project(client, explicit_project, cwd)?;
     let page_id = resolve_page_selector(client, &project.id, &arguments.page)?;
     let file_kind = if arguments.meta {
@@ -739,25 +720,12 @@ fn read_page(
     } else {
         LibraryPageProjectionFileKind::BodyNestedMarkdown
     };
-    let prepare = match arguments.prepare {
-        Some(PrepareKind::TitleSet) => Some(LibraryPagePrepareKind::TitleSet),
-        Some(PrepareKind::DocumentReplace) => Some(LibraryPagePrepareKind::DocumentReplace),
-        Some(PrepareKind::PageDelete) => Some(LibraryPagePrepareKind::PageDelete),
-        Some(PrepareKind::PageMove) => Some(LibraryPagePrepareKind::PageMove {
-            view_id: arguments
-                .view
-                .as_deref()
-                .map(|view| stable_scope_id(view, "--view"))
-                .transpose()?,
-        }),
-        None => None,
-    };
     let snapshot = unwrap_library(client.library_read(
         Some(&project.id),
         LibraryRead::PageProjectionFile {
             page_id,
             file_kind,
-            prepare,
+            prepare: None,
         },
     ))?;
     let LibraryReadValue::PageProjectionFile { value } = snapshot.value else {
@@ -769,6 +737,42 @@ fn read_page(
         ));
     }
     Ok(CommandOutput::Bytes(value.content.into_bytes()))
+}
+
+fn prepare_page(
+    client: &CoreClient,
+    project: Option<&str>,
+    cwd: &Path,
+    arguments: PagePrepareArgs,
+) -> Result<CommandOutput, CliError> {
+    if arguments.view.is_some() && arguments.operation != PrepareOperation::Move {
+        return Err(CliError::new(
+            CliErrorCode::InvalidInput,
+            "--view is only valid with --operation move",
+        ));
+    }
+    let project = selected_project(client, project, cwd)?;
+    let page_id = resolve_page_selector(client, &project.id, &arguments.page)?;
+    let operation = match arguments.operation {
+        PrepareOperation::Delete => LibraryPageOperation::Delete,
+        PrepareOperation::Move => LibraryPageOperation::Move {
+            view_id: arguments
+                .view
+                .as_deref()
+                .map(|view| stable_scope_id(view, "--view"))
+                .transpose()?,
+        },
+    };
+    let snapshot = unwrap_library(client.library_read(
+        Some(&project.id),
+        LibraryRead::PreparePageOperation { page_id, operation },
+    ))?;
+    let LibraryReadValue::PageOperationPreparation { value } = snapshot.value else {
+        return Err(internal("Core returned the wrong Page preparation"));
+    };
+    serde_json::to_value(value)
+        .map(CommandOutput::Json)
+        .map_err(internal)
 }
 
 fn sed_page(
@@ -1748,17 +1752,22 @@ fn add_path_candidate(
     });
 }
 
-fn validate_profile_selector(selector: Option<&str>, client: &CoreClient) -> Result<(), CliError> {
-    let Some(selector) = selector else {
+fn validate_expected_profile(
+    expected: Option<&str>,
+    client: &CoreClient,
+    home: &Path,
+) -> Result<(), CliError> {
+    let Some(expected) = expected else {
         return Ok(());
     };
-    if selector == client.handshake.generation.profile_id {
+    let actual = &client.handshake.generation.profile_id;
+    if expected == actual {
         return Ok(());
     }
     Err(CliError::new(
-        CliErrorCode::ScopeNotFound,
-        format!("the selected home does not contain Profile '{selector}'"),
-    ))
+        CliErrorCode::ProfileMismatch,
+        "Connected Profile does not match the expected identity. Refresh the host connection context before retrying.",
+    ).with_details(json!({ "expected": expected, "actual": actual, "home": home })))
 }
 
 fn resolve_home(cwd: &Path) -> Result<PathBuf, CliError> {

@@ -592,6 +592,7 @@ fn property_adoption(
                 .copied()
                 .unwrap_or(0);
             edits.push(DatabasePropertyValueMutation {
+                expected_membership_revision: None,
                 address: DatabasePagePropertyAddress {
                     page_id: page_id.clone(),
                     data_source_id: graph.data_source_id.clone(),
@@ -641,6 +642,7 @@ fn property_adoption(
                 continue;
             }
             edits.push(DatabasePropertyValueMutation {
+                expected_membership_revision: None,
                 address: DatabasePagePropertyAddress {
                     page_id: page_id.clone(),
                     data_source_id: graph.data_source_id.clone(),
@@ -1206,6 +1208,7 @@ pub(crate) fn plan_list_occurrence_move_undo(
             ));
         }
         property_edits.push(DatabasePropertyValueMutation {
+            expected_membership_revision: None,
             address: DatabasePagePropertyAddress {
                 page_id: state.page_id.clone(),
                 data_source_id: recipe.data_source_id.clone(),

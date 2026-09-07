@@ -901,6 +901,10 @@ pub enum LibraryRead {
     PageContent {
         page_id: String,
     },
+    PreparePageOperation {
+        page_id: String,
+        operation: LibraryPageOperation,
+    },
     PageProjectionFile {
         page_id: String,
         file_kind: LibraryPageProjectionFileKind,
@@ -1915,6 +1919,28 @@ pub enum LibraryPageProjectionFileKind {
     MetaYaml,
 }
 
+/// Page lifecycle preparation is independent of document content.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum LibraryPageOperation {
+    Move { view_id: Option<String> },
+    Delete,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(untagged, deny_unknown_fields)]
+pub enum LibraryPageOperationValidators {
+    Move { move_etag: String },
+    Delete { page_etag: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryPageOperationPreparation {
+    pub page_id: String,
+    pub page_key: Option<String>,
+    pub validators: LibraryPageOperationValidators,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LibraryPagePrepareKind {
@@ -2725,6 +2751,9 @@ pub enum LibraryReadValue {
     },
     PageContent {
         value: Box<LibraryPageContent>,
+    },
+    PageOperationPreparation {
+        value: Box<LibraryPageOperationPreparation>,
     },
     PageProjectionFile {
         value: Box<LibraryPageProjectionFile>,

@@ -1,9 +1,10 @@
 //! CLI transport for Core-owned public read-only SQL.
 use crate::error::{CliError, CliErrorCode};
-use crate::runtime::{CommandOutput, selected_project, unwrap_database};
+use crate::runtime::{CommandOutput, map_client_error, map_core_error, selected_project};
 use clap::{Args, Subcommand};
-use nodex_core_contracts::database::{DatabaseRead, DatabaseReadValue};
+use nodex_core_contracts::query::{QueryRead, QueryReadValue};
 use nodex_core_contracts::sql::{SqlBinding, SqlQuery, SqlScope};
+use nodex_core_protocol::ResponseEnvelope;
 use nodex_core_protocol::client::CoreClient;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -16,9 +17,6 @@ pub struct SqlArgs {
 }
 #[derive(Clone, Debug, PartialEq, Args)]
 pub struct SqlScopeArgs {
-    /// Bind this Data Source as the pages table (otherwise requires one default source).
-    #[arg(long, conflicts_with = "bind")]
-    pub source: Option<String>,
     /// Bind a public Data Source as TABLE=SOURCE_ID; repeat for joins.
     #[arg(long, value_name = "TABLE=SOURCE_ID")]
     pub bind: Vec<String>,
@@ -27,6 +25,8 @@ pub struct SqlScopeArgs {
 pub enum SqlCommand {
     /// Discover public SQL columns and their stable Property identities.
     Schema {
+        /// Public relation or explicitly bound Source table to describe.
+        relation: Option<String>,
         #[command(flatten)]
         scope: SqlScopeArgs,
     },
@@ -40,6 +40,9 @@ pub enum SqlCommand {
         /// Bind a named SQL parameter with a JSON scalar: name=value.
         #[arg(long, value_name = "NAME=JSON")]
         param: Vec<String>,
+        /// Output exactly one non-null text cell unchanged.
+        #[arg(long, conflicts_with = "json")]
+        raw: bool,
         #[command(flatten)]
         scope: SqlScopeArgs,
         #[arg(skip)]
@@ -54,6 +57,7 @@ pub(crate) fn prepare(args: &mut SqlArgs) -> Result<(), CliError> {
         param,
         scope,
         prepared,
+        ..
     } = &mut args.command
     else {
         return Ok(());
@@ -87,7 +91,7 @@ pub(crate) fn prepare(args: &mut SqlArgs) -> Result<(), CliError> {
         }
     }
     *prepared = Some(SqlQuery {
-        scope: resolve_scope(scope.clone(), None)?,
+        scope: resolve_scope(scope.clone())?,
         sql,
         parameters,
     });
@@ -102,38 +106,51 @@ pub(crate) fn execute(
     args: SqlArgs,
 ) -> Result<CommandOutput, CliError> {
     let project = selected_project(client, explicit_project, cwd)?;
+    let raw = matches!(&args.command, SqlCommand::Query { raw: true, .. });
     let read = match args.command {
-        SqlCommand::Schema { scope } => DatabaseRead::SqlSchema {
-            scope: resolve_scope(scope, database)?,
+        SqlCommand::Schema { scope, relation } => {
+            let mut scope = resolve_scope(scope)?;
+            scope.database_id = database
+                .map(|selector| {
+                    crate::data_source::resolve_database(client, &project, Some(selector))
+                })
+                .transpose()?;
+            QueryRead::Schema { scope, relation }
+        }
+        SqlCommand::Query { prepared, .. } => QueryRead::Query {
+            query: prepared.ok_or_else(|| invalid("SQL input was not prepared"))?,
         },
-        SqlCommand::Query { prepared, .. } => {
-            let mut query = prepared.ok_or_else(|| invalid("SQL input was not prepared"))?;
-            query.scope.database_id = database.map(crate::data_source::stable_id).transpose()?;
-            DatabaseRead::SqlQuery { query }
-        }
     };
-    let snapshot = unwrap_database(client.database_read(Some(&project.id), read))?;
+    let snapshot = match client
+        .query_read(Some(&project.id), read)
+        .map_err(map_client_error)?
+        .0
+    {
+        ResponseEnvelope::Ok(value) => value,
+        ResponseEnvelope::Error(error) => return Err(map_core_error(error)),
+    };
     let value = match snapshot.value {
-        DatabaseReadValue::SqlSchema { value } => serde_json::to_value(value),
-        DatabaseReadValue::SqlQuery { value } => serde_json::to_value(value),
-        _ => {
-            return Err(CliError::new(
-                CliErrorCode::Internal,
-                "Unexpected SQL result",
-            ));
-        }
+        QueryReadValue::Schema { value } => serde_json::to_value(value),
+        QueryReadValue::Query { value } if raw => return raw_output(value),
+        QueryReadValue::Query { value } => serde_json::to_value(value),
     }
     .map_err(|error| CliError::new(CliErrorCode::Internal, error.to_string()))?;
     Ok(CommandOutput::Json(value))
 }
-fn resolve_scope(args: SqlScopeArgs, database: Option<&str>) -> Result<SqlScope, CliError> {
-    let mut bindings = Vec::new();
-    if let Some(source) = args.source {
-        bindings.push(SqlBinding {
-            table: "pages".to_owned(),
-            data_source_id: crate::data_source::stable_id(&source)?,
-        });
+fn raw_output(result: nodex_core_contracts::sql::SqlResult) -> Result<CommandOutput, CliError> {
+    if result.columns.len() != 1 || result.rows.len() != 1 || result.rows[0].len() != 1 {
+        return Err(invalid(
+            "--raw requires exactly one row and one non-null text column",
+        ));
     }
+    let text = result.rows[0][0]
+        .as_str()
+        .ok_or_else(|| invalid("--raw requires a non-null text value"))?;
+    Ok(CommandOutput::Bytes(text.as_bytes().to_vec()))
+}
+
+fn resolve_scope(args: SqlScopeArgs) -> Result<SqlScope, CliError> {
+    let mut bindings = Vec::new();
     for binding in args.bind {
         let (table, source) = binding
             .split_once('=')
@@ -144,7 +161,7 @@ fn resolve_scope(args: SqlScopeArgs, database: Option<&str>) -> Result<SqlScope,
         });
     }
     Ok(SqlScope {
-        database_id: database.map(crate::data_source::stable_id).transpose()?,
+        database_id: None,
         bindings,
     })
 }
@@ -156,6 +173,43 @@ fn invalid(message: impl Into<String>) -> CliError {
 mod tests {
     use super::*;
     #[test]
+    fn raw_preserves_exact_text_and_rejects_ambiguous_shapes() {
+        let result =
+            |columns: Vec<&str>, rows: Vec<Vec<Value>>| nodex_core_contracts::sql::SqlResult {
+                columns: columns.into_iter().map(str::to_owned).collect(),
+                returned_count: rows.len(),
+                rows,
+                snapshot: "observation".into(),
+            };
+        for value in ["", "中文\nsecond line", "trailing\n"] {
+            let output = raw_output(result(
+                vec!["body"],
+                vec![vec![Value::String(value.into())]],
+            ))
+            .unwrap();
+            let CommandOutput::Bytes(bytes) = output else {
+                panic!("raw bytes")
+            };
+            assert_eq!(bytes, value.as_bytes());
+        }
+        for invalid in [
+            result(vec!["body"], vec![]),
+            result(vec!["body"], vec![vec![Value::Null]]),
+            result(vec!["body"], vec![vec![Value::from(1)]]),
+            result(
+                vec!["body"],
+                vec![vec![Value::from("one")], vec![Value::from("two")]],
+            ),
+            result(
+                vec!["a", "b"],
+                vec![vec![Value::from("one"), Value::from("two")]],
+            ),
+        ] {
+            assert!(raw_output(invalid).is_err());
+        }
+    }
+
+    #[test]
     fn prepares_scalar_parameters_and_cross_source_bindings_without_rewriting_sql() {
         let sql = "SELECT p.page_id FROM projects p JOIN tasks t ON p.page_id=t.project WHERE t.title=:name";
         let mut args = SqlArgs {
@@ -164,9 +218,9 @@ mod tests {
                 file: None,
                 param: vec!["name=\"a'b\"".to_owned()],
                 scope: SqlScopeArgs {
-                    source: None,
                     bind: vec!["projects=source-a".to_owned(), "tasks=source-b".to_owned()],
                 },
+                raw: false,
                 prepared: None,
             },
         };
@@ -195,10 +249,8 @@ mod tests {
                     sql: Some("SELECT :x".to_owned()),
                     file: None,
                     param: param.into_iter().map(str::to_owned).collect(),
-                    scope: SqlScopeArgs {
-                        source: None,
-                        bind: vec![],
-                    },
+                    scope: SqlScopeArgs { bind: vec![] },
+                    raw: false,
                     prepared: None,
                 },
             };

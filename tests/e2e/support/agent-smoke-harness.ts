@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { formatCodexModelLabel } from "../../../src/renderer/lib/codex-thread-settings";
 
 import {
   classifyAgentSmokeTurnSnapshot,
@@ -155,14 +156,17 @@ export const selectCodexExecutionProfile = async (
     await expect(modelSummary).toBeVisible();
   };
   await openRootMenu();
-  const modelItem = exactMenuItem(page, model.displayName);
+  const modelItem = exactMenuItem(page, formatCodexModelLabel(model.id, [model]));
   await openFlyoutSubmenu(page, page.locator('[aria-label^="Model "]').last(), modelItem);
-  await modelItem.click();
+  // Keep selection in the focused submenu; a diagonal pointer move can close its flyout.
+  await modelItem.focus();
+  await modelItem.press("Enter");
   await openRootMenu();
   if (profile.reasoningEffort) {
     const effortItem = page.locator(`[data-intelligence-option="${profile.reasoningEffort}"]`);
     await openFlyoutSubmenu(page, page.locator('[aria-label^="Effort "]').last(), effortItem);
-    await effortItem.click();
+    await effortItem.focus();
+    await effortItem.press("Enter");
   }
   await page.keyboard.press("Escape");
 };

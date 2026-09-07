@@ -80,6 +80,7 @@ import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapab
 import { CodexRequestScheduler } from "../codex-runtime/CodexRequestScheduler";
 import * as CodexSessionTransport from "../platform/node/CodexSessionTransport";
 import { resolveCodexProcessEnvironment } from "../platform/node/CodexProcessEnvironment";
+import { nodexCliShellLaunchArgs, prepareNodexCliShell } from "../platform/node/NodexCliShell";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { getThreadGoalAttachmentsRoot } from "../thread-goal-attachments";
@@ -149,11 +150,37 @@ const runtime = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
+    const cliArgs =
+      config.platform === "win32"
+        ? []
+        : yield* Effect.tryPromise(() => prepareNodexCliShell(config.nodexHome)).pipe(
+            Effect.andThen(
+              Effect.tryPromise(() =>
+                nodexCliShellLaunchArgs({
+                  nodexHome: config.nodexHome,
+                  runtimeStateHome: codex.runtimeStateHome,
+                  searchPaths: codex.runtime.additionalSearchPaths,
+                  inheritedPath: config.environmentPath ?? "",
+                  homeDirectory: config.homeDirectory,
+                  inheritedZdotdir: config.environment.ZDOTDIR,
+                  inheritedBashEnv: config.environment.BASH_ENV,
+                }),
+              ),
+            ),
+            Effect.mapError(
+              (cause) =>
+                new MainApplicationError({
+                  phase: "startup",
+                  operation: "prepare-cli-shell",
+                  cause,
+                }),
+            ),
+          );
     return CodexRuntimeLive.live({
       local: {
         hostId: "local",
         command: codex.runtime.binaryPath,
-        args: standaloneCodexAppServerArgs(),
+        args: [...standaloneCodexAppServerArgs(), ...cliArgs],
         env: {},
         resolveEnv: () =>
           resolveCodexProcessEnvironment({

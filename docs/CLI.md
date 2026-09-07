@@ -9,7 +9,8 @@ agents, scripts, inspection, and semantic mutations. Run `nodex --help` and
 result schema revision, error codes, and examples; those generated results are
 authoritative when this overview and the binary disagree.
 
-The CLI never exposes a database path, raw SQL, Core bearer capability, physical
+The CLI exposes read-only SQL over public Nodex relations, never private Store
+SQL, database paths, Core bearer capabilities, physical
 rank, Yjs storage coordinate, or Desktop renderer state.
 
 ## Local Profile clones
@@ -52,7 +53,7 @@ creating Profile state.
 Structured results default to text on a terminal and JSON when captured or piped.
 `--output-format auto|json|text` overrides this choice; `--json` is shorthand for
 explicit JSON and conflicts with `--output-format`. Raw Page text, line windows,
-search output, diffs, and stdout File bytes keep their native representation.
+diffs, and stdout File bytes keep their native representation.
 Errors go to stderr; captured errors are structured even for a raw success
 stream. Redirected input/output never enables prompts or pagers, including with
 explicit text output. Skill installation still requires its explicit confirmation.
@@ -71,19 +72,25 @@ large results, reviewable drafts, real attachments, or persistent retry inputs.
 ## Context and reads
 
 Profile selection follows nonblank `NODEX_HOME`, the nearest project config,
-the user config, then the default home. A command that needs Project authority
+the user config, then the default home. `--expect-profile ID` asserts that the
+connected Core has that identity; it does not select a directory or resolve
+a Profile name. A mismatch returns `PROFILE_MISMATCH` with the expected ID,
+actual ID, and selected home before content operations. Refresh the host
+connection context before retrying. A command that needs Project authority
 accepts explicit identity or resolves the longest containing managed-worktree
 or source root; ambiguous matches fail with stable candidates.
 
-The primary read families are:
-
-- `context`, single-layer `ls`, and bounded recursive `tree` for orientation;
-- `search` for bounded ranked Page discovery evidence;
-- `read` for canonical Page metadata and `body.nested.md`;
-- `history` for a retained cursor timeline;
-- `view query` for one saved View's persisted query and row order;
-- `rg` for exact read-only search over a Core-issued immutable snapshot lease;
-- `open page` and `open view` for validated Nodex deep links.
+The primary Agent read interface is `sql schema` and `sql query`: public Page
+metadata and bodies, Source values, saved View occurrences, ranked search hits,
+File metadata and domain catalogs. `read PAGE` and `search QUERY --limit K`
+remain convenient single-Page and ranked-search entries. Search returns Page
+identity, current key, title, location, and up to three merged body/Property
+fragments, each bounded to 240 Unicode characters. Fragments retain Block or
+Property identity; historical-key matches report the matched key separately.
+UI highlighting and unrelated Properties are omitted. Use `read` for full
+content and SQL for additional metadata. `context`, `ls`, `tree`,
+`sed`, `history` and `rg` retain their focused terminal workflows. `open page`
+and `open view` produce validated Nodex deep links.
 
 Resource selectors accept bare IDs directly; no `@` prefix is required.
 Page selectors resolve a stable `pageId` first, then an authorized current or
@@ -96,55 +103,60 @@ than choosing one. An explicit `#` miss does not fall back to a title path.
 Core resolves the alias inside the selected Project before the CLI invokes the
 UUID-based operation. Other selectors use stable typed
 identities or an explicitly unique supported name or path. Unauthorized
-alternatives are never returned as disambiguation evidence. All growing
-collections are bounded and use opaque continuations.
+alternatives are never returned as disambiguation evidence. Terminal collection
+windows retain opaque continuations; SQL queries are complete or fail their
+budget and do not provide a cursor session.
 
-## Data Sources and properties
+## SQL reads and configuration
 
-`data-source list` discovers sources in the Project default Database;
-`--database ID` chooses another authorized Database. `describe ID`
-returns a source and one Property window; `options ID --property ID` returns a
-separate option window. They expose continuation rather than pretending schema
-and option sets are complete. `ls` on a Database requires an unambiguous active
-Data Source and lists its direct Pages, independently of saved View filters.
+```text
+nodex sql schema [RELATION] [--bind ALIAS=SOURCE_ID ...]
+nodex sql query SQL [--param NAME=JSON ...] [--bind ALIAS=SOURCE_ID ...] [--raw]
+nodex sql query --file FILE|- [--param NAME=JSON ...] [--bind ALIAS=SOURCE_ID ...] [--raw]
+```
 
-`data-source query` defaults to the unique active Source in the selected
-Database and an empty filter. Multiple Sources require a selector. Explicit
-`--input -` reads stdin. `data-source query ID --input -` accepts typed filters, non-manual sorts, and
-optional Property projection without creating a View. `--after` and `--limit`
-override pagination only; the query remains unchanged between windows. Property
-values are omitted by default; repeated `--property ID_OR_NAME` or the input
-projection selects values explicitly.
-Project authorization is checked by Core, including relation targets.
+`pages` always means every authorized active Page in the selected Project,
+including standalone Pages. Source Property columns require an explicit binding
+such as `--bind tasks=SOURCE_ID`. `--database` hints schema discovery only and
+does not narrow `pages`. Start with the compact catalog, then describe a relation
+or bound Source for exact columns, identities, types, options and examples.
 
-`page properties get PAGE` returns values and revisions. `properties set`
-provides a narrow select/text/number replacement using `--option`, `--text`, or
-`--number` and `--if-revision`. `properties apply --input -` accepts typed edits
-for other values and atomic batches. They enter the same Database mutation
-contract. Conflicting revisions reject the entire apply.
+```sh
+nodex sql query 'SELECT page_id,nested_markdown,body_etag FROM page_documents WHERE page_id=:id' --param 'id="PAGE_ID"'
+nodex sql schema tasks --bind tasks=SOURCE_ID
+nodex sql query 'SELECT t.page_id,t.title,d.nested_markdown FROM tasks t JOIN page_documents d USING(page_id) WHERE t."Status"=:status LIMIT 10' --bind tasks=SOURCE_ID --param 'status="OPTION_ID"'
+```
+
+Structured SQL results contain `columns`, `rows`, `returned_count` and `snapshot`.
+The snapshot identifies one observation; it is neither a write guard nor a
+resumable session. `--raw` returns exactly one non-null text cell unchanged,
+without a newline, and rejects explicit JSON. Ordinary queries fail rather than
+silently truncate on budget exhaustion. Separate queries do not share a snapshot.
+
+`view_rows(VIEW_ID)` preserves saved filters, hierarchy, grouping and ordering.
+One Page can have multiple occurrences; count distinct Page IDs for Page totals.
+Use `ORDER BY ordinal` for View/search order. `search_hits(QUERY,K)` returns top-K
+Page hits before outer SQL filtering. Its count is not a total match count.
+
+Read `data_sources.schema_revision` and `views.revision` for configuration
+conditions. `data-source configure [SOURCE] --input FILE|-` atomically configures
+Properties, options and Views. Public catalogs and Source bindings replace the
+separate Source/View read command families.
+
+`page properties set` performs a narrow select/text/number replacement with
+`--option`, `--text` or `--number` and observed `--if-revision`. Read versions from
+`property_values`, or query a Source's `value_revisions` and `membership_revision`
+for a batch. `page properties prepare-batch --selection FILE|- --set NAME=JSON`
+preserves those original observations in typed edits accepted by
+`page properties apply --input FILE|-`. It does not refresh them before writing;
+conflicts reject the atomic apply. Conditions protect membership and edited
+fields, not arbitrary WHERE/JOIN dependencies.
 
 `page create-batch --input -` atomically creates 1–16 Pages at one destination,
-with at most 2 MiB of combined Nested Markdown. Public drafts use
-`title_markdown`, `nested_markdown`, and typed `values`. Single and batch creation
-share the same Core creation implementation. Separate commands do not share a
-transaction.
-
-## Queries and configuration
-
-`view list` discovers the default Database's Views. `view describe [SELECTOR]`
-returns complete configuration; `view query [SELECTOR]` uses the Project's
-configured default View when omitted. Unique names and bare IDs work alike.
-`--group Review` selects the unique named group; `--property NAME_OR_ID` includes
-requested values. Compact lists return items, an exact `returned_count`, and
-continuation. Option discovery does not report unrelated usage counts.
-
-`sql schema` exposes the public Source model, and `sql query` evaluates read-only
-SQLite expressions, aggregates and joins over complete authorized inputs in
-one Core snapshot. `data-source configure --input -` atomically configures
-Properties, options and Views. `page properties prepare-batch` freezes SQL
-identities into revision-fenced edits accepted directly by `properties apply`.
+with at most 2 MiB of combined Nested Markdown. Drafts use `title_markdown`,
+`nested_markdown` and typed `values`. Separate commands are separate transactions.
 See [Agent CLI queries and configuration](product-specs/agent-cli-queries.md)
-for scope, SQL data representation, budgets and configuration semantics.
+for the complete relation, authorization, lifecycle and observation contracts.
 
 ## Drafts and mutations
 
@@ -158,13 +170,17 @@ merges the supported title/body changes when safe, and commits them atomically.
 
 `page insert PAGE` defaults to the end; explicit anchors select another position.
 `page rename PAGE TITLE --if-match ETAG` changes only the title. Structured
-`read` returns title/body validators from the observed state; operation-specific
-delete/move preparation remains explicit. Reuse these conditions without
+`read` and SQL provide title/body validators from the observed state. Use
+`page prepare PAGE --operation move|delete [--view VIEW_ID]` for operation-specific
+conditions; View scope is valid only for move. Reuse these conditions without
 silently refreshing them before a write.
 
 Semantic mutation families create, duplicate, move, rename, replace, patch,
 insert, or delete Pages and stable Blocks. Nested Markdown is the normal bulk
-content format; identity-sensitive structure uses the bounded JSON Block form.
+content format. Exact patches preserve unchanged Block identities and live nodes;
+one-to-one edits update the existing Block. Explicit identity-sensitive structure
+uses the bounded JSON Block form. Patches never fall back to whole-body replacement
+when correspondence is ambiguous; see [Agent content behavior](product-specs/agent-interface-behavior.md).
 Page deletion always uses the typed lifecycle path. For a nested Page, the
 headless CLI resolves and fences the current canonical host Document inside the
 same writer transaction; it never emits a generic Document deletion.
@@ -174,7 +190,7 @@ semantic operation.
 
 Ordinary mutations accept an optional stable idempotency key; drafts manage their own apply identity. Narrow ETags bind the current
 resource and guard kind; they are not capabilities. An exact retry returns the
-first immutable result. A stale or mismatched guard fails before mutation and
+first immutable result, including a body patch whose original text is no longer present. Core resolves the receipt before checking current patch matches. A stale or mismatched guard fails before mutation and
 requires a fresh read.
 
 ## Library Files and Page relations
@@ -184,16 +200,12 @@ Project. A File has a stable identity, a default name, a metadata revision,
 and an immutable version history. Page paths belong to Page relations.
 
 ```text
-nodex file list [--trashed] [--query text] [--after cursor] [--limit 200]
-nodex file info <file-id>
 nodex file import --from ./api.md [--name api.md] [--mime text/markdown]
 nodex file read <file-id> [--version 1] --output -
 nodex file rename <file-id> --name reference.md --if-revision 1
 nodex file replace <file-id> --from ./api.md --if-revision 1 --if-head 1
 nodex file fork <file-id> --version 1 --name independent.md
-nodex file versions <file-id> [--after cursor] [--limit 200]
 nodex file restore <file-id> --version 1 --if-revision 2 --if-head 2
-nodex file usages <file-id> [--after cursor] [--limit 200]
 nodex file trash <file-id> --if-revision 3
 nodex file untrash <file-id> --if-revision 4
 nodex file purge <file-id> --if-revision 5
@@ -206,10 +218,9 @@ requires no current or recoverable Page uses. Purge requires a trashed File
 with no history, draft, or other File retention roots. An unused live File is
 retained until explicitly trashed and purged.
 
-`nodex page file` manages Page relations and reads the Page's current uses:
+`nodex page file` manages Page relations and reads their current bytes:
 
 ```text
-nodex page file list <page-selector> [--query text] [--after cursor] [--limit 200]
 nodex page file read <page-selector> --file-id <file-id> --output -
 nodex page file read <page-selector> --path references/api.md --output ./api.md
 nodex page file put <page-selector> --path references/api.md --from ./api.md --if-manifest 0 [--replace-entry]
@@ -221,7 +232,7 @@ nodex page file move <page-selector> --file-id <file-id> --to <target-page> --pa
 nodex page file copy <page-selector> --file-id <file-id> --to <target-page> --path api.md --if-source-manifest 2 --if-target-manifest 0
 ```
 
-Page inventory combines explicit entries and body uses, deduplicated by File ID.
+The SQL `page_files` relation combines explicit entries and body uses, deduplicated by File ID.
 Body-only uses have no logical path. Reads require exactly one `--file-id` or
 `--path`; Page access authorizes current bytes. Independent File history and
 shared edits require direct File access. Adding a File requires direct access;
@@ -236,9 +247,11 @@ the Page namespace changes.
 
 File writes accept optional `--idempotency-key`, independently of output format. Omission creates a new operation; save an explicit key before a retryable operation. Repeat the
 same key with the same arguments, revisions, and bytes. Existing File writes
-require `--if-revision`; content writes also require `--if-head`. `file info`
-returns these current coordinates for one File. Page relation
-writes require `--if-manifest`, and transfers require both Page revisions.
+require `--if-revision`; content writes also require `--if-head`. Read these
+conditions from `files.revision` and `files.head_version`; `file_versions` and
+`file_usages` expose retained history and visible usage. Page relation writes
+require `--if-manifest`, and transfers require both Page revisions. Observe
+`pages.file_manifest_revision`, including on Pages with no current File uses.
 The CLI never silently refreshes a write fence. Mutation results contain the
 operation ID, duplicate flag, commit cursor, `file_mutation`, and `page_file_entries`.
 
@@ -264,8 +277,8 @@ are released after success, failure, or interruption.
 normal commands always retain authenticated on-demand startup. `nodex doctor`
 and typed validation reports are the supported storage diagnostics.
 
-The retired JavaScript HTTP launcher, direct-SQL commands, and storage
-inspection interfaces are not supported. External automation uses this CLI;
+The retired JavaScript HTTP launcher and private storage inspection interfaces
+are not supported. External automation uses this CLI;
 desktop UI uses typed preload/Main Adapters.
 
 ## Agent Skill setup
@@ -278,3 +291,7 @@ adopted, overwritten, or force-repaired.
 
 The product-level authority and consent contract is in
 [Agent Interface Behavior](product-specs/agent-interface-behavior.md).
+
+## Agent task evaluation
+
+See [CLI Agent evaluation](CLI_AGENT_EVALUATION.md) for the optional paid, isolated task suite and evidence-driven improvement workflow.

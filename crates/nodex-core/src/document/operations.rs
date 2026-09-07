@@ -1,4 +1,3 @@
-use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
@@ -253,11 +252,11 @@ impl DocumentOperationError {
 }
 
 #[derive(Debug, Clone)]
-struct NfmPatchSpan {
-    start: usize,
-    end: usize,
-    replacement: String,
-    patch_index: usize,
+pub(super) struct NfmPatchSpan {
+    pub(super) start: usize,
+    pub(super) end: usize,
+    pub(super) replacement: String,
+    pub(super) patch_index: usize,
 }
 
 struct XmlBlockLocation {
@@ -383,6 +382,18 @@ pub fn apply_exact_nfm_patches(
     source: &str,
     patches: &[ExactNfmPatch],
 ) -> Result<String, DocumentOperationError> {
+    let spans = resolve_exact_nfm_patches(source, patches)?;
+    let mut result = source.to_owned();
+    for span in spans.into_iter().rev() {
+        result.replace_range(span.start..span.end, &span.replacement);
+    }
+    Ok(result)
+}
+
+pub(super) fn resolve_exact_nfm_patches(
+    source: &str,
+    patches: &[ExactNfmPatch],
+) -> Result<Vec<NfmPatchSpan>, DocumentOperationError> {
     if patches.is_empty() {
         return Err(operation_error(
             DocumentOperationErrorCode::EmptyBatch,
@@ -452,12 +463,7 @@ pub fn apply_exact_nfm_patches(
             None,
         ));
     }
-    spans.sort_by_key(|span| Reverse(span.start));
-    let mut result = source.to_owned();
-    for span in spans {
-        result.replace_range(span.start..span.end, &span.replacement);
-    }
-    Ok(result)
+    Ok(spans)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -531,21 +537,37 @@ pub fn prepare_exact_nfm_patch_update(
     allocate_block_id: &mut impl FnMut() -> String,
 ) -> Result<PreparedDocumentOperationUpdate, DocumentOperationError> {
     let source = load_document(document_id, full_state_v1)?;
+    assert_exact_state_vector(&source, expected_state_vector_v1, "NFM patch")?;
     let source = materialize_decoded_document(&decode_block_document(&source, schema)?)?;
-    let canonical_nfm = if source.nfm.ends_with('\n') {
-        source.nfm.clone()
-    } else {
-        format!("{}\n", source.nfm)
-    };
-    let nfm = apply_exact_nfm_patches(&canonical_nfm, patches)?;
-    prepare_nfm_replacement_update(
+    if !super::schema_metadata(schema).nfm_replace {
+        return Err(operation_error(
+            DocumentOperationErrorCode::InvalidOperation,
+            "This Document schema does not support NFM patches",
+            None,
+            None,
+        ));
+    }
+    let mut operations = super::nfm_patch::compile(&source, patches, allocate_block_id)?;
+    if let Some(rich_title) = rich_title {
+        operations.push(DocumentBlockOperation::SetRichTitle {
+            rich_title: rich_title.to_vec(),
+        });
+    }
+    if operations.is_empty() {
+        return Err(operation_error(
+            DocumentOperationErrorCode::NoChange,
+            "NFM patch produced no semantic change",
+            None,
+            None,
+        ));
+    }
+    prepare_document_operation_update(
         document_id,
         schema,
         full_state_v1,
         expected_state_vector_v1,
-        &nfm,
-        rich_title,
-        allocate_block_id,
+        &operations,
+        false,
     )
 }
 
@@ -1696,7 +1718,7 @@ fn collect_canonical_ids(block: &BlockNode, ids: &mut BTreeSet<String>) {
     }
 }
 
-fn operation_error(
+pub(super) fn operation_error(
     code: DocumentOperationErrorCode,
     message: impl Into<String>,
     operation_index: Option<usize>,
@@ -1978,7 +2000,7 @@ mod tests {
     }
 
     #[test]
-    fn prepares_a_whole_nfm_replacement_as_one_yjs_consumable_update() {
+    fn exact_patch_preserves_matrix_block_identities_and_unaffected_content() {
         let (state, vector) = matrix_state();
         let mut next_id = 0usize;
         let prepared = prepare_exact_nfm_patch_update(
@@ -2005,8 +2027,21 @@ mod tests {
                 .nfm
                 .contains("## Heading from Rust patch")
         );
-        assert_eq!(prepared.write_fence_block_ids.len(), 20);
+        assert_eq!(next_id, 0, "a one-line edit allocates no Block IDs");
+        assert_eq!(prepared.write_fence_block_ids, vec!["matrix-heading"]);
         assert!(!prepared.title_write_fence_required);
+        let original = load_document("operations-matrix", &state).unwrap();
+        let mut expected = materialize_decoded_document(
+            &decode_block_document(&original, BlockDocumentSchema::PageV3).unwrap(),
+        )
+        .unwrap()
+        .block_tree;
+        find_semantic_block_mut(&mut expected, "matrix-heading")
+            .unwrap()
+            .content = Some(
+            serde_json::json!([{ "type": "text", "text": "Heading from Rust patch", "styles": {} }]),
+        );
+        assert_eq!(prepared.materialization.block_tree, expected);
         let consumer = load_document("operations-consumer", &state).expect("consumer");
         consumer
             .transact_mut()
@@ -2018,6 +2053,283 @@ mod tests {
         )
         .expect("consumer materialization");
         assert_eq!(actual, prepared.materialization);
+    }
+
+    fn patch_fixture_state(blocks: &[MaterializedBlockNode]) -> (Vec<u8>, Vec<u8>) {
+        let tree = dematerialize_block_tree(blocks).unwrap();
+        let document = super::super::encode_block_document(
+            "patch-fixture",
+            BlockDocumentSchema::PageV3,
+            None,
+            &tree,
+        )
+        .unwrap();
+        let transaction = document.transact();
+        (
+            transaction.encode_state_as_update_v1(&StateVector::default()),
+            transaction.state_vector().encode_v1(),
+        )
+    }
+
+    fn exact_patch(old: &str, new: &str) -> ExactNfmPatch {
+        ExactNfmPatch {
+            old_nfm: old.to_owned(),
+            new_nfm: new.to_owned(),
+            expected_matches: None,
+        }
+    }
+
+    fn patch_fixture(
+        blocks: &[MaterializedBlockNode],
+        patches: &[ExactNfmPatch],
+    ) -> PreparedDocumentOperationUpdate {
+        let (state, vector) = patch_fixture_state(blocks);
+        let mut next_id = 0;
+        prepare_exact_nfm_patch_update(
+            "patch-fixture",
+            BlockDocumentSchema::PageV3,
+            &state,
+            &vector,
+            patches,
+            None,
+            &mut || {
+                next_id += 1;
+                format!("new-{next_id}")
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn exact_patch_keeps_untouched_collaborative_nodes_and_peer_edits_alive() {
+        use yrs::{SharedRef, Text};
+
+        let mut parent = paragraph("date", "Release date: Friday.");
+        parent.children.push(paragraph("child", "Keep snapshots"));
+        let blocks = vec![parent, paragraph("other", "Unchanged")];
+        let (state, vector) = patch_fixture_state(&blocks);
+        let prepared = prepare_exact_nfm_patch_update(
+            "patch-fixture",
+            BlockDocumentSchema::PageV3,
+            &state,
+            &vector,
+            &[exact_patch("Friday", "Monday")],
+            None,
+            &mut || panic!("no new Blocks"),
+        )
+        .unwrap();
+        let peer = load_document("patch-fixture", &state).unwrap();
+        let body = peer.get_or_insert_xml_fragment("body");
+        let child = locate_xml_block(&body, &peer.transact(), "child")
+            .unwrap()
+            .container;
+        let hook = child.hook();
+        let content = match child.get(&peer.transact(), 0).unwrap() {
+            XmlOut::Element(element) => element,
+            _ => panic!("content element"),
+        };
+        let text = match content.get(&peer.transact(), 0).unwrap() {
+            XmlOut::Text(text) => text,
+            _ => panic!("live text"),
+        };
+        let text_hook = text.hook();
+        text.insert(&mut peer.transact_mut(), 0, "Peer: ");
+        peer.transact_mut()
+            .apply_update(Update::decode_v1(&prepared.update_v1).unwrap())
+            .unwrap();
+        assert!(
+            hook.get(&peer.transact()).is_some(),
+            "untouched Block container survives"
+        );
+        assert!(
+            text_hook.get(&peer.transact()).is_some(),
+            "untouched shared text survives"
+        );
+        let merged = materialize_decoded_document(
+            &decode_block_document(&peer, BlockDocumentSchema::PageV3).unwrap(),
+        )
+        .unwrap();
+        assert!(merged.nfm.contains("Release date: Monday."));
+        assert!(merged.nfm.contains("Peer: Keep snapshots"));
+        assert_eq!(
+            flatten_materialized_ids(&merged.block_tree),
+            vec!["date", "child", "other"]
+        );
+        assert_eq!(prepared.write_fence_block_ids, vec!["date"]);
+    }
+
+    #[test]
+    fn exact_patch_distinguishes_duplicate_text_and_preserves_unprojected_fields() {
+        let mut nested = paragraph("parent", "Parent");
+        nested
+            .props
+            .insert("textAlignment".to_owned(), serde_json::json!("center"));
+        let mut child = paragraph("nested-same", "same");
+        child
+            .props
+            .insert("textAlignment".to_owned(), serde_json::json!("right"));
+        nested.children.push(child);
+        let source = vec![
+            paragraph("first-same", "same"),
+            nested,
+            paragraph("last-same", "same"),
+            paragraph("tail", "Tail 😀"),
+        ];
+        let prepared = patch_fixture(
+            &source,
+            &[
+                exact_patch("Parent\n\tsame", "Parent\n\tChanged 中"),
+                exact_patch("Tail 😀", "Tail 😀 extended"),
+            ],
+        );
+        let mut expected = source;
+        expected[1].children[0].content = paragraph("unused", "Changed 中").content;
+        expected[3].content = paragraph("unused", "Tail 😀 extended").content;
+        assert_eq!(prepared.materialization.block_tree, expected);
+        assert_eq!(prepared.write_fence_block_ids, vec!["nested-same", "tail"]);
+    }
+
+    #[test]
+    fn exact_patch_inserts_only_new_blocks_and_promotes_retained_children_before_deletion() {
+        let mut parent = paragraph("parent", "Parent");
+        parent.children.push(paragraph("child", "Child"));
+        let source = vec![parent, paragraph("tail", "Tail")];
+        let promoted = patch_fixture(&source, &[exact_patch("Parent\n", "")]);
+        assert_eq!(
+            promoted.materialization.block_tree,
+            vec![paragraph("child", "Child"), paragraph("tail", "Tail")]
+        );
+        let inserted = patch_fixture(&source, &[exact_patch("Tail", "New\nTail")]);
+        assert_eq!(
+            flatten_materialized_ids(&inserted.materialization.block_tree),
+            vec!["parent", "child", "new-1", "tail"]
+        );
+        assert_eq!(inserted.materialization.block_tree[0], source[0]);
+        assert_eq!(inserted.materialization.block_tree[2], source[1]);
+    }
+
+    #[test]
+    fn exact_patch_inserts_multiple_blocks_without_moving_surviving_siblings() {
+        use yrs::SharedRef;
+
+        let source = vec![
+            paragraph("a", "A"),
+            paragraph("b", "B"),
+            paragraph("c", "C"),
+        ];
+        let (state, vector) = patch_fixture_state(&source);
+        let mut next_id = 0;
+        let patched = prepare_exact_nfm_patch_update(
+            "patch-fixture",
+            BlockDocumentSchema::PageV3,
+            &state,
+            &vector,
+            &[exact_patch("A\nB", "A\nX\nY\nZ\nB")],
+            None,
+            &mut || {
+                next_id += 1;
+                format!("new-{next_id}")
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            flatten_materialized_ids(&patched.materialization.block_tree),
+            vec!["a", "new-1", "new-2", "new-3", "b", "c"]
+        );
+        assert_eq!(
+            patched.write_fence_block_ids,
+            vec!["new-1", "new-2", "new-3"]
+        );
+        let peer = load_document("patch-fixture", &state).unwrap();
+        let body = peer.get_or_insert_xml_fragment("body");
+        let hooks: Vec<_> = ["a", "b", "c"]
+            .iter()
+            .map(|id| {
+                locate_xml_block(&body, &peer.transact(), id)
+                    .unwrap()
+                    .container
+                    .hook()
+            })
+            .collect();
+        peer.transact_mut()
+            .apply_update(Update::decode_v1(&patched.update_v1).unwrap())
+            .unwrap();
+        assert!(
+            hooks
+                .iter()
+                .all(|hook| hook.get(&peer.transact()).is_some())
+        );
+        let merged = materialize_decoded_document(
+            &decode_block_document(&peer, BlockDocumentSchema::PageV3).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(merged, patched.materialization);
+    }
+
+    #[test]
+    fn exact_patch_rejects_reusing_a_removed_block_identity() {
+        let (state, vector) = patch_fixture_state(&[paragraph("a", "A"), paragraph("b", "B")]);
+        let error = prepare_exact_nfm_patch_update(
+            "patch-fixture",
+            BlockDocumentSchema::PageV3,
+            &state,
+            &vector,
+            &[exact_patch("A\n", ""), exact_patch("B", "B\nX")],
+            None,
+            &mut || "a".to_owned(),
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), DocumentOperationErrorCode::InvalidNfm);
+    }
+
+    #[test]
+    fn exact_patch_reparents_existing_blocks_under_a_new_parent() {
+        let source = vec![paragraph("a", "A"), paragraph("b", "B")];
+        let patched = patch_fixture(&source, &[exact_patch("A\nB", "Parent\n\tA\n\tB")]);
+        assert_eq!(patched.materialization.block_tree.len(), 1);
+        assert_eq!(patched.materialization.block_tree[0].id, "new-1");
+        assert_eq!(patched.materialization.block_tree[0].children, source);
+    }
+
+    #[test]
+    fn exact_patch_does_not_roundtrip_an_untouched_opaque_callout() {
+        let mut callout = paragraph("callout", "");
+        callout.block_type = "callout".to_owned();
+        callout
+            .props
+            .insert("icon".to_owned(), serde_json::json!("💡"));
+        callout.content = Some(serde_json::json!([]));
+        callout
+            .children
+            .push(paragraph("absorbed", "Callout child"));
+        let source = vec![callout, paragraph("date", "Friday")];
+        let prepared = patch_fixture(&source, &[exact_patch("Friday", "Monday")]);
+        assert_eq!(prepared.materialization.block_tree[0], source[0]);
+        assert_eq!(prepared.write_fence_block_ids, vec!["date"]);
+    }
+
+    #[test]
+    fn exact_patch_noops_and_stale_heads_never_allocate_identities() {
+        let (state, vector) = patch_fixture_state(&[paragraph("a", "A"), paragraph("b", "B")]);
+        for (expected, code) in [
+            (&vector, DocumentOperationErrorCode::NoChange),
+            (
+                &StateVector::default().encode_v1(),
+                DocumentOperationErrorCode::StaleStateVector,
+            ),
+        ] {
+            let error = prepare_exact_nfm_patch_update(
+                "patch-fixture",
+                BlockDocumentSchema::PageV3,
+                &state,
+                expected,
+                &[exact_patch("A", "A")],
+                None,
+                &mut || panic!("must not allocate"),
+            )
+            .unwrap_err();
+            assert_eq!(error.code(), code);
+        }
     }
 
     #[test]

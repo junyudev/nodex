@@ -485,6 +485,19 @@ fn complete_filtered_view_rows(
     Ok(rows)
 }
 
+/// Public SQL consumes the same fully expanded occurrence graph as List reads,
+/// once per query observation rather than rebuilding it for every output page.
+pub(super) fn query_occurrences(
+    connection: &Connection,
+    library_id: &str,
+    commit_head: i64,
+    view_id: &str,
+) -> Result<Vec<DatabaseListProjectionRow>, StoreError> {
+    let view = resolve_view(connection, library_id, view_id)?;
+    let matched = complete_filtered_view_rows(connection, library_id, commit_head, &view)?;
+    Ok(build_list_projection_graph(connection, &view, matched)?.rows)
+}
+
 fn canonical_group_value(value: &Value) -> Option<String> {
     match value {
         Value::Null => None,

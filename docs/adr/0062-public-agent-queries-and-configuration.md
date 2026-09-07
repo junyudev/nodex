@@ -3,6 +3,7 @@
 Status: Accepted
 Date: 2026-09-07
 Extends: ADR 0061
+SQL ownership refined by: ADR 0063
 
 ## Context
 
@@ -14,9 +15,9 @@ answer with the same stable IDs accepted by subsequent commands.
 ## Decision
 
 Keep the CLI as a thin Adapter. Publish concise read DTOs, context defaults and
-progressive schema help. Accept bare resource IDs throughout. The Database
+progressive schema help. Accept bare resource IDs throughout. The Query
 Module owns read-only SQL over complete authorized public projections taken in
-one Store snapshot. Evaluate user expressions only in an isolated transient
+one Store snapshot, as defined by ADR 0063. Evaluate user expressions only in an isolated transient
 database with explicit action and resource limits. Input or output exhaustion
 returns an error, never a partial aggregate presented as complete.
 

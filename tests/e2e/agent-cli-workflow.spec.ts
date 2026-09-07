@@ -16,17 +16,19 @@ interface CliResult<T> {
   readonly ok: boolean;
   readonly result: T;
 }
-interface PropertyState {
-  readonly data_source_id: string;
-  readonly values: Record<string, unknown>;
-  readonly value_revisions: Record<string, number>;
+interface SqlResult {
+  readonly columns: readonly string[];
+  readonly rows: readonly (readonly unknown[])[];
+  readonly returned_count: number;
+  readonly snapshot: string;
 }
 interface SourceSchema {
-  readonly schema_revision: number;
-  readonly properties: readonly {
-    readonly id: string;
-    readonly schema: { readonly kind: string };
-    readonly name: string;
+  readonly tables: readonly {
+    readonly columns: readonly {
+      readonly name: string;
+      readonly property_id: string | null;
+      readonly options: readonly { readonly id: string; readonly name: string }[];
+    }[];
   }[];
 }
 
@@ -85,6 +87,27 @@ test("direct Agent commands update the same Page, properties, and attachments sh
       const structured = async <T>(args: readonly string[], input?: string): Promise<T> =>
         parseResult<T>(await run(args, input));
 
+      const sql = async <T>(
+        statement: string,
+        params: Record<string, unknown> = {},
+        bindings: readonly string[] = [],
+      ): Promise<readonly T[]> => {
+        const result = await structured<SqlResult>([
+          "sql",
+          "query",
+          statement,
+          ...Object.entries(params).flatMap(([name, value]) => [
+            "--param",
+            `${name}=${JSON.stringify(value)}`,
+          ]),
+          ...bindings.flatMap((binding) => ["--bind", binding]),
+        ]);
+        expect(result.returned_count).toBe(result.rows.length);
+        expect(result.snapshot.length).toBeGreaterThan(0);
+        return result.rows.map(
+          (row) => Object.fromEntries(result.columns.map((name, index) => [name, row[index]])) as T,
+        );
+      };
       const context = await structured<{ project: { id: string } }>(["context"]);
       expect(context.project.id).toBe(manifest.projectId);
       const help = JSON.parse(await run(["--json", "page", "insert", "--help"])) as {
@@ -96,7 +119,14 @@ test("direct Agent commands update the same Page, properties, and attachments sh
         "Release meeting",
       ]);
       expect(matches.items.some((item) => item.page_id === pageId)).toBe(true);
-      const original = await run(["read", pageId]);
+      const original = await run([
+        "sql",
+        "query",
+        "SELECT nested_markdown FROM page_documents WHERE page_id=:id",
+        "--param",
+        `id=${JSON.stringify(pageId)}`,
+        "--raw",
+      ]);
       expect(original).toContain("Release date: Friday.");
 
       await page
@@ -126,62 +156,71 @@ test("direct Agent commands update the same Page, properties, and attachments sh
         stage.getByText("Keep the rollback checklist intact.", { exact: true }),
       ).toBeVisible();
 
-      const propertyState = await structured<PropertyState>(["page", "properties", "get", pageId]);
-      const schema = await structured<SourceSchema>([
-        "data-source",
-        "describe",
-        propertyState.data_source_id,
-      ]);
-      const status = schema.properties.find((property) => property.name.toLowerCase() === "status");
-      if (!status) throw new Error("Scenario status schema was not discovered");
-      const options = await structured<{
-        items: readonly { id: string; name: string }[];
-      }>(["data-source", "options", propertyState.data_source_id, "--property", status.id]);
-      const target = options.items.find((option) => option.name.toLowerCase() === "review");
+      const [source] = await sql<{
+        data_source_id: string;
+        schema_revision: number;
+        default_view_id: string;
+      }>(
+        "SELECT s.data_source_id,s.schema_revision,d.default_view_id FROM pages p JOIN data_sources s USING(data_source_id) JOIN databases d ON d.database_id=s.database_id WHERE p.page_id=:id",
+        { id: pageId },
+      );
+      if (!source) throw new Error("Scenario Source was not discovered");
+      const binding = `tasks=${source.data_source_id}`;
+      const bindings = [binding];
+      const schema = await structured<SourceSchema>(["sql", "schema", "tasks", "--bind", binding]);
+      const status = schema.tables[0]?.columns.find(
+        (column) => column.name.toLowerCase() === "status",
+      );
+      if (!status?.property_id) throw new Error("Scenario status schema was not discovered");
+      const target = status.options.find((option) => option.name.toLowerCase() === "review");
       if (!target) throw new Error("Review option was not discovered");
-      const revision = propertyState.value_revisions[status.id];
-      if (revision === undefined) throw new Error("Property value revision is missing");
+      const [observed] = await sql<{ value_revision: number }>(
+        "SELECT value_revision FROM property_values WHERE page_id=:page AND property_id=:property",
+        { page: pageId, property: status.property_id },
+      );
+      if (!observed) throw new Error("Property value revision is missing");
+      const revision = observed.value_revision;
       await run([
         "page",
         "properties",
         "set",
         pageId,
         "--property",
-        status.id,
+        status.property_id,
         "--option",
         target.id,
         "--if-revision",
         String(revision),
       ]);
-      const query = await structured<{
-        items: readonly { page_id: string }[];
-        returned_count: number;
-      }>(
-        ["data-source", "query", propertyState.data_source_id, "--input", "-"],
-        JSON.stringify({
-          filter: { kind: "group", operator: "and", children: [] },
-          sort: [],
-          limit: 50,
-        }),
+      const query = await sql<{ page_id: string }>(
+        "SELECT page_id FROM tasks ORDER BY page_id",
+        {},
+        bindings,
       );
-      expect(query.items.some((row) => row.page_id === pageId)).toBe(true);
+      expect(query.some((row) => row.page_id === pageId)).toBe(true);
       await expect(stage.getByText("Review", { exact: true }).first()).toBeVisible();
-
-      const group = await structured<{
-        items: readonly { page_id: string }[];
-        returned_count: number;
-      }>(["view", "query", "--group", "Review"]);
-      expect(group.items.map((item) => item.page_id)).toEqual([pageId]);
-      expect(group.returned_count).toBe(1);
-      const count = await structured<{
-        columns: readonly string[];
-        rows: readonly (readonly number[])[];
-      }>(["sql", "query", "SELECT count(*) AS matched_count FROM pages"]);
-      expect(count.columns).toEqual(["matched_count"]);
-      expect(count.rows).toEqual([[1]]);
+      const group = await sql<{ page_id: string }>(
+        "SELECT page_id FROM view_rows(:view) WHERE group_key=:group ORDER BY ordinal",
+        { view: source.default_view_id, group: target.id },
+      );
+      expect(group.map((item) => item.page_id)).toEqual([pageId]);
+      const count = await sql<{ matched_count: number }>(
+        "SELECT count(*) AS matched_count FROM tasks",
+        {},
+        bindings,
+      );
+      expect(count).toEqual([{ matched_count: 1 }]);
+      const documents = await sql<{ page_id: string; nested_markdown: string; body_etag: string }>(
+        "SELECT t.page_id,d.nested_markdown,d.body_etag FROM tasks t JOIN page_documents d USING(page_id) ORDER BY t.page_id",
+        {},
+        bindings,
+      );
+      expect(documents).toHaveLength(1);
+      expect(documents[0]?.nested_markdown).toContain("Release date: Monday.");
+      expect(documents[0]?.body_etag).toBeTruthy();
 
       const script = JSON.stringify({
-        if_schema_revision: schema.schema_revision,
+        if_schema_revision: source.schema_revision,
         operations: [
           {
             kind: "add_property",
@@ -202,21 +241,25 @@ test("direct Agent commands update the same Page, properties, and attachments sh
       ];
       await run(configure, script);
       await run(configure, script);
-      const views = await structured<{ items: readonly { name: string }[] }>(["view", "list"]);
-      expect(views.items.filter((view) => view.name === "Risk board")).toHaveLength(1);
-      const risks = await structured<{ items: readonly { id: string; name: string }[] }>([
-        "data-source",
-        "options",
-        propertyState.data_source_id,
-        "--property",
-        "Risk",
-      ]);
-      const low = risks.items.find((option) => option.name === "Low");
+      const views = await sql<{ view_id: string; name: string }>(
+        "SELECT view_id,name FROM views WHERE data_source_id=:id AND name='Risk board'",
+        { id: source.data_source_id },
+      );
+      expect(views).toHaveLength(1);
+      const riskView = views[0];
+      if (!riskView) throw new Error("Risk View is missing");
+      const risks = await sql<{ option_id: string; name: string }>(
+        "SELECT o.option_id,o.name FROM property_options o JOIN properties p USING(data_source_id,property_id) WHERE p.data_source_id=:id AND p.name='Risk'",
+        { id: source.data_source_id },
+      );
+      const low = risks.find((option) => option.name === "Low");
       if (!low) throw new Error("Risk option is missing");
       const selection = await run([
         "sql",
         "query",
-        "SELECT page_id, data_source_id FROM pages WHERE title = :title",
+        "SELECT page_id, data_source_id, membership_revision, value_revisions FROM tasks WHERE title = :title",
+        "--bind",
+        binding,
         "--param",
         `title=${JSON.stringify(AGENT_CLI_PAGE_TITLE)}`,
       ]);
@@ -228,36 +271,37 @@ test("direct Agent commands update the same Page, properties, and attachments sh
           "--selection",
           "-",
           "--set",
-          `Risk=${JSON.stringify({ kind: "select", option_id: low.id })}`,
+          `Risk=${JSON.stringify({ kind: "select", option_id: low.option_id })}`,
         ],
         selection,
       );
       await run(["page", "properties", "apply", "--input", "-"], edits);
-      const riskGroup = await structured<{ items: readonly { page_id: string }[] }>([
-        "view",
-        "query",
-        "Risk board",
-        "--group",
-        "Low",
-      ]);
-      expect(riskGroup.items.map((item) => item.page_id)).toEqual([pageId]);
+      const riskGroup = await sql<{ page_id: string }>(
+        "SELECT page_id FROM view_rows(:view) WHERE group_key=:group ORDER BY ordinal",
+        { view: riskView.view_id, group: low.option_id },
+      );
+      expect(riskGroup.map((item) => item.page_id)).toEqual([pageId]);
       await testInfo.attach("agent-query-evidence", {
         body: Buffer.from(
           JSON.stringify({
             group_query_calls: 1,
-            returned_count: group.returned_count,
+            returned_count: group.length,
             group_result_bytes: Buffer.byteLength(JSON.stringify(group)),
-            sql_count: count.rows[0]?.[0],
-            selected_pages: riskGroup.items.length,
+            sql_count: count[0]?.matched_count,
+            selected_pages: riskGroup.length,
           }),
         ),
         contentType: "application/json",
       });
 
-      const inventory = await structured<{ revision: number }>(["page", "file", "list", pageId]);
+      const [inventory] = await sql<{ file_manifest_revision: number }>(
+        "SELECT file_manifest_revision FROM pages WHERE page_id=:id",
+        { id: pageId },
+      );
+      if (!inventory) throw new Error("Page manifest observation is missing");
       const csv = "owner,action\nLin,Update installation guide\n";
-      const source = path.join(profile.runRoot, "action-summary.csv");
-      await writeFile(source, csv);
+      const sourceFile = path.join(profile.runRoot, "action-summary.csv");
+      await writeFile(sourceFile, csv);
       await run([
         "page",
         "file",
@@ -266,17 +310,16 @@ test("direct Agent commands update the same Page, properties, and attachments sh
         "--path",
         "action-summary.csv",
         "--from",
-        source,
+        sourceFile,
         "--if-manifest",
-        String(inventory.revision),
+        String(inventory.file_manifest_revision),
       ]);
       expect(await run(["page", "file", "read", pageId, "--path", "action-summary.csv"])).toBe(csv);
-      const finalInventory = await structured<{
-        files: readonly { logical_path: string | null }[];
-      }>(["page", "file", "list", pageId]);
-      expect(finalInventory.files.some((file) => file.logical_path === "action-summary.csv")).toBe(
-        true,
+      const finalInventory = await sql<{ path: string | null }>(
+        "SELECT path FROM page_files WHERE page_id=:id",
+        { id: pageId },
       );
+      expect(finalInventory.some((file) => file.path === "action-summary.csv")).toBe(true);
       await testInfo.attach("cli-result", {
         body: Buffer.from(await run(["read", pageId])),
         contentType: "text/markdown",
