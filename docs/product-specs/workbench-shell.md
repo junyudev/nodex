@@ -118,6 +118,7 @@ confirmed for its original scope, and unavailable during ordinary submission.
   The disclosure toggles nested Sessions without navigation, while the aligned Project label opens the Project Scene.
   Right-side chrome is reserved for row actions; disclosure must not consume a second trailing slot or shift the label.
   Session rows use their derived `displayTitle` and a subtle Thread-attached indicator.
+  Pinned Sessions keep their pin visible; hover, keyboard focus, and an open context menu place it beside Archive in separate clickable slots.
   They do not render relative age in the row.
   An attached Thread's rich hover card shows its live relative conversation recency, sourced from the durable app-server recency clock; opening, reading, renaming, pinning, archiving, reordering, status changes, and execution-location changes do not refresh it.
   A Threadless draft has no conversation age and its hover card shows no relative time.

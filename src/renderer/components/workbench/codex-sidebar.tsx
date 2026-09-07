@@ -1747,6 +1747,11 @@ export function CodexSidebarThreadRow({
               className={cn(
                 "ms-[3px] flex items-center justify-end gap-1 group-focus-visible:min-w-12 group-hover:min-w-12 group-has-[:focus-visible]:min-w-12",
                 contextMenuOpen && "min-w-12",
+                // The resting pin stays interactive beside the overlaid archive action.
+                showRestingPinnedButton &&
+                  showArchiveAction &&
+                  "group-hover:pr-7 group-focus-visible:pr-7 group-has-[:focus-visible]:pr-7",
+                showRestingPinnedButton && showArchiveAction && contextMenuOpen && "pr-7",
               )}
             >
               {!grouped && (item.unread || item.needsAttention) ? (
