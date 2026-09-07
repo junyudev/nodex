@@ -35,6 +35,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Fixed Shell output repeating completed command results during streaming; repeated lines emitted by the command remain intact.
 - Fixed reordered or replaced Blocks retaining another Block's toggle hints or control actions.
 - Fixed local images failing to decode or export in the installed app, and code blocks failing to highlight when their language uses a display label or alias.
 - Fixed retained Documents without an owner blocking automatic Page history checkpoints.

@@ -393,12 +393,6 @@ export const make: Effect.Effect<
     if (isCodexCommandOutputNotification(notification)) {
       const update = toCodexCommandOutputUpdate(notification);
       deltas.enqueueCommandOutput(update);
-      if (!ownerRouted && update.turnId !== null) {
-        events.publish({
-          kind: "hostMessage",
-          value: { type: "mcpNotification", hostId: DEFAULT_CODEX_HOST_ID, notification },
-        });
-      }
       return;
     }
     if (notification.method === "item/commandExecution/terminalInteraction") {
@@ -418,7 +412,7 @@ export const make: Effect.Effect<
     }
     if (notification.method === "item/completed" || notification.method === "turn/completed") {
       const observedAtMs = yield* Clock.currentTimeMillis;
-      deltas.drainFrameText(threadId, observedAtMs);
+      deltas.drainBeforeCompletion(threadId, observedAtMs);
     }
 
     const observedAtMs = yield* Clock.currentTimeMillis;

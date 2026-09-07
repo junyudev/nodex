@@ -122,8 +122,9 @@ Required behavior:
 - Prose deltas append only to existing matching assistant/plan/reasoning items.
 - Missing or kind-mismatched delta targets are dropped, ACKed, and logged.
 - The owner batches visible prose through a frame queue.
-- `item/completed` drains pending prose before applying the authoritative completed item.
-- Terminal `turn/completed`, `turn/interrupted`, and `turn/failed` drain pending prose before final turn state applies.
+- `item/completed` synchronously flushes all pending command output, then drains pending prose before applying the authoritative completed item.
+- Terminal `turn/completed`, `turn/interrupted`, and `turn/failed` synchronously flush pending command output, then drain pending prose before final turn state applies. Main fallback uses the same command-first ordering.
+- Renderer command output accepts only sequenced owner notifications; no-owner fallback updates Main canonical state and never supplies an unsequenced renderer write path.
 
 Frame queue constants:
 

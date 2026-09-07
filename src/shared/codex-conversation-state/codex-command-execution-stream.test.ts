@@ -375,6 +375,15 @@ describe("canonical command-execution stream reduction", () => {
     );
   });
 
+  test("preserves separate identical output occurrences while a command is running", () => {
+    const update = { conversationId: THREAD_ID, turnId: TURN_ID, itemId: "exec", delta: "same\n" };
+    const first = reduceCodexConversationCommandOutput(buildState([buildCommand("exec")]), update);
+    const second = reduceCodexConversationCommandOutput(first.state, update);
+    expect((second.state.turns[0]?.items[0] as CommandExecutionItem).aggregatedOutput).toBe(
+      "same\nsame\n",
+    );
+  });
+
   test("groups updates without reordering", () => {
     const first = { conversationId: "a", turnId: null, itemId: "one", delta: "1" };
     const second = { conversationId: "b", turnId: "turn-b", itemId: "two", delta: "2" };

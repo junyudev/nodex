@@ -102,7 +102,7 @@ it.effect("drains one Thread synchronously and keeps another Thread scheduled", 
       observeCommits(conversations, "thread-2", commits);
       runtime.enqueueFrameText(frame("a"));
       runtime.enqueueFrameText({ ...frame("b"), conversationId: "thread-2" });
-      runtime.drainFrameText("thread-1", 1_000);
+      runtime.drainBeforeCompletion("thread-1", 1_000);
       assert.deepEqual(commits, ["thread-1:a:1000"]);
       yield* TestClock.adjust("20 millis");
       assert.strictEqual(commits.length, 2);
@@ -260,4 +260,31 @@ it.effect("bounds command output globally by keys, updates, and UTF-8 bytes", ()
       maxBufferedOutputUtf8Bytes: 4,
     },
   ),
+);
+
+it.effect(
+  "completion flushes all queued command bytes before prose and leaves no timer replay",
+  () =>
+    withRuntime((runtime, conversations) =>
+      Effect.gen(function* () {
+        const commits: string[] = [];
+        observeCommits(conversations, "thread-1", commits, commits);
+        observeCommits(conversations, "thread-2", commits, commits);
+        runtime.enqueueFrameText(frame("prose"));
+        runtime.enqueueCommandOutput(output("same\n"));
+        runtime.enqueueCommandOutput(output("same\n"));
+        runtime.enqueueCommandOutput(output("other", "thread-2"));
+        runtime.drainBeforeCompletion("thread-1", 1_000);
+        assert.deepEqual(commits, [
+          "thread-1:same\nsame\n",
+          "thread-2:other",
+          "thread-1:prose:1000",
+        ]);
+        yield* TestClock.adjust("100 millis");
+        assert.strictEqual(commits.length, 3);
+        runtime.enqueueCommandOutput(output("later"));
+        yield* TestClock.adjust("100 millis");
+        assert.strictEqual(commits.at(-1), "thread-1:later");
+      }),
+    ),
 );
