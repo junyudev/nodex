@@ -419,8 +419,8 @@ fn persist_yjs_commit_inner(
         connection,
         &input.authority.head.library_id,
         input.actor_project_id,
-        input.materialization,
-        false,
+        &input.materialization.references,
+        &input.base_materialization.references,
     )?;
     validate_page_file_placements(
         connection,
@@ -716,8 +716,8 @@ fn persist_yjs_genesis_inner(
         connection,
         &input.authority.head.library_id,
         input.actor_project_id,
-        input.materialization,
-        false,
+        &input.materialization.references,
+        &[],
     )?;
     validate_page_file_placements(
         connection,
@@ -2215,20 +2215,31 @@ fn validate_document_references(
     connection: &Connection,
     library_id: &str,
     actor_project_id: &str,
-    materialization: &DocumentMaterialization,
-    allow_legacy_diagnostics: bool,
+    references: &[BlockDocumentReference],
+    base_references: &[BlockDocumentReference],
 ) -> Result<(), StoreError> {
-    for reference in &materialization.references {
+    // Reference targets have independent lifecycles. Retaining an occurrence
+    // from the current canonical head must not freeze unrelated edits when its
+    // target disappears. This is not read authority or permission to introduce
+    // new occurrences; presentation hints do not change reference identity.
+    let mut retained = BTreeMap::new();
+    for reference in base_references {
+        *retained
+            .entry(reference_identity(reference))
+            .or_insert(0_usize) += 1;
+    }
+    for reference in references {
+        if let Some(count) = retained.get_mut(&reference_identity(reference))
+            && *count > 0
+        {
+            *count -= 1;
+            continue;
+        }
         let valid = match reference {
             BlockDocumentReference::Page { .. } => true,
             BlockDocumentReference::Block {
                 target_block_id, ..
-            } => block_reference_is_readable(
-                connection,
-                library_id,
-                target_block_id,
-                allow_legacy_diagnostics,
-            )?,
+            } => block_reference_is_readable(connection, library_id, target_block_id)?,
             BlockDocumentReference::DatabaseView {
                 database_view_id, ..
             } => connection
@@ -2236,8 +2247,13 @@ fn validate_document_references(
                     "SELECT 1 FROM database_views view \
                      JOIN database_containers container \
                        ON container.block_id = view.database_block_id \
+                     JOIN blocks block ON block.id = container.block_id \
+                       AND block.library_id = container.library_id \
+                     JOIN data_sources source ON source.id = view.data_source_id \
+                       AND source.library_id = container.library_id \
                      WHERE view.id = ?1 AND container.library_id = ?2 \
-                       AND view.lifecycle <> 'deleted'",
+                       AND view.lifecycle <> 'deleted' AND container.lifecycle <> 'deleted' \
+                       AND block.lifecycle <> 'deleted' AND source.lifecycle <> 'deleted'",
                     params![database_view_id, library_id],
                     |_| Ok(()),
                 )
@@ -2264,6 +2280,33 @@ fn validate_document_references(
         )));
     }
     Ok(())
+}
+
+// Include the source occurrence so copying or retargeting an unavailable
+// reference cannot borrow another Block's retained target. Counts also fence
+// repeated inline Thread mentions within the same Block.
+fn reference_identity(reference: &BlockDocumentReference) -> (&str, &str, &str) {
+    match reference {
+        BlockDocumentReference::Page {
+            source_block_id,
+            target_page_id,
+            ..
+        } => ("page", source_block_id, target_page_id),
+        BlockDocumentReference::Block {
+            source_block_id,
+            target_block_id,
+            ..
+        } => ("block", source_block_id, target_block_id),
+        BlockDocumentReference::DatabaseView {
+            source_block_id,
+            database_view_id,
+            ..
+        } => ("database_view", source_block_id, database_view_id),
+        BlockDocumentReference::Thread {
+            source_block_id,
+            target_thread_id,
+        } => ("thread", source_block_id, target_thread_id),
+    }
 }
 
 fn reference_description(reference: &BlockDocumentReference) -> String {
@@ -2301,7 +2344,6 @@ fn block_reference_is_readable(
     connection: &Connection,
     library_id: &str,
     target_block_id: &str,
-    allow_legacy_diagnostics: bool,
 ) -> Result<bool, StoreError> {
     let target = connection
         .query_row(
@@ -2320,9 +2362,7 @@ fn block_reference_is_readable(
         return Ok(false);
     };
     if target_lifecycle == "deleted" {
-        return Ok(allow_legacy_diagnostics
-            && target_library_id == library_id
-            && target_type == "unresolved_card_reference");
+        return Ok(false);
     }
     if target_type == "unresolved_card_reference" {
         return Ok(false);
@@ -2516,5 +2556,118 @@ mod typed_owner_shell_tests {
             assert_generic_placement_preserves_typed_owner_subtrees(&base, &unrelated_placement)
                 .expect("ordinary unrelated placement remains generic");
         }
+    }
+}
+
+#[cfg(test)]
+mod reference_tests {
+    use super::*;
+    use crate::infrastructure::store::SqliteStoreKernel;
+
+    fn missing_references(source: &str, target: &str) -> Vec<BlockDocumentReference> {
+        vec![
+            BlockDocumentReference::Block {
+                source_block_id: source.to_owned(),
+                target_block_id: target.to_owned(),
+                display_hint: None,
+            },
+            BlockDocumentReference::DatabaseView {
+                source_block_id: source.to_owned(),
+                database_view_id: target.to_owned(),
+                display_hint: None,
+            },
+            BlockDocumentReference::Thread {
+                source_block_id: source.to_owned(),
+                target_thread_id: target.to_owned(),
+            },
+        ]
+    }
+
+    #[test]
+    fn new_view_references_require_live_database_and_source() {
+        let directory = tempfile::tempdir().unwrap();
+        let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
+        kernel.writer().call(|connection| {
+            connection.execute_batch(
+                "INSERT INTO profiles (id, created_at, updated_at) VALUES ('profile', 'now', 'now');
+                 INSERT INTO libraries (id, profile_id, created_at, updated_at) VALUES ('library', 'profile', 'now', 'now');
+                 INSERT INTO blocks (id, library_id, type, lifecycle, placement_revision, metadata_revision, created_at, updated_at)
+                   VALUES ('database', 'library', 'database', 'active', 1, 1, 'now', 'now');
+                 INSERT INTO database_containers (block_id, library_id, name, lifecycle, access_revision, metadata_revision, created_at, updated_at)
+                   VALUES ('database', 'library', 'Database', 'active', 1, 1, 'now', 'now');
+                 INSERT INTO data_sources (id, library_id, home_database_block_id, name, schema_key, schema_revision, lifecycle, rank_key, created_at, updated_at)
+                   VALUES ('source', 'library', 'database', 'Source', 'nodex.pages', 1, 'active', 'a', 'now', 'now');
+                 INSERT INTO database_views (id, database_block_id, data_source_id, name, layout, config_json, lifecycle, rank_key, revision, created_at, updated_at)
+                   VALUES ('view', 'database', 'source', 'View', 'board', '{}', 'active', 'a', 1, 'now', 'now');"
+            )?;
+            let references = [BlockDocumentReference::DatabaseView {
+                source_block_id: "occurrence".to_owned(), database_view_id: "view".to_owned(), display_hint: None,
+            }];
+            validate_document_references(connection, "library", "project", &references, &[])
+                .expect("active View target");
+            assert!(validate_document_references(connection, "other-library", "project", &references, &[]).is_err());
+            // Exercise each independently retained storage authority: deleting
+            // a Database does not need to rewrite every View or source row.
+            for table in ["blocks", "database_containers", "data_sources", "database_views"] {
+                connection.execute(&format!("UPDATE {table} SET lifecycle = 'deleted'"), [])?;
+                let error = validate_document_references(connection, "library", "project", &references, &[])
+                    .expect_err("new reference must not target a deleted authority");
+                assert_eq!(error.code, StoreErrorCode::InvalidInput);
+                validate_document_references(connection, "library", "project", &references, &references)
+                    .expect("existing reference survives target deletion");
+                connection.execute(&format!("UPDATE {table} SET lifecycle = 'active'"), [])?;
+            }
+            Ok::<_, StoreError>(())
+        }).unwrap();
+    }
+
+    #[test]
+    fn unavailable_references_can_only_retain_committed_occurrences() {
+        let directory = tempfile::tempdir().unwrap();
+        let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
+        kernel
+            .readers()
+            .read_default(|connection| {
+                for reference in missing_references("source", "missing") {
+                    let base = vec![reference.clone()];
+                    validate_document_references(connection, "library", "project", &base, &base)
+                        .expect("retaining an existing occurrence needs no target");
+                    validate_document_references(connection, "library", "project", &[], &base)
+                        .expect("removing an unavailable occurrence");
+                    for (next, prior) in [
+                        (base.clone(), Vec::new()),
+                        (vec![reference.clone(), reference.clone()], base.clone()),
+                    ] {
+                        let error = validate_document_references(
+                            connection, "library", "project", &next, &prior,
+                        )
+                        .expect_err("genesis and additional occurrences require a valid target");
+                        assert_eq!(error.code, StoreErrorCode::InvalidInput);
+                    }
+                    for candidate in missing_references("other-source", "missing")
+                        .into_iter()
+                        .chain(missing_references("source", "other-target"))
+                        .chain(
+                            missing_references("source", "missing")
+                                .into_iter()
+                                .filter(|candidate| candidate != &reference),
+                        )
+                    {
+                        assert!(
+                            validate_document_references(
+                                connection,
+                                "library",
+                                "project",
+                                &[candidate],
+                                &base
+                            )
+                            .is_err(),
+                            "source, target, and reference kind must match the committed occurrence"
+                        );
+                    }
+                }
+                Ok::<_, StoreError>(())
+            })
+            .unwrap();
     }
 }

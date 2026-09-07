@@ -16911,6 +16911,38 @@
             "type": "object",
             "required": [
               "sourceBlockId",
+              "targetPageId",
+              "presentation",
+              "occurrenceCount",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page"
+                ]
+              },
+              "occurrenceCount": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "presentation": {
+                "$ref": "#/components/schemas/LibraryPageReferencePresentation"
+              },
+              "sourceBlockId": {
+                "type": "string"
+              },
+              "targetPageId": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sourceBlockId",
               "targetBlockId",
               "kind"
             ],

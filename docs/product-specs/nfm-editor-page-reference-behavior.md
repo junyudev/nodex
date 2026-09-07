@@ -137,6 +137,8 @@ Removing a non-owning `pageRef`, Page Mention, or Page Link remains an ordinary 
 
 Page Mention, Page Reference Block, and Page Link occurrences derive first-class Page reference edges with presentations `mention`, `reference_block`, and `link`.
 Repeated occurrences in the same source Block and presentation aggregate an occurrence count.
+Library Page content reads expose these Page references alongside Block, Database View,
+and Thread references, preserving presentation and occurrence counts for CLI and other consumers.
 Owning Page shells do not derive backlinks.
 The normalized edge records the syntactic occurrence independently of the
 target's current Page capability. If the same target Block is temporarily

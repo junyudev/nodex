@@ -10,6 +10,19 @@ retries retain the original identity and payload. An expired or uncertain older
 submission remains explicit recovery work and is never silently reissued as a
 new edit.
 
+## Reference lifecycle during saves
+
+Existing Block, Database View, and Thread references may outlive their targets.
+A save can retain, move within the Document, relabel, or remove such occurrences
+without requiring the target to remain available. Core compares the candidate
+with the current committed Document, using reference kind, source Block, target,
+and occurrence count. Genesis, added occurrences, and retargeted references
+must pass target validation; a caller's stale base is not retention evidence.
+A new View reference requires its View, Database Block, Database, and Data Source
+to belong to the same Library and remain undeleted.
+Retaining a reference never grants access to its target. Target resolution keeps
+its normal authorization and unavailable presentation.
+
 ## Connection and failure
 
 Each open document has one logical Main session. Main owns replacement physical
