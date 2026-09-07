@@ -4155,6 +4155,14 @@ export interface components {
             readonly sourceBlockId: string;
         };
         readonly LibraryContentReference: {
+            /** @enum {string} */
+            readonly kind: "page";
+            /** Format: int32 */
+            readonly occurrenceCount: number;
+            readonly presentation: components["schemas"]["LibraryPageReferencePresentation"];
+            readonly sourceBlockId: string;
+            readonly targetPageId: string;
+        } | {
             readonly displayHint?: string | null;
             /** @enum {string} */
             readonly kind: "block";

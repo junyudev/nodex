@@ -6062,6 +6062,7 @@ fn sqlite_now(connection: &rusqlite::Connection) -> Result<String, StoreError> {
 mod tests {
     mod asset_migration;
     mod recovery;
+    mod reference_lifecycle;
     use std::fs;
 
     use nodex_core_contracts::agent::{

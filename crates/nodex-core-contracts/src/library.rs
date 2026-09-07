@@ -2135,6 +2135,15 @@ pub struct LibraryAgentBlockTarget {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LibraryContentReference {
+    Page {
+        #[serde(rename = "sourceBlockId")]
+        source_block_id: String,
+        #[serde(rename = "targetPageId")]
+        target_page_id: String,
+        presentation: LibraryPageReferencePresentation,
+        #[serde(rename = "occurrenceCount")]
+        occurrence_count: u32,
+    },
     Block {
         #[serde(rename = "sourceBlockId")]
         source_block_id: String,

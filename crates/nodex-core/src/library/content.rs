@@ -2,12 +2,14 @@ use std::collections::HashSet;
 
 use nodex_core_contracts::library::{
     LibraryContentAssetReference, LibraryContentReference, LibraryPageAccessContext,
-    LibraryPageContent, LibraryReadValue, LibrarySearchHit, LibrarySearchSourceKind,
+    LibraryPageContent, LibraryPageReferencePresentation, LibraryReadValue, LibrarySearchHit,
+    LibrarySearchSourceKind,
 };
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter, types::Value as SqlValue};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
+use crate::domain::derived_records::{BlockDocumentReference, PageReferencePresentation};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::cursor;
@@ -116,12 +118,15 @@ pub(super) fn page_content(
     let body_nfm = require_content(row.nfm, "Page Nested Markdown")?;
     let plain_text = require_content(row.plain_text, "Page plain text")?;
     let preview = require_content(row.preview, "Page preview")?;
-    let references = parse_json_array::<LibraryContentReference>(
+    let references = parse_json_array::<BlockDocumentReference>(
         row.references_json,
         "Page references",
         MAX_DERIVED_JSON_BYTES,
         MAX_DERIVED_RECORDS,
-    )?;
+    )?
+    .into_iter()
+    .map(content_reference)
+    .collect();
     let asset_refs = parse_json_array::<LibraryContentAssetReference>(
         row.asset_refs_json,
         "Page asset references",
@@ -551,6 +556,55 @@ fn normalize_excerpt(value: &str) -> String {
         .join(" ")
 }
 
+// Decode storage through its owner and project every variant explicitly. A
+// new canonical reference kind must be handled before Library reads compile.
+fn content_reference(reference: BlockDocumentReference) -> LibraryContentReference {
+    match reference {
+        BlockDocumentReference::Page {
+            source_block_id,
+            target_page_id,
+            presentation,
+            occurrence_count,
+        } => LibraryContentReference::Page {
+            source_block_id,
+            target_page_id,
+            occurrence_count,
+            presentation: match presentation {
+                PageReferencePresentation::Mention => LibraryPageReferencePresentation::Mention,
+                PageReferencePresentation::ReferenceBlock => {
+                    LibraryPageReferencePresentation::ReferenceBlock
+                }
+                PageReferencePresentation::Link => LibraryPageReferencePresentation::Link,
+            },
+        },
+        BlockDocumentReference::Block {
+            source_block_id,
+            target_block_id,
+            display_hint,
+        } => LibraryContentReference::Block {
+            source_block_id,
+            target_block_id,
+            display_hint,
+        },
+        BlockDocumentReference::DatabaseView {
+            source_block_id,
+            database_view_id,
+            display_hint,
+        } => LibraryContentReference::DatabaseView {
+            source_block_id,
+            database_view_id,
+            display_hint,
+        },
+        BlockDocumentReference::Thread {
+            source_block_id,
+            target_thread_id,
+        } => LibraryContentReference::Thread {
+            source_block_id,
+            target_thread_id,
+        },
+    }
+}
+
 fn validate_identity(value: &str, label: &str) -> Result<(), StoreError> {
     if !value.is_empty() && value.len() <= MAX_IDENTITY_BYTES && value.trim() == value {
         return Ok(());
@@ -640,6 +694,35 @@ mod tests {
         assert_eq!(
             normalize_excerpt("A\u{2} match\u{3}\n here"),
             "A match here"
+        );
+    }
+
+    #[test]
+    fn projects_every_canonical_reference_kind_without_losing_page_occurrences() {
+        use crate::domain::derived_records::BlockDocumentReference;
+        let wire = json!([
+            { "kind": "page", "sourceBlockId": "source", "targetPageId": "page", "presentation": "mention", "occurrenceCount": 2 },
+            { "kind": "page", "sourceBlockId": "source", "targetPageId": "page", "presentation": "reference_block", "occurrenceCount": 1 },
+            { "kind": "page", "sourceBlockId": "source", "targetPageId": "page", "presentation": "link", "occurrenceCount": 3 },
+            { "kind": "block", "sourceBlockId": "source", "targetBlockId": "block", "displayHint": "Block" },
+            { "kind": "database_view", "sourceBlockId": "source", "databaseViewId": "view", "displayHint": "View" },
+            { "kind": "thread", "sourceBlockId": "source", "targetThreadId": "thread" }
+        ]);
+        let canonical = parse_json_array::<BlockDocumentReference>(
+            Some(wire.to_string()),
+            "references",
+            4096,
+            10,
+        )
+        .unwrap();
+        let projected = canonical
+            .into_iter()
+            .map(super::content_reference)
+            .collect::<Vec<_>>();
+        assert_eq!(serde_json::to_value(&projected).unwrap(), wire);
+        assert_eq!(
+            serde_json::from_value::<Vec<LibraryContentReference>>(wire).unwrap(),
+            projected
         );
     }
 
