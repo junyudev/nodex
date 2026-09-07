@@ -38,11 +38,17 @@ export const YSurfaceOriginExtension = createExtension(
       key: pluginKey,
       state: {
         init: () => false,
-        apply: (transaction) => {
+        apply: (transaction, previous) => {
           const metadata = transaction.getMeta(ySyncPluginKey) as
             | { readonly isChangeOrigin?: boolean }
             | undefined;
-          return transaction.docChanged && metadata?.isChangeOrigin !== true;
+          if (transaction.docChanged) return metadata?.isChangeOrigin !== true;
+          // A view update follows the entire appended-transaction batch. A
+          // selection-only append (such as selecting dropped Blocks) must not
+          // erase the writer of the document edit that YSync will publish.
+          return (
+            transaction.getMeta("appendedTransaction") !== undefined && previous
+          );
         },
       },
       view: (view) => ({

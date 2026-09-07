@@ -56,6 +56,14 @@ are siblings of their text element, never descendants of a `<p>` or heading
 element. Checkbox rows keep their control and inline content in one row while
 their child group renders below it.
 
+Mounted Block controls and subscriptions belong to the Block's stable ID.
+Reordering or replacing Blocks must not transfer disclosure state, empty-child
+actions, checkbox actions, or embedded views to a different Block, even when
+their content is identical. An expanded empty toggle shows its add-child action
+under its own header; a toggle with children never shows that action. This
+remains true during selection changes, synchronized placement, and history
+replay without reloading the Page.
+
 ## Persistence invariant
 
 Current Page Documents use `nodex.page@3`; Synced Block Documents use
