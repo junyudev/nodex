@@ -98,7 +98,7 @@ Read `docs/ARCHITECTURE.md` first for system boundaries and dependency flow, the
 Use these docs as the source of truth:
 
 - System ownership, dependency directions, critical cross-runtime flows, and system-wide invariants: `docs/ARCHITECTURE.md`
-- Execution-plan format and requirements: `docs/PLANS.md`
+- Execution plans: default to `notes.local/living-plans/`; read `docs/PLANS.md` for format and requirements.
 - Cross-feature renderer construction, state-owner selection, shared UI/editor primitives, and Storybook conventions: `docs/FRONTEND.md`
 - UI design guidance for agent-built surfaces: `.agents/skills/general-design-guidelines/SKILL.md`
 - Product principles and tradeoffs: `docs/PRODUCT_SENSE.md`
