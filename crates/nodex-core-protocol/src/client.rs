@@ -367,6 +367,21 @@ impl CoreClient {
         })
     }
 
+    pub fn query_read(
+        &self,
+        project_id: Option<&str>,
+        read: nodex_core_contracts::query::QueryRead,
+    ) -> Result<crate::QueryReadResponse, ClientError> {
+        self.connected_request(
+            "/core/v1/modules/query/read",
+            &crate::QueryReadRequest(nodex_core_contracts::ModuleReadRequest {
+                contract_version: nodex_core_contracts::QUERY_CONTRACT_VERSION,
+                read,
+            }),
+            ScopeHeaders::project(project_id),
+        )
+    }
+
     pub fn database_read(
         &self,
         project_id: Option<&str>,

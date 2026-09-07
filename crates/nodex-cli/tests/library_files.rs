@@ -169,9 +169,17 @@ fn native_cli_shares_files_replaces_only_one_relation_and_replays_exact_writes()
     );
     let file_id = imported["file_mutation"]["file_id"].as_str().unwrap();
     assert_eq!(imported["file_mutation"]["revision"], 1);
-    let metadata = success(&home, &["file", "info", file_id]);
-    assert_eq!(metadata["revision"], 1);
-    assert_eq!(metadata["head_version"], 1);
+    let metadata = success(
+        &home,
+        &[
+            "sql",
+            "query",
+            "SELECT revision,head_version FROM files WHERE file_id=:id",
+            "--param",
+            &format!("id={}", serde_json::to_string(file_id).unwrap()),
+        ],
+    );
+    assert_eq!(metadata["rows"], serde_json::json!([[1, 1]]));
     for (page, path, key) in [(&a, "original.txt", "add-a"), (&b, "other.txt", "add-b")] {
         success(
             &home,

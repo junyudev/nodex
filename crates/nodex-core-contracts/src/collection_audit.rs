@@ -65,11 +65,16 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
     }
 }
 
-fn database_policy(read: &DatabaseRead) -> ReadBudgetPolicy {
+fn query_policy(read: &crate::query::QueryRead) -> ReadBudgetPolicy {
     match read {
-        DatabaseRead::SqlSchema { .. } | DatabaseRead::SqlQuery { .. } => {
+        crate::query::QueryRead::Schema { .. } | crate::query::QueryRead::Query { .. } => {
             ReadBudgetPolicy::BoundedQuery
         }
+    }
+}
+
+fn database_policy(read: &DatabaseRead) -> ReadBudgetPolicy {
+    match read {
         DatabaseRead::CatalogWindow { .. }
         | DatabaseRead::DataSourceWindow { .. }
         | DatabaseRead::PropertyWindow { .. }
@@ -186,6 +191,7 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         | LibraryRead::FilePresentation { .. }
         | LibraryRead::ResolvePageFile { .. }
         | LibraryRead::PageDraftProjection { .. }
+        | LibraryRead::PreparePageOperation { .. }
         | LibraryRead::AcquireSearchSnapshot { .. }
         | LibraryRead::ReleaseSearchSnapshot { .. }
         | LibraryRead::AgentBlockTarget { .. }
@@ -201,6 +207,13 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
 
 #[test]
 fn every_read_variant_has_an_explicit_budget_policy() {
+    assert_eq!(
+        query_policy(&crate::query::QueryRead::Schema {
+            scope: Default::default(),
+            relation: None
+        }),
+        ReadBudgetPolicy::BoundedQuery
+    );
     assert_eq!(
         database_policy(&DatabaseRead::CatalogWindow {
             window: Default::default(),

@@ -1086,6 +1086,7 @@ dependencies = [
  "nodex-core-contracts",
  "nodex-core-protocol",
  "nodex-page-search-kernel",
+ "nodex-sqlite-query",
  "nodex-store-format",
  "regex",
  "rrule",
@@ -1094,6 +1095,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "similar",
  "tempfile",
  "thiserror",
  "tracing",
@@ -1164,6 +1166,13 @@ dependencies = [
  "unicode-normalization",
  "unicode-segmentation",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "nodex-sqlite-query"
+version = "0.2.2"
+dependencies = [
+ "rusqlite",
 ]
 
 [[package]]

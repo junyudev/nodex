@@ -49,6 +49,7 @@ for (const moduleDirectory of [
   "database",
   "document",
   "library",
+  "query",
   "workspace",
 ]) {
   const directory = path.join(repositoryRoot, "crates/nodex-core/src", moduleDirectory);
@@ -71,6 +72,7 @@ for (const [file, contractVersion] of [
   ["crates/nodex-core/src/database/mod.rs", "DATABASE_CONTRACT_VERSION"],
   ["crates/nodex-core/src/document/module.rs", "OWNED_DOCUMENT_CONTRACT_VERSION"],
   ["crates/nodex-core/src/library/mod.rs", "LIBRARY_CONTRACT_VERSION"],
+  ["crates/nodex-core/src/query/mod.rs", "QUERY_CONTRACT_VERSION"],
   ["crates/nodex-core/src/workspace/mod.rs", "PROJECT_WORKSPACE_CONTRACT_VERSION"],
 ] as const) {
   assertPresent(
@@ -196,6 +198,7 @@ const expectedRoutes = new Set([
   "/core/v1/files/blobs/prepare",
   "/core/v1/files/blobs/{file_id}",
   "/core/v1/requests/cancel",
+  "/core/v1/modules/query/read",
   "/core/v1/threads/{thread_id}/blobs/{content_hash}",
   ...["administration", "automation", "database", "document", "library", "workspace"].flatMap(
     (module) => ["apply", "read"].map((operation) => `/core/v1/modules/${module}/${operation}`),
@@ -224,9 +227,9 @@ const schemas = openApi.components?.schemas ?? {};
 const moduleRequestSchemas = Object.entries(schemas).filter(([name]) =>
   /^Module(?:Read|Apply)Request_/.test(name),
 );
-if (moduleRequestSchemas.length !== 12) {
+if (moduleRequestSchemas.length !== 13) {
   failures.push(
-    `generated Core protocol must expose 12 typed Module request schemas, found ${moduleRequestSchemas.length}`,
+    `generated Core protocol must expose 13 typed Module request schemas, found ${moduleRequestSchemas.length}`,
   );
 }
 for (const [name, schema] of moduleRequestSchemas) {

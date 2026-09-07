@@ -216,6 +216,7 @@ struct ServerState {
     library_id: String,
     library: LibraryModule,
     database: DatabaseModule,
+    query: nodex_core::query::QueryModule,
     workspace: ProjectWorkspaceModule,
     automation: AutomationModule,
     administration: StoreAdministrationModule,
@@ -1135,6 +1136,7 @@ fn module_storage_name(module: ModuleName) -> &'static str {
         ModuleName::ProjectWorkspace => "project_workspace",
         ModuleName::Automation => "automation",
         ModuleName::StoreAdministration => "store_administration",
+        ModuleName::Query => "query",
     }
 }
 
@@ -1373,6 +1375,34 @@ async fn library_apply(
         })
         .await;
     Json(LibraryApplyResponse(response_envelope(response)))
+}
+
+async fn query_read(
+    State(state): State<Arc<ServerState>>,
+    Extension(bound): Extension<BoundConnection>,
+    headers: HeaderMap,
+    Json(nodex_core_protocol::QueryReadRequest(request)): Json<
+        nodex_core_protocol::QueryReadRequest,
+    >,
+) -> Json<nodex_core_protocol::QueryReadResponse> {
+    let context = match database_context(&state, &headers, &bound) {
+        Ok(context) => context,
+        Err(error) => {
+            return Json(nodex_core_protocol::QueryReadResponse(response_envelope(
+                Err(error),
+            )));
+        }
+    };
+    let request_state = Arc::clone(&state);
+    let response = state
+        .request_executor
+        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
+            request_state.query.read(&context, request)
+        })
+        .await;
+    Json(nodex_core_protocol::QueryReadResponse(response_envelope(
+        response,
+    )))
 }
 
 async fn database_read(
@@ -2794,6 +2824,7 @@ fn router(state: Arc<ServerState>) -> Router {
         .route("/core/v1/modules/library/read", post(library_read))
         .route("/core/v1/modules/library/apply", post(library_apply))
         .route("/core/v1/modules/database/read", post(database_read))
+        .route("/core/v1/modules/query/read", post(query_read))
         .route("/core/v1/modules/database/apply", post(database_apply))
         .route("/core/v1/modules/workspace/read", post(workspace_read))
         .route("/core/v1/modules/workspace/apply", post(workspace_apply))
@@ -3648,6 +3679,9 @@ pub async fn run_with_selection(
     let replacement_library_operations = library.prepared_agent_operation_registry();
     let replacement_search_snapshots = library.search_snapshot_lease_registry();
     let database = DatabaseModule::new(&identity.profile_id, &identity.library_id, &store);
+    let query =
+        nodex_core::query::QueryModule::new(&identity.profile_id, &identity.library_id, &store)
+            .with_library(&library);
     let automation = AutomationModule::new(&identity.profile_id, &identity.library_id, &store);
     let document = OwnedDocumentModule::new(
         identity.profile_id.clone(),
@@ -3735,6 +3769,7 @@ pub async fn run_with_selection(
         library_id: identity.library_id,
         library,
         database,
+        query,
         workspace,
         automation,
         administration,

@@ -8,6 +8,7 @@ members = [
   "crates/nodex-page-search-kernel",
   "crates/nodex-core-server",
   "crates/nodex-store-format",
+  "crates/nodex-sqlite-query",
 ]
 resolver = "3"
 
@@ -23,6 +24,7 @@ nodex-core-contracts = { path = "crates/nodex-core-contracts" }
 nodex-core-protocol = { path = "crates/nodex-core-protocol" }
 nodex-store-format = { path = "crates/nodex-store-format" }
 nodex-page-search-kernel = { path = "crates/nodex-page-search-kernel" }
+nodex-sqlite-query = { path = "crates/nodex-sqlite-query" }
 async-stream = "0.3.6"
 axum = "=0.8.4"
 base64 = "0.22.1"
@@ -48,6 +50,7 @@ rusqlite = { version = "=0.40.1", default-features = false, features = [
   "hooks",
   "limits",
   "trace",
+  "vtab",
 ] }
 rustix = { version = "=1.1.4", features = ["fs", "process"] }
 serde = { version = "1.0.228", features = ["derive"] }

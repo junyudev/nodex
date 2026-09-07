@@ -105,6 +105,7 @@ fn read_subject(
         | LibraryRead::ResolvePageFile { page_id, .. }
         | LibraryRead::PageContent { page_id }
         | LibraryRead::PageProjectionFile { page_id, .. }
+        | LibraryRead::PreparePageOperation { page_id, .. }
         | LibraryRead::PageDraftProjection { page_id } => Some(ResourceKey::Page {
             page_id: page_id.clone(),
         }),

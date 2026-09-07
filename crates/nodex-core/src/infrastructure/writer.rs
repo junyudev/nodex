@@ -924,6 +924,29 @@ pub struct StoreReaders {
 }
 
 impl StoreReaders {
+    /// Own one pooled, read-only transaction for synchronous query providers.
+    /// The final owner rolls back and returns the connection to the pool.
+    pub(crate) fn snapshot(&self) -> Result<Arc<StoreReadSnapshot>, StoreError> {
+        let (deadline, cancellation) =
+            query_control(DEFAULT_QUERY_BUDGET, QueryCancellation::new());
+        let (pool, lease) = self.control.acquire_reader()?;
+        let checkout_phase = enter_request_execution_phase(RequestExecutionPhase::ReaderCheckout);
+        let connection = pool.checkout(deadline, &cancellation)?;
+        drop(checkout_phase);
+        let snapshot = Arc::new(StoreReadSnapshot {
+            connection: Mutex::new(Some(connection)),
+            pool,
+            _lease: lease,
+            deadline,
+            cancellation,
+        });
+        snapshot.read(|connection| {
+            connection.execute_batch("BEGIN DEFERRED")?;
+            Ok(())
+        })?;
+        Ok(snapshot)
+    }
+
     pub fn new(path: &Path, max_connections: usize) -> Result<Self, StoreError> {
         Ok(Self {
             control: RuntimeControl::new(path, None, Some(max_connections))?,
@@ -952,6 +975,52 @@ impl StoreReaders {
         operation: impl FnOnce(&Connection) -> Result<T, StoreError>,
     ) -> Result<T, StoreError> {
         self.read(DEFAULT_QUERY_BUDGET, &QueryCancellation::new(), operation)
+    }
+}
+
+/// A shared ownership handle, not a second connection or a resumable public snapshot.
+pub(crate) struct StoreReadSnapshot {
+    connection: Mutex<Option<Connection>>,
+    pool: Arc<ReadPoolInner>,
+    _lease: RuntimeLease,
+    pub(crate) deadline: Instant,
+    pub(crate) cancellation: QueryCancellation,
+}
+
+impl StoreReadSnapshot {
+    pub(crate) fn read<T>(
+        &self,
+        operation: impl FnOnce(&Connection) -> Result<T, StoreError>,
+    ) -> Result<T, StoreError> {
+        let connection = self.connection.lock().map_err(|_| poisoned_pool())?;
+        let connection = connection.as_ref().ok_or_else(reader_closed)?;
+        let _phase = enter_request_execution_phase(RequestExecutionPhase::ReaderQuery);
+        with_query_deadline(connection, self.deadline, &self.cancellation, operation)
+    }
+}
+
+impl Drop for StoreReadSnapshot {
+    fn drop(&mut self) {
+        let connection = self
+            .connection
+            .get_mut()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some(connection) = connection.take() {
+            let _ = connection.execute_batch("ROLLBACK");
+            if connection.is_autocommit() {
+                self.pool.checkin(connection);
+            } else {
+                // A failed rollback must never lend the old transaction to a new request.
+                drop(connection);
+                let mut state = self
+                    .pool
+                    .state
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                state.total = state.total.saturating_sub(1);
+                self.pool.available.notify_one();
+            }
+        }
     }
 }
 
@@ -1034,6 +1103,63 @@ mod tests {
     use crate::infrastructure::sqlite::with_immediate_transaction;
 
     use super::*;
+
+    #[test]
+    fn dropped_snapshot_releases_its_transaction_and_cancelled_reader() {
+        let directory = tempdir().expect("store");
+        let path = directory.path().join("nodex.db");
+        let runtime = StoreRuntime::start(&path, 2, 1).expect("single-reader runtime");
+        runtime.writer().call(|connection| {
+            connection.execute_batch("CREATE TABLE snapshot_probe(value INTEGER); INSERT INTO snapshot_probe VALUES(1)")?;
+            Ok(())
+        }).unwrap();
+        let readers = runtime.readers();
+        let snapshot = readers.snapshot().unwrap();
+        let observed = snapshot
+            .read(|connection| {
+                Ok(
+                    connection.query_row("SELECT value FROM snapshot_probe", [], |row| {
+                        row.get::<_, i64>(0)
+                    })?,
+                )
+            })
+            .unwrap();
+        assert_eq!(observed, 1);
+        runtime
+            .writer()
+            .call(|connection| {
+                connection.execute("UPDATE snapshot_probe SET value=2", [])?;
+                Ok(())
+            })
+            .unwrap();
+        let still_observed = snapshot
+            .read(|connection| {
+                Ok(
+                    connection.query_row("SELECT value FROM snapshot_probe", [], |row| {
+                        row.get::<_, i64>(0)
+                    })?,
+                )
+            })
+            .unwrap();
+        assert_eq!(still_observed, 1);
+        snapshot.cancellation.cancel();
+        assert_eq!(
+            snapshot.read(|_| Ok(())).unwrap_err().code,
+            StoreErrorCode::QueryCancelled
+        );
+        drop(snapshot);
+        let current = readers
+            .read_default(|connection| {
+                assert!(connection.is_autocommit());
+                Ok(
+                    connection.query_row("SELECT value FROM snapshot_probe", [], |row| {
+                        row.get::<_, i64>(0)
+                    })?,
+                )
+            })
+            .unwrap();
+        assert_eq!(current, 2);
+    }
 
     fn queued_test_job(class: RequestExecutionClass, enqueued_at: Instant) -> QueuedWriterJob {
         QueuedWriterJob {

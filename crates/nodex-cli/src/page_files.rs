@@ -24,12 +24,6 @@ pub(crate) fn execute(
     let resolve_page =
         |selector: &str| resolve_page_selector(client, &session.project_id, selector);
     match command {
-        PageFileCommand::List(args) => session.query(LibraryRead::PageFileInventory {
-            page_id: resolve_page(&args.page)?,
-            query: args.query,
-            cursor: args.pagination.after,
-            limit: args.pagination.limit,
-        }),
         PageFileCommand::Read(args) => {
             let page_id = resolve_page(&args.page)?;
             let selector = match (args.file_id, args.path) {

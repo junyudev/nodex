@@ -14,8 +14,9 @@ use crate::skills::SkillAgent;
     arg_required_else_help = true
 )]
 pub struct Cli {
-    #[arg(long, global = true, value_name = "NAME_OR_ID")]
-    pub profile: Option<String>,
+    /// Require the connected Core Profile identity; does not select a home.
+    #[arg(long, global = true, value_name = "ID")]
+    pub expect_profile: Option<String>,
     #[arg(long, global = true, value_name = "UUID_OR_UNIQUE_NAME")]
     pub project: Option<String>,
     #[arg(long, global = true, value_name = "UUID_OR_UNIQUE_NAME")]
@@ -77,8 +78,7 @@ pub enum Command {
     Rg(RgArgs),
     Patch(PatchArgs),
     Open(OpenArgs),
-    /// Discover saved Views and query their configured results.
-    View(ViewArgs),
+    /// Prepare and perform semantic Page operations.
     Page(PageArgs),
     File(FileArgs),
     Block(BlockArgs),
@@ -180,22 +180,22 @@ pub struct ReadArgs {
     pub page: String,
     #[arg(long)]
     pub meta: bool,
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct PagePrepareArgs {
+    #[arg(value_name = "PAGE_SELECTOR")]
+    pub page: String,
     #[arg(long, value_enum)]
-    pub prepare: Option<PrepareKind>,
+    pub operation: PrepareOperation,
     #[arg(long, value_name = "VIEW_ID")]
     pub view: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
-pub enum PrepareKind {
-    #[value(name = "title.set")]
-    TitleSet,
-    #[value(name = "document.replace")]
-    DocumentReplace,
-    #[value(name = "page.delete")]
-    PageDelete,
-    #[value(name = "page.move")]
-    PageMove,
+pub enum PrepareOperation {
+    Move,
+    Delete,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
@@ -233,6 +233,8 @@ pub struct PageArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum PageCommand {
+    /// Prepare operation-specific conditions for a move or deletion.
+    Prepare(PagePrepareArgs),
     Create(PageCreateArgs),
     CreateBatch(crate::page_batch::PageCreateBatchArgs),
     Insert(PageInsertArgs),
@@ -253,10 +255,6 @@ pub struct FileArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum FileCommand {
-    /// List independently authorized Library Files.
-    List(FileListArgs),
-    /// Inspect metadata and write fences for one independently authorized File.
-    Info(FileIdentityArgs),
     /// Import bytes as an independent Library File.
     Import(FileImportArgs),
     /// Read exact File bytes through direct File access.
@@ -267,7 +265,6 @@ pub enum FileCommand {
     Replace(FileReplaceArgs),
     /// Create a separate File from an exact retained version.
     Fork(FileForkArgs),
-    Versions(FileWindowArgs),
     /// Publish a retained version as a new content head.
     Restore(FileRestoreArgs),
     /// Trash an unused File, retaining its versions.
@@ -275,25 +272,6 @@ pub enum FileCommand {
     Untrash(FileWriteArgs),
     /// Permanently remove a trashed File with no retention roots.
     Purge(FileWriteArgs),
-    Usages(FileWindowArgs),
-}
-
-#[derive(Clone, Debug, Args, PartialEq)]
-pub struct FilePaginationArgs {
-    #[arg(long, value_name = "OPAQUE_CURSOR")]
-    pub after: Option<String>,
-    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=200))]
-    pub limit: Option<u32>,
-}
-
-#[derive(Clone, Debug, Args, PartialEq)]
-pub struct FileListArgs {
-    #[arg(long)]
-    pub query: Option<String>,
-    #[arg(long)]
-    pub trashed: bool,
-    #[command(flatten)]
-    pub pagination: FilePaginationArgs,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
@@ -308,11 +286,6 @@ pub struct FileImportArgs {
     pub turn_id: Option<String>,
     #[command(flatten)]
     pub mutation: MutationArgs,
-}
-
-#[derive(Clone, Debug, Args, PartialEq)]
-pub struct FileIdentityArgs {
-    pub file_id: String,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
@@ -370,13 +343,6 @@ pub struct FileForkArgs {
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
-pub struct FileWindowArgs {
-    pub file_id: String,
-    #[command(flatten)]
-    pub pagination: FilePaginationArgs,
-}
-
-#[derive(Clone, Debug, Args, PartialEq)]
 pub struct FileRestoreArgs {
     #[command(flatten)]
     pub write: FileWriteArgs,
@@ -394,8 +360,6 @@ pub struct PageFileArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum PageFileCommand {
-    /// List Page entries and body uses, deduplicated by File ID.
-    List(PageFileListArgs),
     /// Read current bytes by an explicit File ID or Page path.
     Read(PageFileReadArgs),
     /// Import at a path; --replace-entry replaces only this Page relation.
@@ -411,15 +375,6 @@ pub enum PageFileCommand {
     /// Move a Page relation without changing File ownership or content.
     Move(PageFileTransferArgs),
     Copy(PageFileTransferArgs),
-}
-
-#[derive(Clone, Debug, Args, PartialEq)]
-pub struct PageFileListArgs {
-    pub page: String,
-    #[arg(long)]
-    pub query: Option<String>,
-    #[command(flatten)]
-    pub pagination: FilePaginationArgs,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
@@ -628,42 +583,6 @@ pub struct MutationArgs {
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
-pub struct ViewArgs {
-    #[command(subcommand)]
-    pub command: ViewCommand,
-}
-
-#[derive(Clone, Debug, PartialEq, Subcommand)]
-pub enum ViewCommand {
-    /// List Views in the Project's default Database.
-    List {
-        #[command(flatten)]
-        window: crate::data_source::WindowArgs,
-    },
-    /// Inspect a View's complete configuration; defaults to the Project's default View.
-    Describe { view: Option<String> },
-    /// Query the configured View, optionally selecting a named group.
-    Query(ViewQueryArgs),
-}
-
-#[derive(Clone, Debug, Args, PartialEq)]
-pub struct ViewQueryArgs {
-    #[arg(value_name = "VIEW_SELECTOR")]
-    pub view: Option<String>,
-    /// Include this Property by ID or unique name (repeatable).
-    #[arg(long = "property")]
-    pub projection_property_ids: Vec<String>,
-    #[arg(long, value_name = "STABLE_GROUP_KEY", conflicts_with = "unassigned")]
-    pub group: Option<String>,
-    #[arg(long, conflicts_with = "group")]
-    pub unassigned: bool,
-    #[arg(long, value_name = "OPAQUE_CURSOR")]
-    pub after: Option<String>,
-    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=200))]
-    pub limit: Option<u32>,
-}
-
-#[derive(Clone, Debug, Args, PartialEq)]
 pub struct BlockArgs {
     #[command(subcommand)]
     pub command: BlockCommand,
@@ -801,6 +720,30 @@ pub enum ServiceCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn page_prepare_selects_an_explicit_semantic_operation() {
+        let parsed = Cli::try_parse_from([
+            "nodex",
+            "page",
+            "prepare",
+            "page-id",
+            "--operation",
+            "move",
+            "--view",
+            "view-id",
+        ])
+        .unwrap();
+        let Command::Page(PageArgs {
+            command: PageCommand::Prepare(args),
+        }) = parsed.command
+        else {
+            panic!("Page prepare")
+        };
+        assert_eq!(args.operation, PrepareOperation::Move);
+        assert_eq!(args.view.as_deref(), Some("view-id"));
+        assert!(Cli::try_parse_from(["nodex", "page", "prepare", "page-id"]).is_err());
+    }
 
     #[test]
     fn parses_global_scope_and_nested_page_command() {
@@ -1017,48 +960,6 @@ mod tests {
     }
 
     #[test]
-    fn view_query_keeps_group_scope_and_paging_bounded() {
-        let cli = Cli::try_parse_from([
-            "nodex",
-            "--json",
-            "view",
-            "query",
-            "@view-1",
-            "--group",
-            "in-progress",
-            "--limit",
-            "200",
-        ])
-        .expect("saved View query");
-        let Command::View(ViewArgs {
-            command: ViewCommand::Query(arguments),
-        }) = cli.command
-        else {
-            panic!("expected View query")
-        };
-        assert_eq!(arguments.view.as_deref(), Some("@view-1"));
-        assert_eq!(arguments.group.as_deref(), Some("in-progress"));
-        assert_eq!(arguments.limit, Some(200));
-
-        let conflict = Cli::try_parse_from([
-            "nodex",
-            "view",
-            "query",
-            "@view-1",
-            "--group",
-            "triage",
-            "--unassigned",
-        ])
-        .expect_err("group scopes are exclusive");
-        assert_eq!(conflict.kind(), clap::error::ErrorKind::ArgumentConflict);
-
-        let unbounded =
-            Cli::try_parse_from(["nodex", "view", "query", "@view-1", "--limit", "201"])
-                .expect_err("View windows are bounded");
-        assert_eq!(unbounded.kind(), clap::error::ErrorKind::ValueValidation);
-    }
-
-    #[test]
     fn file_commands_require_explicit_write_fences_and_unambiguous_selectors() {
         let put = Cli::try_parse_from([
             "nodex",
@@ -1139,9 +1040,6 @@ mod tests {
             Cli::try_parse_from(["nodex", "page", "file", "read", "@page-1", "--path", "x"])
                 .is_ok()
         );
-        let unbounded =
-            Cli::try_parse_from(["nodex", "file", "list", "--limit", "201"]).unwrap_err();
-        assert_eq!(unbounded.kind(), clap::error::ErrorKind::ValueValidation);
     }
 
     #[test]

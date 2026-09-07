@@ -423,6 +423,7 @@ pub(super) fn reverse(
             ));
         }
         edits.push(DatabasePropertyValueMutation {
+            expected_membership_revision: None,
             address: address.clone(),
             edit: DatabasePropertyValueEdit::Replace {
                 expected_value_revision: revision,

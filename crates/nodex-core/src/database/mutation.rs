@@ -2456,6 +2456,42 @@ fn edit_property_value(
     effects: &mut MutationEffects,
     library_scope: bool,
 ) -> Result<(), StoreError> {
+    if let Some(expected) = input.expected_membership_revision {
+        if expected < 1 {
+            return Err(invalid("Observed membership revision must be positive"));
+        }
+        let source = require_source(connection, library_id, &input.address.data_source_id)?;
+        authorize_write(
+            connection,
+            project_id,
+            &source.database_id,
+            DatabaseWriteAction::Write,
+            library_scope,
+        )?;
+        let revision = connection
+            .query_row(
+                "SELECT membership.revision FROM data_source_page_memberships membership \
+             JOIN pages page ON page.block_id = membership.page_block_id \
+               AND page.parent_kind = 'data_source' AND page.parent_id = membership.data_source_id \
+             JOIN blocks block ON block.id = page.block_id AND block.library_id = page.library_id \
+               AND block.lifecycle = 'active' \
+             WHERE membership.page_block_id = ?1 AND membership.data_source_id = ?2 \
+               AND membership.removed_at IS NULL AND page.library_id = ?3",
+                params![
+                    input.address.page_id,
+                    input.address.data_source_id,
+                    library_id
+                ],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .unwrap_or(0);
+        require_revision(
+            expected,
+            revision,
+            "Page active membership revision changed",
+        )?;
+    }
     match &input.edit {
         DatabasePropertyValueEdit::Replace {
             expected_value_revision,

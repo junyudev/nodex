@@ -12,13 +12,31 @@ not carry a verified Codex Turn identity. Internal dynamic tools use trusted
 host Turn authorization; the two authorization paths are not interchangeable.
 Neither exposes SQL or private storage as a content-editing interface.
 
-The host supplies an executable/Skill and pinned Profile/Project prefix for each
-eligible Turn, including resumed tasks. Automatic connection is limited to
-local, Project-bound, non-Plan tasks using the verified built-in Full access
-mode and an available CLI/Skill build. Missing context, remote execution, or
-restricted modes produce explicit unavailable context, replacing old connection
-instructions. This is connection availability, not an additional permission
-grant. CLI access remains checked by Core for every operation.
+The host places a managed `nodex` command in the Agent shell PATH. Each eligible
+Turn, including a resumed task, refreshes its own binding to the current CLI
+build, Profile and Project. Agents use ordinary `nodex` commands without
+repeating paths or connection flags, even after changing directories. The
+directory comes from host configuration; the expected Profile identity comes
+exclusively from the connected Core authority. The entrypoint pins `NODEX_HOME`,
+`--expect-profile`, and `--project`; startup paths are never identities.
+
+Bindings are task-local and replaced atomically. The runtime-provided task ID
+selects the binding; subagents inherit the root session binding unless the host
+has supplied an explicit child binding. Explicit unavailable child context does
+not fall back to the parent. Runtime startup discards previous bindings, and the
+shell policy and Agent-local Bash/Zsh startup adapters preserve the entrypoint
+across login shells and snapshots, including when user startup files prepend
+another installed CLI to PATH. The adapters load the original startup files
+and then restore the managed command; they do not edit global shell files. The host
+supplies the bundled official Skill without requiring a workspace-local copy.
+
+Automatic connection is limited to local, Project-bound, non-Plan tasks using
+the verified built-in Full access mode and an available CLI/Skill build. Missing
+context, remote execution, or restricted modes replace both old connection
+instructions and the task's executable binding with unavailable state. This is
+connection availability, not an additional permission grant: shell identity and
+PATH are mutable, and unrestricted shell access is not a security sandbox.
+CLI access remains checked by Core for every operation.
 
 `nodex_app` is an experimental, default-off interface controlled by the
 `nodex-dynamic-tools` development feature. The same startup setting gates new
@@ -51,10 +69,27 @@ Agents may discover and discuss a Page through its key, but every structured
 `pageId`/`pageIds` mutation input remains UUID-only: search resolves the key and
 the write reuses the returned canonical identity.
 
-Nested Markdown is the default bulk-content representation; stable Block
-operations are the identity-sensitive path. Ownership never hides in Markdown:
-create, move, duplicate, and protected deletion are typed semantic operations.
-Exact syntax is documented in [Nested Markdown](../references/nested-markdown-spec.md).
+Nested Markdown is the default bulk-content representation. Exact body patches
+retain unchanged Blocks and their live collaborative nodes. One-to-one content
+changes update the existing Block identity; repeated text is correlated by source
+position within the matched patch, not by a document-wide content lookup.
+Unchanged properties and child relationships omitted or normalized by NFM remain
+with the original Block. A one-line edit therefore reports the edited Block as
+updated, with no created or deleted Blocks.
+
+Structural patches retain surviving positional matches and allocate identities
+for new or ambiguous split/merge content. They never silently fall back to
+whole-body replacement. A projection that cannot express a change without
+ambiguously modifying existing Blocks fails before commit and requires explicit
+Block operations. Alignment work and the compiled structural operation count are
+bounded; large rewrites use smaller patches or explicit whole-body replacement.
+Whole-body replacement has its own identity semantics and is not a substitute
+for an unsuccessful precise edit.
+
+Stable Block operations remain the explicit identity-sensitive structural path.
+Ownership never hides in Markdown: create, move, duplicate, and protected deletion
+are typed semantic operations. Exact syntax is documented in
+[Nested Markdown](../references/nested-markdown-spec.md).
 
 Tool rows identify the visible intent and result and retain expandable exact
 arguments/output plus raw app-server evidence. Historical calls remain readable

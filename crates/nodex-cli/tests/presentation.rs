@@ -99,3 +99,23 @@ fn real_terminal_defaults_to_text_and_json_can_override_it() {
         }
     }
 }
+
+#[test]
+fn raw_sql_rejects_explicit_json_before_starting_core() {
+    for arguments in [
+        vec!["--json", "sql", "query", "SELECT 'body'", "--raw"],
+        vec![
+            "--output-format=json",
+            "sql",
+            "query",
+            "SELECT 'body'",
+            "--raw",
+        ],
+    ] {
+        let output = invoke(&arguments);
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["code"], "INVALID_INPUT");
+    }
+}

@@ -38,6 +38,7 @@ struct CommandMetadata {
 const READ_ERRORS: &[&str] = &[
     "PROJECT_NOT_FOUND",
     "PROJECT_AMBIGUOUS",
+    "PROFILE_MISMATCH",
     "SCOPE_NOT_FOUND",
     "SCOPE_UNAUTHORIZED",
     "CORE_UNAVAILABLE",
@@ -46,6 +47,7 @@ const READ_ERRORS: &[&str] = &[
 const WRITE_ERRORS: &[&str] = &[
     "PROJECT_NOT_FOUND",
     "PROJECT_AMBIGUOUS",
+    "PROFILE_MISMATCH",
     "SCOPE_NOT_FOUND",
     "SCOPE_UNAUTHORIZED",
     "ETAG_CONFLICT",
@@ -56,6 +58,7 @@ const WRITE_ERRORS: &[&str] = &[
 const FILE_ERRORS: &[&str] = &[
     "PROJECT_NOT_FOUND",
     "PROJECT_AMBIGUOUS",
+    "PROFILE_MISMATCH",
     "SCOPE_NOT_FOUND",
     "SCOPE_UNAUTHORIZED",
     "ETAG_CONFLICT",
@@ -69,6 +72,7 @@ const ETAG_AND_IDEMPOTENCY_VALIDATORS: &[&str] = &["narrow_etag", "idempotency_k
 const OPEN_ERRORS: &[&str] = &[
     "PROJECT_NOT_FOUND",
     "PROJECT_AMBIGUOUS",
+    "PROFILE_MISMATCH",
     "SCOPE_NOT_FOUND",
     "SCOPE_UNAUTHORIZED",
     "CORE_UNAVAILABLE",
@@ -146,52 +150,6 @@ const COMMANDS: &[CommandMetadata] = &[
         example_argv: &["search", "planning"],
     },
     CommandMetadata {
-        path: &["data-source", "list"],
-        capability: "dataSource",
-        effect: CommandEffect::Read,
-        validators: &[],
-        result: "data_source_window",
-        errors: READ_ERRORS,
-        example: "nodex data-source list --database database-id",
-        example_argv: &["data-source", "list", "--database", "database-id"],
-    },
-    CommandMetadata {
-        path: &["data-source", "describe"],
-        capability: "dataSource",
-        effect: CommandEffect::Read,
-        validators: &[],
-        result: "data_source_description",
-        errors: READ_ERRORS,
-        example: "nodex data-source describe data-source-id",
-        example_argv: &["data-source", "describe", "data-source-id"],
-    },
-    CommandMetadata {
-        path: &["data-source", "options"],
-        capability: "dataSource",
-        effect: CommandEffect::Read,
-        validators: &[],
-        result: "property_option_window",
-        errors: READ_ERRORS,
-        example: "nodex data-source options data-source-id --property property-id",
-        example_argv: &[
-            "data-source",
-            "options",
-            "data-source-id",
-            "--property",
-            "property-id",
-        ],
-    },
-    CommandMetadata {
-        path: &["data-source", "query"],
-        capability: "dataSource",
-        effect: CommandEffect::Read,
-        validators: &[],
-        result: "data_source_query_window",
-        errors: READ_ERRORS,
-        example: "nodex data-source query data-source-id --input - <<'JSON'\n{\"filter\":{\"kind\":\"group\",\"operator\":\"and\",\"children\":[]},\"sort\":[],\"limit\":50}\nJSON",
-        example_argv: &["data-source", "query", "data-source-id", "--input", "-"],
-    },
-    CommandMetadata {
         path: &["page", "properties", "prepare-batch"],
         capability: "properties",
         effect: CommandEffect::Read,
@@ -208,16 +166,6 @@ const COMMANDS: &[CommandMetadata] = &[
             "--values",
             "values.json",
         ],
-    },
-    CommandMetadata {
-        path: &["page", "properties", "get"],
-        capability: "properties",
-        effect: CommandEffect::Read,
-        validators: &[],
-        result: "page_property_values",
-        errors: READ_ERRORS,
-        example: "nodex page properties get page-id",
-        example_argv: &["page", "properties", "get", "page-id"],
     },
     CommandMetadata {
         path: &["page", "properties", "apply"],
@@ -348,10 +296,28 @@ const COMMANDS: &[CommandMetadata] = &[
         example_argv: &["--json", "tree", "database"],
     },
     CommandMetadata {
+        path: &["page", "prepare"],
+        capability: "read",
+        effect: CommandEffect::Read,
+        validators: &["operation_scope"],
+        result: "prepared_page_operation",
+        errors: READ_ERRORS,
+        example: "nodex page prepare page-id --operation move --view view-id",
+        example_argv: &[
+            "page",
+            "prepare",
+            "page-id",
+            "--operation",
+            "move",
+            "--view",
+            "view-id",
+        ],
+    },
+    CommandMetadata {
         path: &["read"],
         capability: "read",
         effect: CommandEffect::Read,
-        validators: &["read_validators", "specialized_prepare_when_needed"],
+        validators: &["read_validators"],
         result: "canonical_page_file",
         errors: READ_ERRORS,
         example: "nodex --json read page-id",
@@ -374,6 +340,7 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &[],
         result: "ripgrep_matches_over_authorized_snapshot",
         errors: &[
+            "PROFILE_MISMATCH",
             "SCOPE_NOT_FOUND",
             "SCOPE_UNAUTHORIZED",
             "MATERIALIZATION_STALE",
@@ -382,36 +349,6 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         example: "nodex --json rg --fixed-strings Planning database",
         example_argv: &["--json", "rg", "--fixed-strings", "Planning", "database"],
-    },
-    CommandMetadata {
-        path: &["view", "list"],
-        capability: "viewQuery",
-        effect: CommandEffect::Read,
-        validators: &[],
-        result: "view_window",
-        errors: READ_ERRORS,
-        example: "nodex view list",
-        example_argv: &["view", "list"],
-    },
-    CommandMetadata {
-        path: &["view", "describe"],
-        capability: "viewQuery",
-        effect: CommandEffect::Read,
-        validators: &[],
-        result: "view_description",
-        errors: READ_ERRORS,
-        example: "nodex view describe",
-        example_argv: &["view", "describe"],
-    },
-    CommandMetadata {
-        path: &["view", "query"],
-        capability: "viewQuery",
-        effect: CommandEffect::Read,
-        validators: &[],
-        result: "saved_view_context",
-        errors: READ_ERRORS,
-        example: "nodex --json view query view-id --limit 50",
-        example_argv: &["--json", "view", "query", "view-id", "--limit", "50"],
     },
     CommandMetadata {
         path: &["open", "page"],
@@ -565,26 +502,6 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
     },
     CommandMetadata {
-        path: &["file", "list"],
-        capability: "files",
-        effect: CommandEffect::Read,
-        validators: &["project_authorization", "bounded_window"],
-        result: "file_catalog",
-        errors: READ_ERRORS,
-        example: "nodex --json file list --limit 100",
-        example_argv: &["--json", "file", "list", "--limit", "100"],
-    },
-    CommandMetadata {
-        path: &["file", "info"],
-        capability: "files",
-        effect: CommandEffect::Read,
-        validators: &["project_authorization", "direct_file_access"],
-        result: "file_metadata",
-        errors: READ_ERRORS,
-        example: "nodex --json file info file-id",
-        example_argv: &["--json", "file", "info", "file-id"],
-    },
-    CommandMetadata {
         path: &["file", "import"],
         capability: "files",
         effect: CommandEffect::Write,
@@ -699,20 +616,6 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
     },
     CommandMetadata {
-        path: &["file", "versions"],
-        capability: "files",
-        effect: CommandEffect::Read,
-        validators: &[
-            "project_authorization",
-            "direct_file_access",
-            "bounded_window",
-        ],
-        result: "file_versions",
-        errors: READ_ERRORS,
-        example: "nodex --json file versions file-id --limit 100",
-        example_argv: &["--json", "file", "versions", "file-id", "--limit", "100"],
-    },
-    CommandMetadata {
         path: &["file", "restore"],
         capability: "files",
         effect: CommandEffect::Write,
@@ -806,32 +709,6 @@ const COMMANDS: &[CommandMetadata] = &[
             "3",
             "--idempotency-key",
             "file-purge-1",
-        ],
-    },
-    CommandMetadata {
-        path: &["file", "usages"],
-        capability: "files",
-        effect: CommandEffect::Read,
-        validators: &[
-            "project_authorization",
-            "direct_file_access",
-            "bounded_window",
-        ],
-        result: "file_usages",
-        errors: READ_ERRORS,
-        example: "nodex --json file usages file-id --limit 100",
-        example_argv: &["--json", "file", "usages", "file-id", "--limit", "100"],
-    },
-    CommandMetadata {
-        path: &["page", "file", "list"],
-        capability: "pageFiles",
-        effect: CommandEffect::Read,
-        validators: &["project_authorization", "bounded_window"],
-        result: "page_file_inventory",
-        errors: READ_ERRORS,
-        example: "nodex --json page file list page-id --limit 100",
-        example_argv: &[
-            "--json", "page", "file", "list", "page-id", "--limit", "100",
         ],
     },
     CommandMetadata {
@@ -1458,6 +1335,9 @@ pub struct OutputHelp {
 
 fn output_help(path: &[&str]) -> OutputHelp {
     let stdout = match path {
+        ["sql", "query"] => {
+            "Structured JSON result by default; --raw returns one text cell as exact UTF-8 bytes and rejects JSON output"
+        }
         ["read"] | ["sed"] | ["rg"] | ["docs", _] | ["draft", "diff"] => {
             "content stream by default; --json selects a result envelope"
         }
@@ -1500,20 +1380,28 @@ fn forwarded_arguments(path: &[&str]) -> Option<ForwardedArgumentHelp> {
 
 fn command_semantics(path: &[&str]) -> Vec<&'static str> {
     match path {
-        ["data-source", "query"] => vec![
-            "--after and --limit override the input cursor and limit; they do not change filter or sort rules.",
-            "Property values are omitted by default; --property ID_OR_NAME or projection_property_ids selects them; [] requests none.",
-            "Rows are a bounded window. Continue with the emitted cursor and unchanged query rules.",
+        ["sql", "schema"] => vec![
+            "Without RELATION, returns a compact catalog. Describe one relation or bound Source for full column and identity contracts.",
+            "--database is a discovery hint; pages always means all authorized active Pages.",
         ],
-        ["data-source", "describe" | "options" | "list"] => vec![
-            "A non-null next_cursor means this is an incomplete window; continue before treating the schema or option inventory as complete.",
+        ["sql", "query"] => vec![
+            "One read-only query sees one observation. Results are complete or the query fails its budget; snapshot is an observation identity, not a write condition or resumable session.",
+            "Bind Sources explicitly with --bind ALIAS=SOURCE_ID. Built-in pages includes standalone Pages and is never a Source alias.",
+            "search_hits(query, k) returns only the top k Page hits before outer filtering. ORDER BY ordinal preserves search or View ordering.",
+            "--raw accepts one non-null text cell and writes it without an added newline; it cannot be combined with JSON output.",
+        ],
+        ["page", "properties", "prepare-batch"] => vec![
+            "Selection must carry page_id, data_source_id, membership_revision and value_revisions. Preparation preserves those observations and never refreshes their revisions.",
+            "Conditions protect the edited fields and membership, not arbitrary WHERE or JOIN dependencies.",
+        ],
+        ["page", "prepare"] => vec![
+            "Prepare validators apply only to the declared move or delete operation and scope; --view is valid only for move.",
         ],
         ["search"] => {
             vec!["Matches are ranked evidence snippets, never a complete Page editing baseline."]
         }
         ["read"] => vec![
             "JSON returns the selected complete Page projection and reusable title/body validators; raw output contains only the selected file content.",
-            "Specialized move/delete prepare validators apply only to their declared operation and scope.",
         ],
         ["sed"] => vec![
             "The program is one positive numeric <start>[,<end>]p range; content is a line slice, not a complete Page editing baseline.",
@@ -1534,7 +1422,8 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
 
 fn result_revision(path: &[&str]) -> u32 {
     match path {
-        ["read"] | ["data-source", _] | ["view", "query"] => 2,
+        ["search"] => 2,
+        ["read"] | ["data-source", _] | ["sql", _] | ["page", "properties", "prepare-batch"] => 2,
         _ => 1,
     }
 }
@@ -1655,7 +1544,7 @@ fn command_tokens(arguments: &[OsString]) -> Vec<String> {
         }
         if matches!(
             argument,
-            "--profile"
+            "--expect-profile"
                 | "--project"
                 | "--database"
                 | "--page"
@@ -1708,13 +1597,10 @@ fn schema_selection(arguments: &[OsString]) -> Result<Option<crate::cli::HelpSch
 
 fn default_scope(path: &[&str]) -> &'static str {
     match path {
-        ["view", "query" | "describe"] => {
-            "The Project's configured default View when omitted; an explicit selector accepts a bare ID or a unique name in the selected Database."
+        ["sql", _] => {
+            "The selected Project's authorized resources. Source wide tables require --bind; --database only hints schema discovery."
         }
-        ["view", "list"] | ["data-source", "list"] => {
-            "The Project's default Database when --database is omitted."
-        }
-        ["data-source", _] | ["sql", _] => {
+        ["data-source", "configure"] => {
             "The unique active Data Source in the selected Database when omitted; multiple candidates require an explicit selector."
         }
         [
@@ -1744,11 +1630,10 @@ fn command_purpose(path: &[&str]) -> String {
 
 fn command_examples(metadata: &CommandMetadata) -> Vec<&'static str> {
     let second = match metadata.path {
-        ["view", "query"] => Some("nodex view query --group Review"),
-        ["view", "list"] => Some("nodex view list --database database-id"),
-        ["view", "describe"] => Some("nodex view describe 'Priority board'"),
-        ["data-source", "query"] => Some("nodex data-source query --limit 20"),
-        ["data-source", "list"] => Some("nodex data-source list"),
+        ["sql", "query"] => Some(
+            "nodex sql query 'SELECT nested_markdown FROM page_documents WHERE page_id = :id' --param 'id=\"page-id\"' --raw",
+        ),
+        ["sql", "schema"] => Some("nodex sql schema tasks --bind tasks=source-id"),
         ["read"] => Some("nodex read page-id"),
         ["search"] => Some("nodex search 'release plan' --limit 5"),
         _ => None,

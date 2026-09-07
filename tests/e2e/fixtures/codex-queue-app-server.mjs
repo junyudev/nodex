@@ -45,6 +45,8 @@ const record = (method, params) => {
   fs.appendFileSync(logPath, `${JSON.stringify({ method, params })}\n`);
 };
 
+record("launch", { args: process.argv.slice(2) });
+
 const turn = (id, status, timestamps = {}, items = []) => ({
   id,
   items,
@@ -279,6 +281,16 @@ const handle = (message) => {
     case "config/read":
       respond(id, { config: emptyConfig, origins: {}, layers: [] });
       return;
+    case "config/batchWrite": {
+      const keys = new Set(["sandbox_mode", "approval_policy", "approvals_reviewer"]);
+      if (!Array.isArray(params.edits) || params.edits.some((edit) => !keys.has(edit.keyPath))) {
+        reject(id, method);
+        return;
+      }
+      for (const edit of params.edits) emptyConfig[edit.keyPath] = edit.value;
+      respond(id, { status: "ok", version: "scenario-config", filePath: params.filePath ?? path.join(process.env.CODEX_HOME, "config.toml"), overriddenMetadata: null });
+      return;
+    }
     case "configRequirements/read":
       respond(id, { requirements: null });
       return;

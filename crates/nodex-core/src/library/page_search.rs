@@ -37,6 +37,7 @@ const MAX_FTS_HITS_PER_TERM: usize = 20_000;
 const MAX_FILTER_VALUES: usize = 64;
 const MAX_IDENTITY_BYTES: usize = 512;
 const MAX_EXCERPT_FRAGMENTS: usize = 3;
+const MAX_FRAGMENT_CHARACTERS: usize = 240;
 const PAGE_BODY_SEARCH_SQL: &str = "SELECT unit.owner_block_id, unit.block_id, source.type, \
             snippet(block_search_units_fts, 0, char(2), char(3), '…', 32), \
             bm25(block_search_units_fts) AS rank \
@@ -54,7 +55,7 @@ const PAGE_BODY_SEARCH_SQL: &str = "SELECT unit.owner_block_id, unit.block_id, s
      ORDER BY rank, unit.owner_block_id, unit.block_id LIMIT ?3";
 
 #[derive(Clone, Default)]
-pub(super) struct PageSearchIndexRegistry {
+pub(crate) struct PageSearchIndexRegistry {
     state: Arc<Mutex<Option<CachedIndex>>>,
 }
 
@@ -1502,24 +1503,122 @@ fn agent_hit(
         location,
         matches: representative_evidence(&outcome.aggregate.evidence)
             .into_iter()
-            .take(3)
             .map(agent_evidence)
             .collect(),
     })
 }
 
-fn representative_evidence(evidence: &[Evidence]) -> Vec<LibraryPageSearchMatch> {
-    let mut evidence = evidence.to_vec();
-    evidence.sort_by(|left, right| {
-        evidence_rank(left)
-            .cmp(&evidence_rank(right))
-            .then_with(|| left.term.cmp(&right.term))
-            .then_with(|| evidence_kind_key(&left.kind).cmp(&evidence_kind_key(&right.kind)))
-    });
-    let mut seen = HashSet::new();
-    evidence
+struct EvidenceFragment {
+    evidence: Evidence,
+    terms: BTreeSet<String>,
+}
+
+/// Merge per-term evidence before spending the snippet budget. Distinct windows
+/// within one long block retain their own text and the same source identity.
+fn evidence_fragments(evidence: &[Evidence]) -> Vec<EvidenceFragment> {
+    let mut fragments: BTreeMap<(String, String), EvidenceFragment> = BTreeMap::new();
+    for item in evidence {
+        let key = (evidence_kind_key(&item.kind), join_parts(&item.parts));
+        let fragment = fragments.entry(key).or_insert_with(|| EvidenceFragment {
+            evidence: item.clone(),
+            terms: BTreeSet::new(),
+        });
+        fragment.terms.insert(item.term.clone());
+        fragment.evidence.parts = merge_highlights(&fragment.evidence.parts, &item.parts);
+    }
+    fragments.into_values().collect()
+}
+
+fn is_content_evidence(kind: &EvidenceKind) -> bool {
+    matches!(
+        kind,
+        EvidenceKind::Body { .. } | EvidenceKind::Property { .. }
+    )
+}
+
+fn selected_content_fragments(evidence: &[Evidence]) -> Vec<Evidence> {
+    let title = evidence
+        .iter()
+        .find(|item| matches!(item.kind, EvidenceKind::Title))
+        .map(|item| normalize_search_text(&join_parts(&item.parts)))
+        .unwrap_or_default();
+    let mut candidates = evidence_fragments(evidence)
         .into_iter()
-        .filter(|evidence| seen.insert((evidence.term.clone(), evidence_kind_key(&evidence.kind))))
+        .filter(|fragment| is_content_evidence(&fragment.evidence.kind))
+        .collect::<Vec<_>>();
+    let mut covered = BTreeSet::new();
+    let mut sources = HashSet::new();
+    let mut selected = Vec::new();
+    while selected.len() < MAX_EXCERPT_FRAGMENTS && !candidates.is_empty() {
+        let score = |fragment: &EvidenceFragment| {
+            let text = normalize_search_text(&join_parts(&fragment.evidence.parts));
+            let repeats_title = !text.is_empty() && !title.is_empty() && title.contains(&text);
+            (
+                !repeats_title,
+                fragment.terms.difference(&covered).count(),
+                !sources.contains(&evidence_kind_key(&fragment.evidence.kind)),
+                fragment.terms.len(),
+                std::cmp::Reverse(evidence_rank(&fragment.evidence)),
+            )
+        };
+        // Prefer the first candidate for tied scores; the source/text order is stable.
+        let index = (0..candidates.len())
+            .max_by(|left, right| {
+                score(&candidates[*left])
+                    .cmp(&score(&candidates[*right]))
+                    .then_with(|| right.cmp(left))
+            })
+            .expect("nonempty candidates");
+        let mut fragment = candidates.remove(index);
+        covered.extend(fragment.terms);
+        sources.insert(evidence_kind_key(&fragment.evidence.kind));
+        fragment.evidence.parts = bounded_fragment_parts(&fragment.evidence.parts);
+        selected.push(fragment.evidence);
+    }
+    selected
+}
+
+/// Keep Unicode characters intact and retain context around the first match.
+fn bounded_fragment_parts(parts: &[LibraryPageSearchTextPart]) -> Vec<LibraryPageSearchTextPart> {
+    let characters = parts
+        .iter()
+        .flat_map(|part| {
+            part.text
+                .chars()
+                .map(move |character| (character, part.highlighted))
+        })
+        .collect::<Vec<_>>();
+    if characters.len() <= MAX_FRAGMENT_CHARACTERS {
+        return parts.to_vec();
+    }
+    let first_match = characters
+        .iter()
+        .position(|(_, highlighted)| *highlighted)
+        .unwrap_or(0);
+    let start = first_match
+        .saturating_sub(48)
+        .min(characters.len() - MAX_FRAGMENT_CHARACTERS + 2);
+    let end = (start + MAX_FRAGMENT_CHARACTERS - 2).min(characters.len());
+    let mut bounded = Vec::new();
+    if start > 0 {
+        push_part(&mut bounded, "…".to_owned(), false);
+    }
+    for (character, highlighted) in &characters[start..end] {
+        push_part(&mut bounded, character.to_string(), *highlighted);
+    }
+    if end < characters.len() {
+        push_part(&mut bounded, "…".to_owned(), false);
+    }
+    bounded
+}
+
+fn representative_evidence(evidence: &[Evidence]) -> Vec<LibraryPageSearchMatch> {
+    let metadata = evidence_fragments(evidence)
+        .into_iter()
+        .filter(|fragment| !is_content_evidence(&fragment.evidence.kind))
+        .map(|fragment| fragment.evidence);
+    metadata
+        .chain(selected_content_fragments(evidence))
         .map(contract_evidence)
         .collect()
 }
@@ -1629,12 +1728,7 @@ fn excerpt_parts(
     page: &IndexedPage,
     evidence: &[Evidence],
 ) -> (Option<String>, Vec<LibraryPageSearchTextPart>) {
-    if let Some(parts) = compose_excerpt_parts(evidence, |kind| {
-        matches!(
-            kind,
-            EvidenceKind::Body { .. } | EvidenceKind::Property { .. }
-        )
-    }) {
+    if let Some(parts) = compose_excerpt_parts(evidence) {
         return (Some(join_parts(&parts)), parts);
     }
     if evidence.iter().any(|evidence| {
@@ -1660,43 +1754,17 @@ fn excerpt_parts(
 /// Builds one bounded preview that proves multiple query terms. Evidence for
 /// the same source excerpt is merged; terms from different excerpts are shown
 /// as separate fragments instead of silently dropping every term but one.
-fn compose_excerpt_parts(
-    evidence: &[Evidence],
-    accepts: impl Fn(&EvidenceKind) -> bool,
-) -> Option<Vec<LibraryPageSearchTextPart>> {
-    let mut seen_terms = HashSet::new();
-    let selected = evidence
-        .iter()
-        .filter(|candidate| accepts(&candidate.kind))
-        .filter(|candidate| seen_terms.insert(candidate.term.as_str()))
-        .take(MAX_EXCERPT_FRAGMENTS)
-        .collect::<Vec<_>>();
+fn compose_excerpt_parts(evidence: &[Evidence]) -> Option<Vec<LibraryPageSearchTextPart>> {
+    let selected = selected_content_fragments(evidence);
     if selected.is_empty() {
         return None;
     }
-
-    let mut fragments = Vec::<(String, Vec<LibraryPageSearchTextPart>)>::new();
-    for candidate in selected {
-        let text = join_parts(&candidate.parts);
-        if text.is_empty() {
-            continue;
-        }
-        if let Some((_, parts)) = fragments.iter_mut().find(|(existing, _)| existing == &text) {
-            *parts = merge_highlights(parts, &candidate.parts);
-            continue;
-        }
-        fragments.push((text, candidate.parts.clone()));
-    }
-    if fragments.is_empty() {
-        return None;
-    }
-
     let mut combined = Vec::new();
-    for (_, parts) in fragments {
+    for fragment in selected {
         if !combined.is_empty() {
             push_part(&mut combined, "  ·  ".to_owned(), false);
         }
-        for part in parts {
+        for part in fragment.parts {
             push_part(&mut combined, part.text, part.highlighted);
         }
     }
@@ -2159,7 +2227,7 @@ mod tests {
                 .iter()
                 .filter(|evidence| matches!(evidence, LibraryPageSearchMatch::Body { .. }))
                 .count(),
-            2
+            1
         );
 
         let split_hit = hits
@@ -2179,6 +2247,126 @@ mod tests {
                 .as_deref()
                 .is_some_and(|excerpt| excerpt.contains(" · "))
         );
+    }
+
+    fn snippet(term: &str, text: &str, kind: EvidenceKind) -> Evidence {
+        Evidence {
+            term: term.to_owned(),
+            matched_token: term.to_owned(),
+            kind,
+            quality: SearchTermMatchQuality::Exact,
+            edit_distance: 0,
+            parts: highlight_text(text, &[term.to_owned()]),
+        }
+    }
+
+    #[test]
+    fn representative_snippets_merge_titles_and_preserve_distinct_sources_and_aliases() {
+        let mut evidence = ["cedar", "release", "plan"]
+            .into_iter()
+            .map(|term| snippet(term, "Cedar release plan", EvidenceKind::Title))
+            .collect::<Vec<_>>();
+        evidence.push(snippet(
+            "cedar",
+            "Cedar release",
+            EvidenceKind::Body {
+                block_id: "heading".into(),
+                block_type: "heading".into(),
+            },
+        ));
+        evidence.push(snippet(
+            "release",
+            "Release date: Friday.",
+            EvidenceKind::Body {
+                block_id: "date".into(),
+                block_type: "paragraph".into(),
+            },
+        ));
+        evidence.push(snippet(
+            "cedar",
+            "Tracking code: CEDAR-42.",
+            EvidenceKind::Body {
+                block_id: "code".into(),
+                block_type: "paragraph".into(),
+            },
+        ));
+        evidence.push(snippet(
+            "plan",
+            "Current plan",
+            EvidenceKind::Property {
+                property_id: "status".into(),
+                property_name: "Status".into(),
+            },
+        ));
+        evidence.push(snippet(
+            "old-1",
+            "OLD-1",
+            EvidenceKind::PageKey {
+                page_key: "OLD-1".into(),
+                is_current: false,
+            },
+        ));
+        let matches = super::representative_evidence(&evidence);
+        assert_eq!(matches.len(), 5);
+        assert_eq!(
+            matches
+                .iter()
+                .filter(|item| matches!(item, LibraryPageSearchMatch::Title { .. }))
+                .count(),
+            1
+        );
+        assert!(matches.iter().any(|item| matches!(item, LibraryPageSearchMatch::PageKey { page_key, is_current: false, .. } if page_key == "OLD-1")));
+        assert!(matches.iter().any(|item| matches!(item, LibraryPageSearchMatch::Property { property_id, .. } if property_id == "status")));
+        let blocks = matches
+            .iter()
+            .filter_map(|item| match item {
+                LibraryPageSearchMatch::Body { block_id, .. } => Some(block_id.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(blocks.len(), 2);
+        assert!(blocks.contains(&"date") && blocks.contains(&"code"));
+        let forward = super::compose_excerpt_parts(&evidence);
+        evidence.reverse();
+        assert_eq!(super::compose_excerpt_parts(&evidence), forward);
+    }
+
+    #[test]
+    fn long_block_windows_keep_separate_matches_with_bounded_unicode_context() {
+        let kind = EvidenceKind::Body {
+            block_id: "long-block".into(),
+            block_type: "paragraph".into(),
+        };
+        let text = format!("{} needle {}", "前".repeat(300), "后".repeat(300));
+        let evidence = vec![
+            snippet("needle", &text, kind.clone()),
+            snippet("second", "A distant second match", kind),
+        ];
+        let matches = super::representative_evidence(&evidence);
+        assert_eq!(matches.len(), 2);
+        let snippets = matches
+            .iter()
+            .map(|item| match item {
+                LibraryPageSearchMatch::Body {
+                    block_id, parts, ..
+                } => {
+                    assert_eq!(block_id, "long-block");
+                    super::join_parts(parts)
+                }
+                _ => panic!("expected body evidence"),
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            snippets
+                .iter()
+                .all(|text| text.chars().count() <= super::MAX_FRAGMENT_CHARACTERS)
+        );
+        let bounded = snippets
+            .iter()
+            .find(|text| text.contains("needle"))
+            .expect("matching term retained");
+        assert!(bounded.starts_with('…') && bounded.ends_with('…'));
+        assert!(snippets.iter().any(|text| text.contains("second")));
     }
 
     #[test]

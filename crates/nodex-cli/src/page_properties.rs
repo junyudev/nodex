@@ -14,8 +14,7 @@ use nodex_core_contracts::database::{
 use nodex_core_contracts::library::{LibraryPageDataSourceContext, LibraryRead, LibraryReadValue};
 use nodex_core_contracts::{DATABASE_CONTRACT_VERSION, ModuleApplyRequest, StoreEpoch};
 use nodex_core_protocol::{ResponseEnvelope, client::CoreClient};
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq, Args)]
@@ -25,10 +24,8 @@ pub struct PagePropertiesArgs {
 }
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum PagePropertiesCommand {
-    /// Freeze SQL result targets and current Property revisions into an apply document.
+    /// Freeze SQL result targets and observed Property revisions into an apply document.
     PrepareBatch(crate::selection_batch::PrepareBatchArgs),
-    /// Read canonical Property values and revisions for one Page.
-    Get { page: String },
     /// Atomically apply typed Property edits from JSON.
     Apply {
         #[arg(long, default_value = "-")]
@@ -69,25 +66,6 @@ pub struct PropertyApplyInput {
 
 pub(crate) type PropertyApplyDocument = crate::input_document::InputDocument<PropertyApplyInput>;
 
-#[derive(Serialize, utoipa::ToSchema)]
-pub(crate) struct PagePropertiesOutput {
-    pub page_id: String,
-    pub data_source_id: Option<String>,
-    pub values: BTreeMap<String, serde_json::Value>,
-    pub value_revisions: BTreeMap<String, i64>,
-    pub intrinsic_properties: BTreeMap<String, serde_json::Value>,
-    pub commit_seq: Option<i64>,
-}
-fn output(value: PagePropertiesOutput) -> Result<CommandOutput, CliError> {
-    serde_json::to_value(value)
-        .map(CommandOutput::Json)
-        .map_err(internal)
-}
-#[derive(Deserialize)]
-struct PropertyValueRecord {
-    value: serde_json::Value,
-    revision: i64,
-}
 pub(crate) fn prepare(args: &mut PagePropertiesArgs) -> Result<(), CliError> {
     if let PagePropertiesCommand::PrepareBatch(args) = &mut args.command {
         return crate::selection_batch::prepare(args);
@@ -110,58 +88,6 @@ pub(crate) fn execute(
     let (edits, mutation) = match args.command {
         PagePropertiesCommand::PrepareBatch(args) => {
             return crate::selection_batch::execute(client, &project.id, args);
-        }
-        PagePropertiesCommand::Get { page } => {
-            let page_id = resolve_page_selector(client, &project.id, &page)?;
-            let snapshot = unwrap_library(client.library_read(
-                Some(&project.id),
-                LibraryRead::PageDetail {
-                    page_id: page_id.clone(),
-                },
-            ))?;
-            let LibraryReadValue::PageDetail { value } = snapshot.value else {
-                return Err(internal("unexpected Page Property projection"));
-            };
-            let intrinsic_properties = value
-                .intrinsic_properties
-                .into_iter()
-                .map(|property| (property.key, property.value))
-                .collect();
-            let mut output_value = PagePropertiesOutput {
-                page_id,
-                data_source_id: None,
-                values: BTreeMap::new(),
-                value_revisions: BTreeMap::new(),
-                intrinsic_properties,
-                commit_seq: Some(snapshot.commit_head),
-            };
-            if let LibraryPageDataSourceContext::Member {
-                membership,
-                properties,
-                values,
-                ..
-            } = value.data_source_context
-            {
-                output_value.data_source_id = Some(membership.data_source_id);
-                for property in properties {
-                    let record = values
-                        .get(&property.property_id)
-                        .cloned()
-                        .map(serde_json::from_value::<PropertyValueRecord>)
-                        .transpose()
-                        .map_err(internal)?;
-                    let (value, revision) = record
-                        .map(|record| (record.value, record.revision))
-                        .unwrap_or((serde_json::Value::Null, 0));
-                    output_value
-                        .values
-                        .insert(property.property_id.clone(), value);
-                    output_value
-                        .value_revisions
-                        .insert(property.property_id, revision);
-                }
-            }
-            return output(output_value);
         }
         PagePropertiesCommand::Apply {
             input: _,
@@ -203,6 +129,7 @@ pub(crate) fn execute(
             };
             (
                 vec![DatabasePropertyValueMutation {
+                    expected_membership_revision: None,
                     address: DatabasePagePropertyAddress {
                         page_id,
                         data_source_id,

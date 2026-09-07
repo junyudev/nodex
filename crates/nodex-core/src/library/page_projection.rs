@@ -1,6 +1,7 @@
 use chrono::{DateTime, NaiveDate};
 use nodex_core_contracts::library::{
-    LibraryPageDraftProjection, LibraryPagePrepareKind, LibraryPageProjectionFile,
+    LibraryPageDraftProjection, LibraryPageOperation, LibraryPageOperationPreparation,
+    LibraryPageOperationValidators, LibraryPagePrepareKind, LibraryPageProjectionFile,
     LibraryPageProjectionFileKind, LibraryPageProjectionFileValidators, PageMetaProjectionV2,
     ProjectedIdentityV1, ProjectedPropertyTypeV1, ProjectedPropertyV1, ProjectedPropertyValueV1,
     ProjectedRelationSummaryV1, ProjectedScheduleV1,
@@ -30,6 +31,55 @@ pub(super) struct PageProjectionFileRequest<'a> {
     pub page_id: &'a str,
     pub kind: LibraryPageProjectionFileKind,
     pub prepare: Option<LibraryPagePrepareKind>,
+}
+
+/// Prepares a lifecycle guard without reading or validating the Page body.
+/// The caller must establish Page read authority inside the same observation.
+pub(super) fn prepare_page_operation(
+    connection: &Connection,
+    library_id: &str,
+    store_epoch: &str,
+    requesting_project_id: Option<&str>,
+    page_id: &str,
+    operation: LibraryPageOperation,
+) -> Result<LibraryPageOperationPreparation, StoreError> {
+    let project_id = requesting_project_id
+        .ok_or_else(|| unauthorized("Page operation preparation requires a bound Project"))?;
+    require_project_in_library(connection, project_id, library_id)?;
+    let validators = match operation {
+        LibraryPageOperation::Delete => LibraryPageOperationValidators::Delete {
+            page_etag: mint_page_shell_etag(
+                connection,
+                library_id,
+                project_id,
+                store_epoch,
+                page_id,
+            )?,
+        },
+        LibraryPageOperation::Move { view_id } => {
+            let view_id = match view_id {
+                Some(view_id) => Some(view_id),
+                None => {
+                    crate::database::default_page_move_view_id(connection, library_id, page_id)?
+                }
+            };
+            LibraryPageOperationValidators::Move {
+                move_etag: crate::database::mint_page_move_etag(
+                    connection,
+                    library_id,
+                    project_id,
+                    store_epoch,
+                    page_id,
+                    view_id.as_deref(),
+                )?,
+            }
+        }
+    };
+    Ok(LibraryPageOperationPreparation {
+        page_id: page_id.to_owned(),
+        page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
+        validators,
+    })
 }
 
 pub(super) fn page_projection_file(

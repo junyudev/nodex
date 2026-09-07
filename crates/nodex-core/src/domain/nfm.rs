@@ -261,8 +261,41 @@ pub fn materialize_nfm(
     })
 }
 
+/// UTF-8 source ranges owned by one Block, excluding all descendant Blocks.
+/// Locations follow the Block tree in preorder and retain indentation and line endings.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NfmSourceBlock {
+    pub spans: Vec<std::ops::Range<usize>>,
+}
+
 pub fn serialize_nfm(blocks: &[NfmBlock]) -> String {
-    serialize_blocks(blocks, 0).join("\n")
+    serialize_blocks::<false>(blocks, 0).0.join("\n")
+}
+
+pub fn serialize_nfm_located(blocks: &[NfmBlock]) -> (String, Vec<NfmSourceBlock>) {
+    let (lines, locations) = serialize_blocks::<true>(blocks, 0);
+    let nfm = lines.join("\n");
+    let mut offsets = Vec::with_capacity(lines.len() + 1);
+    let mut offset = 0;
+    for line in &lines {
+        offsets.push(offset);
+        offset += line.len() + 1;
+    }
+    offsets.push(nfm.len());
+    let locations = locations
+        .into_iter()
+        .map(|location| NfmSourceBlock {
+            spans: location
+                .spans
+                .into_iter()
+                .filter_map(|span| {
+                    let range = offsets[span.start]..offsets[span.end];
+                    (!range.is_empty()).then_some(range)
+                })
+                .collect(),
+        })
+        .collect();
+    (nfm, locations)
 }
 
 pub fn extract_plain_text(blocks: &[NfmBlock]) -> String {
@@ -782,11 +815,21 @@ fn resolve_table_alignment(rows: &[Vec<Value>], column_index: usize) -> Option<S
     Some(first.to_owned())
 }
 
-fn serialize_blocks(blocks: &[NfmBlock], indent: usize) -> Vec<String> {
+fn serialize_blocks<const LOCATED: bool>(
+    blocks: &[NfmBlock],
+    indent: usize,
+) -> (Vec<String>, Vec<NfmSourceBlock>) {
     let mut lines = Vec::new();
+    let mut locations = Vec::new();
     let prefix = "\t".repeat(indent);
     let ordered_starts = resolve_ordered_list_starts(blocks);
     for (index, block) in blocks.iter().enumerate() {
+        let start = lines.len();
+        let location_index = locations.len();
+        if LOCATED {
+            locations.push(NfmSourceBlock::default());
+        }
+        let mut child_ranges = Vec::new();
         match block {
             NfmBlock::Paragraph {
                 content,
@@ -799,11 +842,23 @@ fn serialize_blocks(blocks: &[NfmBlock], indent: usize) -> Vec<String> {
                 } else {
                     lines.push(format!("{prefix}{text}{}", color_suffix(color)));
                 }
-                lines.extend(serialize_blocks(children, indent + 1));
+                append_serialized_children::<LOCATED>(
+                    &mut lines,
+                    &mut locations,
+                    &mut child_ranges,
+                    children,
+                    indent + 1,
+                );
             }
             NfmBlock::EmptyBlock { children } => {
                 lines.push(format!("{prefix}<empty-block/>"));
-                lines.extend(serialize_blocks(children, indent + 1));
+                append_serialized_children::<LOCATED>(
+                    &mut lines,
+                    &mut locations,
+                    &mut child_ranges,
+                    children,
+                    indent + 1,
+                );
             }
             NfmBlock::Heading {
                 level,
@@ -824,7 +879,13 @@ fn serialize_blocks(blocks: &[NfmBlock], indent: usize) -> Vec<String> {
                     serialize_inline_content(content),
                     color_suffix(color)
                 ));
-                lines.extend(serialize_blocks(children, indent + 1));
+                append_serialized_children::<LOCATED>(
+                    &mut lines,
+                    &mut locations,
+                    &mut child_ranges,
+                    children,
+                    indent + 1,
+                );
             }
             NfmBlock::BulletListItem {
                 content,
@@ -836,7 +897,13 @@ fn serialize_blocks(blocks: &[NfmBlock], indent: usize) -> Vec<String> {
                     serialize_inline_content(content),
                     color_suffix(color)
                 ));
-                lines.extend(serialize_blocks(children, indent + 1));
+                append_serialized_children::<LOCATED>(
+                    &mut lines,
+                    &mut locations,
+                    &mut child_ranges,
+                    children,
+                    indent + 1,
+                );
             }
             NfmBlock::NumberedListItem {
                 content,
@@ -850,7 +917,13 @@ fn serialize_blocks(blocks: &[NfmBlock], indent: usize) -> Vec<String> {
                     serialize_inline_content(content),
                     color_suffix(color)
                 ));
-                lines.extend(serialize_blocks(children, indent + 1));
+                append_serialized_children::<LOCATED>(
+                    &mut lines,
+                    &mut locations,
+                    &mut child_ranges,
+                    children,
+                    indent + 1,
+                );
             }
             NfmBlock::CheckListItem {
                 checked,
@@ -864,7 +937,13 @@ fn serialize_blocks(blocks: &[NfmBlock], indent: usize) -> Vec<String> {
                     serialize_inline_content(content),
                     color_suffix(color)
                 ));
-                lines.extend(serialize_blocks(children, indent + 1));
+                append_serialized_children::<LOCATED>(
+                    &mut lines,
+                    &mut locations,
+                    &mut child_ranges,
+                    children,
+                    indent + 1,
+                );
             }
             NfmBlock::Toggle {
                 is_open,
@@ -878,7 +957,13 @@ fn serialize_blocks(blocks: &[NfmBlock], indent: usize) -> Vec<String> {
                     serialize_inline_content(content),
                     color_suffix(color)
                 ));
-                lines.extend(serialize_blocks(children, indent + 1));
+                append_serialized_children::<LOCATED>(
+                    &mut lines,
+                    &mut locations,
+                    &mut child_ranges,
+                    children,
+                    indent + 1,
+                );
             }
             NfmBlock::Blockquote {
                 content,
@@ -890,7 +975,13 @@ fn serialize_blocks(blocks: &[NfmBlock], indent: usize) -> Vec<String> {
                     serialize_inline_content(content),
                     color_suffix(color)
                 ));
-                lines.extend(serialize_blocks(children, indent + 1));
+                append_serialized_children::<LOCATED>(
+                    &mut lines,
+                    &mut locations,
+                    &mut child_ranges,
+                    children,
+                    indent + 1,
+                );
             }
             NfmBlock::CodeBlock {
                 language,
@@ -901,7 +992,13 @@ fn serialize_blocks(blocks: &[NfmBlock], indent: usize) -> Vec<String> {
                 lines.push(format!("{prefix}{fence}{language}"));
                 lines.extend(code.split('\n').map(|line| format!("{prefix}{line}")));
                 lines.push(format!("{prefix}{fence}"));
-                lines.extend(serialize_blocks(children, indent + 1));
+                append_serialized_children::<LOCATED>(
+                    &mut lines,
+                    &mut locations,
+                    &mut child_ranges,
+                    children,
+                    indent + 1,
+                );
             }
             NfmBlock::MathBlock { source } => {
                 let fence = select_math_fence(source);
@@ -950,7 +1047,13 @@ fn serialize_blocks(blocks: &[NfmBlock], indent: usize) -> Vec<String> {
                 if !text.is_empty() {
                     lines.push(format!("{prefix}\t{text}"));
                 }
-                lines.extend(serialize_blocks(children, indent + 1));
+                append_serialized_children::<LOCATED>(
+                    &mut lines,
+                    &mut locations,
+                    &mut child_ranges,
+                    children,
+                    indent + 1,
+                );
                 lines.push(format!("{prefix}</callout>"));
             }
             NfmBlock::Image {
@@ -972,7 +1075,13 @@ fn serialize_blocks(blocks: &[NfmBlock], indent: usize) -> Vec<String> {
                     attrs.join(" "),
                     serialize_inline_content(caption)
                 ));
-                lines.extend(serialize_blocks(children, indent + 1));
+                append_serialized_children::<LOCATED>(
+                    &mut lines,
+                    &mut locations,
+                    &mut child_ranges,
+                    children,
+                    indent + 1,
+                );
             }
             NfmBlock::DatabaseViewRef {
                 database_view_id,
@@ -1038,15 +1147,68 @@ fn serialize_blocks(blocks: &[NfmBlock], indent: usize) -> Vec<String> {
                     format!(" {}", attrs.join(" "))
                 };
                 lines.push(format!("{prefix}<thread-section{suffix} />"));
-                lines.extend(serialize_blocks(children, indent + 1));
+                append_serialized_children::<LOCATED>(
+                    &mut lines,
+                    &mut locations,
+                    &mut child_ranges,
+                    children,
+                    indent + 1,
+                );
             }
             NfmBlock::Divider { children } => {
                 lines.push(format!("{prefix}---"));
-                lines.extend(serialize_blocks(children, indent + 1));
+                append_serialized_children::<LOCATED>(
+                    &mut lines,
+                    &mut locations,
+                    &mut child_ranges,
+                    children,
+                    indent + 1,
+                );
             }
         }
+        if !LOCATED {
+            continue;
+        }
+        let mut cursor = start;
+        for child in child_ranges {
+            if cursor < child.start {
+                locations[location_index].spans.push(cursor..child.start);
+            }
+            cursor = child.end;
+        }
+        if cursor < lines.len() {
+            locations[location_index].spans.push(cursor..lines.len());
+        }
     }
-    lines
+    (lines, locations)
+}
+
+fn append_serialized_children<const LOCATED: bool>(
+    lines: &mut Vec<String>,
+    locations: &mut Vec<NfmSourceBlock>,
+    child_ranges: &mut Vec<std::ops::Range<usize>>,
+    children: &[NfmBlock],
+    indent: usize,
+) {
+    if children.is_empty() {
+        return;
+    }
+    let offset = lines.len();
+    let (child_lines, child_locations) = serialize_blocks::<LOCATED>(children, indent);
+    lines.extend(child_lines);
+    if !LOCATED {
+        return;
+    }
+    child_ranges.push(offset..lines.len());
+    locations.extend(child_locations.into_iter().map(|location| {
+        NfmSourceBlock {
+            spans: location
+                .spans
+                .into_iter()
+                .map(|span| span.start + offset..span.end + offset)
+                .collect(),
+        }
+    }));
 }
 
 fn serialize_inline_content(items: &[NfmInlineContent]) -> String {
@@ -2447,6 +2609,79 @@ mod tests {
     use std::path::PathBuf;
     use yrs::updates::decoder::Decode;
     use yrs::{ReadTxn, Transact, Update};
+
+    #[test]
+    fn source_locations_keep_nested_callout_wrappers_and_multiline_content_with_their_blocks() {
+        let code = NfmBlock::CodeBlock {
+            language: "rust".to_owned(),
+            code: "let value = \"😀\";\nvalue".to_owned(),
+            children: vec![NfmBlock::Paragraph {
+                content: parse_inline_content("Code child"),
+                color: None,
+                children: vec![],
+            }],
+        };
+        let blocks = vec![NfmBlock::Callout {
+            icon: None,
+            color: None,
+            content: parse_inline_content("外层"),
+            children: vec![NfmBlock::Callout {
+                icon: None,
+                color: None,
+                content: parse_inline_content("Inner"),
+                children: vec![code],
+            }],
+        }];
+        let (text, locations) = serialize_nfm_located(&blocks);
+        assert_eq!(serialize_nfm(&blocks), text);
+        let owned: Vec<Vec<&str>> = locations
+            .iter()
+            .map(|location| {
+                location
+                    .spans
+                    .iter()
+                    .map(|span| &text[span.clone()])
+                    .collect()
+            })
+            .collect();
+        assert_eq!(
+            owned,
+            vec![
+                vec!["<callout>\n\t外层\n", "</callout>"],
+                vec!["\t<callout>\n\t\tInner\n", "\t</callout>\n"],
+                vec!["\t\t```rust\n\t\tlet value = \"😀\";\n\t\tvalue\n\t\t```\n"],
+                vec!["\t\t\tCode child\n"],
+            ]
+        );
+        assert_source_owned_once(&text, &locations);
+    }
+
+    #[test]
+    fn source_locations_cover_the_complete_canonical_matrix_without_changing_its_bytes() {
+        let (blocks, oracle) = matrix();
+        let materialized = materialize_nfm(&blocks).expect("NFM matrix");
+        let (text, locations) = serialize_nfm_located(&materialized.blocks);
+        assert_eq!(serialize_nfm(&materialized.blocks), text);
+        assert_eq!(text, oracle["nfm"].as_str().expect("oracle NFM"));
+        fn count(blocks: &[MaterializedBlockNode]) -> usize {
+            blocks.iter().map(|block| 1 + count(&block.children)).sum()
+        }
+        assert_eq!(locations.len(), count(&blocks));
+        assert_source_owned_once(&text, &locations);
+    }
+
+    fn assert_source_owned_once(text: &str, locations: &[NfmSourceBlock]) {
+        let mut owners = vec![0; text.len()];
+        for location in locations {
+            for span in &location.spans {
+                assert!(text.get(span.clone()).is_some(), "UTF-8 boundary");
+                for count in &mut owners[span.clone()] {
+                    *count += 1;
+                }
+            }
+        }
+        assert!(owners.into_iter().all(|count| count == 1));
+    }
 
     fn matrix() -> (Vec<MaterializedBlockNode>, Value) {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/yjs-yrs");

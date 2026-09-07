@@ -10,12 +10,11 @@ use nodex_core_contracts::database::{
     DatabaseDescriptor, DatabaseIdentityTarget, DatabasePageKeyNamespace,
     DatabasePageKeyPrefixAvailability, DatabasePageKeyPrefixPreview, DatabasePageLayout,
     DatabasePageLayoutEntry, DatabasePagePropertyVisibility, DatabasePropertyDescriptor,
-    DatabasePropertyManagementPolicy, DatabasePropertyOption, DatabasePropertySchema,
-    DatabasePropertySystemRole, DatabasePropertyType, DatabaseRead, DatabaseReadValue,
-    DatabaseRetiredPageKeyPrefix, DatabaseRowsTarget, DatabaseViewCollapsedOccurrences,
-    DatabaseViewContext, DatabaseViewDisclosureTarget, DatabaseViewLayout,
-    DatabaseViewPersonalPreferences, DatabaseViewPreferencesOverrideInput, DatabaseViewReadTarget,
-    DatabaseViewRecord,
+    DatabasePropertyManagementPolicy, DatabasePropertyOption, DatabasePropertySystemRole,
+    DatabasePropertyType, DatabaseRead, DatabaseReadValue, DatabaseRetiredPageKeyPrefix,
+    DatabaseRowsTarget, DatabaseViewCollapsedOccurrences, DatabaseViewContext,
+    DatabaseViewDisclosureTarget, DatabaseViewLayout, DatabaseViewPersonalPreferences,
+    DatabaseViewPreferencesOverrideInput, DatabaseViewReadTarget, DatabaseViewRecord,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::{Map, Value, json};
@@ -75,31 +74,12 @@ fn property_descriptor(
     ) {
         return Err(corrupt("Stored reserved Property schema is not canonical"));
     }
-    let option_count = if matches!(row.value_type.as_str(), "select" | "multi_select") {
-        super::property_semantics::option_config_from_storage(
-            &row.property_id,
-            &row.value_type,
-            &row.config_json,
-        )?
-        .options
-        .len()
-    } else if matches!(
-        schema,
-        DatabasePropertySchema::Number { .. }
-            | DatabasePropertySchema::Date { .. }
-            | DatabasePropertySchema::Datetime { .. }
-    ) {
-        0
-    } else {
-        let config = serde_json::from_str::<Value>(&row.config_json)
-            .map_err(|_| corrupt("Stored Property config is invalid"))?;
-        if config.as_object().is_none_or(|config| !config.is_empty()) {
-            return Err(corrupt(
-                "Stored Property config is not the canonical empty object",
-            ));
-        }
-        0
-    };
+    let option_count = super::property_semantics::option_count_from_storage(
+        &row.property_id,
+        &row.value_type,
+        &row.config_json,
+        &schema,
+    )?;
     let non_empty_value_count = non_empty_property_value_count(
         connection,
         &row.data_source_id,
@@ -439,12 +419,6 @@ pub(crate) fn read_at_commit_head(
         .flatten();
     let store_epoch = crate::document::read_store_epoch(connection)?;
     let mut value = match request {
-        DatabaseRead::SqlSchema { scope } => DatabaseReadValue::SqlSchema {
-            value: super::sql::schema(connection, library_id, commit_head, context, scope)?,
-        },
-        DatabaseRead::SqlQuery { query } => DatabaseReadValue::SqlQuery {
-            value: super::sql::query(connection, library_id, commit_head, context, query)?,
-        },
         DatabaseRead::CatalogWindow { window } => {
             let project_id = project_id
                 .ok_or_else(|| invalid("Library Database reads require a concrete target"))?;
@@ -2207,6 +2181,33 @@ fn validate_view_filter_access_by_id(
         &data_source_id,
         &super::view_contract::effective_filter(&definition.rules),
     )
+}
+
+/// Authorizes saved View semantics before exposing its complete occurrences to
+/// the public query Module inside the existing Store snapshot.
+pub(super) fn query_view_occurrences(
+    connection: &Connection,
+    library_id: &str,
+    commit_head: i64,
+    context: &BoundModuleContext,
+    view_id: &str,
+) -> Result<Vec<nodex_core_contracts::database::DatabaseListProjectionRow>, StoreError> {
+    read_at_commit_head(
+        connection,
+        library_id,
+        commit_head,
+        context,
+        DatabaseRead::View {
+            view_id: view_id.to_owned(),
+        },
+    )?;
+    validate_view_filter_access_by_id(
+        connection,
+        library_id,
+        context.project_id.as_ref().map(|id| id.0.as_str()),
+        view_id,
+    )?;
+    super::window::query_occurrences(connection, library_id, commit_head, view_id)
 }
 
 pub(crate) fn view_descriptor_query(

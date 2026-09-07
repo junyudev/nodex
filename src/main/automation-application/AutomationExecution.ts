@@ -1,3 +1,4 @@
+import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { buildNodexCliBootstrap } from "../platform/node/NodexCliBootstrap";
 import { isDevelopmentFeatureEnabled } from "../../shared/development-features";
 import { randomUUID } from "node:crypto";
@@ -257,6 +258,7 @@ export const live = (
   | DesktopToolRuntime
   | ExecutionHostRuntime
   | MainConfig
+  | CoreAuthority
   | ManagedWorktreeRetentionRuntime
   | ManagedWorktreeRuntime
   | ProjectWorkspace
@@ -284,6 +286,7 @@ export const live = (
       const desktopTools = yield* DesktopToolRuntime;
       const executionHosts = yield* ExecutionHostRuntime;
       const config = yield* MainConfig;
+      const coreAuthority = yield* CoreAuthority;
       const retention = yield* ManagedWorktreeRetentionRuntime;
       const managedWorktrees = yield* ManagedWorktreeRuntime;
       const workspace = yield* ProjectWorkspace;
@@ -698,7 +701,8 @@ export const live = (
           ...request,
           additionalContext: {
             ...request.additionalContext,
-            "nodex-cli": yield* buildNodexCliBootstrap(config, {
+            "nodex-cli": yield* buildNodexCliBootstrap(config, coreAuthority.identity, {
+              threadId: targetThreadId,
               hostId: accepted.durable.executionHostId,
               projectId: accepted.durable.projectId,
               verifiedBuiltinFullAccess: actorPermission?.verifiedBuiltinFullAccess ?? false,

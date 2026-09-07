@@ -37,6 +37,8 @@
     "agent:smoke:scripted": "vp run stage:codex-runtime:mac:cached && vp run test:e2e tests/e2e/scripted-agent-runtime.spec.ts",
     "agent:smoke:acp": "tsx scripts/probe-acp-agent.ts",
     "agent:smoke:paid": "tsx scripts/run-paid-agent-smoke.ts",
+    "agent:eval:compare": "tsx scripts/agent-eval/compare.ts",
+    "agent:eval:paid": "tsx scripts/agent-eval/launch.ts",
     "test:performance": "vp run core:benchmark:rust && vp run core:test:scale",
     "desktop-tools:benchmark:pip": "node --import tsx scripts/desktop-tools/benchmark-remote-hosted-pip.mjs",
     "desktop-tools:benchmark:pip:real": "node --import tsx scripts/desktop-tools/benchmark-remote-hosted-pip.mjs --real-runtime",

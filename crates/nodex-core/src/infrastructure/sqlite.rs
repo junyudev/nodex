@@ -1,3 +1,4 @@
+use nodex_core_contracts::{CoreError, CoreErrorCode, CoreErrorRecovery};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
@@ -546,6 +547,50 @@ pub fn validate_store(connection: &Connection) -> Result<(), StoreError> {
 
 fn duration_millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+pub(crate) fn core_error(error: StoreError) -> CoreError {
+    let code = match error.code {
+        StoreErrorCode::InvalidInput => CoreErrorCode::InvalidInput,
+        StoreErrorCode::NotFound => CoreErrorCode::NotFound,
+        StoreErrorCode::PatchNotFound => CoreErrorCode::PatchNotFound,
+        StoreErrorCode::PatchAmbiguous => CoreErrorCode::PatchAmbiguous,
+        StoreErrorCode::PatchOverlap => CoreErrorCode::PatchOverlap,
+        StoreErrorCode::StaleStoreEpoch => CoreErrorCode::StaleStoreEpoch,
+        StoreErrorCode::Conflict => CoreErrorCode::Conflict,
+        StoreErrorCode::HeadConflict => CoreErrorCode::HeadConflict,
+        StoreErrorCode::RevisionConflict => CoreErrorCode::RevisionConflict,
+        StoreErrorCode::IdempotencyKeyReused => CoreErrorCode::IdempotencyKeyReused,
+        StoreErrorCode::IdempotencyWindowExpired => CoreErrorCode::IdempotencyWindowExpired,
+        StoreErrorCode::LegacyIdempotencyUnavailable => CoreErrorCode::LegacyIdempotencyUnavailable,
+        StoreErrorCode::ProtectedOwnerDeletion => CoreErrorCode::ProtectedOwnerDeletion,
+        StoreErrorCode::UnsupportedSchema => CoreErrorCode::SchemaUnsupported,
+        StoreErrorCode::StoreCorrupt => CoreErrorCode::StoreCorrupt,
+        StoreErrorCode::MaintenanceInProgress => CoreErrorCode::MaintenanceInProgress,
+        StoreErrorCode::ResourceExhausted => CoreErrorCode::ResourceExhausted,
+        StoreErrorCode::Unauthorized => CoreErrorCode::Unauthorized,
+        StoreErrorCode::GenerationConflict => CoreErrorCode::GenerationConflict,
+        StoreErrorCode::MissingDependencies => CoreErrorCode::DocumentUpdateMissingDependencies,
+        StoreErrorCode::MaterializationStale => CoreErrorCode::MaterializationStale,
+        StoreErrorCode::WriterQueueFull | StoreErrorCode::ReaderPoolTimeout => {
+            CoreErrorCode::Overloaded
+        }
+        StoreErrorCode::QueryCancelled => CoreErrorCode::Cancelled,
+        StoreErrorCode::DeadlineExceeded => CoreErrorCode::DeadlineExceeded,
+        StoreErrorCode::WriterClosed
+        | StoreErrorCode::SqliteBusy
+        | StoreErrorCode::SqliteFailure
+        | StoreErrorCode::Internal => CoreErrorCode::CoreUnavailable,
+        StoreErrorCode::AlreadyOwned
+        | StoreErrorCode::InvalidProfile
+        | StoreErrorCode::RuntimeIncompatible => CoreErrorCode::SchemaUnsupported,
+    };
+    CoreError {
+        code,
+        message: error.message,
+        retryable: error.retryable,
+        recovery: error.recovery.unwrap_or(CoreErrorRecovery::None),
+    }
 }
 
 #[cfg(test)]

@@ -60,7 +60,6 @@ it.effect("registers and releases app update ingress with the Main Scope", () =>
                 nodexHome: "/tmp/nodex-test",
                 profileSettingsPath: "/tmp/nodex-test/config.toml",
                 platform: "darwin",
-                profileId: "test",
                 projectRootPath: "/repo",
                 rendererUrl: "http://localhost:5173",
                 resourcesPath: "/resources",

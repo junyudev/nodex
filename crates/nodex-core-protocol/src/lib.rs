@@ -204,7 +204,7 @@ pub fn validate_manifest(
     {
         return Err(CompatibilityMismatch {
             axis: CompatibilityAxis::Manifest,
-            required: "all six Modules in canonical order with non-zero version ranges".to_owned(),
+            required: "all Modules in canonical order with non-zero version ranges".to_owned(),
             offered: "invalid Module manifest".to_owned(),
         });
     }
@@ -257,7 +257,7 @@ pub fn evaluate_compatibility(
     {
         mismatches.push(CompatibilityMismatch {
             axis: CompatibilityAxis::Module,
-            required: "all six Modules in canonical order".to_owned(),
+            required: "all Modules in canonical order".to_owned(),
             offered: "invalid client requirements".to_owned(),
         });
     } else {
@@ -880,6 +880,15 @@ macro_rules! define_module_transport {
     };
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
+#[serde(transparent)]
+pub struct QueryReadRequest(pub ModuleReadRequest<nodex_core_contracts::query::QueryRead>);
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
+#[serde(transparent)]
+pub struct QueryReadResponse(
+    pub ResponseEnvelope<ModuleReadSnapshot<nodex_core_contracts::query::QueryReadValue>>,
+);
+
 define_module_transport!(
     LibraryReadRequest,
     LibraryReadResponse,
@@ -1079,6 +1088,18 @@ mod api {
         };
     }
 
+    #[utoipa::path(
+        post, path = "/core/v1/modules/query/read",
+        params(
+            ("x-nodex-request-id" = Option<String>, Header),
+            ("x-nodex-request-class" = Option<CoreRequestClass>, Header),
+            ("x-nodex-request-deadline-ms" = Option<u64>, Header)
+        ),
+        request_body = QueryReadRequest,
+        responses((status = 200, body = QueryReadResponse))
+    )]
+    pub(super) fn query_read() {}
+
     module_paths!(
         library_read,
         library_apply,
@@ -1152,6 +1173,7 @@ mod api {
         api::library_read,
         api::library_apply,
         api::database_read,
+        api::query_read,
         api::database_apply,
         api::document_read,
         api::document_apply,
@@ -1201,6 +1223,8 @@ mod api {
         LibraryReadResponse,
         LibraryApplyRequest,
         LibraryApplyResponse,
+        QueryReadRequest,
+        QueryReadResponse,
         DatabaseReadRequest,
         DatabaseReadResponse,
         DatabaseApplyRequest,
@@ -1266,6 +1290,7 @@ mod tests {
             "/core/v1/modules/document/read",
             "/core/v1/modules/library/apply",
             "/core/v1/modules/library/read",
+            "/core/v1/modules/query/read",
             "/core/v1/modules/workspace/apply",
             "/core/v1/modules/workspace/read",
             "/core/v1/files/blobs/prepare",

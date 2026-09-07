@@ -7,11 +7,11 @@ mod order_read;
 pub(crate) mod page_key;
 mod projection_delta;
 pub(crate) mod property_semantics;
+pub(crate) mod query;
 pub(crate) mod read;
 mod read_authorization;
 mod relation;
 mod relation_projection;
-mod sql;
 pub(crate) mod view_contract;
 mod window;
 
@@ -253,49 +253,7 @@ impl Default for DatabaseModule {
     }
 }
 
-fn core_error(error: StoreError) -> CoreError {
-    let code = match error.code {
-        StoreErrorCode::InvalidInput => CoreErrorCode::InvalidInput,
-        StoreErrorCode::NotFound => CoreErrorCode::NotFound,
-        StoreErrorCode::PatchNotFound => CoreErrorCode::PatchNotFound,
-        StoreErrorCode::PatchAmbiguous => CoreErrorCode::PatchAmbiguous,
-        StoreErrorCode::PatchOverlap => CoreErrorCode::PatchOverlap,
-        StoreErrorCode::StaleStoreEpoch => CoreErrorCode::StaleStoreEpoch,
-        StoreErrorCode::Conflict => CoreErrorCode::Conflict,
-        StoreErrorCode::HeadConflict => CoreErrorCode::HeadConflict,
-        StoreErrorCode::RevisionConflict => CoreErrorCode::RevisionConflict,
-        StoreErrorCode::IdempotencyKeyReused => CoreErrorCode::IdempotencyKeyReused,
-        StoreErrorCode::IdempotencyWindowExpired => CoreErrorCode::IdempotencyWindowExpired,
-        StoreErrorCode::LegacyIdempotencyUnavailable => CoreErrorCode::LegacyIdempotencyUnavailable,
-        StoreErrorCode::ProtectedOwnerDeletion => CoreErrorCode::ProtectedOwnerDeletion,
-        StoreErrorCode::UnsupportedSchema => CoreErrorCode::SchemaUnsupported,
-        StoreErrorCode::StoreCorrupt => CoreErrorCode::StoreCorrupt,
-        StoreErrorCode::MaintenanceInProgress => CoreErrorCode::MaintenanceInProgress,
-        StoreErrorCode::ResourceExhausted => CoreErrorCode::ResourceExhausted,
-        StoreErrorCode::Unauthorized => CoreErrorCode::Unauthorized,
-        StoreErrorCode::GenerationConflict => CoreErrorCode::GenerationConflict,
-        StoreErrorCode::MissingDependencies => CoreErrorCode::DocumentUpdateMissingDependencies,
-        StoreErrorCode::MaterializationStale => CoreErrorCode::MaterializationStale,
-        StoreErrorCode::WriterQueueFull | StoreErrorCode::ReaderPoolTimeout => {
-            CoreErrorCode::Overloaded
-        }
-        StoreErrorCode::QueryCancelled => CoreErrorCode::Cancelled,
-        StoreErrorCode::DeadlineExceeded => CoreErrorCode::DeadlineExceeded,
-        StoreErrorCode::WriterClosed
-        | StoreErrorCode::SqliteBusy
-        | StoreErrorCode::SqliteFailure
-        | StoreErrorCode::Internal => CoreErrorCode::CoreUnavailable,
-        StoreErrorCode::AlreadyOwned
-        | StoreErrorCode::InvalidProfile
-        | StoreErrorCode::RuntimeIncompatible => CoreErrorCode::SchemaUnsupported,
-    };
-    CoreError {
-        code,
-        message: error.message,
-        retryable: error.retryable,
-        recovery: error.recovery.unwrap_or(CoreErrorRecovery::None),
-    }
-}
+use crate::infrastructure::sqlite::core_error;
 
 fn invalid(message: &str) -> CoreError {
     CoreError {
@@ -323,6 +281,7 @@ fn corrupt(message: &str) -> StoreError {
 mod tests {
     mod configuration;
     mod manual_order;
+    mod observed_membership;
     mod sql;
     use base64::prelude::{BASE64_URL_SAFE_NO_PAD, Engine as _};
     use std::collections::{BTreeMap, BTreeSet};
@@ -672,6 +631,7 @@ mod tests {
                         },
                         DatabaseIntent::EditPropertyValues {
                             edits: vec![DatabasePropertyValueMutation {
+                                expected_membership_revision: None,
                                 address: DatabasePagePropertyAddress {
                                     page_id: "page:atomic-option".to_owned(),
                                     data_source_id: SOURCE_ID.to_owned(),
@@ -709,6 +669,7 @@ mod tests {
                         },
                         DatabaseIntent::EditPropertyValues {
                             edits: vec![DatabasePropertyValueMutation {
+                                expected_membership_revision: None,
                                 address: DatabasePagePropertyAddress {
                                     page_id: "page:atomic-option".to_owned(),
                                     data_source_id: SOURCE_ID.to_owned(),
@@ -786,6 +747,7 @@ mod tests {
                     },
                     DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:missing".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -1734,6 +1696,7 @@ mod tests {
                 },
                 DatabaseIntent::EditPropertyValues {
                     edits: vec![DatabasePropertyValueMutation {
+                        expected_membership_revision: None,
                         address: DatabasePagePropertyAddress {
                             page_id: "page:database-row".to_owned(),
                             data_source_id: SOURCE_ID.to_owned(),
@@ -1875,6 +1838,7 @@ mod tests {
         let mut divergent = request;
         divergent.intent.push(DatabaseIntent::EditPropertyValues {
             edits: vec![DatabasePropertyValueMutation {
+                expected_membership_revision: None,
                 address: DatabasePagePropertyAddress {
                     page_id: "page:database-row".to_owned(),
                     data_source_id: SOURCE_ID.to_owned(),
@@ -1912,6 +1876,7 @@ mod tests {
                         },
                         DatabaseIntent::EditPropertyValues {
                             edits: vec![DatabasePropertyValueMutation {
+                                expected_membership_revision: None,
                                 address: DatabasePagePropertyAddress {
                                     page_id: "page:database-row".to_owned(),
                                     data_source_id: SOURCE_ID.to_owned(),
@@ -3100,6 +3065,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:format-row".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -3407,6 +3373,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:option-row".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -4847,6 +4814,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:child".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -4874,6 +4842,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:child".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -4922,6 +4891,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:child".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -5543,6 +5513,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:move-parent".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -5613,6 +5584,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:move-parent".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -6390,6 +6362,7 @@ mod tests {
                         DatabaseIntent::EditPropertyValues {
                             edits: vec![
                                 DatabasePropertyValueMutation {
+                                    expected_membership_revision: None,
                                     address: DatabasePagePropertyAddress {
                                         page_id: "page:multi-group".to_owned(),
                                         data_source_id: SOURCE_ID.to_owned(),
@@ -6406,6 +6379,7 @@ mod tests {
                                     },
                                 },
                                 DatabasePropertyValueMutation {
+                                    expected_membership_revision: None,
                                     address: DatabasePagePropertyAddress {
                                         page_id: "page:single-group".to_owned(),
                                         data_source_id: SOURCE_ID.to_owned(),
@@ -6877,6 +6851,7 @@ mod tests {
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![
                             DatabasePropertyValueMutation {
+                                expected_membership_revision: None,
                                 address: DatabasePagePropertyAddress {
                                     page_id: "page:schedule-row".to_owned(),
                                     data_source_id: SOURCE_ID.to_owned(),
@@ -6890,6 +6865,7 @@ mod tests {
                                 },
                             },
                             DatabasePropertyValueMutation {
+                                expected_membership_revision: None,
                                 address: DatabasePagePropertyAddress {
                                     page_id: "page:schedule-row".to_owned(),
                                     data_source_id: SOURCE_ID.to_owned(),
@@ -7133,6 +7109,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:relation-row".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -7157,6 +7134,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:relation-row".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -7225,6 +7203,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:relation-row".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -7265,6 +7244,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:relation-row".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -7295,6 +7275,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:relation-row".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -7473,6 +7454,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:relation-row".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -7498,6 +7480,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: vec![DatabaseIntent::EditPropertyValues {
                         edits: vec![DatabasePropertyValueMutation {
+                            expected_membership_revision: None,
                             address: DatabasePagePropertyAddress {
                                 page_id: "page:relation-row".to_owned(),
                                 data_source_id: SOURCE_ID.to_owned(),
@@ -8172,6 +8155,7 @@ mod tests {
                         store_epoch: StoreEpoch("epoch-1".to_owned()),
                         intent: vec![DatabaseIntent::EditPropertyValues {
                             edits: vec![DatabasePropertyValueMutation {
+                                expected_membership_revision: None,
                                 address: DatabasePagePropertyAddress {
                                     page_id: "page:completion-transition".to_owned(),
                                     data_source_id: SOURCE_ID.to_owned(),

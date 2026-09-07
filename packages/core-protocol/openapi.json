@@ -1157,6 +1157,77 @@
         }
       }
     },
+    "/core/v1/modules/query/read": {
+      "post": {
+        "tags": [
+          "api"
+        ],
+        "operationId": "query_read",
+        "parameters": [
+          {
+            "name": "x-nodex-request-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-nodex-request-class",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/CoreRequestClass"
+                }
+              ]
+            }
+          },
+          {
+            "name": "x-nodex-request-deadline-ms",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryReadResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/core/v1/modules/workspace/apply": {
       "post": {
         "tags": [
@@ -11103,6 +11174,14 @@
           },
           "edit": {
             "$ref": "#/components/schemas/DatabasePropertyValueEdit"
+          },
+          "expected_membership_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When present, require the same observed active membership before editing.\nSQL-prepared edits always carry this guard; commutative edits may omit it."
           }
         },
         "additionalProperties": false
@@ -21320,6 +21399,92 @@
         },
         "additionalProperties": false
       },
+      "LibraryPageOperation": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "move"
+                ]
+              },
+              "view_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delete"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Page lifecycle preparation is independent of document content."
+      },
+      "LibraryPageOperationPreparation": {
+        "type": "object",
+        "required": [
+          "page_id",
+          "validators"
+        ],
+        "properties": {
+          "page_id": {
+            "type": "string"
+          },
+          "page_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "validators": {
+            "$ref": "#/components/schemas/LibraryPageOperationValidators"
+          }
+        }
+      },
+      "LibraryPageOperationValidators": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "move_etag"
+            ],
+            "properties": {
+              "move_etag": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_etag"
+            ],
+            "properties": {
+              "page_etag": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
       "LibraryPageOwnershipPath": {
         "oneOf": [
           {
@@ -29470,7 +29635,8 @@
           "owned_document",
           "project_workspace",
           "automation",
-          "store_administration"
+          "store_administration",
+          "query"
         ]
       },
       "ModuleReadRequest_AutomationRead": {
@@ -29743,42 +29909,6 @@
           },
           "read": {
             "oneOf": [
-              {
-                "type": "object",
-                "required": [
-                  "scope",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "sql_schema"
-                    ]
-                  },
-                  "scope": {
-                    "$ref": "#/components/schemas/SqlScope"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "query",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "sql_query"
-                    ]
-                  },
-                  "query": {
-                    "$ref": "#/components/schemas/SqlQuery"
-                  }
-                }
-              },
               {
                 "type": "object",
                 "required": [
@@ -30896,6 +31026,28 @@
                     "enum": [
                       "page_content"
                     ]
+                  },
+                  "page_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_id",
+                  "operation",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "prepare_page_operation"
+                    ]
+                  },
+                  "operation": {
+                    "$ref": "#/components/schemas/LibraryPageOperation"
                   },
                   "page_id": {
                     "type": "string"
@@ -32521,6 +32673,66 @@
                     "enum": [
                       "managed_worktree_lifecycle_snapshot"
                     ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "ModuleReadRequest_QueryRead": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "read"
+        ],
+        "properties": {
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "read": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "scope",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "schema"
+                    ]
+                  },
+                  "relation": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/SqlScope"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "query",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "query"
+                    ]
+                  },
+                  "query": {
+                    "$ref": "#/components/schemas/SqlQuery"
                   }
                 }
               }
@@ -36684,6 +36896,12 @@
           }
         }
       },
+      "QueryReadRequest": {
+        "$ref": "#/components/schemas/ModuleReadRequest_QueryRead"
+      },
+      "QueryReadResponse": {
+        "$ref": "#/components/schemas/ResponseEnvelope_ModuleReadSnapshot_QueryReadValue"
+      },
       "ReadFileBlobQuery": {
         "allOf": [
           {
@@ -39922,42 +40140,6 @@
                       {
                         "type": "object",
                         "required": [
-                          "value",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "sql_schema"
-                            ]
-                          },
-                          "value": {
-                            "$ref": "#/components/schemas/SqlSchema"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "value",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "sql_query"
-                            ]
-                          },
-                          "value": {
-                            "$ref": "#/components/schemas/SqlResult"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
                           "databases",
                           "kind"
                         ],
@@ -40966,6 +41148,24 @@
                           },
                           "value": {
                             "$ref": "#/components/schemas/LibraryPageContent"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "page_operation_preparation"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/LibraryPageOperationPreparation"
                           }
                         }
                       },
@@ -42438,6 +42638,116 @@
           }
         ]
       },
+      "ResponseEnvelope_ModuleReadSnapshot_QueryReadValue": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "payload",
+              "status"
+            ],
+            "properties": {
+              "payload": {
+                "type": "object",
+                "required": [
+                  "contract_version",
+                  "store_epoch",
+                  "commit_head",
+                  "value"
+                ],
+                "properties": {
+                  "authorization": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/AuthorizedReadStamp"
+                      }
+                    ]
+                  },
+                  "commit_head": {
+                    "type": "integer",
+                    "format": "int64"
+                  },
+                  "contract_version": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  },
+                  "store_epoch": {
+                    "$ref": "#/components/schemas/StoreEpoch"
+                  },
+                  "value": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "schema"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/SqlSchema"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "query"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/SqlResult"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ok"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "payload",
+              "status"
+            ],
+            "properties": {
+              "payload": {
+                "$ref": "#/components/schemas/CoreError"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "error"
+                ]
+              }
+            }
+          }
+        ]
+      },
       "ResponseEnvelope_ModuleReadSnapshot_StoreAdministrationReadValue": {
         "oneOf": [
           {
@@ -42851,13 +43161,21 @@
       "SqlColumn": {
         "type": "object",
         "required": [
+          "nullable",
+          "description",
           "name",
           "storage_type",
           "options"
         ],
         "properties": {
+          "description": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
+          },
+          "nullable": {
+            "type": "boolean"
           },
           "options": {
             "type": "array",
@@ -42869,6 +43187,16 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "property_schema": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DatabasePropertySchema"
+              }
             ]
           },
           "storage_type": {
@@ -42917,6 +43245,8 @@
       "SqlResult": {
         "type": "object",
         "required": [
+          "returned_count",
+          "snapshot",
           "columns",
           "rows"
         ],
@@ -42927,12 +43257,19 @@
               "type": "string"
             }
           },
+          "returned_count": {
+            "type": "integer",
+            "minimum": 0
+          },
           "rows": {
             "type": "array",
             "items": {
               "type": "array",
               "items": {}
             }
+          },
+          "snapshot": {
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -42973,11 +43310,20 @@
         "type": "object",
         "required": [
           "table",
-          "data_source_id",
           "name",
+          "description",
+          "row_identity",
+          "arguments",
+          "examples",
           "columns"
         ],
         "properties": {
+          "arguments": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "columns": {
             "type": "array",
             "items": {
@@ -42985,10 +43331,34 @@
             }
           },
           "data_source_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
             "type": "string"
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "name": {
             "type": "string"
+          },
+          "ordering": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "row_identity": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "table": {
             "type": "string"

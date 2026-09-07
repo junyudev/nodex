@@ -30,8 +30,8 @@ flowchart LR
 The CLI is the default Agent content Interface. Its Native CLI authorization
 uses selected Project access; experimental dynamic tools retain separate verified
 Turn authorization behind a default-off development gate. Per-Turn host connection
-context selects executable, Skill, Profile, and Project without becoming an
-authorization proxy. See [Agent Interface Behavior](product-specs/agent-interface-behavior.md)
+context selects the Skill and a task-bound shell entrypoint for the current
+executable, Profile, and Project without becoming an authorization proxy. See [Agent Interface Behavior](product-specs/agent-interface-behavior.md)
 and [ADR 0061](adr/0061-cli-first-agent-content-interface.md).
 
 The principal dependency rule is inward ownership:
@@ -169,18 +169,19 @@ Page discovery is one Core-owned capability across Page references, Command Pale
 
 The Rust Core is the only production authority allowed to open `nodex.db`, write the WAL, reconstruct durable Yrs/Canvas Documents, execute semantic transactions, advance projections, or maintain receipts and history. It runs as one detached process per Profile and exposes authenticated HTTP/1.1 over a Profile-private Unix socket.
 
-Core is organized as six deep semantic Modules under [`crates/nodex-core/src`](crates/nodex-core/src):
+Core is organized as seven deep semantic Modules under [`crates/nodex-core/src`](crates/nodex-core/src):
 
 | Module         | Owns                                                                                    |
 | -------------- | --------------------------------------------------------------------------------------- |
 | Library        | Block/Page ownership, Files, navigation, lifecycle, content operations, resource grants |
 | Database       | Database/Data Source/View schema, values, relations, queries, and positions             |
+| Query          | Authorized cross-domain SQL observations, lazy public projections, query budgets        |
 | Document       | Yrs/Canvas persistence, live sync, versions, and content operations                     |
 | Workspace      | Projects, Sessions, Threads, sidebar order, execution metadata                          |
 | Automation     | Definitions, schedules, runs, occurrences, reminders, leases                            |
 | Administration | Backup, restore, retention, compaction, Store maintenance                               |
 
-Each public Module presents a versioned `read`/`apply` Interface in [`crates/nodex-core-contracts`](crates/nodex-core-contracts). Module implementations may share internal transaction kernels, but callers may not compose several public Module calls and call the result atomic. A cross-domain mutation belongs to one owning aggregate that invokes the other domain seams inside the same Core transaction.
+Each public Module presents a versioned `read` Interface and, where it owns mutations, an `apply` Interface in [`crates/nodex-core-contracts`](crates/nodex-core-contracts). Module implementations may share internal transaction kernels, but callers may not compose several public Module calls and call the result atomic. A cross-domain mutation belongs to one owning aggregate that invokes the other domain seams inside the same Core transaction.
 
 [`crates/nodex-core-protocol`](crates/nodex-core-protocol) owns authenticated transport envelopes, compatibility negotiation, generated OpenAPI artifacts, event versions, and bounded codecs. [`crates/nodex-core-server`](crates/nodex-core-server) owns socket transport, connections, process lifecycle, stream admission, and health metrics. Transport code depends on semantic contracts; semantic Modules never depend on transport code.
 
@@ -527,7 +528,7 @@ Cross-feature renderer construction, state-owner selection, and shared UI/editor
 
 ### Native CLI
 
-[`crates/nodex-cli`](crates/nodex-cli) is a native Adapter over the same Core contracts used by Desktop. It resolves explicit Profile and Project scope, performs bounded reads and semantic writes, and never receives raw SQL or private lifecycle authority. It does not depend on Electron and does not bypass Module authorization. The one offline provisioning exception is `profile clone`: because its target Core does not exist yet, the CLI invokes the Core Administration materializer in-process. That path may read only a published evidence-backed backup package, may create only a new Profile home, and must verify the copied database/asset closure, preserve its imported Store lineage, and remint instance secrets before atomic publication; ordinary reads and mutations remain protocol-only. The result is an isolated local fork whose post-clone history is never merged or replayed into its source Profile.
+[`crates/nodex-cli`](crates/nodex-cli) is a native Adapter over the same Core contracts used by Desktop. It resolves explicit Profile and Project scope, performs bounded reads and semantic writes, and never accesses private Store SQL or private lifecycle authority. It does not depend on Electron and does not bypass Module authorization. The one offline provisioning exception is `profile clone`: because its target Core does not exist yet, the CLI invokes the Core Administration materializer in-process. That path may read only a published evidence-backed backup package, may create only a new Profile home, and must verify the copied database/asset closure, preserve its imported Store lineage, and remint instance secrets before atomic publication; ordinary reads and mutations remain protocol-only. The result is an isolated local fork whose post-clone history is never merged or replayed into its source Profile.
 
 Agent tools use versioned semantic contracts from [`src/shared/nodex-agent-tools`](src/shared/nodex-agent-tools) and Core contract counterparts. They pass intent and semantic preconditions; Core resolves storage coordinates, authorization, and exact mutation evidence.
 
@@ -948,11 +949,16 @@ Whole-store restore is an exclusive Core maintenance operation. It drains admitt
 
 The operational contract belongs in [Reliability](docs/RELIABILITY.md); release and packaged-runtime recovery belong in [the macOS release runbook](docs/release-macos.md).
 
-The Database Module owns the public SQL read boundary. It builds complete
-authorized projections in one Store snapshot and evaluates user SQL only in an
-isolated transient database. Configuration scripts remain ordinary atomic
-Database intents with the same durable receipt authority. Public scope, budgets
-and script semantics belong to [Agent CLI queries](docs/product-specs/agent-cli-queries.md).
+The Query Module owns the public SQL read boundary and one pinned Store observation
+for its lifetime. Library and Database expose internal authorized projection seams
+that borrow that same observation; Document and File semantics remain with their
+domain owners. User expressions run against lazy read-only virtual relations in
+an isolated transient database, never against private Store tables. Query owns
+execution budgets and cancellation; domain owners retain visibility and value
+rules. The SQLite callback bridge is isolated in `nodex-sqlite-query`, while Core
+retains its unsafe-code prohibition. Configuration scripts remain atomic Database
+intents. [ADR 0063](adr/0063-sql-first-content-observations.md) records this boundary;
+public scope and semantics belong to [Agent CLI queries](product-specs/agent-cli-queries.md).
 
 ## System-wide invariants
 

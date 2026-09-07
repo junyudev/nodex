@@ -71,18 +71,7 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["setup"] | ["skills", _] => document::<crate::skills::install::SkillOperationResult>(),
         ["ls"] => document::<crate::browse::BrowseOutput>(),
         ["search"] => document::<crate::search::SearchOutput>(),
-        ["data-source", "describe"] => document::<crate::data_source::DataSourceDescribeOutput>(),
-        ["data-source", "list"] => combine(
-            document::<crate::data_source::CompactWindow<crate::data_source::DataSourceIdentity>>(),
-            [document::<crate::data_source::DataSourceIdentity>()],
-        ),
-        ["data-source", "options"] => combine(
-            document::<crate::data_source::CompactWindow<crate::data_source::OptionIdentity>>(),
-            [document::<crate::data_source::OptionIdentity>()],
-        ),
-        ["data-source", "query"] => document::<crate::data_source::DataSourceQueryOutput>(),
         ["page", "properties", "prepare-batch"] => document::<crate::selection_batch::BatchEdits>(),
-        ["page", "properties", "get"] => document::<crate::page_properties::PagePropertiesOutput>(),
         ["data-source", "configure"] | ["page", "properties", "apply" | "set"] => combine(
             document::<nodex_core_contracts::ApplyResponse<DatabaseCommitValue, DatabaseReceipt>>(),
             [
@@ -94,15 +83,10 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["context"] => document::<crate::runtime::ContextOutput>(),
         ["tree"] => document::<crate::runtime::TreeRoot>(),
         ["read"] => document::<LibraryPageProjectionFile>(),
+        ["page", "prepare"] => document::<LibraryPageOperationPreparation>(),
         ["sed"] => document::<crate::runtime::SedOutput>(),
         ["docs", "nested-markdown"] => document::<String>(),
         ["rg"] => document::<ProcessResult>(),
-        ["view", "list"] => combine(
-            document::<crate::data_source::CompactWindow<crate::view::ViewListItem>>(),
-            [document::<crate::view::ViewListItem>()],
-        ),
-        ["view", "describe"] => document::<crate::view::ViewDescription>(),
-        ["view", "query"] => document::<crate::view::ViewQueryOutput>(),
         ["open", _] => document::<crate::open::OpenResult>(),
         ["patch"] | ["page", "insert" | "replace" | "rename"] | ["block", _] => {
             document::<crate::page_mutation::SemanticMutationResult>()
@@ -111,11 +95,6 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["page", "move"] => document::<crate::page_lifecycle::PageMoveResult>(),
         ["page", "duplicate"] => document::<crate::page_lifecycle::PageCopyResult>(),
         ["page", "delete"] => document::<crate::page_lifecycle::PageDeletionResult>(),
-        ["file", "list"] => document::<LibraryFilePage>(),
-        ["file", "info"] => document::<LibraryFile>(),
-        ["file", "versions"] => document::<LibraryFileVersionPage>(),
-        ["file", "usages"] => document::<LibraryFileUsagePage>(),
-        ["page", "file", "list"] => document::<LibraryPageFileInventory>(),
         ["file", "read"] | ["page", "file", "read"] => {
             document::<crate::files::FileDownloadResult>()
         }
@@ -234,9 +213,6 @@ pub(super) fn payloads(path: &[&str]) -> BTreeMap<String, Value> {
                 ),
             ),
         ]),
-        ["data-source", "query"] => {
-            BTreeMap::from([("--input".into(), document::<DatabaseDataSourceQuery>())])
-        }
         ["page", "properties", "apply"] => BTreeMap::from([(
             "--input".into(),
             combine(

@@ -1,3 +1,4 @@
+import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { MainConfig } from "../app/MainConfig";
 import { buildNodexCliBootstrap } from "../platform/node/NodexCliBootstrap";
 import { randomUUID } from "node:crypto";
@@ -198,6 +199,7 @@ export const make: Effect.Effect<
   CodexTurnPreparation["Service"],
   never,
   | MainConfig
+  | CoreAuthority
   | CodexAgentConfigRuntime
   | CodexAttachments
   | CodexConversationContext
@@ -210,6 +212,7 @@ export const make: Effect.Effect<
   | CodexThreadHostResolver
 > = Effect.gen(function* () {
   const config = yield* MainConfig;
+  const coreAuthority = yield* CoreAuthority;
   const agentConfig = yield* CodexAgentConfigRuntime;
   const attachments = yield* CodexAttachments;
   const conversationContext = yield* CodexConversationContext;
@@ -338,7 +341,8 @@ export const make: Effect.Effect<
         prepared,
         (yield* hosts.resolve(input.threadId)) === CODEX_APP_LOCAL_HOST_ID,
       );
-      const cliBootstrap = yield* buildNodexCliBootstrap(config, {
+      const cliBootstrap = yield* buildNodexCliBootstrap(config, coreAuthority.identity, {
+        threadId: input.threadId,
         hostId: yield* hosts.resolve(input.threadId),
         projectId,
         verifiedBuiltinFullAccess: permission.verifiedBuiltinFullAccess,

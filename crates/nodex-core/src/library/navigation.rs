@@ -323,6 +323,25 @@ pub(super) fn read(
                 )?),
             })
         }
+        LibraryRead::PreparePageOperation { page_id, operation } => {
+            require_bound_page_read_access(
+                connection,
+                library_id,
+                requesting_project_id,
+                requesting_adapter,
+                &page_id,
+            )?;
+            Ok(LibraryReadValue::PageOperationPreparation {
+                value: Box::new(super::page_projection::prepare_page_operation(
+                    connection,
+                    library_id,
+                    store_epoch,
+                    requesting_project_id,
+                    &page_id,
+                    operation,
+                )?),
+            })
+        }
         LibraryRead::PageProjectionFile {
             page_id,
             file_kind,
@@ -909,7 +928,7 @@ fn require_bound_page_read_access(
     ))
 }
 
-fn require_bound_canvas_read_access(
+pub(super) fn require_bound_canvas_read_access(
     connection: &Connection,
     library_id: &str,
     requesting_project_id: Option<&str>,
@@ -1567,35 +1586,7 @@ fn page_detail(
     {
         return Err(corrupt("Library Page Document descriptor is invalid"));
     }
-    let intrinsic_properties = connection
-        .prepare(
-            "SELECT property_key, value_type, value_json, revision FROM block_properties \
-             WHERE block_id = ?1 ORDER BY property_key",
-        )?
-        .query_map([page_id], |row| {
-            let key = row.get::<_, String>(0)?;
-            let value_type = row.get::<_, String>(1)?;
-            let serialized = row.get::<_, String>(2)?;
-            let value = parse_json(&serialized, "Page intrinsic Property")?;
-            if !valid_intrinsic_value(&value_type, &value) {
-                return Err(rusqlite::Error::FromSqlConversionFailure(
-                    serialized.len(),
-                    rusqlite::types::Type::Text,
-                    std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        "Page intrinsic Property diverges from its value type",
-                    )
-                    .into(),
-                ));
-            }
-            Ok(LibraryPageIntrinsicProperty {
-                key,
-                value_type,
-                value,
-                revision: row.get(3)?,
-            })
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let intrinsic_properties = read_page_intrinsic_properties(connection, page_id)?;
     let data_source_context = match document.1.as_str() {
         "library" | "page" => LibraryPageDataSourceContext::Standalone,
         "data_source" => {
@@ -1634,6 +1625,43 @@ fn page_detail(
         data_source_context,
         access_context: LibraryPageAccessContext::Library,
     })
+}
+
+/// Shared canonical intrinsic values for Page detail and lazy public SQL cells.
+/// Callers establish Page visibility before entering this read.
+pub(super) fn read_page_intrinsic_properties(
+    connection: &Connection,
+    page_id: &str,
+) -> Result<Vec<LibraryPageIntrinsicProperty>, StoreError> {
+    Ok(connection
+        .prepare(
+            "SELECT property_key, value_type, value_json, revision FROM block_properties \
+             WHERE block_id = ?1 ORDER BY property_key",
+        )?
+        .query_map([page_id], |row| {
+            let key = row.get::<_, String>(0)?;
+            let value_type = row.get::<_, String>(1)?;
+            let serialized = row.get::<_, String>(2)?;
+            let value = parse_json(&serialized, "Page intrinsic Property")?;
+            if !valid_intrinsic_value(&value_type, &value) {
+                return Err(rusqlite::Error::FromSqlConversionFailure(
+                    serialized.len(),
+                    rusqlite::types::Type::Text,
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Page intrinsic Property diverges from its value type",
+                    )
+                    .into(),
+                ));
+            }
+            Ok(LibraryPageIntrinsicProperty {
+                key,
+                value_type,
+                value,
+                revision: row.get(3)?,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
 fn valid_intrinsic_value(value_type: &str, value: &Value) -> bool {

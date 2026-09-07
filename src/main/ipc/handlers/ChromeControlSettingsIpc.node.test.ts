@@ -78,7 +78,6 @@ it.effect("scope-owns Chrome settings IPC and rejects an untrusted sender before
                 nodexHome: "/tmp/nodex-test",
                 profileSettingsPath: "/tmp/nodex-test/config.toml",
                 platform: "darwin",
-                profileId: "test",
                 projectRootPath: "/repo",
                 rendererUrl: "http://localhost:5173",
                 resourcesPath: "/resources",

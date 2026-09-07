@@ -236,3 +236,19 @@ export const runCodexProbeMain = <E>(
       Effect.provide(scopedCallbackRuntimeLive),
     ),
   );
+
+/** Interrupt Promise-owned harnesses cooperatively, then join their asynchronous cleanup. */
+export const withCancelableProbeOperation = <A>(run: (signal: AbortSignal) => Promise<A>) =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const controller = new AbortController();
+      const pending = Promise.resolve().then(() => run(controller.signal));
+      return { controller, pending };
+    }),
+    ({ pending }) => Effect.tryPromise(() => pending),
+    ({ controller, pending }) =>
+      Effect.promise(async () => {
+        controller.abort();
+        await pending.catch(() => undefined);
+      }),
+  );
