@@ -105,7 +105,10 @@ fn read_subject(context: &BoundModuleContext, read: &DatabaseRead) -> Option<Res
         } => Some(ResourceKey::Page {
             page_id: page_id.clone(),
         }),
-        DatabaseRead::AgentDataSourceQuery { .. } | DatabaseRead::AgentViewQuery { .. } => None,
+        DatabaseRead::AgentDataSourceQuery { .. }
+        | DatabaseRead::AgentViewQuery { .. }
+        | DatabaseRead::SqlSchema { .. }
+        | DatabaseRead::SqlQuery { .. } => None,
     }
 }
 

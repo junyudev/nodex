@@ -57,9 +57,10 @@ Errors go to stderr; captured errors are structured even for a raw success
 stream. Redirected input/output never enables prompts or pagers, including with
 explicit text output. Skill installation still requires its explicit confirmation.
 
-`nodex --json <command> --help` returns version 2 machine help with arguments,
-input/result schemas, defaults, constraints, and recovery information without
-connecting to Core. `nodex docs nested-markdown` reads the same format reference
+`nodex --json <command> --help` returns a compact machine guide with arguments,
+defaults, constraints, and examples without connecting to Core. `--help-schema
+input|result|error|all` retrieves only the requested schemas as JSON. Ordinary
+help and machine help share command definitions and examples. `nodex docs nested-markdown` reads the same format reference
 bundled with the official Skill. Read only the help needed for the current task.
 
 Short Page content and patches accept stdin. Block JSON file flags accept `-`
@@ -84,12 +85,13 @@ The primary read families are:
 - `rg` for exact read-only search over a Core-issued immutable snapshot lease;
 - `open page` and `open view` for validated Nodex deep links.
 
-Page selectors resolve canonical `@pageId` first, then an authorized current or
+Resource selectors accept bare IDs directly; no `@` prefix is required.
+Page selectors resolve a stable `pageId` first, then an authorized current or
 historical Page key, then an explicitly unique supported title path. Key input
 accepts documented case normalization, one optional leading `#`, and
 no-hyphen shorthand; output reports canonical current `page_key` alongside
 `page_id`. If compact input maps to more than one authorized Page, the command
-reports ambiguity and asks for a canonical hyphenated key or `@pageId` rather
+reports ambiguity and asks for a canonical hyphenated key or `pageId` rather
 than choosing one. An explicit `#` miss does not fall back to a title path.
 Core resolves the alias inside the selected Project before the CLI invokes the
 UUID-based operation. Other selectors use stable typed
@@ -99,16 +101,20 @@ collections are bounded and use opaque continuations.
 
 ## Data Sources and properties
 
-`data-source list --database ID` discovers authorized sources. `describe ID`
+`data-source list` discovers sources in the Project default Database;
+`--database ID` chooses another authorized Database. `describe ID`
 returns a source and one Property window; `options ID --property ID` returns a
 separate option window. They expose continuation rather than pretending schema
 and option sets are complete. `ls` on a Database requires an unambiguous active
 Data Source and lists its direct Pages, independently of saved View filters.
 
-`data-source query ID --input -` accepts typed filters, non-manual sorts, and
+`data-source query` defaults to the unique active Source in the selected
+Database and an empty filter. Multiple Sources require a selector. Explicit
+`--input -` reads stdin. `data-source query ID --input -` accepts typed filters, non-manual sorts, and
 optional Property projection without creating a View. `--after` and `--limit`
-override pagination only; the query remains unchanged between windows. Empty
-projection requests no values; omission uses the default active Properties.
+override pagination only; the query remains unchanged between windows. Property
+values are omitted by default; repeated `--property ID_OR_NAME` or the input
+projection selects values explicitly.
 Project authorization is checked by Core, including relation targets.
 
 `page properties get PAGE` returns values and revisions. `properties set`
@@ -122,6 +128,23 @@ with at most 2 MiB of combined Nested Markdown. Public drafts use
 `title_markdown`, `nested_markdown`, and typed `values`. Single and batch creation
 share the same Core creation implementation. Separate commands do not share a
 transaction.
+
+## Queries and configuration
+
+`view list` discovers the default Database's Views. `view describe [SELECTOR]`
+returns complete configuration; `view query [SELECTOR]` uses the Project's
+configured default View when omitted. Unique names and bare IDs work alike.
+`--group Review` selects the unique named group; `--property NAME_OR_ID` includes
+requested values. Compact lists return items, an exact `returned_count`, and
+continuation. Option discovery does not report unrelated usage counts.
+
+`sql schema` exposes the public Source model, and `sql query` evaluates read-only
+SQLite expressions, aggregates and joins over complete authorized inputs in
+one Core snapshot. `data-source configure --input -` atomically configures
+Properties, options and Views. `page properties prepare-batch` freezes SQL
+identities into revision-fenced edits accepted directly by `properties apply`.
+See [Agent CLI queries and configuration](product-specs/agent-cli-queries.md)
+for scope, SQL data representation, budgets and configuration semantics.
 
 ## Drafts and mutations
 

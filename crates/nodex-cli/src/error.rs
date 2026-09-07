@@ -92,6 +92,7 @@ pub struct CliError {
     pub column: Option<usize>,
     pub hunk: Option<usize>,
     pub path: Option<String>,
+    pub details: Option<serde_json::Value>,
 }
 
 impl CliError {
@@ -103,7 +104,13 @@ impl CliError {
             column: None,
             hunk: None,
             path: None,
+            details: None,
         }
+    }
+
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
+        self
     }
 
     pub fn at_line(mut self, line: usize) -> Self {
@@ -146,6 +153,8 @@ pub struct ErrorBody<'a> {
     pub hunk: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<&'a serde_json::Value>,
 }
 
 impl<'a> ErrorEnvelope<'a> {
@@ -160,6 +169,7 @@ impl<'a> ErrorEnvelope<'a> {
                 column: error.column,
                 hunk: error.hunk,
                 path: error.path.as_deref(),
+                details: error.details.as_ref(),
             },
         }
     }

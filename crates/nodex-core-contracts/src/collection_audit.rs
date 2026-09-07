@@ -21,6 +21,9 @@ enum ReadBudgetPolicy {
     Identity,
     /// Caller supplies a collection with an ingress count/byte bound.
     BoundedBatch,
+    /// Complete input and output are bounded by rows, bytes and execution
+    /// work; exhaustion fails without returning a partial result.
+    BoundedQuery,
     /// The domain itself has an enforced finite cardinality/depth.
     FixedDomain,
     /// A deliberately wide object using an identity-scoped Document, binary,
@@ -64,6 +67,9 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
 
 fn database_policy(read: &DatabaseRead) -> ReadBudgetPolicy {
     match read {
+        DatabaseRead::SqlSchema { .. } | DatabaseRead::SqlQuery { .. } => {
+            ReadBudgetPolicy::BoundedQuery
+        }
         DatabaseRead::CatalogWindow { .. }
         | DatabaseRead::DataSourceWindow { .. }
         | DatabaseRead::PropertyWindow { .. }

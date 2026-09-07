@@ -500,7 +500,7 @@ fn resolve_page_destination(
             at,
         });
     }
-    if selector.starts_with('@') {
+    if !selector.contains('/') {
         let page = unwrap_library(client.library_read(
             Some(&project.id),
             LibraryRead::PageLifecyclePreflight {
@@ -546,27 +546,35 @@ fn resolve_page_destination(
             ResponseEnvelope::Error(error) if error.code == CoreErrorCode::NotFound => {}
             ResponseEnvelope::Error(error) => return Err(map_core_error(error)),
         }
-        let source = unwrap_database(client.database_read(
-            Some(&project.id),
-            DatabaseRead::DataSource {
-                data_source_id: unprefixed.to_owned(),
-            },
-        ))?;
-        let DatabaseReadValue::DataSource { value } = source.value else {
-            return Err(internal(
-                "Core returned the wrong Data Source owner snapshot",
-            ));
-        };
-        return Ok(LibraryPageWriteDestination::DataSource {
-            data_source_id: value.data_source.data_source_id,
-            view_id: placement
-                .view
-                .as_deref()
-                .map(|view| stable_id(view, "--view"))
-                .transpose()?,
-            group: group_scope(placement)?,
-            at,
-        });
+        let source = client
+            .database_read(
+                Some(&project.id),
+                DatabaseRead::DataSource {
+                    data_source_id: unprefixed.to_owned(),
+                },
+            )
+            .map_err(map_client_error)?;
+        match source.0 {
+            ResponseEnvelope::Ok(snapshot) => {
+                let DatabaseReadValue::DataSource { value } = snapshot.value else {
+                    return Err(internal(
+                        "Core returned the wrong Data Source owner snapshot",
+                    ));
+                };
+                return Ok(LibraryPageWriteDestination::DataSource {
+                    data_source_id: value.data_source.data_source_id,
+                    view_id: placement
+                        .view
+                        .as_deref()
+                        .map(|view| stable_id(view, "--view"))
+                        .transpose()?,
+                    group: group_scope(placement)?,
+                    at,
+                });
+            }
+            ResponseEnvelope::Error(error) if error.code == CoreErrorCode::NotFound => {}
+            ResponseEnvelope::Error(error) => return Err(map_core_error(error)),
+        }
     }
     reject_data_source_placement(placement)?;
     Ok(LibraryPageWriteDestination::Page {
@@ -643,17 +651,16 @@ fn active_data_source_id(
             "Core returned the wrong Data Source selector window",
         ));
     };
-    data_sources
-        .items
-        .iter()
-        .find(|source| source.lifecycle == "active")
-        .map(|source| source.data_source_id.clone())
-        .ok_or_else(|| {
-            CliError::new(
-                CliErrorCode::ScopeNotFound,
-                "the selected Database has no active Data Source",
-            )
-        })
+    crate::data_source::select_default_source(
+        database_id,
+        data_sources
+            .items
+            .into_iter()
+            .filter(|source| source.lifecycle == "active")
+            .map(|source| (source.data_source_id, source.name))
+            .collect(),
+        data_sources.next_cursor.is_some(),
+    )
 }
 
 fn stable_id(value: &str, label: &str) -> Result<String, CliError> {

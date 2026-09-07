@@ -99,6 +99,9 @@ ownership, or content validation.
 
 ## Native CLI and Skill
 
+Compact discovery, public read-only SQL and atomic configuration follow
+[Agent CLI queries and configuration](agent-cli-queries.md).
+
 The native CLI selects one Profile and, where required, one Project before
 calling Core. It provides bounded context/tree/history reads, canonical Page
 content, saved View queries, immutable snapshot search, explicit local drafts,

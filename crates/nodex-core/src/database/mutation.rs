@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
+mod configuration;
 mod data_history;
 pub(crate) mod property_value_history;
 
@@ -309,6 +310,11 @@ fn validate_request(request: &ModuleApplyRequest<Vec<DatabaseIntent>>) -> Result
         )));
     }
     for intent in &request.intent {
+        if matches!(intent, DatabaseIntent::Configure { .. }) && request.intent.len() != 1 {
+            return Err(invalid(
+                "Configuration scripts require a dedicated atomic request",
+            ));
+        }
         if let DatabaseIntent::RenamePageKeyPrefix {
             database_id,
             expected_revision,
@@ -543,6 +549,7 @@ fn validate_list_move_undo_recipe(recipe: &DatabaseListMoveUndoRecipe) -> Result
 
 fn database_intent_kind(intent: &DatabaseIntent) -> &'static str {
     match intent {
+        DatabaseIntent::Configure { .. } => "configure",
         DatabaseIntent::RenamePageKeyPrefix { .. } => "rename_page_key_prefix",
         DatabaseIntent::PutProperty { .. } => "put_property",
         DatabaseIntent::MoveProperty { .. } => "move_property",
@@ -582,7 +589,8 @@ fn page_detail_dependency_ids(intents: &[DatabaseIntent]) -> (BTreeSet<String>, 
             DatabaseIntent::RenamePageKeyPrefix { database_id, .. } => {
                 database_ids.insert(database_id.clone());
             }
-            DatabaseIntent::PutProperty { data_source_id, .. }
+            DatabaseIntent::Configure { data_source_id, .. }
+            | DatabaseIntent::PutProperty { data_source_id, .. }
             | DatabaseIntent::MoveProperty { data_source_id, .. }
             | DatabaseIntent::ChangePropertyType { data_source_id, .. }
             | DatabaseIntent::DuplicateProperty { data_source_id, .. }
@@ -632,6 +640,20 @@ fn apply_intent(
     let project_id = authority.actor_project_id.as_str();
     let library_scope = authority.is_library();
     match intent {
+        DatabaseIntent::Configure {
+            data_source_id,
+            script,
+        } => configuration::apply(
+            connection,
+            profile_id,
+            library_id,
+            authority,
+            data_source_id,
+            script,
+            operation_index,
+            now,
+            effects,
+        ),
         DatabaseIntent::RenamePageKeyPrefix {
             database_id,
             expected_revision,

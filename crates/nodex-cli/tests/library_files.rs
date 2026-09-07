@@ -56,7 +56,13 @@ fn success(home: &Path, args: &[&str]) -> Value {
         .chain(std::iter::once("--help"))
         .map(std::ffi::OsString::from)
         .collect::<Vec<_>>();
-    let help = nodex_cli::agent_interface::machine_help(&arguments).expect("machine help");
+    let help = nodex_cli::agent_interface::machine_help(
+        &arguments
+            .into_iter()
+            .chain(["--help-schema", "all"].map(std::ffi::OsString::from))
+            .collect::<Vec<_>>(),
+    )
+    .expect("machine help");
     let nodex_cli::agent_interface::MachineHelpDocument::Command(help) = help else {
         panic!("leaf command help")
     };

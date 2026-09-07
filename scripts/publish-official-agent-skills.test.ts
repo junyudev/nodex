@@ -21,6 +21,7 @@ const skillFiles = [
   "references/nested-markdown.md",
   "references/page-editor.md",
   "references/project-database-views.md",
+  "references/queries-and-configuration.md",
   "references/troubleshooting.md",
 ] as const;
 

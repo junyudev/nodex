@@ -13,16 +13,17 @@ const MAX_BUNDLE_MANIFEST_BYTES: u64 = 256 * 1024;
 const MAX_SKILL_FILE_BYTES: u64 = 128 * 1024;
 const MAX_SKILL_TOTAL_BYTES: u64 = 512 * 1024;
 
-pub const OFFICIAL_SKILL_FILES: [&str; 6] = [
+pub const OFFICIAL_SKILL_FILES: [&str; 7] = [
     "SKILL.md",
     "agents/openai.yaml",
     "references/nested-markdown.md",
     "references/page-editor.md",
     "references/project-database-views.md",
+    "references/queries-and-configuration.md",
     "references/troubleshooting.md",
 ];
 
-const OFFICIAL_BUNDLE_FILES: [&str; 9] = [
+const OFFICIAL_BUNDLE_FILES: [&str; 10] = [
     "LICENSE",
     "README.md",
     "release-manifest.json",
@@ -31,6 +32,7 @@ const OFFICIAL_BUNDLE_FILES: [&str; 9] = [
     "skills/nodex/references/nested-markdown.md",
     "skills/nodex/references/page-editor.md",
     "skills/nodex/references/project-database-views.md",
+    "skills/nodex/references/queries-and-configuration.md",
     "skills/nodex/references/troubleshooting.md",
 ];
 

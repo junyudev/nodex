@@ -1714,6 +1714,11 @@ export interface components {
             readonly offered: string;
             readonly required: string;
         };
+        readonly ConfigurationSort: {
+            readonly direction: components["schemas"]["DatabaseViewSortDirection"];
+            /** @description Property ID/name, or the intrinsic title, created, or manual sort. */
+            readonly property: string;
+        };
         /** @enum {string} */
         readonly ConservativeResetReason: "authorization_closure_exceeded";
         readonly CoreArtifactIdentity: {
@@ -1970,6 +1975,59 @@ export interface components {
         };
         readonly DatabaseApplyRequest: components["schemas"]["ModuleApplyRequest_Vec_DatabaseIntent"];
         readonly DatabaseApplyResponse: components["schemas"]["ResponseEnvelope_ApplyResponse_DatabaseCommitValue_DatabaseReceipt"];
+        readonly DatabaseConfigurationOperation: {
+            /** @enum {string} */
+            readonly kind: "add_property";
+            readonly name: string;
+            readonly options?: readonly string[];
+            readonly schema: components["schemas"]["DatabasePropertySchema"];
+        } | {
+            /** @enum {string} */
+            readonly kind: "rename_property";
+            readonly name: string;
+            readonly property: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "change_property_type";
+            readonly property: string;
+            readonly schema: components["schemas"]["DatabasePropertySchema"];
+        } | {
+            readonly color?: string | null;
+            /** @enum {string} */
+            readonly kind: "add_option";
+            readonly name: string;
+            readonly property: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "rename_option";
+            readonly name: string;
+            readonly option: string;
+            readonly property: string;
+        } | {
+            readonly group_by?: string | null;
+            /** @enum {string} */
+            readonly kind: "create_view";
+            readonly layout: components["schemas"]["DatabaseViewLayout"];
+            readonly name: string;
+            readonly sorts?: readonly components["schemas"]["ConfigurationSort"][];
+        } | {
+            readonly group_by?: string | null;
+            /** Format: int64 */
+            readonly if_revision: number;
+            /** @enum {string} */
+            readonly kind: "update_view";
+            readonly name?: string | null;
+            readonly sorts?: readonly components["schemas"]["ConfigurationSort"][] | null;
+            readonly view: string;
+        };
+        readonly DatabaseConfigurationScript: {
+            /**
+             * Format: int64
+             * @description Revision observed before constructing this script. All statements share this fence.
+             */
+            readonly if_schema_revision: number;
+            readonly operations: readonly components["schemas"]["DatabaseConfigurationOperation"][];
+        };
         readonly DatabaseContainerRecord: {
             /** Format: int64 */
             readonly access_revision: number;
@@ -2084,6 +2142,11 @@ export interface components {
             readonly kind: "database";
         };
         readonly DatabaseIntent: {
+            readonly data_source_id: string;
+            /** @enum {string} */
+            readonly kind: "configure";
+            readonly script: components["schemas"]["DatabaseConfigurationScript"];
+        } | {
             readonly database_id: string;
             /** Format: int64 */
             readonly expected_revision: number;
@@ -6819,6 +6882,11 @@ export interface components {
             /** Format: int32 */
             readonly contract_version: number;
             readonly intent: readonly ({
+                readonly data_source_id: string;
+                /** @enum {string} */
+                readonly kind: "configure";
+                readonly script: components["schemas"]["DatabaseConfigurationScript"];
+            } | {
                 readonly database_id: string;
                 /** Format: int64 */
                 readonly expected_revision: number;
@@ -7135,6 +7203,14 @@ export interface components {
              */
             readonly read: {
                 /** @enum {string} */
+                readonly kind: "sql_schema";
+                readonly scope: components["schemas"]["SqlScope"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "sql_query";
+                readonly query: components["schemas"]["SqlQuery"];
+            } | {
+                /** @enum {string} */
                 readonly kind: "catalog_window";
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
@@ -7218,6 +7294,8 @@ export interface components {
                 readonly group_scope?: null | components["schemas"]["DatabaseGroupScope"];
                 /** @enum {string} */
                 readonly kind: "view_context";
+                /** @description Explicit read projection; omission uses the saved View's display fields. */
+                readonly projection_property_ids?: readonly string[] | null;
                 readonly view_id: string;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
@@ -9392,6 +9470,14 @@ export interface components {
                 readonly contract_version: number;
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
+                    /** @enum {string} */
+                    readonly kind: "sql_schema";
+                    readonly value: components["schemas"]["SqlSchema"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "sql_query";
+                    readonly value: components["schemas"]["SqlResult"];
+                } | {
                     readonly databases: components["schemas"]["CollectionWindow_DatabaseDescriptor"];
                     /** @enum {string} */
                     readonly kind: "catalog_window";
@@ -10019,6 +10105,44 @@ export interface components {
         };
         /** @enum {string} */
         readonly ShutdownStatus: "draining" | "busy" | "incompatible";
+        readonly SqlBinding: {
+            readonly data_source_id: string;
+            readonly table: string;
+        };
+        readonly SqlColumn: {
+            readonly name: string;
+            readonly options: readonly components["schemas"]["SqlOption"][];
+            readonly property_id?: string | null;
+            readonly storage_type: string;
+        };
+        readonly SqlOption: {
+            readonly id: string;
+            readonly name: string;
+        };
+        readonly SqlQuery: {
+            readonly parameters?: {
+                readonly [key: string]: unknown;
+            };
+            readonly scope: components["schemas"]["SqlScope"];
+            readonly sql: string;
+        };
+        readonly SqlResult: {
+            readonly columns: readonly string[];
+            readonly rows: readonly (readonly unknown[])[];
+        };
+        readonly SqlSchema: {
+            readonly tables: readonly components["schemas"]["SqlTable"][];
+        };
+        readonly SqlScope: {
+            readonly bindings?: readonly components["schemas"]["SqlBinding"][];
+            readonly database_id?: string | null;
+        };
+        readonly SqlTable: {
+            readonly columns: readonly components["schemas"]["SqlColumn"][];
+            readonly data_source_id: string;
+            readonly name: string;
+            readonly table: string;
+        };
         readonly StoreAdministrationApplyRequest: components["schemas"]["ModuleApplyRequest_StoreAdministrationIntent"];
         readonly StoreAdministrationApplyResponse: components["schemas"]["ResponseEnvelope_ApplyResponse_StoreAdministrationCommitValue_StoreAdministrationReceipt"];
         readonly StoreAdministrationEvent: {

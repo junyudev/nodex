@@ -948,6 +948,12 @@ Whole-store restore is an exclusive Core maintenance operation. It drains admitt
 
 The operational contract belongs in [Reliability](docs/RELIABILITY.md); release and packaged-runtime recovery belong in [the macOS release runbook](docs/release-macos.md).
 
+The Database Module owns the public SQL read boundary. It builds complete
+authorized projections in one Store snapshot and evaluates user SQL only in an
+isolated transient database. Configuration scripts remain ordinary atomic
+Database intents with the same durable receipt authority. Public scope, budgets
+and script semantics belong to [Agent CLI queries](docs/product-specs/agent-cli-queries.md).
+
 ## System-wide invariants
 
 These invariants cross subsystem boundaries. Narrower domain and feature invariants belong in their owning documents.

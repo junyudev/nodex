@@ -51,7 +51,7 @@ pub fn parse(input: &[u8]) -> Result<PatchDocument, CliError> {
         .text
         .strip_prefix("*** Update Page: ")
         .filter(|value| valid_page_id(value))
-        .ok_or_else(|| syntax("expected '*** Update Page: @<page-id>'", 2))?
+        .ok_or_else(|| syntax("expected '*** Update Page: <page-id>'", 2))?
         .to_owned();
 
     let mut cursor = 2;
@@ -298,9 +298,7 @@ fn split_lines(input: &str) -> Result<Vec<InputLine<'_>>, CliError> {
 }
 
 fn valid_page_id(value: &str) -> bool {
-    let Some(id) = value.strip_prefix('@') else {
-        return false;
-    };
+    let id = value.strip_prefix('@').unwrap_or(value);
     !id.is_empty()
         && id.len() <= 512
         && id

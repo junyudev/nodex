@@ -160,6 +160,7 @@ pub(crate) fn execute_with_presentation(
     }
     match &mut cli.command {
         Command::DataSource(args) => crate::data_source::prepare(args)?,
+        Command::Sql(args) => crate::sql::prepare(args)?,
         Command::Page(PageArgs {
             command: PageCommand::Properties(args),
         }) => crate::page_properties::prepare(args)?,
@@ -194,6 +195,13 @@ pub(crate) fn execute_with_presentation(
     validate_profile_selector(cli.profile.as_deref(), &client)?;
 
     match cli.command {
+        Command::Sql(args) => crate::sql::execute(
+            &client,
+            cli.project.as_deref(),
+            cli.database.as_deref(),
+            &cwd,
+            args,
+        ),
         Command::Page(PageArgs {
             command: PageCommand::CreateBatch(arguments),
         }) => crate::page_batch::execute(&client, cli.project.as_deref(), &cwd, arguments),
@@ -203,9 +211,13 @@ pub(crate) fn execute_with_presentation(
         Command::Ls(arguments) => {
             crate::browse::execute(&client, cli.project.as_deref(), &cwd, arguments)
         }
-        Command::DataSource(arguments) => {
-            crate::data_source::execute(&client, cli.project.as_deref(), &cwd, arguments)
-        }
+        Command::DataSource(arguments) => crate::data_source::execute(
+            &client,
+            cli.project.as_deref(),
+            cli.database.as_deref(),
+            &cwd,
+            arguments,
+        ),
         Command::Page(PageArgs {
             command: PageCommand::Properties(arguments),
         }) => crate::page_properties::execute(&client, cli.project.as_deref(), &cwd, arguments),
@@ -244,10 +256,29 @@ pub(crate) fn execute_with_presentation(
             crate::page_mutation::patch_page(&client, cli.project.as_deref(), &cwd, arguments)
         }
         Command::View(ViewArgs {
+            command: ViewCommand::List { window },
+        }) => crate::view::list(
+            &client,
+            cli.project.as_deref(),
+            cli.database.as_deref(),
+            &cwd,
+            window,
+        ),
+        Command::View(ViewArgs {
+            command: ViewCommand::Describe { view },
+        }) => crate::view::describe(
+            &client,
+            cli.project.as_deref(),
+            cli.database.as_deref(),
+            &cwd,
+            view,
+        ),
+        Command::View(ViewArgs {
             command: ViewCommand::Query(arguments),
         }) => crate::view::query(
             &client,
             cli.project.as_deref(),
+            cli.database.as_deref(),
             &cwd,
             arguments,
             presentation.json_result,
@@ -502,7 +533,9 @@ fn resolve_search_scope(
     project: &ProjectWorkspaceProject,
     selector: &str,
 ) -> Result<LibrarySearchSnapshotScope, CliError> {
-    if selector == "database" || selector.strip_prefix('@') == Some(project.database_id.as_str()) {
+    if selector == "database"
+        || selector.strip_prefix('@').unwrap_or(selector) == project.database_id
+    {
         return Ok(LibrarySearchSnapshotScope::Database {
             database_id: project.database_id.clone(),
         });
@@ -512,14 +545,7 @@ fn resolve_search_scope(
             data_source_id: stable_scope_id(data_source_id, "Data Source scope")?,
         });
     }
-    let Some(identity) = selector.strip_prefix('@') else {
-        return match resolve_content_selector(client, project, selector)? {
-            ContentScope::Database { database_id } => {
-                Ok(LibrarySearchSnapshotScope::Database { database_id })
-            }
-            ContentScope::Page { page_id } => Ok(LibrarySearchSnapshotScope::Page { page_id }),
-        };
-    };
+    let identity = selector.strip_prefix('@').unwrap_or(selector);
     let page = unwrap_library(client.library_read(
         Some(&project.id),
         LibraryRead::PageLifecyclePreflight {
@@ -576,10 +602,12 @@ fn resolve_search_scope(
             })
         }
         ResponseEnvelope::Error(error) if error.code == CoreErrorCode::NotFound => {
-            Err(CliError::new(
-                CliErrorCode::ScopeNotFound,
-                format!("no authorized Page, Database, or Data Source matches '{selector}'"),
-            ))
+            match resolve_content_selector(client, project, selector)? {
+                ContentScope::Database { database_id } => {
+                    Ok(LibrarySearchSnapshotScope::Database { database_id })
+                }
+                ContentScope::Page { page_id } => Ok(LibrarySearchSnapshotScope::Page { page_id }),
+            }
         }
         ResponseEnvelope::Error(error) => Err(map_core_error(error)),
     }
@@ -597,17 +625,17 @@ fn stable_scope_id(value: &str, label: &str) -> Result<String, CliError> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum ContentScope {
+pub(crate) enum ContentScope {
     Database { database_id: String },
     Page { page_id: String },
 }
 
-fn resolve_content_selector(
+pub(crate) fn resolve_content_selector(
     client: &CoreClient,
     project: &ProjectWorkspaceProject,
     selector: &str,
 ) -> Result<ContentScope, CliError> {
-    if selector.starts_with('@') {
+    if selector.starts_with('@') || looks_like_uuid(selector) {
         match resolve_page_scope(client, &project.id, selector) {
             Ok(page_id) => return Ok(ContentScope::Page { page_id }),
             Err(error) if error.code == CliErrorCode::ScopeNotFound => {}
@@ -632,7 +660,7 @@ fn resolve_content_selector(
         (Err(error), Ok(_)) => Err(error),
         (Ok(database_id), Ok(page_id)) => Err(CliError::new(
             CliErrorCode::ScopeAmbiguous,
-            format!("scope '{selector}' matches both Database @{database_id} and Page @{page_id}"),
+            format!("scope '{selector}' matches both Database {database_id} and Page {page_id}"),
         )),
         (Err(database_error), Err(page_error))
             if database_error.code == CliErrorCode::ScopeNotFound
@@ -656,92 +684,10 @@ fn resolve_database_selector(
     if selector == "database" {
         return Ok(project.database_id.clone());
     }
-    let explicit_identity = selector.starts_with('@');
-    let identity = stable_scope_id(selector, "Database selector")?;
-    if explicit_identity || identity == project.database_id || looks_like_uuid(&identity) {
-        match read_database_name(client, &project.id, &identity) {
-            Ok(_) => return Ok(identity),
-            Err(error) if error.code == CliErrorCode::ScopeNotFound && !explicit_identity => {}
-            Err(error) => return Err(error),
-        }
-    }
-
-    let mut cursor = None;
-    let mut matches = Vec::new();
-    loop {
-        let snapshot = unwrap_library(client.library_read(
-            None,
-            LibraryRead::Catalog {
-                query: Some(selector.to_owned()),
-                kinds: Some(vec![LibraryCatalogKind::Database]),
-                lifecycle: Some(LibraryLifecycle::Active),
-                cursor,
-                limit: Some(100),
-            },
-        ))?;
-        let LibraryReadValue::Catalog {
-            items,
-            next_cursor,
-            has_more,
-            ..
-        } = snapshot.value
-        else {
-            return Err(internal(
-                "Core returned the wrong Database catalog snapshot",
-            ));
-        };
-        for item in items {
-            if item.title != selector {
-                continue;
-            }
-            let LibraryPlacedResourceTarget::Database { database_id } = item.target else {
-                return Err(internal(
-                    "Core Database catalog contained a non-Database target",
-                ));
-            };
-            match read_database_name(client, &project.id, &database_id) {
-                Ok(_) => matches.push(database_id),
-                Err(error)
-                    if matches!(
-                        error.code,
-                        CliErrorCode::ScopeNotFound | CliErrorCode::ScopeUnauthorized
-                    ) => {}
-                Err(error) => return Err(error),
-            }
-            if matches.len() > 10_000 {
-                return Err(CliError::new(
-                    CliErrorCode::ScopeBudgetExceeded,
-                    "Database name resolution exceeds the 10000-candidate limit",
-                ));
-            }
-        }
-        if !has_more {
-            break;
-        }
-        cursor = next_cursor;
-        if cursor.is_none() {
-            return Err(internal("Core Database catalog pagination has no cursor"));
-        }
-    }
-    matches.sort();
-    matches.dedup();
-    match matches.as_slice() {
-        [] => Err(CliError::new(
-            CliErrorCode::ScopeNotFound,
-            format!("no authorized Database matches '{selector}'"),
-        )),
-        [database_id] => Ok(database_id.clone()),
-        _ => Err(CliError::new(
-            CliErrorCode::ScopeAmbiguous,
-            format!(
-                "Database name '{selector}' matches multiple Databases: {}",
-                matches.join(", ")
-            ),
-        )),
-    }
+    crate::data_source::resolve_database(client, project, Some(selector))
 }
 
-fn looks_like_uuid(value: &str) -> bool {
+pub(crate) fn looks_like_uuid(value: &str) -> bool {
     value.len() == 36
         && value.bytes().enumerate().all(|(index, byte)| match index {
             8 | 13 | 18 | 23 => byte == b'-',
@@ -769,29 +715,8 @@ fn resolve_page_scope(
     }
     Err(CliError::new(
         CliErrorCode::ScopeNotFound,
-        format!("Page scope '@{page_id}' is unavailable"),
+        format!("Page scope '{page_id}' is unavailable"),
     ))
-}
-
-fn read_database_name(
-    client: &CoreClient,
-    project_id: &str,
-    database_id: &str,
-) -> Result<String, CliError> {
-    let snapshot = unwrap_database(client.database_read(
-        Some(project_id),
-        DatabaseRead::Database {
-            target: DatabaseIdentityTarget::Database {
-                database_id: database_id.to_owned(),
-            },
-        },
-    ))?;
-    let DatabaseReadValue::Database { value } = snapshot.value else {
-        return Err(internal(
-            "Core returned the wrong Database selector snapshot",
-        ));
-    };
-    Ok(value.database.name)
 }
 
 fn read_page(
@@ -1037,10 +962,10 @@ fn canonical_page_selector(selector: &str) -> Result<Option<&str>, CliError> {
         }
         return Err(CliError::new(
             CliErrorCode::InvalidInput,
-            "a canonical @Page selector must contain one bounded stable ID",
+            "a Page selector must contain one bounded stable ID",
         ));
     }
-    Ok(None)
+    Ok(looks_like_uuid(selector).then_some(selector))
 }
 
 pub(crate) fn resolve_page_selector(
@@ -1050,6 +975,21 @@ pub(crate) fn resolve_page_selector(
 ) -> Result<String, CliError> {
     if let Some(page_id) = canonical_page_selector(selector)? {
         return Ok(page_id.to_owned());
+    }
+    // Stable imported IDs need not be UUIDs; identity wins over a matching title.
+    if !selector.contains('/') && !selector.trim().starts_with('#') {
+        let snapshot = unwrap_library(client.library_read(
+            Some(project_id),
+            LibraryRead::PageLifecyclePreflight {
+                page_id: selector.to_owned(),
+            },
+        ))?;
+        let LibraryReadValue::PageLifecyclePreflight { value } = snapshot.value else {
+            return Err(internal("Core returned the wrong Page identity preflight"));
+        };
+        if value.page.is_some_and(|page| page.lifecycle == "active") {
+            return Ok(selector.to_owned());
+        }
     }
     for lookup in PAGE_SELECTOR_LOOKUP_ORDER {
         match lookup {

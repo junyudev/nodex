@@ -11,6 +11,7 @@ pub(crate) mod read;
 mod read_authorization;
 mod relation;
 mod relation_projection;
+mod sql;
 pub(crate) mod view_contract;
 mod window;
 
@@ -320,7 +321,9 @@ fn corrupt(message: &str) -> StoreError {
 
 #[cfg(test)]
 mod tests {
+    mod configuration;
     mod manual_order;
+    mod sql;
     use base64::prelude::{BASE64_URL_SAFE_NO_PAD, Engine as _};
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -7633,6 +7636,7 @@ mod tests {
             ModuleReadRequest {
                 contract_version: DATABASE_CONTRACT_VERSION,
                 read: DatabaseRead::ViewContext {
+                    projection_property_ids: None,
                     view_id: view_id.to_owned(),
                     window: CollectionWindowRequest {
                         after,
@@ -7737,6 +7741,7 @@ mod tests {
                 },
             },
             DatabaseRead::ViewContext {
+                projection_property_ids: None,
                 view_id: VIEW_ID.to_owned(),
                 window: CollectionWindowRequest {
                     after: None,
@@ -7926,6 +7931,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: DATABASE_CONTRACT_VERSION,
                     read: DatabaseRead::ViewContext {
+                        projection_property_ids: None,
                         view_id: VIEW_ID.to_owned(),
                         window: Default::default(),
                         group_scope: None,

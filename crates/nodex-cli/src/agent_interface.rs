@@ -11,7 +11,7 @@ use crate::error::{CliError, CliErrorCode};
 
 pub const AGENT_API_MIN_REVISION: u32 = 1;
 pub const AGENT_API_MAX_REVISION: u32 = 1;
-const MACHINE_HELP_SCHEMA_VERSION: u32 = 2;
+const MACHINE_HELP_SCHEMA_VERSION: u32 = 3;
 const NESTED_MARKDOWN_REVISION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
@@ -86,6 +86,36 @@ const SKILL_ERRORS: &[&str] = &[
 
 const COMMANDS: &[CommandMetadata] = &[
     CommandMetadata {
+        path: &["sql", "schema"],
+        capability: "sql",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "sql_catalog",
+        errors: READ_ERRORS,
+        example: "nodex sql schema",
+        example_argv: &["sql", "schema"],
+    },
+    CommandMetadata {
+        path: &["sql", "query"],
+        capability: "sql",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "sql_result",
+        errors: READ_ERRORS,
+        example: "nodex sql query 'SELECT page_id, title FROM pages LIMIT 20'",
+        example_argv: &["sql", "query", "SELECT page_id, title FROM pages LIMIT 20"],
+    },
+    CommandMetadata {
+        path: &["data-source", "configure"],
+        capability: "configuration",
+        effect: CommandEffect::Write,
+        validators: &["schema_revision", "view_revision", "idempotency_key"],
+        result: "configuration_receipt",
+        errors: WRITE_ERRORS,
+        example: "nodex data-source configure --input -",
+        example_argv: &["data-source", "configure", "--input", "-"],
+    },
+    CommandMetadata {
         path: &["docs", "nested-markdown"],
         capability: "nestedMarkdown",
         effect: CommandEffect::Local,
@@ -102,8 +132,8 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &[],
         result: "child_window",
         errors: READ_ERRORS,
-        example: "nodex ls @page-id",
-        example_argv: &["ls", "@page-id"],
+        example: "nodex ls page-id",
+        example_argv: &["ls", "page-id"],
     },
     CommandMetadata {
         path: &["search"],
@@ -122,8 +152,8 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &[],
         result: "data_source_window",
         errors: READ_ERRORS,
-        example: "nodex data-source list --database @database-id",
-        example_argv: &["data-source", "list", "--database", "@database-id"],
+        example: "nodex data-source list --database database-id",
+        example_argv: &["data-source", "list", "--database", "database-id"],
     },
     CommandMetadata {
         path: &["data-source", "describe"],
@@ -132,8 +162,8 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &[],
         result: "data_source_description",
         errors: READ_ERRORS,
-        example: "nodex data-source describe @data-source-id",
-        example_argv: &["data-source", "describe", "@data-source-id"],
+        example: "nodex data-source describe data-source-id",
+        example_argv: &["data-source", "describe", "data-source-id"],
     },
     CommandMetadata {
         path: &["data-source", "options"],
@@ -142,13 +172,13 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &[],
         result: "property_option_window",
         errors: READ_ERRORS,
-        example: "nodex data-source options @data-source-id --property @property-id",
+        example: "nodex data-source options data-source-id --property property-id",
         example_argv: &[
             "data-source",
             "options",
-            "@data-source-id",
+            "data-source-id",
             "--property",
-            "@property-id",
+            "property-id",
         ],
     },
     CommandMetadata {
@@ -158,8 +188,26 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &[],
         result: "data_source_query_window",
         errors: READ_ERRORS,
-        example: "nodex data-source query @data-source-id --input - <<'JSON'\n{\"filter\":{\"kind\":\"group\",\"operator\":\"and\",\"children\":[]},\"sort\":[],\"limit\":50}\nJSON",
-        example_argv: &["data-source", "query", "@data-source-id", "--input", "-"],
+        example: "nodex data-source query data-source-id --input - <<'JSON'\n{\"filter\":{\"kind\":\"group\",\"operator\":\"and\",\"children\":[]},\"sort\":[],\"limit\":50}\nJSON",
+        example_argv: &["data-source", "query", "data-source-id", "--input", "-"],
+    },
+    CommandMetadata {
+        path: &["page", "properties", "prepare-batch"],
+        capability: "properties",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "prepared_property_edits",
+        errors: READ_ERRORS,
+        example: "nodex page properties prepare-batch --selection - --values values.json",
+        example_argv: &[
+            "page",
+            "properties",
+            "prepare-batch",
+            "--selection",
+            "-",
+            "--values",
+            "values.json",
+        ],
     },
     CommandMetadata {
         path: &["page", "properties", "get"],
@@ -168,8 +216,8 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &[],
         result: "page_property_values",
         errors: READ_ERRORS,
-        example: "nodex page properties get @page-id",
-        example_argv: &["page", "properties", "get", "@page-id"],
+        example: "nodex page properties get page-id",
+        example_argv: &["page", "properties", "get", "page-id"],
     },
     CommandMetadata {
         path: &["page", "properties", "apply"],
@@ -188,16 +236,16 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "property_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex page properties set @page-id --property @property-id --option @option-id --if-revision 0",
+        example: "nodex page properties set page-id --property property-id --option option-id --if-revision 0",
         example_argv: &[
             "page",
             "properties",
             "set",
-            "@page-id",
+            "page-id",
             "--property",
-            "@property-id",
+            "property-id",
             "--option",
-            "@option-id",
+            "option-id",
             "--if-revision",
             "0",
         ],
@@ -306,8 +354,8 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &["read_validators", "specialized_prepare_when_needed"],
         result: "canonical_page_file",
         errors: READ_ERRORS,
-        example: "nodex --json read @page-id",
-        example_argv: &["--json", "read", "@page-id"],
+        example: "nodex --json read page-id",
+        example_argv: &["--json", "read", "page-id"],
     },
     CommandMetadata {
         path: &["sed"],
@@ -316,8 +364,8 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &[],
         result: "canonical_page_line_slice",
         errors: READ_ERRORS,
-        example: "nodex --json sed -n 1,20p @page-id",
-        example_argv: &["--json", "sed", "-n", "1,20p", "@page-id"],
+        example: "nodex --json sed -n 1,20p page-id",
+        example_argv: &["--json", "sed", "-n", "1,20p", "page-id"],
     },
     CommandMetadata {
         path: &["rg"],
@@ -336,14 +384,34 @@ const COMMANDS: &[CommandMetadata] = &[
         example_argv: &["--json", "rg", "--fixed-strings", "Planning", "database"],
     },
     CommandMetadata {
+        path: &["view", "list"],
+        capability: "viewQuery",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "view_window",
+        errors: READ_ERRORS,
+        example: "nodex view list",
+        example_argv: &["view", "list"],
+    },
+    CommandMetadata {
+        path: &["view", "describe"],
+        capability: "viewQuery",
+        effect: CommandEffect::Read,
+        validators: &[],
+        result: "view_description",
+        errors: READ_ERRORS,
+        example: "nodex view describe",
+        example_argv: &["view", "describe"],
+    },
+    CommandMetadata {
         path: &["view", "query"],
         capability: "viewQuery",
         effect: CommandEffect::Read,
         validators: &[],
         result: "saved_view_context",
         errors: READ_ERRORS,
-        example: "nodex --json view query @view-id --limit 50",
-        example_argv: &["--json", "view", "query", "@view-id", "--limit", "50"],
+        example: "nodex --json view query view-id --limit 50",
+        example_argv: &["--json", "view", "query", "view-id", "--limit", "50"],
     },
     CommandMetadata {
         path: &["open", "page"],
@@ -352,8 +420,8 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &["project_authorization"],
         result: "canonical_resource_open",
         errors: OPEN_ERRORS,
-        example: "nodex --json open page @page-id --print",
-        example_argv: &["--json", "open", "page", "@page-id", "--print"],
+        example: "nodex --json open page page-id --print",
+        example_argv: &["--json", "open", "page", "page-id", "--print"],
     },
     CommandMetadata {
         path: &["open", "view"],
@@ -362,8 +430,8 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &["project_authorization"],
         result: "canonical_resource_open",
         errors: OPEN_ERRORS,
-        example: "nodex --json open view @view-id --print",
-        example_argv: &["--json", "open", "view", "@view-id", "--print"],
+        example: "nodex --json open view view-id --print",
+        example_argv: &["--json", "open", "view", "view-id", "--print"],
     },
     CommandMetadata {
         path: &["patch"],
@@ -372,7 +440,7 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "page_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex patch <<'PATCH'\n*** Begin Patch\n*** Update Page: @page-id\n@@\n-Old note\n+Updated note\n*** End Patch\nPATCH",
+        example: "nodex patch <<'PATCH'\n*** Begin Patch\n*** Update Page: page-id\n@@\n-Old note\n+Updated note\n*** End Patch\nPATCH",
         example_argv: &["patch"],
     },
     CommandMetadata {
@@ -403,8 +471,8 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "page_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex page insert @page-id <<'MARKDOWN'\n## Next steps\n- Review the proposal.\nMARKDOWN",
-        example_argv: &["page", "insert", "@page-id"],
+        example: "nodex page insert page-id <<'MARKDOWN'\n## Next steps\n- Review the proposal.\nMARKDOWN",
+        example_argv: &["page", "insert", "page-id"],
     },
     CommandMetadata {
         path: &["page", "replace"],
@@ -413,8 +481,8 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: ETAG_AND_IDEMPOTENCY_VALIDATORS,
         result: "page_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex page replace @page-id --if-match body-etag <<'MARKDOWN'\n## Updated plan\nReview the proposal.\nMARKDOWN",
-        example_argv: &["page", "replace", "@page-id", "--if-match", "body-etag"],
+        example: "nodex page replace page-id --if-match body-etag <<'MARKDOWN'\n## Updated plan\nReview the proposal.\nMARKDOWN",
+        example_argv: &["page", "replace", "page-id", "--if-match", "body-etag"],
     },
     CommandMetadata {
         path: &["page", "rename"],
@@ -423,11 +491,11 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: ETAG_AND_IDEMPOTENCY_VALIDATORS,
         result: "page_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex page rename @page-id Title --if-match title-etag",
+        example: "nodex page rename page-id Title --if-match title-etag",
         example_argv: &[
             "page",
             "rename",
-            "@page-id",
+            "page-id",
             "Title",
             "--if-match",
             "title-etag",
@@ -440,12 +508,12 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: ETAG_AND_IDEMPOTENCY_VALIDATORS,
         result: "page_transfer_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json page move @page-id --to library --at end --if-match move-etag --idempotency-key move-1",
+        example: "nodex --json page move page-id --to library --at end --if-match move-etag --idempotency-key move-1",
         example_argv: &[
             "--json",
             "page",
             "move",
-            "@page-id",
+            "page-id",
             "--to",
             "library",
             "--at",
@@ -463,12 +531,12 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "page_copy_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json page duplicate @page-id --to library --at end --idempotency-key copy-1",
+        example: "nodex --json page duplicate page-id --to library --at end --idempotency-key copy-1",
         example_argv: &[
             "--json",
             "page",
             "duplicate",
-            "@page-id",
+            "page-id",
             "--to",
             "library",
             "--at",
@@ -484,12 +552,12 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: ETAG_AND_IDEMPOTENCY_VALIDATORS,
         result: "page_deletion_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json page delete @page-id --if-match page-etag --idempotency-key delete-1",
+        example: "nodex --json page delete page-id --if-match page-etag --idempotency-key delete-1",
         example_argv: &[
             "--json",
             "page",
             "delete",
-            "@page-id",
+            "page-id",
             "--if-match",
             "page-etag",
             "--idempotency-key",
@@ -761,9 +829,9 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &["project_authorization", "bounded_window"],
         result: "page_file_inventory",
         errors: READ_ERRORS,
-        example: "nodex --json page file list @page-id --limit 100",
+        example: "nodex --json page file list page-id --limit 100",
         example_argv: &[
-            "--json", "page", "file", "list", "@page-id", "--limit", "100",
+            "--json", "page", "file", "list", "page-id", "--limit", "100",
         ],
     },
     CommandMetadata {
@@ -777,13 +845,13 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "file_bytes_or_download_receipt",
         errors: READ_ERRORS,
-        example: "nodex --json page file read @page-id --path references/api.md --output ./api.md",
+        example: "nodex --json page file read page-id --path references/api.md --output ./api.md",
         example_argv: &[
             "--json",
             "page",
             "file",
             "read",
-            "@page-id",
+            "page-id",
             "--path",
             "references/api.md",
             "--output",
@@ -803,13 +871,13 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file put @page-id --path references/api.md --from ./api.md --if-manifest 0 --idempotency-key page-file-put-1",
+        example: "nodex --json page file put page-id --path references/api.md --from ./api.md --if-manifest 0 --idempotency-key page-file-put-1",
         example_argv: &[
             "--json",
             "page",
             "file",
             "put",
-            "@page-id",
+            "page-id",
             "--path",
             "references/api.md",
             "--from",
@@ -833,13 +901,13 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file add @page-id --file-id file-id --path api.md --if-manifest 0 --idempotency-key page-file-add-1",
+        example: "nodex --json page file add page-id --file-id file-id --path api.md --if-manifest 0 --idempotency-key page-file-add-1",
         example_argv: &[
             "--json",
             "page",
             "file",
             "add",
-            "@page-id",
+            "page-id",
             "--file-id",
             "file-id",
             "--path",
@@ -862,13 +930,13 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file rename-path @page-id --file-id file-id --path references/api.md --if-manifest 1 --idempotency-key page-file-rename-path-1",
+        example: "nodex --json page file rename-path page-id --file-id file-id --path references/api.md --if-manifest 1 --idempotency-key page-file-rename-path-1",
         example_argv: &[
             "--json",
             "page",
             "file",
             "rename-path",
-            "@page-id",
+            "page-id",
             "--file-id",
             "file-id",
             "--path",
@@ -890,13 +958,13 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file remove @page-id --file-id file-id --if-manifest 1 --idempotency-key page-file-remove-1",
+        example: "nodex --json page file remove page-id --file-id file-id --if-manifest 1 --idempotency-key page-file-remove-1",
         example_argv: &[
             "--json",
             "page",
             "file",
             "remove",
-            "@page-id",
+            "page-id",
             "--file-id",
             "file-id",
             "--if-manifest",
@@ -917,13 +985,13 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file replace-entry @page-id --file-id file-id --from ./api.md --if-manifest 1 --idempotency-key page-file-replace-entry-1",
+        example: "nodex --json page file replace-entry page-id --file-id file-id --from ./api.md --if-manifest 1 --idempotency-key page-file-replace-entry-1",
         example_argv: &[
             "--json",
             "page",
             "file",
             "replace-entry",
-            "@page-id",
+            "page-id",
             "--file-id",
             "file-id",
             "--from",
@@ -947,17 +1015,17 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file move @page-id --file-id file-id --to @target-page --path api.md --if-source-manifest 1 --if-target-manifest 0 --idempotency-key page-file-move-1",
+        example: "nodex --json page file move page-id --file-id file-id --to target-page --path api.md --if-source-manifest 1 --if-target-manifest 0 --idempotency-key page-file-move-1",
         example_argv: &[
             "--json",
             "page",
             "file",
             "move",
-            "@page-id",
+            "page-id",
             "--file-id",
             "file-id",
             "--to",
-            "@target-page",
+            "target-page",
             "--path",
             "api.md",
             "--if-source-manifest",
@@ -981,17 +1049,17 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
         result: "page_file_entry_receipt",
         errors: FILE_ERRORS,
-        example: "nodex --json page file copy @page-id --file-id file-id --to @target-page --path api.md --if-source-manifest 1 --if-target-manifest 0 --idempotency-key page-file-copy-1",
+        example: "nodex --json page file copy page-id --file-id file-id --to target-page --path api.md --if-source-manifest 1 --if-target-manifest 0 --idempotency-key page-file-copy-1",
         example_argv: &[
             "--json",
             "page",
             "file",
             "copy",
-            "@page-id",
+            "page-id",
             "--file-id",
             "file-id",
             "--to",
-            "@target-page",
+            "target-page",
             "--path",
             "api.md",
             "--if-source-manifest",
@@ -1009,11 +1077,11 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "block_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex block insert @page-id --at end --block-json - <<'JSON'\n{\"local_id\":\"note\",\"block_type\":\"paragraph\",\"props\":{},\"content\":{\"kind\":\"absent\"},\"children\":[]}\nJSON",
+        example: "nodex block insert page-id --at end --block-json - <<'JSON'\n{\"local_id\":\"note\",\"block_type\":\"paragraph\",\"props\":{},\"content\":{\"kind\":\"absent\"},\"children\":[]}\nJSON",
         example_argv: &[
             "block",
             "insert",
-            "@page-id",
+            "page-id",
             "--at",
             "end",
             "--block-json",
@@ -1027,11 +1095,11 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: ETAG_AND_IDEMPOTENCY_VALIDATORS,
         result: "block_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex block update @page-id --block block-id --if-match block-etag --patch-json - <<'JSON'\n{\"block_type\":\"heading\",\"props\":{\"level\":2},\"content\":{\"kind\":\"absent\"},\"unset_content\":false}\nJSON",
+        example: "nodex block update page-id --block block-id --if-match block-etag --patch-json - <<'JSON'\n{\"block_type\":\"heading\",\"props\":{\"level\":2},\"content\":{\"kind\":\"absent\"},\"unset_content\":false}\nJSON",
         example_argv: &[
             "block",
             "update",
-            "@page-id",
+            "page-id",
             "--block",
             "block-id",
             "--if-match",
@@ -1047,14 +1115,14 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: IDEMPOTENCY_VALIDATOR,
         result: "block_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json block move @page-id --block @block-id --at end --idempotency-key block-move-1",
+        example: "nodex --json block move page-id --block block-id --at end --idempotency-key block-move-1",
         example_argv: &[
             "--json",
             "block",
             "move",
-            "@page-id",
+            "page-id",
             "--block",
-            "@block-id",
+            "block-id",
             "--at",
             "end",
             "--idempotency-key",
@@ -1068,14 +1136,14 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: ETAG_AND_IDEMPOTENCY_VALIDATORS,
         result: "block_mutation_receipt",
         errors: WRITE_ERRORS,
-        example: "nodex --json block delete @page-id --block @block-id --if-match block-etag --idempotency-key block-delete-1",
+        example: "nodex --json block delete page-id --block block-id --if-match block-etag --idempotency-key block-delete-1",
         example_argv: &[
             "--json",
             "block",
             "delete",
-            "@page-id",
+            "page-id",
             "--block",
-            "@block-id",
+            "block-id",
             "--if-match",
             "block-etag",
             "--idempotency-key",
@@ -1089,8 +1157,8 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &[],
         result: "page_history_window",
         errors: READ_ERRORS,
-        example: "nodex --json history @page-id --limit 20",
-        example_argv: &["--json", "history", "@page-id", "--limit", "20"],
+        example: "nodex --json history page-id --limit 20",
+        example_argv: &["--json", "history", "page-id", "--limit", "20"],
     },
     CommandMetadata {
         path: &["backup", "create"],
@@ -1155,12 +1223,12 @@ const COMMANDS: &[CommandMetadata] = &[
         validators: &[],
         result: "draft_workspace",
         errors: READ_ERRORS,
-        example: "nodex --json draft create @page-id --output ./page-draft",
+        example: "nodex --json draft create page-id --output ./page-draft",
         example_argv: &[
             "--json",
             "draft",
             "create",
-            "@page-id",
+            "page-id",
             "--output",
             "./page-draft",
         ],
@@ -1292,8 +1360,14 @@ pub struct MachineHelp {
     pub forwarded_arguments: Option<ForwardedArgumentHelp>,
     pub argument_groups: Vec<arguments::ArgumentGroupHelp>,
     pub usage: String,
+    pub purpose: String,
+    pub default_scope: &'static str,
+    pub schema_help: String,
+    #[serde(skip_serializing_if = "Value::is_null")]
     pub result_schema: Value,
+    #[serde(skip_serializing_if = "Value::is_null")]
     pub error_schema: Value,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub payload_schemas: BTreeMap<String, Value>,
     pub exit_codes: BTreeMap<i32, &'static str>,
     pub nested_markdown: &'static str,
@@ -1341,6 +1415,7 @@ pub fn capabilities() -> Result<Value, CliError> {
 }
 
 pub fn machine_help(arguments: &[OsString]) -> Result<MachineHelpDocument, CliError> {
+    let selection = schema_selection(arguments)?;
     let tokens = command_tokens(arguments);
     if tokens.is_empty() {
         return Ok(MachineHelpDocument::Index(machine_help_index(&[])));
@@ -1351,7 +1426,9 @@ pub fn machine_help(arguments: &[OsString]) -> Result<MachineHelpDocument, CliEr
         .filter(|metadata| starts_with_path(&tokens, metadata.path))
         .max_by_key(|metadata| metadata.path.len())
     {
-        return Ok(MachineHelpDocument::Command(machine_help_for(metadata)));
+        return Ok(MachineHelpDocument::Command(machine_help_for(
+            metadata, selection,
+        )));
     }
 
     let prefix = tokens.iter().map(String::as_str).collect::<Vec<_>>();
@@ -1425,7 +1502,7 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
     match path {
         ["data-source", "query"] => vec![
             "--after and --limit override the input cursor and limit; they do not change filter or sort rules.",
-            "Omitted projection_property_ids requests the supported default Property set; [] requests no Property values.",
+            "Property values are omitted by default; --property ID_OR_NAME or projection_property_ids selects them; [] requests none.",
             "Rows are a bounded window. Continue with the emitted cursor and unchanged query rules.",
         ],
         ["data-source", "describe" | "options" | "list"] => vec![
@@ -1457,7 +1534,7 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
 
 fn result_revision(path: &[&str]) -> u32 {
     match path {
-        ["read"] => 2,
+        ["read"] | ["data-source", _] | ["view", "query"] => 2,
         _ => 1,
     }
 }
@@ -1472,7 +1549,11 @@ fn capability_revisions() -> BTreeMap<&'static str, u32> {
         })
 }
 
-fn machine_help_for(metadata: &CommandMetadata) -> MachineHelp {
+fn machine_help_for(
+    metadata: &CommandMetadata,
+    selection: Option<crate::cli::HelpSchema>,
+) -> MachineHelp {
+    use crate::cli::HelpSchema;
     let (arguments, argument_groups, usage) = arguments::describe(metadata.path);
     MachineHelp {
         schema_version: MACHINE_HELP_SCHEMA_VERSION,
@@ -1483,17 +1564,41 @@ fn machine_help_for(metadata: &CommandMetadata) -> MachineHelp {
         result_schema_revision: result_revision(metadata.path),
         result: metadata.result,
         errors: metadata.errors.to_vec(),
-        examples: vec![metadata.example],
-        arguments,
-        argument_groups,
+        examples: command_examples(metadata),
+        arguments: arguments
+            .into_iter()
+            .filter(|argument| !argument.global && argument.id != "help")
+            .collect(),
+        argument_groups: argument_groups
+            .into_iter()
+            .filter(|group| group.required)
+            .collect(),
         usage,
         content_input: arguments::content_input(metadata.path),
         output: output_help(metadata.path),
         semantics: command_semantics(metadata.path),
         forwarded_arguments: forwarded_arguments(metadata.path),
-        result_schema: schema::result(metadata.path),
-        error_schema: schema::document::<crate::error::ErrorEnvelope>(),
-        payload_schemas: schema::payloads(metadata.path),
+        purpose: command_purpose(metadata.path),
+        default_scope: default_scope(metadata.path),
+        schema_help: format!(
+            "{} --help-schema input|result|error|all",
+            command_name(metadata.path)
+        ),
+        result_schema: if matches!(selection, Some(HelpSchema::Result | HelpSchema::All)) {
+            schema::result(metadata.path)
+        } else {
+            Value::Null
+        },
+        error_schema: if matches!(selection, Some(HelpSchema::Error | HelpSchema::All)) {
+            schema::document::<crate::error::ErrorEnvelope>()
+        } else {
+            Value::Null
+        },
+        payload_schemas: if matches!(selection, Some(HelpSchema::Input | HelpSchema::All)) {
+            schema::payloads(metadata.path)
+        } else {
+            BTreeMap::new()
+        },
         exit_codes: BTreeMap::from([
             (0, "success"),
             (1, "rg found no matches"),
@@ -1550,7 +1655,12 @@ fn command_tokens(arguments: &[OsString]) -> Vec<String> {
         }
         if matches!(
             argument,
-            "--profile" | "--project" | "--database" | "--page" | "--output-format"
+            "--profile"
+                | "--project"
+                | "--database"
+                | "--page"
+                | "--output-format"
+                | "--help-schema"
         ) {
             skip_global_value = true;
             continue;
@@ -1564,6 +1674,118 @@ fn command_tokens(arguments: &[OsString]) -> Vec<String> {
         tokens.push(argument.to_owned());
     }
     tokens
+}
+
+fn schema_selection(arguments: &[OsString]) -> Result<Option<crate::cli::HelpSchema>, CliError> {
+    use crate::cli::HelpSchema;
+    let mut arguments = arguments.iter().skip(1).take_while(|value| *value != "--");
+    let mut selection = None;
+    while let Some(argument) = arguments.next() {
+        let value = if argument == "--help-schema" {
+            Some(
+                arguments
+                    .next()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or(""),
+            )
+        } else {
+            argument
+                .to_str()
+                .and_then(|value| value.strip_prefix("--help-schema="))
+        };
+        let Some(value) = value else { continue };
+        selection = Some(match value {
+            "input" => HelpSchema::Input,
+            "result" => HelpSchema::Result,
+            "error" => HelpSchema::Error,
+            "all" => HelpSchema::All,
+            _ => return Err(CliError::new(CliErrorCode::InvalidInput, "--help-schema expects input, result, error, or all")
+                .with_details(serde_json::json!({"argument":"--help-schema", "allowed_values":["input","result","error","all"]}))),
+        });
+    }
+    Ok(selection)
+}
+
+fn default_scope(path: &[&str]) -> &'static str {
+    match path {
+        ["view", "query" | "describe"] => {
+            "The Project's configured default View when omitted; an explicit selector accepts a bare ID or a unique name in the selected Database."
+        }
+        ["view", "list"] | ["data-source", "list"] => {
+            "The Project's default Database when --database is omitted."
+        }
+        ["data-source", _] | ["sql", _] => {
+            "The unique active Data Source in the selected Database when omitted; multiple candidates require an explicit selector."
+        }
+        [
+            "capabilities" | "docs" | "skills" | "setup" | "service" | "profile",
+            ..,
+        ] => "Local command; no Project context required.",
+        _ => {
+            "Uses --project when given, otherwise the Project matching the working directory. Resource selectors accept bare IDs."
+        }
+    }
+}
+
+fn command_purpose(path: &[&str]) -> String {
+    use clap::CommandFactory;
+    let mut root = crate::cli::Cli::command();
+    root.build();
+    let command = path.iter().fold(&root, |command, segment| {
+        command
+            .find_subcommand(segment)
+            .expect("registered command")
+    });
+    command
+        .get_about()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("Run {}.", command_name(path)))
+}
+
+fn command_examples(metadata: &CommandMetadata) -> Vec<&'static str> {
+    let second = match metadata.path {
+        ["view", "query"] => Some("nodex view query --group Review"),
+        ["view", "list"] => Some("nodex view list --database database-id"),
+        ["view", "describe"] => Some("nodex view describe 'Priority board'"),
+        ["data-source", "query"] => Some("nodex data-source query --limit 20"),
+        ["data-source", "list"] => Some("nodex data-source list"),
+        ["read"] => Some("nodex read page-id"),
+        ["search"] => Some("nodex search 'release plan' --limit 5"),
+        _ => None,
+    };
+    std::iter::once(metadata.example).chain(second).collect()
+}
+
+/// Ordinary and machine help share command metadata and the Clap argument definitions.
+pub(crate) fn command() -> clap::Command {
+    use clap::CommandFactory;
+    fn decorate(command: clap::Command, path: Vec<String>) -> clap::Command {
+        let command = command.mut_subcommands(|child| {
+            let mut child_path = path.clone();
+            child_path.push(child.get_name().to_owned());
+            decorate(child, child_path)
+        });
+        let Some(metadata) = COMMANDS.iter().find(|metadata| {
+            metadata
+                .path
+                .iter()
+                .copied()
+                .eq(path.iter().map(String::as_str))
+        }) else {
+            return command;
+        };
+        let examples = command_examples(metadata)
+            .iter()
+            .map(|example| format!("  {example}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        command.after_help(format!(
+            "Scope: {}\n\nExamples:\n{examples}\n\nSchema: {} --help-schema input|result|error|all",
+            default_scope(metadata.path),
+            command_name(metadata.path)
+        ))
+    }
+    decorate(crate::cli::Cli::command(), Vec::new())
 }
 
 fn discover_bundle_capability() -> Result<AgentBundleCapability, CliError> {
