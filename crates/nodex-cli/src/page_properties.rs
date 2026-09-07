@@ -25,6 +25,8 @@ pub struct PagePropertiesArgs {
 }
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum PagePropertiesCommand {
+    /// Freeze SQL result targets and current Property revisions into an apply document.
+    PrepareBatch(crate::selection_batch::PrepareBatchArgs),
     /// Read canonical Property values and revisions for one Page.
     Get { page: String },
     /// Atomically apply typed Property edits from JSON.
@@ -65,6 +67,8 @@ pub struct PropertyApplyInput {
     pub edits: Vec<DatabasePropertyValueMutation>,
 }
 
+pub(crate) type PropertyApplyDocument = crate::input_document::InputDocument<PropertyApplyInput>;
+
 #[derive(Serialize, utoipa::ToSchema)]
 pub(crate) struct PagePropertiesOutput {
     pub page_id: String,
@@ -85,11 +89,14 @@ struct PropertyValueRecord {
     revision: i64,
 }
 pub(crate) fn prepare(args: &mut PagePropertiesArgs) -> Result<(), CliError> {
+    if let PagePropertiesCommand::PrepareBatch(args) = &mut args.command {
+        return crate::selection_batch::prepare(args);
+    }
     if let PagePropertiesCommand::Apply {
         input, prepared, ..
     } = &mut args.command
     {
-        *prepared = Some(read_json(input, "Property edits")?);
+        *prepared = Some(read_json::<PropertyApplyDocument>(input, "Property edits")?.into_inner());
     }
     Ok(())
 }
@@ -101,6 +108,9 @@ pub(crate) fn execute(
 ) -> Result<CommandOutput, CliError> {
     let project = selected_project(client, explicit_project, cwd)?;
     let (edits, mutation) = match args.command {
+        PagePropertiesCommand::PrepareBatch(args) => {
+            return crate::selection_batch::execute(client, &project.id, args);
+        }
         PagePropertiesCommand::Get { page } => {
             let page_id = resolve_page_selector(client, &project.id, &page)?;
             let snapshot = unwrap_library(client.library_read(

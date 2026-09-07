@@ -59,25 +59,11 @@ pub(crate) fn execute(
     args: BrowseArgs,
 ) -> Result<CommandOutput, CliError> {
     let project = selected_project(client, explicit_project, cwd)?;
-    let target = args.target.strip_prefix('@').unwrap_or(&args.target);
-    let database_id = if target == "database" || target == project.database_id {
-        Some(project.database_id.clone())
-    } else {
-        let result = unwrap_library(client.library_read(
-            Some(&project.id),
-            LibraryRead::PageLifecyclePreflight {
-                page_id: target.to_owned(),
-            },
-        ))?;
-        let LibraryReadValue::PageLifecyclePreflight { value } = result.value else {
-            return Err(internal("unexpected target preflight"));
+    let database_id =
+        match crate::runtime::resolve_content_selector(client, &project, &args.target)? {
+            crate::runtime::ContentScope::Database { database_id } => Some(database_id),
+            crate::runtime::ContentScope::Page { .. } => None,
         };
-        if value.page.is_some() || !args.target.starts_with('@') {
-            None
-        } else {
-            Some(target.to_owned())
-        }
-    };
     let Some(database_id) = database_id else {
         let page_id = resolve_page_selector(client, &project.id, &args.target)?;
         let result = unwrap_library(client.library_read(

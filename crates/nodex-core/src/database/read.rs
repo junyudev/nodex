@@ -439,6 +439,12 @@ pub(crate) fn read_at_commit_head(
         .flatten();
     let store_epoch = crate::document::read_store_epoch(connection)?;
     let mut value = match request {
+        DatabaseRead::SqlSchema { scope } => DatabaseReadValue::SqlSchema {
+            value: super::sql::schema(connection, library_id, commit_head, context, scope)?,
+        },
+        DatabaseRead::SqlQuery { query } => DatabaseReadValue::SqlQuery {
+            value: super::sql::query(connection, library_id, commit_head, context, query)?,
+        },
         DatabaseRead::CatalogWindow { window } => {
             let project_id = project_id
                 .ok_or_else(|| invalid("Library Database reads require a concrete target"))?;
@@ -805,6 +811,7 @@ pub(crate) fn read_at_commit_head(
             view_id,
             window,
             group_scope,
+            projection_property_ids,
         } => {
             let project_id = project_id
                 .ok_or_else(|| invalid("Database View context requires a Project scope"))?;
@@ -820,6 +827,7 @@ pub(crate) fn read_at_commit_head(
                 library_id,
                 &view_id,
                 super::window::ViewContextRead {
+                    projection_property_ids: projection_property_ids.as_deref(),
                     commit_head,
                     project_id,
                     store_epoch: &store_epoch,

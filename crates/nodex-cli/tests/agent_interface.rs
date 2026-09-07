@@ -57,7 +57,7 @@ fn every_leaf_exposes_machine_readable_help_without_core() {
 
     assert!(output.status.success());
     let document: Value = serde_json::from_slice(&output.stdout).expect("machine help JSON");
-    assert_eq!(document["schemaVersion"], 2);
+    assert_eq!(document["schemaVersion"], 3);
     assert_eq!(document["command"], "nodex page move");
     assert_eq!(document["capability"], "pageWrite");
     assert_eq!(document["effect"], "write");
@@ -85,7 +85,7 @@ fn actual_offline_results_and_errors_obey_the_published_schemas() {
         };
         let mut help_args = vec!["--json"];
         help_args.extend_from_slice(&path);
-        help_args.push("--help");
+        help_args.extend(["--help-schema", "all"]);
         let help_output = invoke(&help_args);
         assert!(
             help_output.status.success(),
@@ -122,4 +122,61 @@ fn actual_offline_results_and_errors_obey_the_published_schemas() {
         !nonexistent_home.exists(),
         "help, docs, and invalid inputs must not start Core"
     );
+}
+
+#[test]
+fn query_help_is_progressive_and_schema_selection_is_offline() {
+    let home = tempfile::tempdir().unwrap();
+    let nonexistent = home.path().join("no-core");
+    let invoke = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_nodex"))
+            .args(args)
+            .env("NODEX_HOME", &nonexistent)
+            .output()
+            .unwrap()
+    };
+    for path in [["view", "query"], ["data-source", "query"]] {
+        let concise = invoke(&[path[0], path[1], "--json", "--help"]);
+        assert!(
+            concise.status.success(),
+            "{}",
+            String::from_utf8_lossy(&concise.stderr)
+        );
+        assert!(
+            concise.stdout.len() < 8192,
+            "ordinary help exceeded its 8 KiB context budget: {}",
+            concise.stdout.len()
+        );
+        let guide: Value = serde_json::from_slice(&concise.stdout).unwrap();
+        assert!(guide.get("resultSchema").is_none());
+        assert!(guide.get("payloadSchemas").is_none());
+        assert!(!guide["schemaHelp"].as_str().unwrap().is_empty());
+        assert!(guide["examples"].as_array().unwrap().len() >= 2);
+        let full = invoke(&[path[0], path[1], "--help-schema", "result"]);
+        assert!(full.status.success());
+        let full: Value = serde_json::from_slice(&full.stdout).unwrap();
+        jsonschema::validator_for(&full["resultSchema"]).unwrap();
+        assert!(full.get("payloadSchemas").is_none());
+        let text = invoke(&[path[0], path[1], "--help"]);
+        let text = String::from_utf8(text.stdout).unwrap();
+        for example in guide["examples"].as_array().unwrap() {
+            assert!(
+                text.contains(example.as_str().unwrap()),
+                "human and machine examples disagree"
+            );
+        }
+    }
+    let input = invoke(&["data-source", "query", "--help-schema=input"]);
+    assert!(input.status.success());
+    let input: Value = serde_json::from_slice(&input.stdout).unwrap();
+    let validator = jsonschema::validator_for(&input["payloadSchemas"]["--input"]).unwrap();
+    assert!(validator.is_valid(
+        &serde_json::json!({"filter":{"kind":"group","operator":"and","children":[]},"sort":[]})
+    ));
+    assert!(input.get("resultSchema").is_none());
+    let invalid = invoke(&["view", "query", "--help-schema", "bogus"]);
+    assert_eq!(invalid.status.code(), Some(2));
+    let error: Value = serde_json::from_slice(&invalid.stderr).unwrap();
+    assert_eq!(error["error"]["details"]["argument"], "--help-schema");
+    assert!(!nonexistent.exists());
 }

@@ -9,7 +9,7 @@ use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::events::ProjectionSnapshotAuthority;
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const DATABASE_CONTRACT_VERSION: u32 = 25;
+pub const DATABASE_CONTRACT_VERSION: u32 = 26;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -60,7 +60,7 @@ pub enum DatabaseTimeFormat {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DatabasePropertySchema {
     Text,
     Number {
@@ -653,6 +653,12 @@ pub enum DatabaseRowsTarget {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DatabaseRead {
+    SqlSchema {
+        scope: crate::sql::SqlScope,
+    },
+    SqlQuery {
+        query: crate::sql::SqlQuery,
+    },
     CatalogWindow {
         window: CollectionWindowRequest,
     },
@@ -721,6 +727,9 @@ pub enum DatabaseRead {
         view_id: String,
         window: CollectionWindowRequest,
         group_scope: Option<DatabaseGroupScope>,
+        /// Explicit read projection; omission uses the saved View's display fields.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        projection_property_ids: Option<Vec<String>>,
     },
     RowsById {
         target: DatabaseRowsTarget,
@@ -843,6 +852,12 @@ pub struct DatabasePropertyOption {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DatabaseReadValue {
+    SqlSchema {
+        value: crate::sql::SqlSchema,
+    },
+    SqlQuery {
+        value: crate::sql::SqlResult,
+    },
     CatalogWindow {
         databases: CollectionWindow<DatabaseDescriptor>,
     },
@@ -1200,6 +1215,10 @@ pub struct DatabaseRowSummary {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DatabaseIntent {
+    Configure {
+        data_source_id: String,
+        script: crate::database_configuration::DatabaseConfigurationScript,
+    },
     RenamePageKeyPrefix {
         database_id: String,
         expected_revision: i64,

@@ -1,9 +1,7 @@
 //! Offline schemas reuse the exact Rust serialization types at each CLI boundary.
 use std::collections::BTreeMap;
 
-use nodex_core_contracts::{
-    ModuleReadSnapshot, administration::*, database::*, document::*, library::*,
-};
+use nodex_core_contracts::{administration::*, database::*, document::*, library::*};
 use serde_json::{Value, json};
 use utoipa::ToSchema;
 
@@ -67,16 +65,25 @@ fn localize_references(value: &mut Value) {
 
 pub(super) fn result(path: &[&str]) -> Value {
     let mut schema = match path {
+        ["sql", "schema"] => document::<nodex_core_contracts::sql::SqlSchema>(),
+        ["sql", "query"] => document::<nodex_core_contracts::sql::SqlResult>(),
         ["capabilities"] => document::<super::AgentCapabilitiesV1>(),
         ["setup"] | ["skills", _] => document::<crate::skills::install::SkillOperationResult>(),
         ["ls"] => document::<crate::browse::BrowseOutput>(),
         ["search"] => document::<crate::search::SearchOutput>(),
         ["data-source", "describe"] => document::<crate::data_source::DataSourceDescribeOutput>(),
-        ["data-source", "list"] => database_snapshot("data_source_window"),
-        ["data-source", "options"] => database_snapshot("option_window"),
-        ["data-source", "query"] => database_snapshot("data_source_query"),
+        ["data-source", "list"] => combine(
+            document::<crate::data_source::CompactWindow<crate::data_source::DataSourceIdentity>>(),
+            [document::<crate::data_source::DataSourceIdentity>()],
+        ),
+        ["data-source", "options"] => combine(
+            document::<crate::data_source::CompactWindow<crate::data_source::OptionIdentity>>(),
+            [document::<crate::data_source::OptionIdentity>()],
+        ),
+        ["data-source", "query"] => document::<crate::data_source::DataSourceQueryOutput>(),
+        ["page", "properties", "prepare-batch"] => document::<crate::selection_batch::BatchEdits>(),
         ["page", "properties", "get"] => document::<crate::page_properties::PagePropertiesOutput>(),
-        ["page", "properties", "apply" | "set"] => combine(
+        ["data-source", "configure"] | ["page", "properties", "apply" | "set"] => combine(
             document::<nodex_core_contracts::ApplyResponse<DatabaseCommitValue, DatabaseReceipt>>(),
             [
                 document::<DatabaseCommitValue>(),
@@ -90,6 +97,11 @@ pub(super) fn result(path: &[&str]) -> Value {
         ["sed"] => document::<crate::runtime::SedOutput>(),
         ["docs", "nested-markdown"] => document::<String>(),
         ["rg"] => document::<ProcessResult>(),
+        ["view", "list"] => combine(
+            document::<crate::data_source::CompactWindow<crate::view::ViewListItem>>(),
+            [document::<crate::view::ViewListItem>()],
+        ),
+        ["view", "describe"] => document::<crate::view::ViewDescription>(),
         ["view", "query"] => document::<crate::view::ViewQueryOutput>(),
         ["open", _] => document::<crate::open::OpenResult>(),
         ["patch"] | ["page", "insert" | "replace" | "rename"] | ["block", _] => {
@@ -132,19 +144,6 @@ pub(super) fn result(path: &[&str]) -> Value {
         _ => panic!("missing typed result schema for {}", path.join(" ")),
     };
     prune_definitions(&mut schema);
-    schema
-}
-
-fn database_snapshot(kind: &str) -> Value {
-    let mut schema = combine(
-        document::<ModuleReadSnapshot<DatabaseReadValue>>(),
-        [document::<DatabaseReadValue>()],
-    );
-    let variants = schema["$defs"]["DatabaseReadValue"]["oneOf"]
-        .as_array_mut()
-        .expect("tagged Database read variants");
-    variants.retain(|variant| variant["properties"]["kind"]["enum"] == json!([kind]));
-    assert_eq!(variants.len(), 1, "registered Database read variant {kind}");
     schema
 }
 
@@ -214,12 +213,36 @@ fn draft_apply_schema() -> Value {
 
 pub(super) fn payloads(path: &[&str]) -> BTreeMap<String, Value> {
     match path {
+        ["data-source", "configure"] => BTreeMap::from([(
+            "--input".into(),
+            document::<nodex_core_contracts::database_configuration::DatabaseConfigurationScript>(),
+        )]),
+        ["page", "properties", "prepare-batch"] => BTreeMap::from([
+            (
+                "--values".into(),
+                document::<BTreeMap<String, DatabasePropertyValueInput>>(),
+            ),
+            (
+                "--set value".into(),
+                document::<DatabasePropertyValueInput>(),
+            ),
+            (
+                "--selection".into(),
+                combine(
+                    document::<crate::selection_batch::SelectionInput>(),
+                    [document::<nodex_core_contracts::sql::SqlResult>()],
+                ),
+            ),
+        ]),
         ["data-source", "query"] => {
             BTreeMap::from([("--input".into(), document::<DatabaseDataSourceQuery>())])
         }
         ["page", "properties", "apply"] => BTreeMap::from([(
             "--input".into(),
-            document::<crate::page_properties::PropertyApplyInput>(),
+            combine(
+                document::<crate::page_properties::PropertyApplyDocument>(),
+                [document::<crate::page_properties::PropertyApplyInput>()],
+            ),
         )]),
         ["page", "create-batch"] => BTreeMap::from([(
             "--input".into(),

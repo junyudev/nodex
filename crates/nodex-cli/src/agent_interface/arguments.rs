@@ -8,17 +8,25 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct ArgumentHelp {
     pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub long: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub short: Option<char>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub position: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub value_type: &'static str,
     pub required: bool,
     pub global: bool,
     pub minimum_values: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub maximum_values: Option<usize>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub defaults: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub possible_values: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub conflicts_with: Vec<String>,
     pub input_sources: Vec<&'static str>,
 }
@@ -170,7 +178,16 @@ pub(super) fn content_input(path: &[&str]) -> Option<ContentInputHelp> {
             "--patch-json -",
             crate::page_mutation::MAX_BLOCK_JSON_BYTES,
         ),
-        ["data-source", "query"] | ["page", "create-batch"] | ["page", "properties", "apply"] => (
+        ["data-source", "query"] => (
+            "--input",
+            "JSON",
+            "--input - (omitted input uses an empty filter)",
+            crate::input::MAX_JSON_BYTES,
+        ),
+        ["sql", "query"] => ("--file", "SQL", "--file -", 64 * 1024),
+        ["data-source", "configure"]
+        | ["page", "create-batch"]
+        | ["page", "properties", "apply"] => (
             "--input",
             "JSON",
             "--input omitted or -",

@@ -200,9 +200,11 @@ pub mod agent;
 pub mod automation;
 pub mod collection;
 pub mod database;
+pub mod database_configuration;
 pub mod document;
 pub mod events;
 pub mod library;
+pub mod sql;
 pub mod workspace;
 
 #[cfg(test)]

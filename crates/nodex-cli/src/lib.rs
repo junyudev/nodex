@@ -3,18 +3,20 @@
 use std::ffi::OsString;
 use std::io::IsTerminal;
 
-use clap::Parser;
+use clap::FromArgMatches;
 
 pub mod agent_interface;
 mod browse;
 pub mod cli;
 mod config;
+mod config_script;
 mod data_source;
 pub mod deeplink;
 mod draft;
 pub mod error;
 mod files;
 mod input;
+mod input_document;
 pub mod meta_yaml;
 mod open;
 mod page_batch;
@@ -28,8 +30,10 @@ mod ripgrep;
 pub mod runtime;
 mod search;
 pub mod sed;
+mod selection_batch;
 mod service;
 pub mod skills;
+mod sql;
 mod view;
 
 use cli::Cli;
@@ -49,10 +53,22 @@ pub fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         .iter()
         .take_while(|value| *value != "--")
         .any(|argument| argument == "--help" || argument == "-h");
-    if requested == presentation::OutputFormat::Json && help_requested {
+    let schema_requested = arguments
+        .iter()
+        .take_while(|value| *value != "--")
+        .any(|value| {
+            value == "--help-schema"
+                || value
+                    .to_str()
+                    .is_some_and(|value| value.starts_with("--help-schema="))
+        });
+    if schema_requested || (requested == presentation::OutputFormat::Json && help_requested) {
         return print_machine_help(&arguments);
     }
-    let cli = match Cli::try_parse_from(arguments) {
+    let cli = match agent_interface::command()
+        .try_get_matches_from(arguments)
+        .and_then(|matches| Cli::from_arg_matches(&matches))
+    {
         Ok(cli) => cli,
         Err(error) => {
             let exit_status = error.exit_code();

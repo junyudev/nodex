@@ -98,6 +98,7 @@ pub(super) struct ViewGroupsRead<'a> {
 }
 
 pub(super) struct ViewContextRead<'a> {
+    pub projection_property_ids: Option<&'a [String]>,
     pub commit_head: i64,
     pub project_id: &'a str,
     pub store_epoch: &'a str,
@@ -1961,7 +1962,13 @@ pub(super) fn view_context(
         Some(read.project_id),
         &view,
     )?;
-    let window = view_window_for(
+    let property_ids = match read.projection_property_ids {
+        Some(ids) => {
+            resolve_agent_projection_property_ids(connection, &view.data_source_id, Some(ids))?
+        }
+        None => projected_property_ids(&view.config)?,
+    };
+    let window = view_window_for_projecting(
         connection,
         library_id,
         read.commit_head,
@@ -1969,6 +1976,7 @@ pub(super) fn view_context(
         read.window,
         read.group_scope,
         projection.clone(),
+        &property_ids,
     )?;
     let groups = view_groups_for(connection, &view, projection.clone())?;
     let rows = CollectionWindow {
@@ -1994,7 +2002,7 @@ pub(super) fn view_context(
     Ok(ViewContextProjection {
         database_id: view.database_id.clone(),
         data_source_id: view.data_source_id.clone(),
-        property_ids: projected_property_ids(&view.config)?.into_iter().collect(),
+        property_ids: property_ids.into_iter().collect(),
         groups,
         projection,
         rows,

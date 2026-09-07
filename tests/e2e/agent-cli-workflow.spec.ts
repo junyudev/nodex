@@ -22,14 +22,12 @@ interface PropertyState {
   readonly value_revisions: Record<string, number>;
 }
 interface SourceSchema {
-  readonly properties: {
-    readonly items: readonly {
-      readonly property_id: string;
-      readonly schema: { readonly type?: string; readonly kind?: string };
-      readonly system_role: string | null;
-      readonly name: string;
-    }[];
-  };
+  readonly schema_revision: number;
+  readonly properties: readonly {
+    readonly id: string;
+    readonly schema: { readonly kind: string };
+    readonly name: string;
+  }[];
 }
 
 const cli = (home: string, cwd: string, args: readonly string[], input?: string): Promise<string> =>
@@ -92,13 +90,13 @@ test("direct Agent commands update the same Page, properties, and attachments sh
       const help = JSON.parse(await run(["--json", "page", "insert", "--help"])) as {
         schemaVersion: number;
       };
-      expect(help.schemaVersion).toBe(2);
+      expect(help.schemaVersion).toBe(3);
       const matches = await structured<{ items: readonly { page_id: string }[] }>([
         "search",
         "Release meeting",
       ]);
       expect(matches.items.some((item) => item.page_id === pageId)).toBe(true);
-      const original = await run(["read", `@${pageId}`]);
+      const original = await run(["read", pageId]);
       expect(original).toContain("Release date: Friday.");
 
       await page
@@ -113,12 +111,12 @@ test("direct Agent commands update the same Page, properties, and attachments sh
       await expect(stage.getByText("Release date: Friday.", { exact: true })).toBeVisible();
 
       await run(
-        ["page", "insert", `@${pageId}`],
+        ["page", "insert", pageId],
         "\n## Action items\n\nUpdate the installation guide.\n",
       );
       await run(
         ["patch"],
-        `*** Begin Patch\n*** Update Page: @${pageId}\n@@\n-Release date: Friday.\n+Release date: Monday.\n*** End Patch\n`,
+        `*** Begin Patch\n*** Update Page: ${pageId}\n@@\n-Release date: Friday.\n+Release date: Monday.\n*** End Patch\n`,
       );
       await expect(stage.getByText("Release date: Monday.", { exact: true })).toBeVisible();
       await expect(
@@ -128,65 +126,135 @@ test("direct Agent commands update the same Page, properties, and attachments sh
         stage.getByText("Keep the rollback checklist intact.", { exact: true }),
       ).toBeVisible();
 
-      const propertyState = await structured<PropertyState>([
-        "page",
-        "properties",
-        "get",
-        `@${pageId}`,
-      ]);
+      const propertyState = await structured<PropertyState>(["page", "properties", "get", pageId]);
       const schema = await structured<SourceSchema>([
         "data-source",
         "describe",
-        `@${propertyState.data_source_id}`,
+        propertyState.data_source_id,
       ]);
-      const status = schema.properties.items.find((property) => property.system_role === "status");
+      const status = schema.properties.find((property) => property.name.toLowerCase() === "status");
       if (!status) throw new Error("Scenario status schema was not discovered");
       const options = await structured<{
-        value: { options: { items: readonly { id: string; name: string }[] } };
-      }>([
-        "data-source",
-        "options",
-        `@${propertyState.data_source_id}`,
-        "--property",
-        status.property_id,
-      ]);
-      const target = options.value.options.items.find(
-        (option) => option.name.toLowerCase() === "review",
-      );
+        items: readonly { id: string; name: string }[];
+      }>(["data-source", "options", propertyState.data_source_id, "--property", status.id]);
+      const target = options.items.find((option) => option.name.toLowerCase() === "review");
       if (!target) throw new Error("Review option was not discovered");
-      const revision = propertyState.value_revisions[status.property_id];
+      const revision = propertyState.value_revisions[status.id];
       if (revision === undefined) throw new Error("Property value revision is missing");
       await run([
         "page",
         "properties",
         "set",
-        `@${pageId}`,
+        pageId,
         "--property",
-        status.property_id,
+        status.id,
         "--option",
         target.id,
         "--if-revision",
         String(revision),
       ]);
       const query = await structured<{
-        value: { value: { rows: { items: readonly { page_id: string }[] } } };
+        items: readonly { page_id: string }[];
+        returned_count: number;
       }>(
-        ["data-source", "query", `@${propertyState.data_source_id}`, "--input", "-"],
+        ["data-source", "query", propertyState.data_source_id, "--input", "-"],
         JSON.stringify({
           filter: { kind: "group", operator: "and", children: [] },
           sort: [],
           limit: 50,
         }),
       );
-      expect(query.value.value.rows.items.some((row) => row.page_id === pageId)).toBe(true);
+      expect(query.items.some((row) => row.page_id === pageId)).toBe(true);
       await expect(stage.getByText("Review", { exact: true }).first()).toBeVisible();
 
-      const inventory = await structured<{ revision: number }>([
-        "page",
-        "file",
-        "list",
-        `@${pageId}`,
+      const group = await structured<{
+        items: readonly { page_id: string }[];
+        returned_count: number;
+      }>(["view", "query", "--group", "Review"]);
+      expect(group.items.map((item) => item.page_id)).toEqual([pageId]);
+      expect(group.returned_count).toBe(1);
+      const count = await structured<{
+        columns: readonly string[];
+        rows: readonly (readonly number[])[];
+      }>(["sql", "query", "SELECT count(*) AS matched_count FROM pages"]);
+      expect(count.columns).toEqual(["matched_count"]);
+      expect(count.rows).toEqual([[1]]);
+
+      const script = JSON.stringify({
+        if_schema_revision: schema.schema_revision,
+        operations: [
+          {
+            kind: "add_property",
+            name: "Risk",
+            schema: { kind: "select" },
+            options: ["Low", "High"],
+          },
+          { kind: "create_view", name: "Risk board", layout: "board", group_by: "Risk" },
+        ],
+      });
+      const configure = [
+        "data-source",
+        "configure",
+        "--input",
+        "-",
+        "--idempotency-key",
+        "agent-workflow-config",
+      ];
+      await run(configure, script);
+      await run(configure, script);
+      const views = await structured<{ items: readonly { name: string }[] }>(["view", "list"]);
+      expect(views.items.filter((view) => view.name === "Risk board")).toHaveLength(1);
+      const risks = await structured<{ items: readonly { id: string; name: string }[] }>([
+        "data-source",
+        "options",
+        propertyState.data_source_id,
+        "--property",
+        "Risk",
       ]);
+      const low = risks.items.find((option) => option.name === "Low");
+      if (!low) throw new Error("Risk option is missing");
+      const selection = await run([
+        "sql",
+        "query",
+        "SELECT page_id, data_source_id FROM pages WHERE title = :title",
+        "--param",
+        `title=${JSON.stringify(AGENT_CLI_PAGE_TITLE)}`,
+      ]);
+      const edits = await run(
+        [
+          "page",
+          "properties",
+          "prepare-batch",
+          "--selection",
+          "-",
+          "--set",
+          `Risk=${JSON.stringify({ kind: "select", option_id: low.id })}`,
+        ],
+        selection,
+      );
+      await run(["page", "properties", "apply", "--input", "-"], edits);
+      const riskGroup = await structured<{ items: readonly { page_id: string }[] }>([
+        "view",
+        "query",
+        "Risk board",
+        "--group",
+        "Low",
+      ]);
+      expect(riskGroup.items.map((item) => item.page_id)).toEqual([pageId]);
+      await testInfo.attach("agent-query-evidence", {
+        body: Buffer.from(
+          JSON.stringify({
+            group_query_calls: 1,
+            returned_count: group.returned_count,
+            group_result_bytes: Buffer.byteLength(JSON.stringify(group)),
+            sql_count: count.rows[0]?.[0],
+            selected_pages: riskGroup.items.length,
+          }),
+        ),
+        contentType: "application/json",
+      });
+
+      const inventory = await structured<{ revision: number }>(["page", "file", "list", pageId]);
       const csv = "owner,action\nLin,Update installation guide\n";
       const source = path.join(profile.runRoot, "action-summary.csv");
       await writeFile(source, csv);
@@ -194,7 +262,7 @@ test("direct Agent commands update the same Page, properties, and attachments sh
         "page",
         "file",
         "put",
-        `@${pageId}`,
+        pageId,
         "--path",
         "action-summary.csv",
         "--from",
@@ -202,17 +270,15 @@ test("direct Agent commands update the same Page, properties, and attachments sh
         "--if-manifest",
         String(inventory.revision),
       ]);
-      expect(
-        await run(["page", "file", "read", `@${pageId}`, "--path", "action-summary.csv"]),
-      ).toBe(csv);
+      expect(await run(["page", "file", "read", pageId, "--path", "action-summary.csv"])).toBe(csv);
       const finalInventory = await structured<{
         files: readonly { logical_path: string | null }[];
-      }>(["page", "file", "list", `@${pageId}`]);
+      }>(["page", "file", "list", pageId]);
       expect(finalInventory.files.some((file) => file.logical_path === "action-summary.csv")).toBe(
         true,
       );
       await testInfo.attach("cli-result", {
-        body: Buffer.from(await run(["read", `@${pageId}`])),
+        body: Buffer.from(await run(["read", pageId])),
         contentType: "text/markdown",
       });
     },

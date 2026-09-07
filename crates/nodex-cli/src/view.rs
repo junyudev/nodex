@@ -14,23 +14,30 @@ use serde_json::Value;
 
 use crate::cli::ViewQueryArgs;
 use crate::error::{CliError, CliErrorCode};
-use crate::runtime::{CommandOutput, selected_project, unwrap_database};
+use crate::runtime::{CommandOutput, unwrap_database};
 
 const VIEW_QUERY_SCHEMA_VERSION: u32 = 1;
-const MAX_VIEW_SELECTOR_CANDIDATES: usize = 10_000;
 
 pub(crate) fn query(
     client: &CoreClient,
     explicit_project: Option<&str>,
+    database: Option<&str>,
     cwd: &Path,
     arguments: ViewQueryArgs,
     json_output: bool,
 ) -> Result<CommandOutput, CliError> {
-    let project = selected_project(client, explicit_project, cwd)?;
-    let view_id = resolve_view_selector(client, &project, &arguments.view)?;
+    let project =
+        crate::data_source::selected_database_project(client, explicit_project, database, cwd)?;
+    let view_id = resolve_optional_view(client, &project, arguments.view.as_deref())?;
+    let requested_properties = resolve_requested_properties(
+        client,
+        &project.id,
+        &view_id,
+        &arguments.projection_property_ids,
+    )?;
     let group_scope = match (arguments.group, arguments.unassigned) {
         (Some(key), false) => Some(DatabaseGroupScope::Path {
-            group_key: Some(validate_group_key(key)?),
+            group_key: Some(resolve_group(client, &project.id, &view_id, key)?),
             subgroup_key: None,
         }),
         (None, true) => Some(DatabaseGroupScope::Path {
@@ -48,6 +55,7 @@ pub(crate) fn query(
     let snapshot = unwrap_database(client.database_read(
         Some(&project.id),
         DatabaseRead::ViewContext {
+            projection_property_ids: Some(requested_properties.clone()),
             view_id,
             window: CollectionWindowRequest {
                 after: arguments.after,
@@ -59,14 +67,44 @@ pub(crate) fn query(
     let DatabaseReadValue::ViewContext { value } = snapshot.value else {
         return Err(internal("Core returned the wrong saved View context"));
     };
-    let labels = read_group_labels(client, &project.id, &value)?;
-    let output = project_context(*value, labels)?;
+    let output = project_context(*value, BTreeMap::new())?;
     if json_output {
-        return serde_json::to_value(output)
+        return serde_json::to_value(compact_context(&output, &requested_properties))
             .map(CommandOutput::Json)
             .map_err(internal);
     }
     Ok(CommandOutput::Text(render_human(&output)))
+}
+
+fn resolve_requested_properties(
+    client: &CoreClient,
+    project_id: &str,
+    view_id: &str,
+    requested: &[String],
+) -> Result<Vec<String>, CliError> {
+    if requested.is_empty() {
+        return Ok(Vec::new());
+    }
+    let snapshot = unwrap_database(client.database_read(
+        Some(project_id),
+        DatabaseRead::View {
+            view_id: view_id.to_owned(),
+        },
+    ))?;
+    let DatabaseReadValue::View { value } = snapshot.value else {
+        return Err(internal("unexpected View descriptor"));
+    };
+    requested
+        .iter()
+        .map(|selector| {
+            crate::data_source::resolve_property(
+                client,
+                project_id,
+                &value.data_source_id,
+                selector,
+            )
+        })
+        .collect()
 }
 
 pub(crate) fn resolve_view_selector(
@@ -74,103 +112,205 @@ pub(crate) fn resolve_view_selector(
     project: &ProjectWorkspaceProject,
     selector: &str,
 ) -> Result<String, CliError> {
-    if let Some(view_id) = selector.strip_prefix('@') {
-        return validate_stable_id(view_id, "View selector");
+    if let Some(id) = crate::data_source::read_identity(
+        client,
+        &project.id,
+        selector,
+        DatabaseRead::View {
+            view_id: crate::data_source::stable_id(selector)?,
+        },
+    )? {
+        return Ok(id);
     }
-    if selector.is_empty() || selector.len() > 4_096 || selector.trim() != selector {
-        return Err(CliError::new(
-            CliErrorCode::InvalidInput,
-            "a View name selector must be a non-empty bounded exact name",
-        ));
-    }
-
-    let mut database_cursor = None;
-    let mut database_ids = Vec::new();
-    loop {
-        let snapshot = unwrap_database(client.database_read(
-            Some(&project.id),
-            DatabaseRead::CatalogWindow {
-                window: CollectionWindowRequest {
-                    after: database_cursor,
-                    first: Some(MAX_COLLECTION_WINDOW_ITEMS),
-                },
-            },
-        ))?;
-        let DatabaseReadValue::CatalogWindow { databases } = snapshot.value else {
-            return Err(internal(
-                "Core returned the wrong Database catalog for View resolution",
-            ));
-        };
-        for database in databases.items {
-            database_ids.push(database.database.database_id);
-            enforce_candidate_budget(database_ids.len())?;
-        }
-        let Some(next_cursor) = databases.next_cursor else {
-            break;
-        };
-        database_cursor = Some(next_cursor);
-    }
-
-    let mut matches = Vec::new();
-    for database_id in database_ids {
-        let mut view_cursor = None;
+    let mut candidates = Vec::new();
+    for database_id in [project.database_id.clone()] {
+        let mut after = None;
         loop {
             let snapshot = unwrap_database(client.database_read(
                 Some(&project.id),
                 DatabaseRead::ViewDescriptorWindow {
                     database_id: database_id.clone(),
                     window: CollectionWindowRequest {
-                        after: view_cursor,
+                        after,
                         first: Some(MAX_COLLECTION_WINDOW_ITEMS),
                     },
                 },
             ))?;
             let DatabaseReadValue::ViewDescriptorWindow { views } = snapshot.value else {
-                return Err(internal("Core returned the wrong View descriptor window"));
+                return Err(internal("unexpected View catalog"));
             };
-            for view in views.items {
-                if view.name != selector {
-                    continue;
-                }
-                matches.push(view.view_id);
-                enforce_candidate_budget(matches.len())?;
-            }
-            let Some(next_cursor) = views.next_cursor else {
+            candidates.extend(
+                views
+                    .items
+                    .into_iter()
+                    .map(|view| (view.view_id, view.name)),
+            );
+            crate::data_source::enforce_selector_budget(candidates.len())?;
+            after = views.next_cursor;
+            if after.is_none() {
                 break;
-            };
-            view_cursor = Some(next_cursor);
+            }
         }
     }
-    resolve_unique_name(selector, matches)
+    crate::data_source::select_identity(selector, "View", candidates)
 }
 
-fn resolve_unique_name(selector: &str, mut matches: Vec<String>) -> Result<String, CliError> {
-    matches.sort();
-    matches.dedup();
-    match matches.as_slice() {
-        [] => Err(CliError::new(
-            CliErrorCode::ScopeNotFound,
-            format!("no authorized View matches '{selector}'"),
-        )),
-        [view_id] => Ok(view_id.clone()),
-        _ => Err(CliError::new(
-            CliErrorCode::ScopeAmbiguous,
-            format!(
-                "View name '{selector}' matches multiple Views: {}",
-                matches.join(", ")
-            ),
-        )),
-    }
+fn resolve_optional_view(
+    client: &CoreClient,
+    project: &ProjectWorkspaceProject,
+    selector: Option<&str>,
+) -> Result<String, CliError> {
+    let Some(selector) = selector else {
+        return project.default_database_view_id.clone().ok_or_else(|| {
+            CliError::new(
+                CliErrorCode::ScopeNotFound,
+                "The Project has no default View; use `nodex view list` and select a View ID",
+            )
+        });
+    };
+    resolve_view_selector(client, project, selector)
 }
 
-fn enforce_candidate_budget(count: usize) -> Result<(), CliError> {
-    if count <= MAX_VIEW_SELECTOR_CANDIDATES {
-        return Ok(());
-    }
-    Err(CliError::new(
-        CliErrorCode::ScopeBudgetExceeded,
-        format!("View resolution exceeds the {MAX_VIEW_SELECTOR_CANDIDATES}-candidate limit"),
+pub(crate) fn list(
+    client: &CoreClient,
+    explicit_project: Option<&str>,
+    database: Option<&str>,
+    cwd: &Path,
+    window: crate::data_source::WindowArgs,
+) -> Result<CommandOutput, CliError> {
+    let project =
+        crate::data_source::selected_database_project(client, explicit_project, database, cwd)?;
+    let database_id = project.database_id.clone();
+    let snapshot = unwrap_database(client.database_read(
+        Some(&project.id),
+        DatabaseRead::ViewDescriptorWindow {
+            database_id,
+            window: window.request(),
+        },
+    ))?;
+    let DatabaseReadValue::ViewDescriptorWindow { views } = snapshot.value else {
+        return Err(internal("unexpected View catalog"));
+    };
+    Ok(CommandOutput::Json(crate::data_source::compact_window(
+        views,
+        |view| ViewListItem {
+            id: view.view_id,
+            name: view.name,
+            database_id: view.database_id,
+            data_source_id: view.data_source_id,
+            layout: view.layout,
+            is_default: view.is_default,
+        },
+    )))
+}
+
+pub(crate) fn describe(
+    client: &CoreClient,
+    explicit_project: Option<&str>,
+    database: Option<&str>,
+    cwd: &Path,
+    selector: Option<String>,
+) -> Result<CommandOutput, CliError> {
+    let project =
+        crate::data_source::selected_database_project(client, explicit_project, database, cwd)?;
+    let view_id = resolve_optional_view(client, &project, selector.as_deref())?;
+    let snapshot =
+        unwrap_database(client.database_read(Some(&project.id), DatabaseRead::View { view_id }))?;
+    let DatabaseReadValue::View { value } = snapshot.value else {
+        return Err(internal("unexpected View descriptor"));
+    };
+    Ok(CommandOutput::Json(
+        serde_json::to_value(ViewDescription {
+            id: value.view_id,
+            name: value.name,
+            database_id: value.database_id,
+            data_source_id: value.data_source_id,
+            layout: value.layout,
+            is_default: value.is_default,
+            definition: value.definition,
+            revision: value.revision,
+        })
+        .map_err(internal)?,
     ))
+}
+
+fn resolve_group(
+    client: &CoreClient,
+    project_id: &str,
+    view_id: &str,
+    selector: String,
+) -> Result<String, CliError> {
+    let snapshot = unwrap_database(client.database_read(
+        Some(project_id),
+        DatabaseRead::ViewContext {
+            projection_property_ids: None,
+            view_id: view_id.to_owned(),
+            window: CollectionWindowRequest {
+                after: None,
+                first: Some(1),
+            },
+            group_scope: None,
+        },
+    ))?;
+    let DatabaseReadValue::ViewContext { value } = snapshot.value else {
+        return Err(internal("unexpected View context"));
+    };
+    let labels = read_group_labels(client, project_id, &value)?;
+    if labels.is_empty() {
+        return validate_group_key(selector);
+    }
+    crate::data_source::select_identity(&selector, "View group", labels.into_iter().collect())
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub(crate) struct ViewQueryOutput {
+    database: NamedIdentity,
+    data_source: NamedIdentity,
+    view: NamedIdentity,
+    items: Vec<CompactViewRow>,
+    returned_count: usize,
+    next_cursor: Option<String>,
+    snapshot_revision: i64,
+}
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+struct CompactViewRow {
+    page_id: String,
+    page_key: Option<String>,
+    title: String,
+    properties: BTreeMap<String, Value>,
+    group_key: Option<String>,
+    move_etag: String,
+}
+fn compact_context(output: &ViewContextOutput, requested: &[String]) -> ViewQueryOutput {
+    let items: Vec<_> = output
+        .rows
+        .iter()
+        .map(|row| CompactViewRow {
+            page_id: row.page_id.clone(),
+            page_key: row.page_key.clone(),
+            title: row.title.clone(),
+            properties: row
+                .values
+                .iter()
+                .filter(|(id, _)| requested.contains(id))
+                .map(|(id, value)| (id.clone(), value.clone()))
+                .collect(),
+            group_key: row.effective_group_key.clone(),
+            move_etag: row.etags.r#move.clone(),
+        })
+        .collect();
+    ViewQueryOutput {
+        database: output.database.clone(),
+        data_source: output.data_source.clone(),
+        view: NamedIdentity {
+            id: output.view.id.clone(),
+            name: output.view.name.clone(),
+        },
+        returned_count: items.len(),
+        items,
+        next_cursor: output.page_info.end_cursor.clone(),
+        snapshot_revision: output.page_info.projection_revision,
+    }
 }
 
 fn validate_stable_id(value: &str, label: &str) -> Result<String, CliError> {
@@ -189,7 +329,7 @@ fn validate_group_key(value: String) -> Result<String, CliError> {
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ViewQueryOutput {
+pub(crate) struct ViewContextOutput {
     schema_version: u32,
     database: NamedIdentity,
     data_source: NamedIdentity,
@@ -203,7 +343,7 @@ pub(crate) struct ViewQueryOutput {
     page_info: ViewPageInfo,
 }
 
-#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, Serialize, utoipa::ToSchema)]
 struct NamedIdentity {
     id: String,
     name: String,
@@ -321,7 +461,7 @@ fn read_group_labels(
 fn project_context(
     context: DatabaseViewContext,
     labels: BTreeMap<String, String>,
-) -> Result<ViewQueryOutput, CliError> {
+) -> Result<ViewContextOutput, CliError> {
     let database = NamedIdentity {
         id: context.database.database_id,
         name: context.database.name,
@@ -367,7 +507,7 @@ fn project_context(
     };
     let rows = context.rows.items.into_iter().map(project_row).collect();
     let end_cursor = context.rows.next_cursor;
-    Ok(ViewQueryOutput {
+    Ok(ViewContextOutput {
         schema_version: VIEW_QUERY_SCHEMA_VERSION,
         database,
         data_source,
@@ -406,18 +546,18 @@ fn project_row(row: DatabaseViewContextRow) -> ViewRowOutput {
     }
 }
 
-fn render_human(output: &ViewQueryOutput) -> String {
+fn render_human(output: &ViewContextOutput) -> String {
     let mut rendered = format!(
-        "{} (@{}) · {} row{}\n",
+        "{} ({}) · {} row{}\n",
         output.view.name,
         output.view.id,
-        output.total_rows,
-        if output.total_rows == 1 { "" } else { "s" }
+        output.rows.len(),
+        if output.rows.len() == 1 { "" } else { "s" }
     );
     for row in &output.rows {
         let group = row.effective_group_key.as_deref().unwrap_or("unassigned");
         let key = row.page_key.as_deref().unwrap_or("-");
-        let _ = writeln!(rendered, "{group}\t{key}\t{}\t@{}", row.title, row.page_id);
+        let _ = writeln!(rendered, "{group}\t{key}\t{}\t{}", row.title, row.page_id);
     }
     if let Some(cursor) = &output.page_info.end_cursor {
         let _ = writeln!(rendered, "next\t{cursor}");
@@ -443,19 +583,6 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-
-    #[test]
-    fn unique_view_names_return_stable_candidates() {
-        assert_eq!(
-            resolve_unique_name("Planning", vec!["view-1".to_owned()]).expect("unique View"),
-            "view-1"
-        );
-        let ambiguous =
-            resolve_unique_name("Planning", vec!["view-b".to_owned(), "view-a".to_owned()])
-                .expect_err("ambiguous View");
-        assert_eq!(ambiguous.code, CliErrorCode::ScopeAmbiguous);
-        assert!(ambiguous.message.ends_with("view-a, view-b"));
-    }
 
     #[test]
     fn context_projection_uses_option_labels_and_preserves_stable_group_keys() {
@@ -565,14 +692,14 @@ mod tests {
                 projection: projection_authority(),
                 grouped: true,
                 subgrouped: false,
-                total_rows: 1,
+                total_rows: 20,
                 total_groups: 1,
                 group_limit: 200,
                 truncated: false,
                 groups: vec![DatabaseViewGroupSummary {
                     group_key: Some("triage".to_owned()),
                     subgroup_key: None,
-                    total_rows: 1,
+                    total_rows: 20,
                 }],
             },
             projection: projection_authority(),
@@ -598,8 +725,19 @@ mod tests {
         assert_eq!(output.rows[0].etags.r#move, "nxe1.move");
         assert!(output.page_info.has_next_page);
         assert_eq!(output.page_info.projection_revision, 42);
+        let compact = compact_context(&output, &[]);
+        assert_eq!(compact.returned_count, 1);
+        assert!(compact.items[0].properties.is_empty());
+        assert_eq!(compact.next_cursor.as_deref(), Some("nxc1.next"));
+        let projected = compact_context(&output, &["status".to_owned()]);
+        assert_eq!(
+            projected.items[0].properties.get("status"),
+            Some(&json!("triage"))
+        );
+        assert_eq!(projected.items[0].move_etag, "nxe1.move");
         let human = render_human(&output);
-        assert!(human.contains("triage\tLAB-13\tShip\t@page-1"));
+        assert_eq!(human.lines().next(), Some("Planning (view-1) · 1 row"));
+        assert!(human.contains("triage\tLAB-13\tShip\tpage-1"));
     }
 
     fn projection_authority() -> ProjectionSnapshotAuthority {
@@ -653,4 +791,25 @@ mod tests {
             task_parent_value_revision: 1,
         }
     }
+}
+
+#[derive(Serialize, utoipa::ToSchema)]
+pub(crate) struct ViewDescription {
+    id: String,
+    name: String,
+    database_id: String,
+    data_source_id: String,
+    layout: nodex_core_contracts::database::DatabaseViewLayout,
+    is_default: bool,
+    definition: DatabaseViewDefinition,
+    revision: i64,
+}
+#[derive(Serialize, utoipa::ToSchema)]
+pub(crate) struct ViewListItem {
+    id: String,
+    name: String,
+    database_id: String,
+    data_source_id: String,
+    layout: nodex_core_contracts::database::DatabaseViewLayout,
+    is_default: bool,
 }

@@ -6984,6 +6984,23 @@
         },
         "additionalProperties": false
       },
+      "ConfigurationSort": {
+        "type": "object",
+        "required": [
+          "property",
+          "direction"
+        ],
+        "properties": {
+          "direction": {
+            "$ref": "#/components/schemas/DatabaseViewSortDirection"
+          },
+          "property": {
+            "type": "string",
+            "description": "Property ID/name, or the intrinsic title, created, or manual sort."
+          }
+        },
+        "additionalProperties": false
+      },
       "ConservativeResetReason": {
         "type": "string",
         "enum": [
@@ -7945,6 +7962,235 @@
       "DatabaseApplyResponse": {
         "$ref": "#/components/schemas/ResponseEnvelope_ApplyResponse_DatabaseCommitValue_DatabaseReceipt"
       },
+      "DatabaseConfigurationOperation": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "name",
+              "schema",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "add_property"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/DatabasePropertySchema"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "property",
+              "name",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "rename_property"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "property": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "property",
+              "schema",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "change_property_type"
+                ]
+              },
+              "property": {
+                "type": "string"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/DatabasePropertySchema"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "property",
+              "name",
+              "kind"
+            ],
+            "properties": {
+              "color": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "add_option"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "property": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "property",
+              "option",
+              "name",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "rename_option"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "option": {
+                "type": "string"
+              },
+              "property": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "name",
+              "layout",
+              "kind"
+            ],
+            "properties": {
+              "group_by": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create_view"
+                ]
+              },
+              "layout": {
+                "$ref": "#/components/schemas/DatabaseViewLayout"
+              },
+              "name": {
+                "type": "string"
+              },
+              "sorts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ConfigurationSort"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "view",
+              "if_revision",
+              "kind"
+            ],
+            "properties": {
+              "group_by": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "if_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "update_view"
+                ]
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sorts": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/ConfigurationSort"
+                }
+              },
+              "view": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "DatabaseConfigurationScript": {
+        "type": "object",
+        "required": [
+          "if_schema_revision",
+          "operations"
+        ],
+        "properties": {
+          "if_schema_revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Revision observed before constructing this script. All statements share this fence."
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseConfigurationOperation"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "DatabaseContainerRecord": {
         "type": "object",
         "required": [
@@ -8392,6 +8638,28 @@
       },
       "DatabaseIntent": {
         "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "data_source_id",
+              "script",
+              "kind"
+            ],
+            "properties": {
+              "data_source_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "configure"
+                ]
+              },
+              "script": {
+                "$ref": "#/components/schemas/DatabaseConfigurationScript"
+              }
+            }
+          },
           {
             "type": "object",
             "required": [
@@ -28191,6 +28459,28 @@
                 {
                   "type": "object",
                   "required": [
+                    "data_source_id",
+                    "script",
+                    "kind"
+                  ],
+                  "properties": {
+                    "data_source_id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "configure"
+                      ]
+                    },
+                    "script": {
+                      "$ref": "#/components/schemas/DatabaseConfigurationScript"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
                     "database_id",
                     "expected_revision",
                     "prefix",
@@ -29456,6 +29746,42 @@
               {
                 "type": "object",
                 "required": [
+                  "scope",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "sql_schema"
+                    ]
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/SqlScope"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "query",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "sql_query"
+                    ]
+                  },
+                  "query": {
+                    "$ref": "#/components/schemas/SqlQuery"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "window",
                   "kind"
                 ],
@@ -29844,6 +30170,16 @@
                     "enum": [
                       "view_context"
                     ]
+                  },
+                  "projection_property_ids": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Explicit read projection; omission uses the saved View's display fields."
                   },
                   "view_id": {
                     "type": "string"
@@ -39586,6 +39922,42 @@
                       {
                         "type": "object",
                         "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "sql_schema"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/SqlSchema"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "sql_query"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/SqlResult"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "databases",
                           "kind"
                         ],
@@ -42459,6 +42831,169 @@
           "busy",
           "incompatible"
         ]
+      },
+      "SqlBinding": {
+        "type": "object",
+        "required": [
+          "table",
+          "data_source_id"
+        ],
+        "properties": {
+          "data_source_id": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqlColumn": {
+        "type": "object",
+        "required": [
+          "name",
+          "storage_type",
+          "options"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SqlOption"
+            }
+          },
+          "property_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "storage_type": {
+            "type": "string"
+          }
+        }
+      },
+      "SqlOption": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "SqlQuery": {
+        "type": "object",
+        "required": [
+          "scope",
+          "sql"
+        ],
+        "properties": {
+          "parameters": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SqlScope"
+          },
+          "sql": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqlResult": {
+        "type": "object",
+        "required": [
+          "columns",
+          "rows"
+        ],
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {}
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqlSchema": {
+        "type": "object",
+        "required": [
+          "tables"
+        ],
+        "properties": {
+          "tables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SqlTable"
+            }
+          }
+        }
+      },
+      "SqlScope": {
+        "type": "object",
+        "properties": {
+          "bindings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SqlBinding"
+            }
+          },
+          "database_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "SqlTable": {
+        "type": "object",
+        "required": [
+          "table",
+          "data_source_id",
+          "name",
+          "columns"
+        ],
+        "properties": {
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SqlColumn"
+            }
+          },
+          "data_source_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          }
+        }
       },
       "StoreAdministrationApplyRequest": {
         "$ref": "#/components/schemas/ModuleApplyRequest_StoreAdministrationIntent"

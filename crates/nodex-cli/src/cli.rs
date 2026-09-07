@@ -28,6 +28,9 @@ pub struct Cli {
     pub output_format: Option<OutputFormat>,
     #[arg(long, global = true)]
     pub no_color: bool,
+    /// Print an offline input, result, error, or complete schema guide as JSON.
+    #[arg(long, global = true, value_enum)]
+    pub help_schema: Option<HelpSchema>,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -41,6 +44,14 @@ impl Cli {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+pub enum HelpSchema {
+    Input,
+    Result,
+    Error,
+    All,
+}
+
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum Command {
     Capabilities,
@@ -48,19 +59,25 @@ pub enum Command {
     Docs(DocsArgs),
     Setup(SkillMutationArgs),
     Skills(SkillsArgs),
+    /// Show the resolved Profile, Project, and default Database/View.
     Context,
+    /// Find authorized Pages by title and body evidence.
     Search(crate::search::SearchArgs),
     Ls(crate::browse::BrowseArgs),
     DataSource(crate::data_source::DataSourceArgs),
+    /// Query the authorized public data model with read-only SQL.
+    Sql(crate::sql::SqlArgs),
     Tree {
         #[arg(value_name = "SCOPE_SELECTOR")]
         scope: Option<String>,
     },
+    /// Read a Page body; use --json for content and reusable edit validators.
     Read(ReadArgs),
     Sed(SedArgs),
     Rg(RgArgs),
     Patch(PatchArgs),
     Open(OpenArgs),
+    /// Discover saved Views and query their configured results.
     View(ViewArgs),
     Page(PageArgs),
     File(FileArgs),
@@ -618,13 +635,24 @@ pub struct ViewArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum ViewCommand {
+    /// List Views in the Project's default Database.
+    List {
+        #[command(flatten)]
+        window: crate::data_source::WindowArgs,
+    },
+    /// Inspect a View's complete configuration; defaults to the Project's default View.
+    Describe { view: Option<String> },
+    /// Query the configured View, optionally selecting a named group.
     Query(ViewQueryArgs),
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct ViewQueryArgs {
     #[arg(value_name = "VIEW_SELECTOR")]
-    pub view: String,
+    pub view: Option<String>,
+    /// Include this Property by ID or unique name (repeatable).
+    #[arg(long = "property")]
+    pub projection_property_ids: Vec<String>,
     #[arg(long, value_name = "STABLE_GROUP_KEY", conflicts_with = "unassigned")]
     pub group: Option<String>,
     #[arg(long, conflicts_with = "group")]
@@ -1008,7 +1036,7 @@ mod tests {
         else {
             panic!("expected View query")
         };
-        assert_eq!(arguments.view, "@view-1");
+        assert_eq!(arguments.view.as_deref(), Some("@view-1"));
         assert_eq!(arguments.group.as_deref(), Some("in-progress"));
         assert_eq!(arguments.limit, Some(200));
 
