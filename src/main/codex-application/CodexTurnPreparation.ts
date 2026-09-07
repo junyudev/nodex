@@ -41,6 +41,7 @@ import { CodexInputAssets } from "./CodexInputAssets";
 import { CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
+import { isNodexAgentTurnReadOnly } from "../codex/nodex-agent-access";
 import { buildTurnPermissionOverrides } from "../codex/codex-permission-resolver";
 import {
   CodexAgentConfigRuntime,
@@ -52,8 +53,10 @@ import { CodexConversationContext } from "./CodexConversationContext";
 import { CodexPermissions, resolveCanonicalPermissionContext } from "./CodexPermissions";
 import { CodexPreferences } from "./CodexPreferences";
 import { CodexThreadSettingsRuntime } from "./CodexThreadSettingsRuntime";
+import type { CodexTurnPresentationClaim } from "./CodexTurnPresentation";
 
 export interface CodexTurnStartPlan {
+  readonly presentationClaim?: CodexTurnPresentationClaim;
   readonly threadId: string;
   readonly projectId: string | null;
   readonly request: TurnStartParams;
@@ -67,6 +70,7 @@ export interface CodexTurnStartPlan {
   readonly clientUserMessageId: string;
   readonly rendererOwnsState: boolean;
   readonly verifiedBuiltinFullAccess: boolean;
+  readonly executionReadOnly: boolean;
   readonly promptText: string;
   readonly startedAtMs: number;
   readonly worktreeInit?: CodexCanonicalWorktreeInitItem;
@@ -104,6 +108,7 @@ export interface CodexTurnStartPreparationInput {
   readonly threadId: string;
   readonly prompt: string;
   readonly overrides?: {
+    readonly presentationClaim?: CodexTurnPresentationClaim;
     readonly clientUserMessageId?: string;
     readonly preparedPrompt?: CodexPreparedPrompt;
     readonly promptInput?: CodexPromptInput;
@@ -451,6 +456,9 @@ export const make: Effect.Effect<
       };
       const startedAtMs = yield* Clock.currentTimeMillis;
       return {
+        ...(input.overrides?.presentationClaim
+          ? { presentationClaim: input.overrides.presentationClaim }
+          : {}),
         threadId: input.threadId,
         projectId,
         request,
@@ -465,6 +473,13 @@ export const make: Effect.Effect<
         clientUserMessageId,
         rendererOwnsState: input.rendererOwnsState,
         verifiedBuiltinFullAccess: permission.verifiedBuiltinFullAccess,
+        executionReadOnly: isNodexAgentTurnReadOnly({
+          planMode: effectiveCollaborationMode.mode === "plan",
+          sandboxPolicy:
+            turnPermissions.sandboxPolicy ??
+            canonicalPermissions?.sandboxPolicy ??
+            permission.state.sandbox,
+        }),
         promptText: prepared.promptText,
         startedAtMs,
         ...(input.overrides?.worktreeInit ? { worktreeInit: input.overrides.worktreeInit } : {}),

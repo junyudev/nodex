@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
 import { MaitaiProvider, createMaitaiStore, useScopedAtom, useSetScopedAtom } from "@/lib/maitai";
 import { WorkbenchSessionScopePath } from "@/lib/workbench-ui-scopes";
@@ -17,6 +17,18 @@ function ReviewStateProbe() {
 
   return (
     <div>
+      <button
+        type="button"
+        onClick={() =>
+          prepareOpen({
+            operationId: "external-1",
+            source: { kind: "git", mode: "staged" },
+            targetPath,
+          })
+        }
+      >
+        external
+      </button>
       <button
         type="button"
         onClick={() =>
@@ -74,6 +86,34 @@ function RouteHarness({ routeKey }: { readonly routeKey: string }) {
 }
 
 describe("Review view state", () => {
+  test("consumes an external opening once without replaying it over a later source selection", async () => {
+    const store = createMaitaiStore();
+    const view = render(
+      <MaitaiProvider store={store}>
+        <RouteHarness routeKey="/thread/external" />
+      </MaitaiProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "external" }));
+      await Promise.resolve();
+    });
+    const read = () => JSON.parse(view.getByTestId("state").textContent ?? "{}").routeState;
+    expect(read()).toMatchObject({
+      source: "staged",
+      nextRevealRequestId: 1,
+      externalOpenOperationId: "external-1",
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "prepare" }));
+      await Promise.resolve();
+    });
+    expect(read()).toMatchObject({ source: "last-turn", nextRevealRequestId: 2 });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "external" }));
+      await Promise.resolve();
+    });
+    expect(read()).toMatchObject({ source: "last-turn", nextRevealRequestId: 2 });
+  });
   test("canonicalizes absolute and patch-prefixed paths and resolves rename aliases", () => {
     expect(canonicalizeReviewPath("/workspace/./src/app.ts", ["/workspace"])).toBe("src/app.ts");
     expect(canonicalizeReviewPath("b/src/app.ts", ["/workspace"])).toBe("src/app.ts");

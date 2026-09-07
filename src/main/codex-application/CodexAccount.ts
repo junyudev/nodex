@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -35,6 +36,12 @@ export class CodexAccountInputError extends Schema.TaggedError<CodexAccountInput
 
 export type CodexAccountError = CodexRuntimeError | CodexAccountInputError;
 type AccountRefreshEffect = Effect.Effect<CodexAccountSnapshot, CodexRuntimeError>;
+export type CodexUsageLimits = Pick<
+  ClientRequestResponsesByMethod["account/rateLimits/read"],
+  "rateLimits" | "rateLimitsByLimitId"
+> & {
+  readonly rateLimitResetCredits: CodexAccountSnapshot["rateLimitResetCredits"];
+};
 
 interface AccountRefreshSelection {
   readonly effect: AccountRefreshEffect;
@@ -54,6 +61,7 @@ export class CodexAccount extends Context.Service<
   {
     readonly snapshot: SubscriptionRef.SubscriptionRef<CodexAccountSnapshot>;
     readonly refresh: Effect.Effect<CodexAccountSnapshot, CodexRuntimeError>;
+    readonly readUsageLimits: Effect.Effect<CodexUsageLimits, CodexRuntimeError>;
     readonly consumeRateLimitResetCredit: (
       input: CodexRateLimitResetInput,
     ) => Effect.Effect<CodexRateLimitResetResult, CodexAccountError>;
@@ -254,6 +262,17 @@ export const live = (
       return CodexAccount.of({
         snapshot,
         refresh,
+        readUsageLimits: Effect.gen(function* () {
+          yield* awaitReady;
+          const response = yield* gateway.requestLocal("account/rateLimits/read", undefined);
+          return {
+            rateLimits: response.rateLimits,
+            rateLimitsByLimitId: response.rateLimitsByLimitId ?? null,
+            rateLimitResetCredits: parseRateLimitResetCreditsSummary(
+              response.rateLimitResetCredits ?? null,
+            ),
+          };
+        }),
         consumeRateLimitResetCredit,
         startLogin,
         cancelLogin,

@@ -97,6 +97,9 @@ export interface ManagedBlobBytes {
 }
 
 export type DatabaseReadRequest = components["schemas"]["DatabaseReadRequest"];
+export type QueryRead = components["schemas"]["QueryReadRequest"]["read"];
+export type QueryReadResponse = components["schemas"]["QueryReadResponse"];
+export type QueryReadSnapshot = SuccessfulPayload<QueryReadResponse>;
 export type DatabaseRead = DatabaseReadRequest["read"];
 export type DatabaseReadResponse = components["schemas"]["DatabaseReadResponse"];
 export type DatabaseApplyRequest = components["schemas"]["DatabaseApplyRequest"];
@@ -271,6 +274,7 @@ export interface CoreClientPort {
     impact: ProjectionImpact,
   ): Promise<ProjectionImpact>;
   databaseRead(read: DatabaseRead, options?: CoreRequestOptions): Promise<DatabaseReadSnapshot>;
+  queryRead(read: QueryRead, options?: CoreRequestOptions): Promise<QueryReadSnapshot>;
   databaseApply(
     input: DatabaseApplyInput,
     options?: CoreRequestOptions,

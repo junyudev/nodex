@@ -16,7 +16,7 @@ const MAX_PAGE_TITLE_BYTES: usize = 10_000;
 pub(crate) struct PageGenesisInput<'a> {
     pub(crate) commit_context: &'a CommitContext,
     pub(crate) library_id: &'a str,
-    pub(crate) actor_project_id: &'a str,
+    pub(crate) actor_project_id: Option<&'a str>,
     pub(crate) placement_access_project_id: Option<&'a str>,
     pub(crate) operation_id: &'a str,
     pub(crate) store_epoch: &'a str,

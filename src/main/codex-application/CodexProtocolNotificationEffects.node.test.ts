@@ -1,3 +1,4 @@
+import type { CodexHeartbeatDecision } from "../../shared/codex-turn-notification";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -29,6 +30,8 @@ it.effect("drains frame text before terminal turn consequences", () =>
     const trace: string[] = [];
     const forwarded: CodexServerNotification[] = [];
     let deferLifecycle = false;
+    let automationDecision: CodexHeartbeatDecision | null = "DONT_NOTIFY";
+    const deliveredDecisions: Array<CodexHeartbeatDecision | null> = [];
     const service = yield* make.pipe(
       Effect.provideService(
         CodexActiveGoalContinuation,
@@ -36,12 +39,19 @@ it.effect("drains frame text before terminal turn consequences", () =>
       ),
       Effect.provideService(
         CodexApplicationEventHub,
-        CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
+        CodexApplicationEventHub.of({
+          events: Stream.empty,
+          publish: (event) => {
+            if (event.kind === "threadNotification" && event.value.type === "turn-completed")
+              deliveredDecisions.push(event.value.automationNotificationDecision ?? null);
+          },
+        }),
       ),
       Effect.provideService(
         CodexAutomationTurnCompletion,
         CodexAutomationTurnCompletion.of({
-          complete: () => Effect.sync(() => trace.push("automation")).pipe(Effect.as(true)),
+          complete: () =>
+            Effect.sync(() => trace.push("automation")).pipe(Effect.map(() => automationDecision)),
         }),
       ),
       Effect.provideService(
@@ -192,6 +202,8 @@ it.effect("drains frame text before terminal turn consequences", () =>
       "durable:remote-a:7",
     ]);
 
+    assert.deepEqual(deliveredDecisions, ["DONT_NOTIFY"]);
+    automationDecision = null;
     trace.length = 0;
     yield* service.apply({
       hostId: "remote-a",
@@ -223,6 +235,8 @@ it.effect("drains frame text before terminal turn consequences", () =>
       "queue-terminal:true:0",
       "durable:remote-a:7",
     ]);
+
+    assert.deepEqual(deliveredDecisions, ["DONT_NOTIFY", null]);
 
     yield* service.apply({
       hostId: "remote-a",

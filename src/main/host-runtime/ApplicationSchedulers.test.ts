@@ -72,6 +72,9 @@ const automationDefinition = (
 ): CodexScheduledAutomation => ({
   id,
   definitionRevision: 1,
+  projectId: null,
+  targetSessionId: null,
+  notificationPolicy: null,
   kind,
   status: "ACTIVE",
   targetThreadId: kind === "heartbeat" ? "thread-follow-up" : null,
@@ -106,8 +109,10 @@ const defaultAutomation = (input?: {
 }): AutomationApplication["Service"] =>
   AutomationApplication.of({
     definitions: {
+      listWindow: () => Effect.die("unused"),
       list: () => Effect.die("unused"),
       get: () => Effect.die("unused"),
+      getForExecution: () => Effect.die("unused"),
       create: () => Effect.die("unused"),
       update: () => Effect.die("unused"),
       delete: () => Effect.die("unused"),

@@ -134,6 +134,12 @@ pub(crate) fn execute(
         QueryReadValue::Schema { value } => serde_json::to_value(value),
         QueryReadValue::Query { value } if raw => return raw_output(value),
         QueryReadValue::Query { value } => serde_json::to_value(value),
+        QueryReadValue::DisplayedViewQuery { .. } => {
+            return Err(CliError::new(
+                CliErrorCode::Internal,
+                "Core returned an unexpected displayed View result",
+            ));
+        }
     }
     .map_err(|error| CliError::new(CliErrorCode::Internal, error.to_string()))?;
     Ok(CommandOutput::Json(value))

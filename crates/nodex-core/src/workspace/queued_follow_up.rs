@@ -18,10 +18,7 @@ use crate::document::sha256;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::ProjectWorkspaceApplyOutcome;
-use super::mutation::{
-    WorkspaceMutationEffects, finish_no_op_with_queued_follow_up, run_mutation,
-    workspace_event_anchor,
-};
+use super::mutation::{WorkspaceMutationEffects, finish_no_op_with_queued_follow_up, run_mutation};
 use super::session_mutation::sqlite_now;
 use super::thread::read_thread;
 
@@ -401,7 +398,7 @@ pub(super) fn commit_ledger(
                 )?;
             }
             release_orphaned_manifests(connection, &prior_payloads)?;
-            let change_project_id = workspace_event_anchor(connection, library_id)?;
+            let change_project_id = None;
             Ok(WorkspaceMutationEffects {
                 operation_kind: "commit_queued_follow_up_ledger",
                 project_catalog_change: None,
@@ -450,10 +447,7 @@ fn authorize_publication(
     let actor = context
         .project_id
         .as_ref()
-        .map(|project| Ok(project.0.clone()))
-        .unwrap_or_else(|| {
-            crate::library::resolve_library_actor_project_id(connection, &context.library_id.0)
-        })?;
+        .map(|project| project.0.as_str());
     let mut needed = BTreeMap::new();
     for (payload, manifest) in manifests.values() {
         needed.insert(payload.sha256.clone(), payload.byte_length);
@@ -477,7 +471,7 @@ fn authorize_publication(
             connection,
             store_epoch,
             &context.library_id.0,
-            &actor,
+            actor,
             operation_id,
             id,
         )?;

@@ -30,6 +30,7 @@ const launch = (): CodexFreshThreadLaunch =>
     canonicalParams: {},
     turnStartParams: { threadId: "thread-1", input: [], attachments: [] },
     verifiedBuiltinFullAccess: false,
+    executionReadOnly: false,
     goalObjective: "",
     rawGoalDraft: null,
     heartbeatAutomation: null,
@@ -107,11 +108,19 @@ const makeHarness = (options: HarnessOptions = {}) => {
         }),
       ),
   } as CodexRendererConversationCoordinator["Service"]);
+  const acceptedPlans: Parameters<CodexTurnCommands["Service"]["acceptPreparedRendererTurn"]>[0][] =
+    [];
   const turns = CodexTurnCommands.of({
-    acceptPreparedRendererTurn: () =>
-      (options.start ?? Effect.succeed(turnStart())).pipe(
-        Effect.onExit((exit) =>
-          Exit.isFailure(exit) ? Effect.sync(() => options.rollback?.()) : Effect.void,
+    acceptPreparedRendererTurn: (
+      plan: Parameters<CodexTurnCommands["Service"]["acceptPreparedRendererTurn"]>[0],
+    ) =>
+      Effect.sync(() => acceptedPlans.push(plan)).pipe(
+        Effect.andThen(
+          (options.start ?? Effect.succeed(turnStart())).pipe(
+            Effect.onExit((exit) =>
+              Exit.isFailure(exit) ? Effect.sync(() => options.rollback?.()) : Effect.void,
+            ),
+          ),
         ),
       ),
   } as unknown as CodexTurnCommands["Service"]);
@@ -126,7 +135,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
     Effect.provideService(CodexThreadLaunchCompletion, completion),
     Effect.provideService(CodexTurnCommands, turns),
   );
-  return { adoptionCalls: () => adoptionCalls, failures, runtime };
+  return { adoptionCalls: () => adoptionCalls, failures, runtime, acceptedPlans };
 };
 
 it.effect("single-flights renderer adoption and the first Turn start", () =>
@@ -200,4 +209,18 @@ it.effect("releases a prepared launch when its renderer window closes", () =>
     assert.isNull(service.reservation(identity.threadId));
     assert.deepEqual(harness.failures, ["Message could not be sent because its window closed."]);
   }),
+);
+
+it.effect("carries the Main origin claim through fresh renderer ownership adoption", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const harness = makeHarness();
+      const runtime = yield* harness.runtime;
+      const presentationClaim = { ticketId: "origin-ticket", submissionId: "message-1" };
+      runtime.register({ ...launch(), presentationClaim });
+      yield* runtime.adopt(identity);
+      yield* runtime.start(identity);
+      assert.strictEqual(harness.acceptedPlans[0]?.presentationClaim, presentationClaim);
+    }),
+  ),
 );

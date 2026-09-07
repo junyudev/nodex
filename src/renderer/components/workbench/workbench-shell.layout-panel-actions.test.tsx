@@ -837,7 +837,7 @@ describe("workbench session shell / layout-panel-actions", () => {
           id: "db-tab",
           kind: "db_view",
           title: "DB View",
-          config: { projectId: "alpha" },
+          config: { accessContext: { kind: "project", projectId: "alpha" } },
         },
         {
           id: "terminal-tab",
@@ -945,7 +945,11 @@ describe("workbench session shell / layout-panel-actions", () => {
           id: "page-stage-tab",
           kind: "page_stage",
           title: "Card One",
-          config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+          config: {
+            accessContext: { kind: "project", projectId: "alpha" },
+            pageId: "card-1",
+            titleSnapshot: "Card One",
+          },
         },
       ],
       panels: makePanels({
@@ -990,7 +994,11 @@ describe("workbench session shell / layout-panel-actions", () => {
           id: "page-stage-tab",
           kind: "page_stage",
           title: "Card One",
-          config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+          config: {
+            accessContext: { kind: "project", projectId: "alpha" },
+            pageId: "card-1",
+            titleSnapshot: "Card One",
+          },
         },
       ],
       panels: makePanels({
@@ -1050,13 +1058,17 @@ describe("workbench session shell / layout-panel-actions", () => {
           id: "db-tab",
           kind: "db_view",
           title: "DB View",
-          config: { projectId: "alpha" },
+          config: { accessContext: { kind: "project", projectId: "alpha" } },
         },
         {
           id: "page-stage-tab",
           kind: "page_stage",
           title: "Card One",
-          config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+          config: {
+            accessContext: { kind: "project", projectId: "alpha" },
+            pageId: "card-1",
+            titleSnapshot: "Card One",
+          },
         },
       ],
       panels: makePanels({
@@ -2312,8 +2324,8 @@ describe("workbench session shell / layout-panel-actions", () => {
       title: "Planning",
       kind: "db_view",
       config: {
-        projectId: "alpha",
-        databaseViewId: "view:planning",
+        accessContext: { kind: "project", projectId: "alpha" },
+        target: { kind: "database-view", databaseViewId: "view:planning" },
       },
     });
     const otherTab = makeSessionTab({
@@ -2321,8 +2333,8 @@ describe("workbench session shell / layout-panel-actions", () => {
       title: "Other",
       kind: "db_view",
       config: {
-        projectId: "alpha",
-        databaseViewId: "view:other",
+        accessContext: { kind: "project", projectId: "alpha" },
+        target: { kind: "database-view", databaseViewId: "view:other" },
       },
     });
     const session = makeSession({

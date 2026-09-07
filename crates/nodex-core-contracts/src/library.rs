@@ -10,13 +10,14 @@ use crate::agent::{
 };
 use crate::database::{
     DatabaseGroupScope, DatabaseIntent, DatabaseListMoveTarget, DatabaseListProjectionExpectation,
-    DatabasePageLayout, DatabasePropertyDescriptor, DatabaseViewPreferencesOverrideInput,
+    DatabasePageLayout, DatabasePropertyDescriptor, DatabaseViewLayout,
+    DatabaseViewPreferencesOverrideInput,
 };
-use crate::document::DocumentHeadRevision;
+use crate::document::{DocumentHeadRevision, OwnedDocumentAccessContext};
 use crate::workspace::{ProjectAppearance, ProjectLifecycle};
 use crate::{ApplyResponse, ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const LIBRARY_CONTRACT_VERSION: u32 = 51;
+pub const LIBRARY_CONTRACT_VERSION: u32 = 53;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -924,6 +925,11 @@ pub enum LibraryRead {
         block_id: String,
         authorization: Box<AgentExecutionAuthorization>,
     },
+    AgentSurfaceDescription {
+        authorization: Box<AgentExecutionAuthorization>,
+        displayed_access_context: OwnedDocumentAccessContext,
+        target: LibraryAgentSurfaceTarget,
+    },
     AgentSearch {
         authorization: Box<AgentExecutionAuthorization>,
         query: String,
@@ -1667,7 +1673,7 @@ pub struct LibraryFile {
     pub mime_type: String,
     pub byte_length: u64,
     pub blob_etag: String,
-    pub created_by_actor_id: String,
+    pub created_by_actor_id: Option<String>,
     pub created_by_turn_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -1680,7 +1686,7 @@ pub struct LibraryFileVersion {
     pub mime_type: String,
     pub byte_length: u64,
     pub blob_etag: String,
-    pub actor_id: String,
+    pub actor_id: Option<String>,
     pub turn_id: Option<String>,
     pub operation_id: String,
     pub occurred_at: String,
@@ -2160,6 +2166,80 @@ pub struct LibrarySearchSnapshotLease {
 pub struct LibrarySearchSnapshotRelease {
     pub lease_id: String,
     pub released: bool,
+}
+
+/// A semantic content target, independent of the renderer's current access context.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum LibraryAgentSurfaceTarget {
+    Page {
+        page_id: String,
+    },
+    DatabaseView {
+        target: LibraryAgentSurfaceViewTarget,
+    },
+    Canvas {
+        canvas_id: String,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum LibraryAgentSurfaceViewTarget {
+    ProjectDefault,
+    DatabaseDefault { database_id: String },
+    View { view_id: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct LibraryAgentSurfaceMetadata {
+    pub title: String,
+    pub library_id: String,
+    /// Display context never contributes an Agent grant.
+    pub displayed_access_context: OwnedDocumentAccessContext,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum LibraryAgentAuthorizedSurface {
+    Page {
+        page_id: String,
+        #[serde(flatten)]
+        metadata: LibraryAgentSurfaceMetadata,
+    },
+    DatabaseView {
+        database_id: String,
+        data_source_id: String,
+        view_id: String,
+        layout: DatabaseViewLayout,
+        #[serde(flatten)]
+        metadata: LibraryAgentSurfaceMetadata,
+    },
+    Canvas {
+        canvas_id: String,
+        #[serde(flatten)]
+        metadata: LibraryAgentSurfaceMetadata,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LibraryAgentSurfaceRestriction {
+    ConsentRequired,
+    AccessDenied,
+    Unavailable,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum LibraryAgentSurfaceDescription {
+    Authorized {
+        #[serde(flatten)]
+        surface: LibraryAgentAuthorizedSurface,
+    },
+    Restricted {
+        reason: LibraryAgentSurfaceRestriction,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
@@ -2785,6 +2865,9 @@ pub enum LibraryReadValue {
     },
     AgentBlockTarget {
         value: Option<LibraryAgentBlockTarget>,
+    },
+    AgentSurfaceDescription {
+        value: LibraryAgentSurfaceDescription,
     },
     AgentSearch {
         items: Vec<LibraryAgentSearchResult>,

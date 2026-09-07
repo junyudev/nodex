@@ -668,7 +668,7 @@ mod tests {
             super::super::delivery_atom::compile(
                 &connection,
                 "library:test",
-                "project:test",
+                Some("project:test"),
                 payload,
             )
             .expect("compile document update")

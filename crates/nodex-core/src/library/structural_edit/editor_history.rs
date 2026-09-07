@@ -15,7 +15,8 @@ pub(super) fn apply(
     generation: i64,
     patch: &EditorHistoryPatch,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = &structural_actor_project_id(connection, context)?;
+    let actor_project_id = structural_actor_project_id(connection, context)?;
+    let project_id = actor_project_id.as_deref();
     let now = sqlite_now(connection)?;
     let committed = durable_mutation::run(
         connection,
@@ -173,7 +174,8 @@ pub(super) fn transition(
     let commit = persist_parent_operations_detailed_with_local_commit(
         write.connection,
         ParentDocumentWriteContext {
-            actor_project_id: &structural_actor_project_id(write.connection, write.context)?,
+            actor_project_id: structural_actor_project_id(write.connection, write.context)?
+                .as_deref(),
             store_epoch: write.store_epoch,
             operation_id: write.operation_id,
             commit: write.commit,

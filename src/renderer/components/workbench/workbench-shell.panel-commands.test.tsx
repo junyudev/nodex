@@ -656,7 +656,7 @@ describe("workbench session shell / panel-commands", () => {
           kind: "db_view",
           title: "DB View",
           panelId: "right",
-          config: { projectId: "alpha" },
+          config: { accessContext: { kind: "project", projectId: "alpha" } },
         },
         {
           id: "browser-tab",
@@ -925,7 +925,11 @@ describe("workbench session shell / panel-commands", () => {
       kind: "page_stage",
       title: "Card One",
       order: 0,
-      config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+      config: {
+        accessContext: { kind: "project", projectId: "alpha" },
+        pageId: "card-1",
+        titleSnapshot: "Card One",
+      },
     });
     const secondPageTab = makeSessionTab({
       id: "session:alpha:database-view:card-2",
@@ -934,7 +938,11 @@ describe("workbench session shell / panel-commands", () => {
       kind: "page_stage",
       title: "Card Two",
       order: 1,
-      config: { projectId: "alpha", pageId: "card-2", titleSnapshot: "Card Two" },
+      config: {
+        accessContext: { kind: "project", projectId: "alpha" },
+        pageId: "card-2",
+        titleSnapshot: "Card Two",
+      },
     });
     const session = makeSession({
       tabs: [firstPageTab, secondPageTab],
@@ -1294,7 +1302,7 @@ describe("workbench session shell / panel-commands", () => {
       kind: "db_view",
       title: "First",
       order: 0,
-      config: { projectId: "alpha" },
+      config: { accessContext: { kind: "project", projectId: "alpha" } },
     });
     const secondTab = makeSessionTab({
       id: "session:alpha:database-view:second",
@@ -1368,7 +1376,7 @@ describe("workbench session shell / panel-commands", () => {
       kind: "db_view",
       title: "First",
       order: 0,
-      config: { projectId: "alpha" },
+      config: { accessContext: { kind: "project", projectId: "alpha" } },
     });
     const secondTab = makeSessionTab({
       id: "session:alpha:database-view:second-split-close",
@@ -1447,7 +1455,7 @@ describe("workbench session shell / panel-commands", () => {
       kind: "db_view",
       title: "First",
       order: 0,
-      config: { projectId: "alpha" },
+      config: { accessContext: { kind: "project", projectId: "alpha" } },
     });
     const secondTab = makeSessionTab({
       id: "session:alpha:database-view:second-direct",
@@ -1628,7 +1636,7 @@ describe("workbench session shell / panel-commands", () => {
       kind: "db_view",
       title: "First",
       order: 0,
-      config: { projectId: "alpha" },
+      config: { accessContext: { kind: "project", projectId: "alpha" } },
     });
     const secondTab = makeSessionTab({
       id: "session:alpha:database-view:second-middle",

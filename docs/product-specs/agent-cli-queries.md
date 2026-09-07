@@ -7,6 +7,12 @@ content. `pages` always contains the selected Project's authorized active Pages,
 including standalone Pages. A Page ID never changes the access Project. Named
 Source bindings add Property columns without changing the meaning of `pages`.
 
+Native application MCP also exposes these relations through `describe_content_schema` and
+`query_content`. It binds the calling Project and verifies exact Turn provenance inside Core's
+read snapshot. This entrypoint uses durable Project grants; temporary call/task grants and
+Library-wide execution scope do not expand its resource universe. The CLI retains its own
+explicit Profile and Project admission.
+
 ```text
 nodex sql schema [RELATION] [--bind ALIAS=SOURCE_ID ...]
 nodex sql query SQL [--param NAME=JSON ...] [--bind ALIAS=SOURCE_ID ...] [--raw]
@@ -73,6 +79,20 @@ The Core Query Module combines domain-owned reads under one authorization
 snapshot. User SQL executes against public virtual relations, never the private
 Store connection. Domains retain their own content, authorization and ordering
 rules. The CLI transports a query rather than assembling per-Page reads.
+
+Live Workbench View observations use a separate exact-target Query operation.
+The renderer supplies the displayed View identity, committed personal preferences,
+search and revision coordinates; Core verifies these coordinates and the frozen
+Turn, including applicable call or task access, before projecting canonical rows.
+This operation leaves the public SQL resource universe unchanged. Display reads
+validate captured occurrence and row conditions and retain explicit viewport,
+loaded or selection coverage. Effective queries include matching occurrences beyond
+loaded windows and collapsed groups, preserve List hierarchy and duplicate group
+occurrences, and distinguish a complete result from an explicit limit. Relation
+previews and search text use only authorized target titles. The result is a new
+Core observation with a rules fingerprint, separate from the display capture;
+pending preferences or search require another observation. See
+[Agent interfaces](agent-interface-behavior.md) for the application tools.
 
 A successful structured result contains `columns`, `rows`, `returned_count` and
 `snapshot`. The count is exactly the output row count. Snapshot is an opaque

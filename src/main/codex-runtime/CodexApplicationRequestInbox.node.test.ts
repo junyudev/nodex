@@ -431,3 +431,86 @@ it.effect("fails the exact generation instead of dropping a request settlement",
     yield* Scope.close(rootScope, Exit.void);
   }),
 );
+
+it.effect(
+  "fences native application calls by Endpoint generation and revokes them on closure",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const inbox = yield* make;
+        const generationScope = yield* Scope.make();
+        yield* inbox
+          .openGeneration("local", 1)
+          .pipe(Effect.provideService(Scope.Scope, generationScope));
+        const source = { hostId: "local", generation: 1 };
+        yield* inbox.observeAppCallNotification(source, {
+          method: "turn/started",
+          params: {
+            threadId: "thread-1",
+            turn: {
+              id: "turn-1",
+              items: [],
+              itemsView: "full",
+              status: "inProgress",
+              error: null,
+              startedAt: null,
+              completedAt: null,
+              durationMs: null,
+            },
+          },
+        });
+        yield* inbox.observeAppCallNotification(source, {
+          method: "item/started",
+          params: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            startedAtMs: 1,
+            item: {
+              type: "mcpToolCall",
+              id: "call-1",
+              server: "nodex_app",
+              tool: "read_page",
+              status: "inProgress",
+              arguments: { pageId: "page-1" },
+              appContext: null,
+              pluginId: null,
+              readOnlyHint: true,
+              result: null,
+              error: null,
+              durationMs: null,
+            },
+          },
+        });
+        const input = {
+          name: "read_page",
+          arguments: { pageId: "page-1" },
+          metadata: {
+            callId: "call-1",
+            "x-codex-turn-metadata": { thread_id: "thread-1", turn_id: "turn-1" },
+          },
+        };
+        const wrongGeneration = yield* inbox
+          .runAppCall({ ...source, generation: 2 }, input, () => Effect.succeed(1))
+          .pipe(Effect.flip);
+        assert.strictEqual(wrongGeneration.reason, "revoked");
+        const started = yield* Deferred.make<void>();
+        const stopped = yield* Deferred.make<void>();
+        const call = yield* inbox
+          .runAppCall(source, input, () =>
+            Deferred.succeed(started, undefined).pipe(
+              Effect.andThen(Effect.never),
+              Effect.ensuring(Deferred.succeed(stopped, undefined)),
+            ),
+          )
+          .pipe(Effect.flip, Effect.forkChild);
+        yield* Deferred.await(started);
+        yield* Scope.close(generationScope, Exit.void);
+        assert.strictEqual((yield* Fiber.join(call)).reason, "revoked");
+        yield* Deferred.await(stopped);
+        const retired = yield* inbox
+          .runAppCall(source, input, () => Effect.succeed(1))
+          .pipe(Effect.flip);
+        assert.strictEqual(retired.reason, "revoked");
+      }),
+    ),
+);

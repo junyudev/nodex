@@ -12,6 +12,9 @@ function automation(overrides: Partial<CodexScheduledAutomation> = {}): CodexSch
   return {
     id: "automation-alpha",
     definitionRevision: 1,
+    projectId: null,
+    targetSessionId: null,
+    notificationPolicy: null,
     kind: "cron",
     status: "ACTIVE",
     targetThreadId: null,

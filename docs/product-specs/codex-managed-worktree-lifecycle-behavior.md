@@ -363,6 +363,11 @@ replace. On restart it reads Core's canonical location to decide whether to
 finish destination ownership/cleanup or restore the source; an unavailable or
 ambiguous canonical read defers recovery without mutating Git.
 
+Progress queries restore retained operation outcomes from the handoff journal after
+restart, including success, warning, and failure. Reading an outcome never resumes
+the move or sends its follow-up again. Terminal outcomes return immediately even
+when the caller supplies a revision from the previous application process.
+
 The app-server owns Thread runtime methods but not worktree lifecycle. A loaded
 Chat is first interrupted when it has an active Turn, then receives
 `thread/settings/update` for cwd and sandbox policy and a same-rollout

@@ -205,7 +205,7 @@ fn complete(
         assets_root,
         OccurrencePageCloneInput {
             commit_context,
-            actor_project_id: requesting_project_id,
+            actor_project_id: Some(requesting_project_id),
             operation_id,
             source_page_id: page_id,
             new_page_id: created_page_id,
@@ -442,7 +442,7 @@ fn update(
             assets_root,
             OccurrencePageCloneInput {
                 commit_context,
-                actor_project_id: requesting_project_id,
+                actor_project_id: Some(requesting_project_id),
                 operation_id,
                 source_page_id: page_id,
                 new_page_id: created_page_id,
@@ -569,7 +569,7 @@ fn update(
         assets_root,
         OccurrencePageCloneInput {
             commit_context,
-            actor_project_id: requesting_project_id,
+            actor_project_id: Some(requesting_project_id),
             operation_id,
             source_page_id: page_id,
             new_page_id: created_page_id,

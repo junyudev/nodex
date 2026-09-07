@@ -1,3 +1,11 @@
+import { NativeSessionHandoffToolCall } from "./native-session-handoff-tool-call";
+import { getToolComponent } from "./get-tool-component";
+import { buildThreadHandoffOperation } from "../../../../../test/thread-handoff-fixture";
+import {
+  createThreadHandoffStore,
+  ThreadHandoffStoreProvider,
+} from "../../../../../lib/thread-handoff-runtime";
+import type { CodexThreadHandoffSnapshot } from "../../../../../../shared/codex-thread-handoff";
 import { beforeEach, describe, expect, test } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
@@ -1178,4 +1186,78 @@ describe("McpToolCall", () => {
     );
     expect(sidePanelInput.title).toBe("Resolve Library Id - Context 7");
   });
+});
+
+test("native handoff keeps observing admitted progress after the MCP call completes", async () => {
+  const payload = buildMcpView({
+    invocation: {
+      server: "nodex_app",
+      tool: "handoff_session",
+      arguments: { sessionId: "session-1" },
+    },
+    result: {
+      type: "success",
+      content: [],
+      structuredContent: {
+        operationId: "operation-1",
+        sessionId: "session-1",
+        threadId: "thread-target",
+        deliveryState: "started",
+      },
+      raw: { content: [], structuredContent: null, _meta: null },
+    },
+  });
+  const item = buildMcpEntry({ mcpToolCall: payload });
+  expect(getToolComponent(item)).toBe(NativeSessionHandoffToolCall);
+  let deliver: (snapshot: CodexThreadHandoffSnapshot) => void = () => undefined;
+  const store = createThreadHandoffStore({
+    read: async () => ({ revision: 1, operations: [buildThreadHandoffOperation()] }),
+    subscribe: (listener) => {
+      deliver = listener;
+      return () => undefined;
+    },
+  });
+  const view = renderMcp(
+    <ThreadHandoffStoreProvider value={store}>
+      <NativeSessionHandoffToolCall item={item} />
+    </ThreadHandoffStoreProvider>,
+  );
+  await waitFor(() =>
+    expect(
+      view
+        .getByRole("button", { name: /Handing off Release notes to Local/ })
+        .getAttribute("aria-expanded"),
+    ).toBe("true"),
+  );
+  await act(async () => {
+    deliver({
+      revision: 2,
+      operations: [buildThreadHandoffOperation({ revision: 2, status: "success" })],
+    });
+  });
+  await waitFor(() =>
+    expect(
+      view
+        .getByRole("button", { name: "Handed off Release notes to Local" })
+        .getAttribute("aria-expanded"),
+    ).toBe("false"),
+  );
+  expect(payload.completed).toBe(true);
+  expect(
+    getToolComponent(
+      buildMcpEntry({
+        mcpToolCall: { ...payload, invocation: { ...payload.invocation, server: "other" } },
+      }),
+    ),
+  ).toBe(McpToolCall);
+  expect(
+    getToolComponent(
+      buildMcpEntry({
+        mcpToolCall: {
+          ...payload,
+          invocation: { ...payload.invocation, arguments: { sessionId: "different" } },
+        },
+      }),
+    ),
+  ).toBe(McpToolCall);
 });

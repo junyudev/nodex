@@ -128,7 +128,9 @@ const isAtomPayload = (value: unknown): boolean => {
   ) {
     return false;
   }
-  if (value.module === "automation") return isIdentity(value.project_id);
+  if (value.module === "automation") {
+    return value.project_id === null || isIdentity(value.project_id);
+  }
   if (value.module === "owned_document") {
     return value.canvas_id === null || isIdentity(value.canvas_id);
   }

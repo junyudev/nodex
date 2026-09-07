@@ -28,6 +28,7 @@ import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
 export interface CodexProjectSessionForkCommand {
   readonly sessionId: string;
+  readonly destinationSessionId?: string;
   readonly input: ProjectSessionForkInput;
   readonly sourceSceneContext?: CodexForkBrowserSceneContext;
   /** Protocol-originated forks may classify their child without changing Session semantics. */
@@ -210,6 +211,7 @@ export const make: Effect.Effect<
       parsed: ProjectSessionForkInput,
       threadSource: CodexPendingThreadSource,
       sourceSceneContext?: CodexForkBrowserSceneContext,
+      destinationSessionId?: string,
     ): Effect.fn.Return<ProjectSessionForkResult, CodexProjectSessionForkError> {
       if (source.directory.durable.executionHostId !== gateway.localHostId) {
         return yield* error(
@@ -278,6 +280,7 @@ export const make: Effect.Effect<
         startingState: { type: "working-tree" },
         localEnvironmentConfigPath: parsed.localEnvironmentConfigPath ?? null,
         launchMode: "fork-conversation",
+        ...(destinationSessionId ? { projectSessionId: destinationSessionId } : {}),
         projectAssignment: source.projectId
           ? {
               projectKind: "local",
@@ -318,6 +321,7 @@ export const make: Effect.Effect<
     parsed: ProjectSessionForkInput,
     threadSource: CodexPendingThreadSource,
     sourceSceneContext?: CodexForkBrowserSceneContext,
+    destinationSessionId?: string,
   ): Effect.fn.Return<ProjectSessionForkResult, CodexProjectSessionForkError> {
     yield* projection.read(source.threadId).pipe(
       Effect.catch(() =>
@@ -368,6 +372,7 @@ export const make: Effect.Effect<
           parsed,
           threadSource,
           sourceSceneContext,
+          destinationSessionId,
         );
       }),
     );
@@ -389,11 +394,15 @@ export const make: Effect.Effect<
             parsed,
             command.threadSource ?? "user",
             command.sourceSceneContext,
+            command.destinationSessionId,
           );
         }
         const forked = yield* conversationFork
           .fork({
             sourceThreadId: source.threadId,
+            ...(command.destinationSessionId
+              ? { destinationSessionId: command.destinationSessionId }
+              : {}),
             lastTurnId: parsed.turnId ?? null,
             threadSource: command.threadSource ?? "user",
             ...(command.sourceSceneContext

@@ -1,11 +1,12 @@
 import type { ThreadPlanSidePanelState } from "@/features/local-conversation/thread-stage-types";
 import type { PanelId, WorkbenchPanelState, WorkbenchTabProjection } from "@/lib/types";
-import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
+import type { WorkbenchSessionPanelProjection } from "@/lib/workbench-session-presentation";
 import {
   readPageStagePanelTabPageRef,
   resolveSessionPanelActiveLeafId,
 } from "@/lib/workbench-panel-placement";
 import type { ProjectSessionPreviewTab } from "@/lib/workbench-panel-preview";
+import { orderWorkbenchPanelTabs } from "./workbench-panel-order";
 import { makeWorkbenchSessionPanelSlotKey } from "@/lib/workbench-panel-slot-key";
 import {
   isProjectSessionFilesPreviewTab,
@@ -47,7 +48,8 @@ export interface SessionPanelRenderModel {
 }
 
 export interface SessionPanelRenderModelInput {
-  session: WorkbenchSessionRenderProjection;
+  tabOrderByPanelGroup?: Readonly<Record<string, readonly string[]>>;
+  session: WorkbenchSessionPanelProjection;
   previewTabsByPanel: Record<string, ProjectSessionPreviewTab>;
   sideChatTabsBySession: Record<string, SideChatPanelTab[]>;
   sideChatActiveTabByPanel: Record<string, string>;
@@ -78,7 +80,7 @@ export function shouldExpandImageEditorPanelForViewChange(input: {
 }
 
 function hasDurablePanelTabInLeaf(
-  session: WorkbenchSessionRenderProjection,
+  session: WorkbenchSessionPanelProjection,
   panelId: PanelId,
   leafId: string,
   tabId: string,
@@ -89,7 +91,7 @@ function hasDurablePanelTabInLeaf(
 }
 
 export function getRenderablePanelPreviewTab(
-  session: WorkbenchSessionRenderProjection,
+  session: WorkbenchSessionPanelProjection,
   panelId: PanelId,
   leafId: string,
   previewTabsByPanel: Record<string, ProjectSessionPreviewTab>,
@@ -206,17 +208,22 @@ export function buildSessionPanelRenderModel(
         leaf.id,
         previewTabsByPanel,
       );
-      const renderableTabs: ProjectSessionRenderableTab[] = [
-        ...durableTabs,
-        ...sideChatTabs,
-        ...mcpAppTabs,
-        ...planTabs,
-        ...automationTabs,
-        ...backgroundAgentTabs,
-        ...processOutputTabs,
-        ...imageEditorTabs,
-        ...(previewTab ? [previewTab] : []),
-      ];
+      const renderableTabs = orderWorkbenchPanelTabs<ProjectSessionRenderableTab>(
+        [
+          ...durableTabs,
+          ...sideChatTabs,
+          ...mcpAppTabs,
+          ...planTabs,
+          ...automationTabs,
+          ...backgroundAgentTabs,
+          ...processOutputTabs,
+          ...imageEditorTabs,
+          ...(previewTab ? [previewTab] : []),
+        ],
+        input.tabOrderByPanelGroup?.[
+          makeWorkbenchSessionPanelSlotKey(session.id, panelId, leaf.id)
+        ],
+      );
       const sideChatActiveTabId = activeEphemeralTabId(
         sideChatActiveTabByPanel,
         session.id,
@@ -344,7 +351,7 @@ export function buildSessionPanelRenderModel(
     rightPanelFullWidth,
     rightActiveRenderableTab,
     threadPlanSidePanelState: {
-      rightPanelEnabled: session.projectId !== null,
+      rightPanelEnabled: typeof session.projectId === "string",
       activePlanKey: activePlanKeyBySession[session.id] ?? null,
       activeRightPanelTabId: sidePanelOpen ? rightActiveTabId : null,
     },
@@ -356,7 +363,7 @@ export function buildSessionPanelRenderModel(
 }
 
 export function collectMountedBrowserTabIds(
-  session: WorkbenchSessionRenderProjection,
+  session: WorkbenchSessionPanelProjection,
   model: SessionPanelRenderModel,
   mountedPanels: Readonly<Record<PanelId, boolean>>,
 ): ReadonlySet<string> {
@@ -381,7 +388,7 @@ export function collectMountedBrowserTabIds(
 }
 
 export function collectPanelPresentedPageIds(
-  session: WorkbenchSessionRenderProjection,
+  session: WorkbenchSessionPanelProjection,
   model: SessionPanelRenderModel,
 ): ReadonlySet<string> {
   const pageIds = new Set<string>();

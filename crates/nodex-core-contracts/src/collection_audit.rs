@@ -34,6 +34,7 @@ enum ReadBudgetPolicy {
 fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
     match read {
         ProjectWorkspaceRead::ProjectWindow { .. }
+        | ProjectWorkspaceRead::SessionWindow { .. }
         | ProjectWorkspaceRead::TaskWindow { .. }
         | ProjectWorkspaceRead::SidebarOverview { .. }
         | ProjectWorkspaceRead::ChildThreadWindow { .. }
@@ -44,6 +45,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::PageChatWindow { .. }
         | ProjectWorkspaceRead::SidebarSectionWindow { .. }
         | ProjectWorkspaceRead::SidebarSectionItemWindow { .. }
+        | ProjectWorkspaceRead::BuiltinSidebarOrder { .. }
         | ProjectWorkspaceRead::SidebarSectionHostLinkWindow { .. } => {
             ReadBudgetPolicy::CollectionWindow
         }
@@ -55,6 +57,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::ProjectPermissionMode { .. }
         | ProjectWorkspaceRead::ProjectlessPermissionMode
         | ProjectWorkspaceRead::Session { .. }
+        | ProjectWorkspaceRead::AgentSession { .. }
         | ProjectWorkspaceRead::Thread { .. }
         | ProjectWorkspaceRead::ThreadBackendSession { .. }
         | ProjectWorkspaceRead::SubagentOverviewItem { .. }
@@ -67,9 +70,11 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
 
 fn query_policy(read: &crate::query::QueryRead) -> ReadBudgetPolicy {
     match read {
-        crate::query::QueryRead::Schema { .. } | crate::query::QueryRead::Query { .. } => {
-            ReadBudgetPolicy::BoundedQuery
-        }
+        crate::query::QueryRead::Schema { .. }
+        | crate::query::QueryRead::Query { .. }
+        | crate::query::QueryRead::AgentSchema { .. }
+        | crate::query::QueryRead::AgentQuery { .. }
+        | crate::query::QueryRead::AgentDisplayedViewQuery { .. } => ReadBudgetPolicy::BoundedQuery,
     }
 }
 
@@ -110,6 +115,7 @@ fn database_policy(read: &DatabaseRead) -> ReadBudgetPolicy {
 fn automation_policy(read: &AutomationRead) -> ReadBudgetPolicy {
     match read {
         AutomationRead::Definitions { .. }
+        | AutomationRead::AgentDefinitions { .. }
         | AutomationRead::Leases { .. }
         | AutomationRead::Runs { .. }
         | AutomationRead::Inbox { .. }
@@ -118,6 +124,8 @@ fn automation_policy(read: &AutomationRead) -> ReadBudgetPolicy {
         | AutomationRead::ReminderSnoozes { .. } => ReadBudgetPolicy::CollectionWindow,
         AutomationRead::DueWork { .. }
         | AutomationRead::Definition { .. }
+        | AutomationRead::AgentDefinition { .. }
+        | AutomationRead::ExecutionDefinition { .. }
         | AutomationRead::Run { .. } => ReadBudgetPolicy::Identity,
     }
 }
@@ -195,6 +203,7 @@ fn library_policy(read: &LibraryRead) -> ReadBudgetPolicy {
         | LibraryRead::AcquireSearchSnapshot { .. }
         | LibraryRead::ReleaseSearchSnapshot { .. }
         | LibraryRead::AgentBlockTarget { .. }
+        | LibraryRead::AgentSurfaceDescription { .. }
         | LibraryRead::PageTarget { .. }
         | LibraryRead::PageKeyTarget { .. }
         | LibraryRead::CanvasTarget { .. }

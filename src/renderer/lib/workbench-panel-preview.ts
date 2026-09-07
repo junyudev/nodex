@@ -308,7 +308,7 @@ export function makePreviewPageStageTab(
     title,
     order: session.tabs.filter((tab) => tab.panelId === panelId).length,
     config: {
-      projectId: input.projectId,
+      accessContext: { kind: "project", projectId: input.projectId },
       pageId: input.pageId,
       ...(input.titleSnapshot ? { titleSnapshot: input.titleSnapshot } : {}),
     },

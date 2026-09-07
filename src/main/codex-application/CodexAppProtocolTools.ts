@@ -102,6 +102,7 @@ interface ParsedAutomationUpsertArgs {
   readonly prompt: string;
   readonly rrule: string;
   readonly status: CodexScheduledAutomationStatus;
+  readonly projectId?: string | null;
   readonly cwds?: readonly string[];
   readonly destination?: AutomationDestination;
   readonly executionEnvironment?: CodexScheduledAutomationExecutionEnvironment;
@@ -249,6 +250,10 @@ const parseAutomationArgs = (args: Record<string, unknown>): ParsedAutomationArg
       ...(targetThreadId ? { targetThreadId } : {}),
     };
   }
+  const projectId =
+    args.projectId === null || args.projectId === undefined ? null : stringArg(args.projectId);
+  if (args.projectId !== null && args.projectId !== undefined && projectId === null)
+    throw new Error("projectId is invalid");
   const cwds = automationCwds(args.cwds);
   if (cwds === null) throw new Error("cwds is invalid");
   if (args.executionEnvironment !== "local" && args.executionEnvironment !== "worktree") {
@@ -277,6 +282,7 @@ const parseAutomationArgs = (args: Record<string, unknown>): ParsedAutomationArg
     prompt,
     rrule,
     status: args.status,
+    projectId,
     cwds,
     ...(destination ? { destination } : {}),
     executionEnvironment: args.executionEnvironment,
@@ -305,6 +311,7 @@ const automationCreateInput = (
         name: args.name,
         prompt: args.prompt,
         rrule: args.rrule,
+        projectId: args.projectId ?? null,
         cwds: [...(args.cwds ?? [])],
         executionEnvironment: args.executionEnvironment ?? "worktree",
         localEnvironmentConfigPath: args.localEnvironmentConfigPath ?? null,
@@ -335,6 +342,7 @@ const automationUpdateInput = (
         name: args.name,
         prompt: args.prompt,
         rrule: args.rrule,
+        projectId: args.projectId ?? null,
         cwds: [...(args.cwds ?? [])],
         executionEnvironment: args.executionEnvironment ?? "worktree",
         ...(args.localEnvironmentConfigPath === undefined

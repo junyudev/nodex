@@ -14,6 +14,9 @@ function automation(overrides: Partial<CodexScheduledAutomation> = {}): CodexSch
   return {
     id: "heartbeat",
     definitionRevision: 1,
+    projectId: null,
+    targetSessionId: null,
+    notificationPolicy: null,
     kind: "heartbeat",
     status: "ACTIVE",
     targetThreadId: "thread-1",

@@ -42,6 +42,10 @@ export class CodexThreadTitlePersistence extends Context.Service<
     readonly setRequired: (
       input: CodexThreadTitleSetCommand,
     ) => Effect.Effect<boolean, CodexThreadTitlePersistenceEffectError>;
+    /** Projects Core's committed title and synchronizes the backend without another durable write. */
+    readonly syncCommittedTitle: (
+      threadId: string,
+    ) => Effect.Effect<void, CodexThreadTitlePersistenceEffectError>;
   }
 >()("nodex/main/codex-application/CodexThreadTitlePersistence") {}
 
@@ -124,6 +128,7 @@ export const make: Effect.Effect<
         cause: new Error(`Thread '${threadId}' is not owned by the native Codex backend`),
       });
     }
+    return response.value.thread;
   });
 
   const project = Effect.fn("CodexThreadTitlePersistence.project")(function* (
@@ -131,8 +136,6 @@ export const make: Effect.Effect<
   ) {
     const observedAtMs = yield* Clock.currentTimeMillis;
     yield* projection.renameThread({ ...input, observedAtMs }).pipe(Effect.mapError(titleError));
-    const snapshot = (yield* projection.read(input.threadId).pipe(Effect.mapError(titleError)))
-      .snapshot;
     events.publish({
       kind: "hostMessage",
       value: {
@@ -142,9 +145,6 @@ export const make: Effect.Effect<
         title: input.name,
       },
     });
-    if (snapshot) {
-      events.publish({ kind: "codex", value: { type: "threadSummary", thread: snapshot } });
-    }
   });
 
   const setRemote = (input: CodexThreadTitlePersistenceInput) =>
@@ -233,8 +233,23 @@ export const make: Effect.Effect<
     );
   };
 
+  const syncCommittedTitle = (threadId: string) =>
+    runSerial(
+      threadId,
+      Effect.gen(function* () {
+        const thread = yield* requireCodexThread(threadId);
+        if (!thread.thread_name) return;
+        const input = { threadId, name: thread.thread_name };
+        yield* project(input);
+        yield* setRemote(input).pipe(
+          Effect.catch((error) => logFailure("app-server", input, error)),
+        );
+      }),
+    );
+
   return CodexThreadTitlePersistence.of({
     set,
     setRequired,
+    syncCommittedTitle,
   });
 });

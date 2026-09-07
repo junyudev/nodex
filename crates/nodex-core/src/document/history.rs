@@ -78,7 +78,7 @@ struct BlockTreeSnapshot {
 struct StoredVersionRow {
     version_id: String,
     document_id: String,
-    actor_project_id: String,
+    actor_project_id: Option<String>,
     generation: i64,
     base_head_seq: i64,
     schema_key: String,
@@ -1158,9 +1158,12 @@ pub(crate) fn insert_migrated_file_baselines(
             [&authority.head.library_id],
             |row| row.get::<_, String>(0),
         )?;
-        let project_id = crate::library::resolve_library_actor_project_id(
-            connection,
-            &authority.head.library_id,
+        // The v152 checkpoint schema requires a historical Project coordinate.
+        // Current writes preserve the actual optional actor instead.
+        let project_id = connection.query_row(
+            "SELECT id FROM projects WHERE library_id = ?1 ORDER BY created, id LIMIT 1",
+            [&authority.head.library_id],
+            |row| row.get::<_, String>(0),
         )?;
         let context = BoundModuleContext {
             editor_history_owner: None,
@@ -1554,7 +1557,9 @@ fn decode_yjs_checkpoint(
 fn validate_stored_version(row: &StoredVersionRow) -> Result<(), StoreError> {
     validate_identity(&row.version_id, "version_id")?;
     validate_identity(&row.document_id, "document_id")?;
-    validate_identity(&row.actor_project_id, "actor_project_id")?;
+    if let Some(actor_project_id) = &row.actor_project_id {
+        validate_identity(actor_project_id, "actor_project_id")?;
+    }
     if row.generation < 1
         || row.base_head_seq < 0
         || row.schema_version < 1
@@ -1616,19 +1621,15 @@ fn checkpoint_actor(input: &NewDocumentCheckpoint<'_>) -> Result<Value, StoreErr
 }
 
 fn checkpoint_actor_project_id(
-    connection: &Connection,
-    library_id: &str,
+    _connection: &Connection,
+    _library_id: &str,
     input: &NewDocumentCheckpoint<'_>,
-) -> Result<String, StoreError> {
-    input
+) -> Result<Option<String>, StoreError> {
+    Ok(input
         .context
         .project_id
         .as_ref()
-        .map(|project| project.0.clone())
-        .map_or_else(
-            || crate::library::resolve_library_actor_project_id(connection, library_id),
-            Ok,
-        )
+        .map(|project| project.0.clone()))
 }
 
 fn block_materialization_hash(

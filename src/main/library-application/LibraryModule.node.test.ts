@@ -33,7 +33,7 @@ it.effect("routes Library reads through the exact durable access boundary", () =
     const client = new FakeCoreClient();
     client.enqueueRead(metadata(1));
     client.enqueueRead(metadata(2));
-    const projectScopes: Array<string | undefined> = [];
+    const projectScopes: Array<string | null | undefined> = [];
     const handshake = createFakeCoreHandshake(identity);
     const generationClient = Object.assign(client, {
       handshake,

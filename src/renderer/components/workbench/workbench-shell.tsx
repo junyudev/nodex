@@ -157,14 +157,11 @@ export function WorkbenchShell({
     replaceProjectQueryParam(project.id);
   }, [projects, setDbProjectState]);
 
-  const snapshotForPersistence = workbenchWindow.snapshotForPersistence;
-  const currentLayout = useMemo(() => snapshotForPersistence(), [snapshotForPersistence]);
-
   const { flush: flushWindowSessionLayout } = useWindowSessionLayoutPersistence({
     sessionId: windowSessionBootstrap.session.id,
     initialRevision: windowSessionBootstrap.session.layoutRevision,
     initialLayout: initialWindowLayoutSnapshot,
-    layout: currentLayout,
+    owner: workbenchWindow.owner,
   });
 
   useEffect(() => {

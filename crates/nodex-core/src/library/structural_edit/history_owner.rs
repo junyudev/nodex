@@ -2,13 +2,10 @@
 //! binds its opaque identity to authenticated Unix peer credentials. There is
 //! no inactivity expiry: a sleeping or disconnected live Host keeps history.
 
-use nodex_core_contracts::{
-    AdapterKind, BoundEditorHistoryOwner, BoundModuleContext, LocalProjectionScope,
-};
+use nodex_core_contracts::{AdapterKind, BoundEditorHistoryOwner, BoundModuleContext};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::*;
-use crate::infrastructure::local_commit;
 
 const MAX_ACTIVE_RECIPES_PER_OWNER: i64 = 20_000;
 const MAX_ACTIVE_OWNERS: i64 = 1_024;
@@ -205,14 +202,6 @@ pub(crate) fn close(
     }
     let owner = trusted_owner(context)?;
     bind_owner(connection, context, store_epoch, "closed")?;
-    let project_id = connection
-        .query_row(
-            "SELECT id FROM projects WHERE library_id = ?1 ORDER BY id LIMIT 1",
-            [&context.library_id.0],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?
-        .unwrap_or_default();
     let now = sqlite_now(connection)?;
     let committed = durable_mutation::run(
         connection,
@@ -235,7 +224,7 @@ pub(crate) fn close(
                 [&owner.id],
             )?;
             let result = empty_structural_result("close_editor_history_owner");
-            let mut effects = history_release_effects(&project_id, &result, &now);
+            let mut effects = history_release_effects(None, &result, &now);
             effects.operation_kind = "close_editor_history_owner";
             // The marker immediately fences every capability. Bounded cleanup
             // publishes recipe transitions and removes roots in later commits.
@@ -317,17 +306,16 @@ pub(crate) fn drain_cleanup(
                 )?;
             }
             for project_id in &projects {
-                local_commit::require_projection_read(
+                require_history_projection_read(
                     connection,
                     scope.evidence(),
-                    LocalProjectionScope::StructuralHistory {
-                        project_id: project_id.clone(),
-                    },
+                    library_id,
+                    project_id.as_deref(),
                 )?;
             }
             let result = empty_structural_result("release_structural_history");
             let mut effects =
-                history_release_effects(projects.first().map_or("", String::as_str), &result, &now);
+                history_release_effects(projects.first().and_then(Option::as_deref), &result, &now);
             effects.did_mutate = !projects.is_empty();
             seal_mutation_with(scope, &context, &operation_id, effects, |_, _| Ok(()))
         },
@@ -352,7 +340,7 @@ fn drain_recipes(
     now: &str,
     started: std::time::Instant,
     slice: &mut CleanupSlice,
-) -> Result<BTreeSet<String>, StoreError> {
+) -> Result<BTreeSet<Option<String>>, StoreError> {
     let mut projects = BTreeSet::new();
     let backfilling: bool = connection.query_row(
         "SELECT complete = 0 FROM structural_history_payload_backfill WHERE id = 1",
@@ -366,7 +354,7 @@ fn drain_recipes(
              FROM editor_history_recipes owned JOIN structural_history_recipes recipe USING(recipe_operation_id) \
              WHERE owned.owner_id = ?1 ORDER BY owned.recipe_operation_id LIMIT 1",
             [owner_id],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, i64>(3)? as usize)),
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, String>(2)?, row.get::<_, i64>(3)? as usize)),
         ).optional()?;
         let Some((id, project, state, payload_bytes)) = recipe else {
             break;
@@ -388,7 +376,7 @@ fn drain_recipes(
             break;
         }
         slice.recipes += 1;
-        slice.bytes += id.len() + project.len();
+        slice.bytes += id.len() + project.as_ref().map_or(0, String::len);
         if state == "available" {
             slice.bytes += payload_bytes;
             connection.execute("UPDATE structural_history_recipes SET state = 'consumed', consumed_at = ?1 WHERE recipe_operation_id = ?2", params![now, id])?;
@@ -737,7 +725,7 @@ mod tests {
             INSERT INTO editor_history_owners VALUES ('owner', 'library', 'epoch', 42, 'active');
             WITH RECURSIVE items(n) AS (VALUES(0) UNION ALL SELECT n + 1 FROM items WHERE n < 19999)
             INSERT INTO structural_history_recipes(recipe_operation_id, library_id, project_id, store_epoch, recipe_hash, payload_ref_json, state, created_at)
-            SELECT printf('recipe-%05d', n), 'library', 'project', 'epoch', printf('%064d', 0), '{}', 'available', 'now' FROM items;
+            SELECT printf('recipe-%05d', n), 'library', CASE WHEN n % 2 = 0 THEN NULL ELSE 'project' END, 'epoch', printf('%064d', 0), '{}', 'available', 'now' FROM items;
             INSERT INTO editor_history_recipes SELECT recipe_operation_id, 'owner' FROM structural_history_recipes;
             WITH RECURSIVE roots(n) AS (VALUES(0) UNION ALL SELECT n + 1 FROM roots WHERE n < 49999)
             INSERT INTO structural_retention_members SELECT 'history_recipe', 'recipe-00000', 'library', 'block', printf('root-%05d', n) FROM roots;

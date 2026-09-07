@@ -96,7 +96,7 @@ import {
   listReorderableCodexSidebarChatKeys,
   replaceVisibleCodexSidebarThreadKeyOrder,
   resolveCodexSidebarThreadHomeContainerId,
-  sortSidebarThreadKeysForDisplay,
+  orderSidebarPinnedSessionKeys,
   type CodexSidebarProjectGroup,
   type CodexSidebarThreadSyncModel,
 } from "@/lib/codex-sidebar-thread-sync";
@@ -316,7 +316,10 @@ function SidebarPinnedThreadRowsContent({
           visibleThreadKeys={optimisticThreadKeys}
           sortableThreadKeys={optimisticThreadKeys.filter((threadKey) => {
             const item = itemsByKey.get(threadKey);
-            return item ? isCodexSidebarThreadItemReorderable(item) : false;
+            return item
+              ? isCodexSidebarThreadItemReorderable(item) &&
+                  (item.pendingWorktreeId != null || getThreadId(threadKey) !== null)
+              : false;
           })}
           onVisibleThreadOrderChange={onVisibleThreadOrderChange}
           renderThread={renderThread}
@@ -1013,14 +1016,18 @@ function SidebarThreadOrganizerSections({
     }
     return new Map(entries);
   }, [sessionsByThreadId, sidebarThreadItemsByKey]);
-  const allPinnedThreadKeys = useMemo(() => {
-    const fallbackPinnedThreadKeys = sortSidebarThreadKeysForDisplay({
-      threadKeys: fallbackThreadItems.filter((item) => item.pinned).map((item) => item.key),
-      itemsByKey: sidebarThreadItemsByKey,
-      sessionsById,
-    });
-    return [...model.pinnedThreadKeys, ...fallbackPinnedThreadKeys];
-  }, [fallbackThreadItems, model.pinnedThreadKeys, sessionsById, sidebarThreadItemsByKey]);
+  const allPinnedThreadKeys = useMemo(
+    () =>
+      orderSidebarPinnedSessionKeys({
+        threadKeys: [
+          ...model.pinnedThreadKeys,
+          ...fallbackThreadItems.filter((item) => item.pinned).map((item) => item.key),
+        ],
+        itemsByKey: sidebarThreadItemsByKey,
+        sessionsById,
+      }),
+    [fallbackThreadItems, model.pinnedThreadKeys, sessionsById, sidebarThreadItemsByKey],
+  );
   const knownProjectIds = useMemo(
     () => new Set(model.projectGroups.map((group) => group.project.id)),
     [model.projectGroups],
@@ -1033,21 +1040,10 @@ function SidebarThreadOrganizerSections({
       }),
     [allPinnedThreadKeys, knownProjectIds, sidebarThreadItemsByKey],
   );
-  const sortablePinnedStandaloneThreadKeys = useMemo(
+  const visiblePinnedStandaloneThreadKeys = useMemo(
     () =>
-      pinnedStandaloneThreadKeys.filter(
-        (threadKey) =>
-          model.threadItemsByKey.has(threadKey) && !sidebarArchivePendingKeys.has(threadKey),
-      ),
-    [model.threadItemsByKey, pinnedStandaloneThreadKeys, sidebarArchivePendingKeys],
-  );
-  const fallbackPinnedStandaloneThreadKeys = useMemo(
-    () =>
-      pinnedStandaloneThreadKeys.filter(
-        (threadKey) =>
-          !model.threadItemsByKey.has(threadKey) && !sidebarArchivePendingKeys.has(threadKey),
-      ),
-    [model.threadItemsByKey, pinnedStandaloneThreadKeys, sidebarArchivePendingKeys],
+      pinnedStandaloneThreadKeys.filter((threadKey) => !sidebarArchivePendingKeys.has(threadKey)),
+    [pinnedStandaloneThreadKeys, sidebarArchivePendingKeys],
   );
   const reorderVisiblePinnedThreads = useCallback(
     async ({
@@ -1456,49 +1452,6 @@ function SidebarThreadOrganizerSections({
     ],
   );
 
-  const renderThreadList = useCallback(
-    (
-      threadKeys: string[],
-      emptyText: string,
-      options: {
-        ariaLabel?: string;
-        maxItems?: number | null;
-        expanded?: boolean;
-        onExpandedChange?: (expanded: boolean) => void;
-        forcedVisibleKey?: string | null;
-      } = {},
-    ) => (
-      <SidebarPaginatedItems
-        items={threadKeys}
-        getKey={(threadKey) => threadKey}
-        maxItems={options.maxItems}
-        expanded={options.expanded ?? false}
-        onExpandedChange={options.onExpandedChange}
-        forcedVisibleKey={options.forcedVisibleKey ?? null}
-        suppressedKeys={sidebarArchivePendingKeys}
-      >
-        {(pagination, pager) => (
-          <div className="isolate flex flex-col [contain:layout]">
-            <div className="flex flex-col" role="list" aria-label={options.ariaLabel}>
-              {pagination.visibleItems.length > 0 ? (
-                pagination.visibleItems.map((threadKey) => renderThreadRow(threadKey))
-              ) : (
-                <div
-                  className="px-row-x py-row-y text-sm text-token-description-foreground"
-                  role="listitem"
-                >
-                  {emptyText}
-                </div>
-              )}
-              {pager}
-            </div>
-          </div>
-        )}
-      </SidebarPaginatedItems>
-    ),
-    [renderThreadRow, sidebarArchivePendingKeys],
-  );
-
   const renderProjectGroup = (
     { project, pinnedThreadKeys, threadKeys }: CodexSidebarProjectGroup,
     dnd: CodexProjectRowDndCapability,
@@ -1679,22 +1632,17 @@ function SidebarThreadOrganizerSections({
           collapsed={pinnedThreadsSectionCollapsed}
           onToggle={onTogglePinnedThreadsSectionCollapsed}
         >
-          {sortablePinnedStandaloneThreadKeys.length > 0 ? (
+          {visiblePinnedStandaloneThreadKeys.length > 0 ? (
             <SidebarPinnedThreadRowsContent
               containerId="pinned"
               getThreadId={getSidebarRealThreadId}
-              visibleThreadKeys={sortablePinnedStandaloneThreadKeys}
+              visibleThreadKeys={visiblePinnedStandaloneThreadKeys}
               itemsByKey={sidebarThreadItemsByKey}
               ariaLabel="Pinned chats"
               onVisibleThreadOrderChange={reorderVisiblePinnedThreads}
               renderThread={renderThreadRow}
             />
           ) : null}
-          {fallbackPinnedStandaloneThreadKeys.length > 0
-            ? renderThreadList(fallbackPinnedStandaloneThreadKeys, "No pinned chats", {
-                ariaLabel: "Pinned local views",
-              })
-            : null}
           {pinnedProjectGroups.length > 0
             ? renderProjectGroupRows(pinnedProjectGroups, {
                 reorderScope: "pinned",

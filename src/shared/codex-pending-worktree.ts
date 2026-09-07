@@ -28,6 +28,7 @@ export type CodexPendingWorktreeStartingState =
       readonly type: "branch";
       readonly branchName: string;
       readonly remoteRef?: string;
+      readonly onMissing?: "error" | "create-branch";
     }
   | { readonly type: "working-tree" };
 
@@ -58,6 +59,7 @@ export interface CodexPendingStableWorktreeRequest extends CodexPendingWorktreeR
 
 export interface CodexPendingForkConversationRequest extends CodexPendingWorktreeRequestBase {
   readonly launchMode: "fork-conversation";
+  readonly projectSessionId?: string | null;
   readonly sourceWorkspaceRoots: readonly string[];
   readonly clientThreadId: string;
   readonly startConversationParamsInput: null;
@@ -97,7 +99,7 @@ export interface CodexPendingStartConversationParamsInput {
   readonly agentConfigPermissionMode?: boolean;
   readonly permissionProfileId?: string | undefined;
   readonly shouldSendPermissionOverrides: boolean;
-  readonly model: null;
+  readonly model: string | null;
   readonly executionProfile?: CodexExecutionProfile | null;
   readonly serviceTier: string | null;
   readonly reasoningEffort: CodexReasoningEffort | null;

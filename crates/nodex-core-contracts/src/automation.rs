@@ -6,7 +6,7 @@ use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const AUTOMATION_CONTRACT_VERSION: u32 = 5;
+pub const AUTOMATION_CONTRACT_VERSION: u32 = 8;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -46,10 +46,29 @@ pub enum AutomationExecutionEnvironment {
     Worktree,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AutomationNotificationPolicy {
+    FailedRunsOnly,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AutomationNotificationPreference {
+    #[default]
+    Preserve,
+    Set {
+        value: Option<AutomationNotificationPolicy>,
+    },
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct AutomationDefinitionInput {
     pub kind: AutomationDefinitionKind,
-    pub target_thread_id: Option<String>,
+    pub project_id: Option<String>,
+    pub target_session_id: Option<String>,
+    #[serde(default)]
+    pub notification_policy: AutomationNotificationPreference,
     pub name: String,
     pub prompt: Option<String>,
     pub rrule: Option<String>,
@@ -69,7 +88,12 @@ pub struct AutomationDefinition {
     pub definition_revision: i64,
     pub kind: AutomationDefinitionKind,
     pub status: AutomationDefinitionStatus,
+    pub project_id: Option<String>,
+    pub target_session_id: Option<String>,
+    /// Current backend attachment, projected from the target Session.
     pub target_thread_id: Option<String>,
+    #[serde(default)]
+    pub notification_policy: Option<AutomationNotificationPolicy>,
     pub name: String,
     pub prompt: String,
     pub rrule: String,
@@ -340,14 +364,27 @@ pub struct PageOccurrenceMutationResult {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AutomationRead {
+    AgentDefinitions {
+        provenance: crate::agent::AgentTurnProvenance,
+        search_query: Option<String>,
+        window: CollectionWindowRequest,
+    },
+    AgentDefinition {
+        provenance: crate::agent::AgentTurnProvenance,
+        automation_id: String,
+    },
     DueWork {
         lane: AutomationDueWorkLane,
     },
     Definitions {
         include_deleted: Option<bool>,
+        search_query: Option<String>,
         window: CollectionWindowRequest,
     },
     Definition {
+        automation_id: String,
+    },
+    ExecutionDefinition {
         automation_id: String,
     },
     Leases {
@@ -421,6 +458,11 @@ pub enum AutomationReadValue {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AutomationIntent {
+    AgentCommand {
+        provenance: Box<crate::agent::AgentTurnProvenance>,
+        #[schema(no_recursion)]
+        intent: Box<AutomationIntent>,
+    },
     CreateDefinition {
         automation_id: String,
         definition: AutomationDefinitionInput,

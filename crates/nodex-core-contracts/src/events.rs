@@ -83,7 +83,7 @@ pub enum DeliveryAtomPayload {
     },
     Automation {
         library_id: String,
-        project_id: String,
+        project_id: Option<String>,
         event: AutomationEvent,
     },
     StoreAdministration {

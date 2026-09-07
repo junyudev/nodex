@@ -1,3 +1,5 @@
+import { resolveNativeSessionHandoffScope } from "../../../projection/tool-metadata/native-session-handoff";
+import { NativeSessionHandoffToolCall } from "./native-session-handoff-tool-call";
 import type { ComponentType } from "react";
 import type { CodexTranscriptEntry } from "../../../../../lib/types";
 import type { ThreadStageActions } from "../../../thread-stage-types";
@@ -5,6 +7,7 @@ import { CommandToolCall } from "./command-tool-call";
 import { DynamicToolCall } from "./dynamic-tool-call";
 import { FileChangeToolCall } from "./file-change-tool-call";
 import { McpToolCall } from "./mcp-tool-call";
+import { NativeAutomationToolCall } from "./native-automation-tool-call";
 import { WebSearchToolCall } from "./web-search-tool-call";
 
 export interface ToolComponentProps {
@@ -25,6 +28,9 @@ export interface ToolComponentProps {
 type ToolComponent = ComponentType<ToolComponentProps>;
 
 export function getToolComponent(item: CodexTranscriptEntry): ToolComponent | null {
+  if (resolveNativeSessionHandoffScope(item.mcpToolCall, item.threadId))
+    return NativeSessionHandoffToolCall;
+  if (item.automationUpdate?.source === "nativeMcp") return NativeAutomationToolCall;
   if (item.semanticKind === "exec" || item.kind === "commandExecution") {
     return CommandToolCall;
   }

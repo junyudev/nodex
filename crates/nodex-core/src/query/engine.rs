@@ -1,6 +1,6 @@
 use super::{Snapshot, exhausted, invalid, provider, schema};
 use crate::infrastructure::sqlite::{StoreError, with_query_deadline};
-use nodex_core_contracts::sql::{SqlQuery, SqlResult};
+use nodex_core_contracts::sql::{SqlQuery, SqlResult, SqlScope};
 use rusqlite::{
     Connection,
     hooks::{AuthAction, AuthContext, Authorization},
@@ -8,7 +8,7 @@ use rusqlite::{
     types::{Value as SqlValue, ValueRef},
 };
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -41,15 +41,7 @@ pub(super) fn validate(query: &SqlQuery) -> Result<(), StoreError> {
 pub(super) fn execute(snapshot: Arc<Snapshot>, query: SqlQuery) -> Result<SqlResult, StoreError> {
     validate(&query)?;
     let tables = provider::tables(&snapshot, query.scope.clone(), false)?;
-    let database = Connection::open_in_memory()?;
-    database.execute_batch("PRAGMA temp_store=MEMORY; PRAGMA max_page_count=8192;")?;
-    database.set_limit(Limit::SQLITE_LIMIT_LENGTH, super::MAX_INPUT_BYTES as i32)?;
-    database.set_limit(Limit::SQLITE_LIMIT_SQL_LENGTH, MAX_SQL_BYTES as i32)?;
-    database.set_limit(Limit::SQLITE_LIMIT_COLUMN, 256)?;
-    database.set_limit(Limit::SQLITE_LIMIT_EXPR_DEPTH, 100)?;
-    database.set_limit(Limit::SQLITE_LIMIT_COMPOUND_SELECT, 20)?;
-    database.set_limit(Limit::SQLITE_LIMIT_VARIABLE_NUMBER, 100)?;
-    database.set_limit(Limit::SQLITE_LIMIT_VDBE_OP, 100_000)?;
+    let database = query_database()?;
     for table in &tables {
         nodex_sqlite_query::register(
             &database,
@@ -68,10 +60,91 @@ pub(super) fn execute(snapshot: Arc<Snapshot>, query: SqlQuery) -> Result<SqlRes
             table.table.replace('"', "\"\"")
         ))?;
     }
-    let names: BTreeSet<_> = tables
+    let names = tables
         .iter()
         .map(|t| t.table.to_ascii_lowercase())
         .collect();
+    execute_database(snapshot, query, database, names)
+}
+
+/// Only this fixed projection can expose an exact-resource View to the SQL evaluator.
+pub(super) fn execute_projection(
+    snapshot: Arc<Snapshot>,
+    rows: &[Value],
+    limit: Option<u32>,
+) -> Result<SqlResult, StoreError> {
+    const COLUMNS: &[&str] = &[
+        "occurrence_id",
+        "page_id",
+        "page_key",
+        "title",
+        "description_preview",
+        "group_key",
+        "subgroup_key",
+        "group_path",
+        "ancestor_page_ids",
+        "parent_occurrence_id",
+        "ordinal",
+        "depth",
+        "transient_kind",
+        "metadata_revision",
+        "parent_revision",
+        "document_id",
+        "document_generation",
+        "document_head_seq",
+        "membership_id",
+        "membership_revision",
+        "values",
+        "value_revisions",
+        "rank_key",
+        "position_revision",
+    ];
+    let columns = COLUMNS
+        .iter()
+        .map(|column| format!("json_extract(value,'$.{column}') AS \"{column}\""))
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut parameters = BTreeMap::from([(
+        "rows".to_owned(),
+        Value::String(
+            serde_json::to_string(rows)
+                .map_err(|_| invalid("Displayed View rows cannot encode"))?,
+        ),
+    )]);
+    let mut sql =
+        format!("SELECT {columns} FROM json_each(:rows) ORDER BY json_extract(value,'$.ordinal')");
+    if let Some(limit) = limit {
+        sql.push_str(" LIMIT :limit");
+        parameters.insert("limit".to_owned(), Value::from(limit));
+    }
+    let query = SqlQuery {
+        scope: SqlScope::default(),
+        sql,
+        parameters,
+    };
+    validate(&query)?;
+    execute_database(snapshot, query, query_database()?, BTreeSet::new())
+}
+
+fn query_database() -> Result<Connection, StoreError> {
+    let database = Connection::open_in_memory()?;
+    database.execute_batch("PRAGMA temp_store=MEMORY; PRAGMA max_page_count=8192;")?;
+    database.set_limit(Limit::SQLITE_LIMIT_LENGTH, super::MAX_INPUT_BYTES as i32)?;
+    database.set_limit(Limit::SQLITE_LIMIT_SQL_LENGTH, MAX_SQL_BYTES as i32)?;
+    database.set_limit(Limit::SQLITE_LIMIT_COLUMN, 256)?;
+    database.set_limit(Limit::SQLITE_LIMIT_EXPR_DEPTH, 100)?;
+    database.set_limit(Limit::SQLITE_LIMIT_COMPOUND_SELECT, 20)?;
+    database.set_limit(Limit::SQLITE_LIMIT_VARIABLE_NUMBER, 100)?;
+    database.set_limit(Limit::SQLITE_LIMIT_VDBE_OP, 100_000)?;
+    Ok(database)
+}
+
+fn execute_database(
+    snapshot: Arc<Snapshot>,
+    query: SqlQuery,
+    database: Connection,
+    names: BTreeSet<String>,
+) -> Result<SqlResult, StoreError> {
     database.authorizer(Some(move |context: AuthContext<'_>| match context.action {
         AuthAction::Select | AuthAction::Recursive => Authorization::Allow,
         AuthAction::Read { .. } if context.database_name.is_none() => Authorization::Allow,

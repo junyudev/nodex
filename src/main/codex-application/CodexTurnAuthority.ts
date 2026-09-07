@@ -25,13 +25,14 @@ export interface CodexTurnAuthorityLaunch {
   readonly snapshot: {
     readonly threadId: string;
     readonly rootThreadId: string;
-    readonly actorProjectId: string;
+    readonly actorProjectId: string | null;
     readonly libraryId: string;
     readonly profileId: string;
     readonly storeEpoch: string;
     readonly scope: FrozenNodexAgentTurnAuthority["scope"];
     readonly source: FrozenNodexAgentTurnAuthority["source"];
     readonly permissionProfileId: string | null;
+    readonly readOnly: boolean;
     readonly inheritedFrom?: {
       readonly threadId: string;
       readonly turnId: string;
@@ -47,6 +48,7 @@ export class CodexTurnAuthority extends Context.Service<
     readonly begin: (
       threadId: string,
       builtinFullAccess: boolean,
+      readOnly: boolean,
     ) => Effect.Effect<CodexTurnAuthorityLaunch | null, CodexTurnAuthorityError>;
     readonly bind: (
       threadId: string,
@@ -88,17 +90,26 @@ type CoreTurnAuthority = NonNullable<
 const fromCoreAuthority = (
   authority: CoreTurnAuthority,
   frozenAtMs: number,
-): FrozenNodexAgentTurnAuthority => ({
-  threadId: authority.thread_id,
-  turnId: authority.turn_id,
-  rootThreadId: authority.root_thread_id,
-  actorProjectId: authority.actor_project_id,
-  libraryId: authority.library_id,
-  storeEpoch: authority.store_epoch,
-  frozenAtMs,
-  scope: authority.scope,
-  source: authority.source,
-});
+  readOnly: boolean,
+): FrozenNodexAgentTurnAuthority => {
+  const coordinates = {
+    threadId: authority.thread_id,
+    turnId: authority.turn_id,
+    rootThreadId: authority.root_thread_id,
+    libraryId: authority.library_id,
+    storeEpoch: authority.store_epoch,
+    frozenAtMs,
+    readOnly,
+    source: authority.source,
+  };
+  if (authority.scope === "library") {
+    return { ...coordinates, scope: "library", actorProjectId: authority.actor_project_id ?? null };
+  }
+  if (authority.actor_project_id == null) {
+    throw new Error("Core returned Project authority without an actor Project");
+  }
+  return { ...coordinates, scope: "project", actorProjectId: authority.actor_project_id };
+};
 
 /** Owns pending authority launches and freezes the exact accepted Turn directly in Core. */
 export const make: Effect.Effect<
@@ -137,45 +148,56 @@ export const make: Effect.Effect<
   const beginWithLineage = (input: {
     readonly threadId: string;
     readonly rootThreadId: string;
-    readonly actorProjectId: string;
+    readonly actorProjectId: string | null;
     readonly builtinFullAccess: boolean;
+    readonly readOnly: boolean;
     readonly inherited?: FrozenNodexAgentTurnAuthority;
   }) =>
     Effect.gen(function* () {
-      const actorProjectId = normalizeIdentity(input.actorProjectId);
+      const actorProjectId =
+        input.actorProjectId === null ? null : normalizeIdentity(input.actorProjectId);
       const normalizedThreadId = normalizeIdentity(input.threadId);
       const rootThreadId = normalizeIdentity(input.rootThreadId);
-      if (!actorProjectId || !normalizedThreadId || !rootThreadId) return null;
-
-      const projectSnapshot = yield* core.workspace
-        .read({ kind: "project", project_id: actorProjectId }, undefined, actorProjectId)
-        .pipe(
-          Effect.map((snapshot) => snapshot as typeof snapshot | null),
-          Effect.catch((error) =>
-            error.cause instanceof CoreModuleResponseError &&
-            error.cause.coreError.code === "not_found"
-              ? Effect.succeed(null)
-              : Effect.fail(error),
-          ),
-        );
-      if (projectSnapshot === null) return null;
-      if (projectSnapshot.value.kind !== "project") {
-        return yield* new CodexTurnAuthorityError({
-          operation: "begin",
-          threadId: input.threadId,
-          cause: new Error("Core returned the wrong Project authority variant"),
-        });
-      }
-      if (projectSnapshot.value.project.library_id !== coreAuthority.identity.libraryId)
+      if (
+        (input.actorProjectId !== null && actorProjectId === null) ||
+        !normalizedThreadId ||
+        !rootThreadId
+      )
         return null;
+
+      if (actorProjectId !== null) {
+        const projectSnapshot = yield* core.workspace
+          .read({ kind: "project", project_id: actorProjectId }, undefined, actorProjectId)
+          .pipe(
+            Effect.map((snapshot) => snapshot as typeof snapshot | null),
+            Effect.catch((error) =>
+              error.cause instanceof CoreModuleResponseError &&
+              error.cause.coreError.code === "not_found"
+                ? Effect.succeed(null)
+                : Effect.fail(error),
+            ),
+          );
+        if (projectSnapshot === null) return null;
+        if (projectSnapshot.value.kind !== "project") {
+          return yield* new CodexTurnAuthorityError({
+            operation: "begin",
+            threadId: input.threadId,
+            cause: new Error("Core returned the wrong Project authority variant"),
+          });
+        }
+        if (projectSnapshot.value.project.library_id !== coreAuthority.identity.libraryId)
+          return null;
+      }
 
       const inherited = input.inherited;
       const inheritsLibraryAuthority =
         inherited?.scope === "library" &&
+        inherited.rootThreadId === rootThreadId &&
         inherited.actorProjectId === actorProjectId &&
-        inherited.libraryId === projectSnapshot.value.project.library_id &&
+        inherited.libraryId === coreAuthority.identity.libraryId &&
         inherited.storeEpoch === coreAuthority.identity.storeEpoch;
       const scope = input.builtinFullAccess || inheritsLibraryAuthority ? "library" : "project";
+      if (actorProjectId === null && scope !== "library") return null;
       const source = input.builtinFullAccess
         ? "builtin_full_access"
         : inheritsLibraryAuthority
@@ -187,11 +209,12 @@ export const make: Effect.Effect<
           threadId: normalizedThreadId,
           rootThreadId,
           actorProjectId,
-          libraryId: projectSnapshot.value.project.library_id,
+          libraryId: coreAuthority.identity.libraryId,
           profileId: coreAuthority.identity.profileId,
           storeEpoch: coreAuthority.identity.storeEpoch,
           scope,
           source,
+          readOnly: input.readOnly || (inherited?.readOnly ?? false),
           permissionProfileId: scope === "library" ? FULL_ACCESS_PERMISSION_PROFILE_ID : null,
           ...(inheritsLibraryAuthority && inherited
             ? {
@@ -211,14 +234,15 @@ export const make: Effect.Effect<
       return launch;
     });
 
-  const begin: CodexTurnAuthority["Service"]["begin"] = (threadId, builtinFullAccess) =>
+  const begin: CodexTurnAuthority["Service"]["begin"] = (threadId, builtinFullAccess, readOnly) =>
     conversationContext.read(threadId).pipe(
       Effect.flatMap((lineage) =>
         beginWithLineage({
           threadId,
           rootThreadId: lineage.rootThreadId,
-          actorProjectId: lineage.projectId ?? "",
+          actorProjectId: lineage.projectId,
           builtinFullAccess,
+          readOnly,
         }),
       ),
       Effect.mapError((cause) =>
@@ -253,6 +277,7 @@ export const make: Effect.Effect<
               root_thread_id: launch.snapshot.rootThreadId,
               actor_project_id: launch.snapshot.actorProjectId,
               source: launch.snapshot.source,
+              read_only: launch.snapshot.readOnly,
               ...(launch.snapshot.inheritedFrom
                 ? {
                     inherited_from: {
@@ -306,7 +331,7 @@ export const make: Effect.Effect<
     readonly threadId: string;
     readonly turnId: string;
     readonly rootThreadId: string;
-    readonly actorProjectId: string;
+    readonly actorProjectId: string | null;
   }) =>
     core.workspace
       .read(
@@ -360,21 +385,22 @@ export const make: Effect.Effect<
               threadId,
               turnId,
               rootThreadId: lineage.rootThreadId,
-              actorProjectId: lineage.projectId ?? "",
+              actorProjectId: lineage.projectId,
             })),
           );
-      if (!normalizeIdentity(coordinate.actorProjectId)) return null;
+      if (coordinate.actorProjectId !== null && !normalizeIdentity(coordinate.actorProjectId))
+        return null;
       const resolution = yield* readResolution(coordinate);
       if (resolution.persisted) {
         return resolution.authority && resolution.frozen_at_ms != null
-          ? fromCoreAuthority(resolution.authority, resolution.frozen_at_ms)
+          ? fromCoreAuthority(resolution.authority, resolution.frozen_at_ms, resolution.read_only)
           : null;
       }
       if (!launch) return null;
       yield* bind(threadId, launch, turnId);
       const bound = yield* readResolution(coordinate);
       return bound.persisted && bound.authority && bound.frozen_at_ms != null
-        ? fromCoreAuthority(bound.authority, bound.frozen_at_ms)
+        ? fromCoreAuthority(bound.authority, bound.frozen_at_ms, bound.read_only)
         : null;
     }).pipe(
       Effect.mapError(
@@ -391,6 +417,7 @@ export const make: Effect.Effect<
         rootThreadId: inherited.rootThreadId,
         actorProjectId: inherited.actorProjectId,
         builtinFullAccess: false,
+        readOnly: inherited.readOnly,
         inherited,
       });
       if (!launch || launch.snapshot.scope !== "library") {

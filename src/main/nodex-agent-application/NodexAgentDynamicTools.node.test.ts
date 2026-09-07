@@ -52,6 +52,7 @@ it.effect("authorizes a prepared Page creation before the canonical application 
     const trace: string[] = [];
     let preparationCount = 0;
     const application = NodexAgentApplication.of({
+      readPageObservation: () => Effect.die("unexpected Page observation"),
       read: () => Effect.die("unexpected read"),
       completePageUpdate: () => Effect.die("unexpected completion"),
       prepare: (preparation) =>
@@ -117,6 +118,7 @@ it.effect("authorizes a prepared Page creation before the canonical application 
       libraryId: "library:agent",
       storeEpoch: "epoch:agent",
       frozenAtMs: 1_785_491_085_000,
+      readOnly: false,
       scope: "project" as const,
       source: "project_turn" as const,
     };
@@ -196,6 +198,7 @@ it.effect("authorizes a prepared Page creation before the canonical application 
 
 it.effect("publishes and enforces the current Nodex tool catalog at the protocol boundary", () => {
   const application = NodexAgentApplication.of({
+    readPageObservation: () => Effect.die("unexpected Page observation"),
     read: () => Effect.die("catalog validation must not enter the application"),
     completePageUpdate: () => Effect.die("catalog validation must not enter the application"),
     prepare: () => Effect.die("catalog validation must not enter the application"),
@@ -295,6 +298,7 @@ it.effect(
         const unexpected = () =>
           Effect.die("disabled tools must not touch application or authorization");
         const application = NodexAgentApplication.of({
+          readPageObservation: () => Effect.die("unexpected Page observation"),
           read: unexpected,
           prepare: unexpected,
           apply: unexpected,

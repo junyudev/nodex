@@ -23,9 +23,9 @@ use crate::infrastructure::cursor::{
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::ProjectWorkspaceApplyOutcome;
-use super::mutation::{WorkspaceMutationEffects, finish_mutation, workspace_event_anchor};
+use super::mutation::{WorkspaceMutationEffects, finish_mutation};
 use super::session_mutation::sqlite_now;
-use super::thread::read_permission_mode;
+use super::thread::{read_permission_mode, read_projectless_permission_mode};
 
 const AUTHORITY_PROVENANCE_VERSION: i64 = 1;
 const FULL_ACCESS_PERMISSION_PROFILE_ID: &str = ":danger-full-access";
@@ -47,7 +47,7 @@ struct AuthorityRow {
     thread_id: String,
     turn_id: String,
     root_thread_id: String,
-    actor_project_id: String,
+    actor_project_id: Option<String>,
     library_id: String,
     profile_id: String,
     store_epoch: String,
@@ -57,6 +57,7 @@ struct AuthorityRow {
     authority_fingerprint: String,
     provenance_version: i64,
     created_at: String,
+    read_only: bool,
 }
 
 pub(super) fn read_writable_roots(
@@ -84,42 +85,54 @@ pub(super) fn resolve_turn_authority(
     thread_id: &str,
     turn_id: &str,
     root_thread_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
 ) -> Result<ProjectWorkspaceTurnAuthorityResolution, StoreError> {
     for (name, value) in [
         ("thread_id", thread_id),
         ("turn_id", turn_id),
         ("root_thread_id", root_thread_id),
-        ("actor_project_id", actor_project_id),
     ] {
         validate_id(name, value)?;
     }
+    if let Some(project_id) = actor_project_id {
+        validate_id("actor_project_id", project_id)?;
+    }
     let coordinates = require_authority_coordinates(connection, library_id, actor_project_id)?;
     let Some(row) = read_authority_row(connection, thread_id, turn_id)? else {
+        if actor_project_id.is_none() {
+            return Ok(ProjectWorkspaceTurnAuthorityResolution {
+                authority: None,
+                persisted: false,
+                read_only: true,
+                frozen_at_ms: None,
+            });
+        }
         return Ok(ProjectWorkspaceTurnAuthorityResolution {
             authority: Some(ProjectWorkspaceTurnAuthority {
                 thread_id: thread_id.to_owned(),
                 turn_id: turn_id.to_owned(),
                 root_thread_id: root_thread_id.to_owned(),
-                actor_project_id: actor_project_id.to_owned(),
+                actor_project_id: actor_project_id.map(str::to_owned),
                 library_id: coordinates.library_id,
                 store_epoch: coordinates.store_epoch,
                 scope: ProjectWorkspaceTurnAuthorityScope::Project,
                 source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
             }),
             persisted: false,
+            read_only: true,
             frozen_at_ms: None,
         });
     };
     let authority = validate_authority_row(&row)?;
     let matches_current_coordinates = authority.root_thread_id == root_thread_id
-        && authority.actor_project_id == actor_project_id
+        && authority.actor_project_id.as_deref() == actor_project_id
         && authority.library_id == coordinates.library_id
         && row.profile_id == coordinates.profile_id
         && authority.store_epoch == coordinates.store_epoch;
     Ok(ProjectWorkspaceTurnAuthorityResolution {
         authority: matches_current_coordinates.then_some(authority),
         persisted: true,
+        read_only: row.read_only,
         frozen_at_ms: matches_current_coordinates
             .then(|| timestamp_millis(&row.created_at))
             .transpose()?,
@@ -137,14 +150,16 @@ pub(crate) fn validate_persisted_turn_authority(
         ("thread_id", supplied.thread_id.as_str()),
         ("turn_id", supplied.turn_id.as_str()),
         ("root_thread_id", supplied.root_thread_id.as_str()),
-        ("actor_project_id", supplied.actor_project_id.as_str()),
         ("library_id", supplied.library_id.as_str()),
         ("store_epoch", supplied.store_epoch.as_str()),
     ] {
         validate_id(name, value)?;
     }
-    let coordinates =
-        require_authority_coordinates(connection, library_id, &supplied.actor_project_id)?;
+    let coordinates = require_authority_coordinates(
+        connection,
+        library_id,
+        supplied.actor_project_id.as_deref(),
+    )?;
     if supplied.library_id != library_id
         || supplied.library_id != coordinates.library_id
         || provenance.profile_id != coordinates.profile_id
@@ -154,28 +169,17 @@ pub(crate) fn validate_persisted_turn_authority(
             "Agent Turn provenance no longer matches current Profile authority",
         ));
     }
-    let lifecycle = connection
-        .query_row(
-            "SELECT lifecycle FROM projects WHERE id = ?1 AND library_id = ?2",
-            params![supplied.actor_project_id, library_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?
-        .ok_or_else(|| unauthorized("Agent Turn Project is unavailable"))?;
-    if lifecycle != "active" {
-        return Err(unauthorized("Agent Turn Project is not active"));
-    }
     require_thread_project(
         connection,
         library_id,
         &supplied.thread_id,
-        &supplied.actor_project_id,
+        supplied.actor_project_id.as_deref(),
     )?;
     require_thread_project(
         connection,
         library_id,
         &supplied.root_thread_id,
-        &supplied.actor_project_id,
+        supplied.actor_project_id.as_deref(),
     )?;
     let row = read_authority_row(connection, &supplied.thread_id, &supplied.turn_id)?
         .ok_or_else(|| unauthorized("Agent Turn has no persisted authority"))?;
@@ -186,6 +190,15 @@ pub(crate) fn validate_persisted_turn_authority(
         ));
     }
     Ok(row.authority_fingerprint)
+}
+
+/// Called after validating exact persisted provenance in the same transaction.
+pub(crate) fn turn_is_read_only(
+    connection: &Connection,
+    thread_id: &str,
+    turn_id: &str,
+) -> Result<bool, StoreError> {
+    Ok(read_authority_row(connection, thread_id, turn_id)?.is_none_or(|row| row.read_only))
 }
 
 pub(super) fn read_background_process_window(
@@ -316,8 +329,9 @@ pub(super) fn freeze_turn_authority(
     thread_id: &str,
     turn_id: &str,
     root_thread_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     source: ProjectWorkspaceTurnAuthoritySource,
+    mut read_only: bool,
     inherited_from: Option<(&str, &str)>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     require_host_adapter(context)?;
@@ -325,14 +339,16 @@ pub(super) fn freeze_turn_authority(
         ("thread_id", thread_id),
         ("turn_id", turn_id),
         ("root_thread_id", root_thread_id),
-        ("actor_project_id", actor_project_id),
     ] {
         validate_id(name, value)?;
     }
-    if context.project_id.as_ref().map(|id| id.0.as_str()) != Some(actor_project_id) {
+    if context.project_id.as_ref().map(|id| id.0.as_str()) != actor_project_id {
         return Err(unauthorized(
             "Turn authority actor does not match the bound Project identity",
         ));
+    }
+    if let Some(project_id) = actor_project_id {
+        validate_id("actor_project_id", project_id)?;
     }
     let coordinates = require_authority_coordinates(connection, library_id, actor_project_id)?;
     require_thread_project(connection, library_id, thread_id, actor_project_id)?;
@@ -340,6 +356,9 @@ pub(super) fn freeze_turn_authority(
 
     let (scope, permission_profile_id) = match source {
         ProjectWorkspaceTurnAuthoritySource::ProjectTurn => {
+            if actor_project_id.is_none() {
+                return Err(unauthorized("Project authority requires an actor Project"));
+            }
             if inherited_from.is_some() {
                 return Err(invalid(
                     "project_turn authority cannot name inherited provenance",
@@ -353,11 +372,13 @@ pub(super) fn freeze_turn_authority(
                     "builtin_full_access authority cannot name inherited provenance",
                 ));
             }
-            if read_permission_mode(connection, actor_project_id)?
-                != Some(CodexPermissionMode::FullAccess)
-            {
+            let mode = match actor_project_id {
+                Some(project_id) => read_permission_mode(connection, project_id)?,
+                None => read_projectless_permission_mode(connection)?,
+            };
+            if mode != Some(CodexPermissionMode::FullAccess) {
                 return Err(unauthorized(
-                    "builtin full access requires the Project full-access permission mode",
+                    "builtin full access requires the persisted full-access permission mode",
                 ));
             }
             (
@@ -371,13 +392,15 @@ pub(super) fn freeze_turn_authority(
             })?;
             validate_id("inherited_from.thread_id", parent_thread_id)?;
             validate_id("inherited_from.turn_id", parent_turn_id)?;
+            require_thread_project(connection, library_id, parent_thread_id, actor_project_id)?;
             let parent_row = read_authority_row(connection, parent_thread_id, parent_turn_id)?
                 .ok_or_else(|| not_found("Inherited parent Turn authority is unavailable"))?;
             let parent = validate_authority_row(&parent_row)?;
+            read_only |= parent_row.read_only;
             let inherits_current_library_authority = parent.scope
                 == ProjectWorkspaceTurnAuthorityScope::Library
                 && parent.root_thread_id == root_thread_id
-                && parent.actor_project_id == actor_project_id
+                && parent.actor_project_id.as_deref() == actor_project_id
                 && parent.library_id == coordinates.library_id
                 && parent_row.profile_id == coordinates.profile_id
                 && parent.store_epoch == coordinates.store_epoch;
@@ -401,7 +424,7 @@ pub(super) fn freeze_turn_authority(
         thread_id: thread_id.to_owned(),
         turn_id: turn_id.to_owned(),
         root_thread_id: root_thread_id.to_owned(),
-        actor_project_id: actor_project_id.to_owned(),
+        actor_project_id: actor_project_id.map(str::to_owned),
         library_id: coordinates.library_id,
         store_epoch: coordinates.store_epoch,
         scope,
@@ -422,6 +445,7 @@ pub(super) fn freeze_turn_authority(
         authority_fingerprint: fingerprint,
         provenance_version: AUTHORITY_PROVENANCE_VERSION,
         created_at,
+        read_only,
     };
     if let Some(existing) = existing {
         if !authority_rows_match(&existing, &proposed) {
@@ -434,8 +458,8 @@ pub(super) fn freeze_turn_authority(
             "INSERT INTO nodex_agent_turn_authorities(\
                thread_id, turn_id, root_thread_id, actor_project_id, library_id, profile_id, \
                store_epoch, scope, source, permission_profile_id, authority_fingerprint, \
-               provenance_version, created_at\
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+               provenance_version, created_at, read_only\
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 proposed.thread_id,
                 proposed.turn_id,
@@ -450,6 +474,7 @@ pub(super) fn freeze_turn_authority(
                 proposed.authority_fingerprint,
                 proposed.provenance_version,
                 proposed.created_at,
+                proposed.read_only,
             ],
         )?;
     }
@@ -461,7 +486,7 @@ pub(super) fn freeze_turn_authority(
         operation_id,
         request_hash,
         "freeze_turn_authority",
-        Some(actor_project_id),
+        actor_project_id,
         thread_id,
     )
 }
@@ -720,7 +745,7 @@ fn read_authority_row(
         .query_row(
             "SELECT thread_id, turn_id, root_thread_id, actor_project_id, library_id, \
                profile_id, store_epoch, scope, source, permission_profile_id, \
-               authority_fingerprint, provenance_version, created_at \
+               authority_fingerprint, provenance_version, created_at, read_only \
              FROM nodex_agent_turn_authorities \
              WHERE thread_id = ?1 AND turn_id = ?2",
             params![thread_id, turn_id],
@@ -739,6 +764,7 @@ fn read_authority_row(
                     authority_fingerprint: row.get(10)?,
                     provenance_version: row.get(11)?,
                     created_at: row.get(12)?,
+                    read_only: row.get(13)?,
                 })
             },
         )
@@ -780,6 +806,11 @@ fn validate_authority_row(row: &AuthorityRow) -> Result<ProjectWorkspaceTurnAuth
     if row.provenance_version != AUTHORITY_PROVENANCE_VERSION
         || !source_matches_scope
         || !permission_matches_scope
+        || (row.actor_project_id.is_none() && scope != ProjectWorkspaceTurnAuthorityScope::Library)
+        || row
+            .actor_project_id
+            .as_deref()
+            .is_some_and(|id| validate_id("actor_project_id", id).is_err())
     {
         return Err(corrupt("Turn authority provenance is invalid"));
     }
@@ -824,6 +855,7 @@ fn authority_rows_match(left: &AuthorityRow, right: &AuthorityRow) -> bool {
         && left.profile_id == right.profile_id
         && left.store_epoch == right.store_epoch
         && left.scope == right.scope
+        && left.read_only == right.read_only
         && left.source == right.source
         && left.permission_profile_id == right.permission_profile_id
         && left.authority_fingerprint == right.authority_fingerprint
@@ -833,17 +865,19 @@ fn authority_rows_match(left: &AuthorityRow, right: &AuthorityRow) -> bool {
 fn require_authority_coordinates(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
+    project_id: Option<&str>,
 ) -> Result<AuthorityCoordinates, StoreError> {
+    if let Some(project_id) = project_id {
+        validate_id("actor_project_id", project_id)?;
+    }
     connection
         .query_row(
-            "SELECT project.library_id, library.profile_id, metadata.store_epoch \
-             FROM projects project \
-             JOIN libraries library ON library.id = project.library_id \
-             JOIN block_store_metadata metadata ON metadata.id = 1 \
-             WHERE project.id = ?1 AND project.library_id = ?2 \
-               AND project.lifecycle = 'active'",
-            params![project_id, library_id],
+            "SELECT library.id, library.profile_id, metadata.store_epoch \
+         FROM libraries library JOIN block_store_metadata metadata ON metadata.id = 1 \
+         WHERE library.id = ?1 AND (?2 IS NULL OR EXISTS( \
+           SELECT 1 FROM projects project WHERE project.id = ?2 \
+           AND project.library_id = library.id AND project.lifecycle = 'active'))",
+            params![library_id, project_id],
             |row| {
                 Ok(AuthorityCoordinates {
                     library_id: row.get(0)?,
@@ -853,7 +887,7 @@ fn require_authority_coordinates(
             },
         )
         .optional()?
-        .ok_or_else(|| not_found("Turn authority Project is unavailable in this Library"))
+        .ok_or_else(|| not_found("Turn authority context is unavailable in this Library"))
 }
 
 fn require_mutable_thread(
@@ -863,7 +897,7 @@ fn require_mutable_thread(
 ) -> Result<Option<String>, StoreError> {
     let project_id = require_visible_thread(connection, library_id, thread_id)?;
     if let Some(project_id) = project_id.as_deref() {
-        require_authority_coordinates(connection, library_id, project_id)?;
+        require_authority_coordinates(connection, library_id, Some(project_id))?;
     }
     Ok(project_id)
 }
@@ -890,10 +924,10 @@ fn require_thread_project(
     connection: &Connection,
     library_id: &str,
     thread_id: &str,
-    expected_project_id: &str,
+    expected_project_id: Option<&str>,
 ) -> Result<(), StoreError> {
     let project_id = require_visible_thread(connection, library_id, thread_id)?;
-    if project_id.as_deref() == Some(expected_project_id) {
+    if project_id.as_deref() == expected_project_id {
         return Ok(());
     }
     Err(unauthorized(
@@ -904,7 +938,7 @@ fn require_thread_project(
 #[allow(clippy::too_many_arguments)]
 fn finish_execution_mutation(
     connection: &Connection,
-    library_id: &str,
+    _library_id: &str,
     context: &BoundModuleContext,
     store_epoch: &str,
     operation_id: &str,
@@ -913,9 +947,7 @@ fn finish_execution_mutation(
     project_id: Option<&str>,
     thread_id: &str,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    let change_project_id = project_id
-        .map(str::to_owned)
-        .map_or_else(|| workspace_event_anchor(connection, library_id), Ok)?;
+    let change_project_id = project_id.map(str::to_owned);
     finish_mutation(
         connection,
         context,

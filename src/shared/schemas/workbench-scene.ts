@@ -113,7 +113,7 @@ const WorkbenchConversationSurfaceConfigSchema = z
   })
   .strict();
 
-const ContentAccessContextSchema = z.discriminatedUnion("kind", [
+export const ContentAccessContextSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("library") }).strict(),
   z
     .object({
@@ -142,13 +142,13 @@ const WorkbenchDbViewSurfaceConfigFields = {
   ]),
 } as const;
 
-const WorkbenchDbViewSurfaceConfigSchema = z
+export const WorkbenchDbViewSurfaceConfigSchema = z
   .object({
     ...WorkbenchDbViewSurfaceConfigFields,
   })
   .strict();
 
-const WorkbenchPageStageSurfaceConfigSchema = z
+export const WorkbenchPageStageSurfaceConfigSchema = z
   .object({
     accessContext: ContentAccessContextSchema,
     pageId: idSchema,
@@ -156,7 +156,7 @@ const WorkbenchPageStageSurfaceConfigSchema = z
   })
   .strict();
 
-const WorkbenchCanvasStageSurfaceConfigSchema = z
+export const WorkbenchCanvasStageSurfaceConfigSchema = z
   .object({
     accessContext: ContentAccessContextSchema,
     canvasBlockId: idSchema,

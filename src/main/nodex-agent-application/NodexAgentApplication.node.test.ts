@@ -102,7 +102,7 @@ const enqueueAgentContext = (client: FakeCoreClient): void => {
 const applicationLayerFor = (
   client: CoreGenerationClient,
   handshake: CoreGenerationClient["handshake"],
-  projectScopes: Array<string | undefined> = [],
+  projectScopes: Array<string | null | undefined> = [],
   sessionAccess?: CoreSessionAccess["Service"],
 ) => {
   const access =
@@ -145,7 +145,7 @@ it.effect("projects Agent context from the canonical Project and Database author
       }),
     shutdown: () => Promise.resolve({ status: "draining" as const }),
   }) as unknown as CoreGenerationClient;
-  const projectScopes: Array<string | undefined> = [];
+  const projectScopes: Array<string | null | undefined> = [];
   const applicationLayer = applicationLayerFor(generationClient, handshake, projectScopes);
 
   return Effect.scoped(
@@ -211,11 +211,11 @@ it.effect("projects Agent context from the canonical Project and Database author
           projectId,
           storeEpoch: identity.storeEpoch,
           clientSessionId: "nodex-agent:thread:agent",
-          actor: { kind: "nodex_agent", threadId: "thread:agent", callId: "call:missing" },
+          threadId: "thread:agent",
+          callId: "call:missing",
           documentId: "document:agent",
           generation: 1,
           expectedHeadSeq: 1,
-          operations: [],
         },
       });
       assert.strictEqual(unmatched.kind, "document_mutation");
@@ -274,6 +274,7 @@ it.effect("carries interruption to the in-flight Core request", () => {
             libraryId: identity.libraryId,
             storeEpoch: identity.storeEpoch,
             frozenAtMs: 1_785_491_085_000,
+            readOnly: false,
             scope: "project",
             source: "project_turn",
           },
@@ -335,11 +336,11 @@ it.effect("serializes one mutation identity without blocking independent mutatio
             projectId,
             storeEpoch: identity.storeEpoch,
             clientSessionId: "nodex-agent:thread:lane",
-            actor: { kind: "nodex_agent", threadId: "thread:lane", callId: "call:lane" },
+            threadId: "thread:lane",
+            callId: "call:lane",
             documentId: "document:lane",
             generation: 1,
             expectedHeadSeq: 1,
-            operations: [],
           },
         });
 

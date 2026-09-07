@@ -1,11 +1,9 @@
 import type { components } from "@nodex/core-protocol";
 import { createHash } from "node:crypto";
-import type {
-  DocumentMutationRequest,
-  DocumentOperationCommandResult,
-  DocumentOperationResult,
-} from "../../shared/block-documents/document-operations";
 import {
+  type NodexAgentPreparedPageUpdate,
+  type NodexAgentPageUpdateCommit,
+  type NodexAgentPageUpdateCommandResult,
   type CompleteNodexAgentPageUpdateRequest,
   type CompleteNodexAgentPageUpdateResult,
   type PrepareNodexAgentPageUpdateRequest,
@@ -20,7 +18,7 @@ import {
   applyExactNfmPatches,
 } from "../../shared/nodex-agent-tools/exact-nfm-patches";
 import { CoreModuleResponseError } from "./core-client";
-import type { NativeNodexAgentCore } from "./native-nodex-agent-core";
+import { nativeAgentClient, type NativeNodexAgentCore } from "./native-nodex-agent-core";
 import { toCoreAgentExecutionAuthorization } from "./core-agent-execution-authorization";
 import type {
   NativeNodexAgentMutationStep,
@@ -224,10 +222,10 @@ const effectFromCommit = (
 ): NonNullable<CoreCommittedDocument["outcome"]["mutation_effect"]> | null =>
   committed.outcome.mutation_effect ?? null;
 
-const toDocumentOperationResult = (
+const toNodexAgentPageUpdateCommit = (
   pending: PendingNativePageUpdate,
   committed: CoreCommittedDocument,
-): DocumentOperationResult => {
+): NodexAgentPageUpdateCommit => {
   const effect = effectFromCommit(committed);
   const committedAt = committed.outcome.committed_at;
   if (!committedAt) {
@@ -303,6 +301,7 @@ const mutationCommands = (
       };
     });
   }
+  const body = request.input.body;
   return [
     ...(request.input.title
       ? [
@@ -313,27 +312,28 @@ const mutationCommands = (
           },
         ]
       : []),
-    ...(request.input.body?.kind === "patch"
-      ? request.input.body.patches.map((patch) => ({
+    ...(body?.kind === "patch"
+      ? body.patches.map((patch) => ({
           kind: "patch_body" as const,
           old_fragment: patch.oldMarkdown,
           new_fragment: patch.newMarkdown,
           expected_matches: patch.expectedMatches ?? null,
+          expected_etag: body.ifMatch ?? null,
         }))
-      : request.input.body?.kind === "replace"
+      : body?.kind === "replace"
         ? [
             {
               kind: "replace_body" as const,
-              nested_markdown: request.input.body.markdown,
-              expected_etag: request.input.body.ifMatch,
+              nested_markdown: body.markdown,
+              expected_etag: body.ifMatch,
             },
           ]
-        : request.input.body?.kind === "insert"
+        : body?.kind === "insert"
           ? [
               {
                 kind: "insert_body" as const,
-                anchor: semanticAnchor(request.input.body.at),
-                nested_markdown: request.input.body.markdown,
+                anchor: semanticAnchor(body.at),
+                nested_markdown: body.markdown,
               },
             ]
           : []),
@@ -486,7 +486,7 @@ export const prepareNativeNodexAgentPageUpdate = async (
       commands,
     };
     const clientSessionId = `nodex-agent:${request.threadId}`.slice(0, 512);
-    const snapshot = await runtime.clientForProject(request.projectId).documentRead(
+    const snapshot = await nativeAgentClient(runtime, request.projectId).documentRead(
       clientSessionId,
       {
         kind: "prepare_agent_semantic_mutation",
@@ -529,16 +529,16 @@ export const prepareNativeNodexAgentPageUpdate = async (
       mutation,
       token,
     };
-    const fakeMutation: DocumentMutationRequest = {
+    const preparedCommand: NodexAgentPreparedPageUpdate = {
       mutationId: operationId,
       projectId: request.projectId,
       storeEpoch: request.authority.storeEpoch,
       clientSessionId,
-      actor: { kind: "nodex_agent", threadId: request.threadId, callId: request.callId },
+      threadId: request.threadId,
+      callId: request.callId,
       documentId: content.document_id,
       generation: content.document_generation,
       expectedHeadSeq: content.document_head_seq,
-      operations: [],
     };
     return {
       result: envelope(
@@ -546,7 +546,7 @@ export const prepareNativeNodexAgentPageUpdate = async (
           ok: true,
           value: {
             kind: "prepared",
-            mutation: fakeMutation,
+            mutation: preparedCommand,
             effects: effectsFromPreparation(
               request.input.pageId,
               snapshot.value.preparation,
@@ -583,10 +583,10 @@ export const prepareNativeNodexAgentPageUpdate = async (
 export const applyNativeNodexAgentPageUpdate = async (
   runtime: NativeNodexAgentCore,
   pending: PendingNativePageUpdate | undefined,
-  request: DocumentMutationRequest,
+  request: NodexAgentPreparedPageUpdate,
   signal?: AbortSignal,
 ): Promise<
-  NativeNodexAgentMutationStep<DocumentOperationCommandResult, PendingNativePageUpdate>
+  NativeNodexAgentMutationStep<NodexAgentPageUpdateCommandResult, PendingNativePageUpdate>
 > => {
   const authority = pending?.request.authority;
   const matchesPreparation =
@@ -598,11 +598,9 @@ export const applyNativeNodexAgentPageUpdate = async (
     request.documentId === pending.mutation.document_id &&
     request.generation === pending.mutation.generation &&
     request.expectedHeadSeq === pending.mutation.expected_head_seq &&
-    "operations" in request &&
-    request.operations.length === 0 &&
-    request.actor.kind === "nodex_agent" &&
-    request.actor.threadId === pending.request.threadId &&
-    request.actor.callId === pending.request.callId;
+    request.mutationId === pending.operationId &&
+    request.threadId === pending.request.threadId &&
+    request.callId === pending.request.callId;
   if (!matchesPreparation) {
     return {
       result: {
@@ -618,7 +616,7 @@ export const applyNativeNodexAgentPageUpdate = async (
     };
   }
   try {
-    const committed = await runtime.clientForProject(pending.request.projectId).documentApply(
+    const committed = await nativeAgentClient(runtime, pending.request.projectId).documentApply(
       {
         operationId: pending.operationId,
         clientSessionId: pending.clientSessionId,
@@ -642,7 +640,7 @@ export const applyNativeNodexAgentPageUpdate = async (
     return {
       result: {
         ok: true,
-        value: toDocumentOperationResult(retained, committed),
+        value: toNodexAgentPageUpdateCommit(retained, committed),
         localCommit: rendererLocalCommitApply(committed),
       },
       transition: { kind: "retain", pending: retained },

@@ -1,3 +1,8 @@
+import { CodexTurnPresentation } from "./CodexTurnPresentation";
+import {
+  makeTestTurnPresentation,
+  testSubmitPresentation,
+} from "./CodexTurnPresentation.test-support";
 import type { TurnStartResponse, TurnSteerResponse } from "@nodex/codex-app-server-protocol/v2";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { assert, it } from "@effect/vitest";
@@ -59,6 +64,7 @@ const plan = (attempt: number): CodexTurnStartPlan =>
     clientUserMessageId: `client-${attempt}`,
     rendererOwnsState: false,
     verifiedBuiltinFullAccess: false,
+    executionReadOnly: false,
     promptText: "ship",
     startedAtMs: attempt,
   }) as unknown as CodexTurnStartPlan;
@@ -75,6 +81,9 @@ const makeHarness = (input: {
 }) =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
+    const presentation = yield* makeTestTurnPresentation.pipe(
+      Effect.provideService(Scope.Scope, scope),
+    );
     const events: string[] = [];
     let requests = 0;
     let preparations = 0;
@@ -101,11 +110,11 @@ const makeHarness = (input: {
       reload: () => Effect.sync(() => events.push("reload")),
     });
     const preparation = CodexTurnPreparation.of({
-      start: () =>
+      start: (input) =>
         Effect.sync(() => {
           preparations += 1;
           events.push(`prepare:${preparations}`);
-          return plan(preparations);
+          return { ...plan(preparations), presentationClaim: input.overrides?.presentationClaim };
         }),
       steer: () => (input.steerPlan ? Effect.succeed(input.steerPlan) : Effect.die("unused")),
     });
@@ -182,12 +191,13 @@ const makeHarness = (input: {
       Effect.provideService(CodexGateway, gateway),
       Effect.provideService(CodexTurnAuthority, authority),
       Effect.provideService(CodexTurnPreparation, preparation),
+      Effect.provideService(CodexTurnPresentation, presentation),
       Effect.provideService(ConversationEntityMap, conversations),
       Effect.provideService(CoreModules, core),
       Effect.provideService(ProjectRuntimeLifecycleRuntime, projectLifecycle),
       Effect.provideService(Scope.Scope, scope),
     );
-    return { aggregate, commands, events, requests: () => requests, scope };
+    return { presentation, aggregate, commands, events, requests: () => requests, scope };
   });
 
 it.effect("rematerializes once after thread-not-found and retries a fresh transaction", () =>
@@ -409,6 +419,27 @@ it.effect("retains a dispatched question reply when its outcome is unknown", () 
     );
     assert.deepEqual(harness.events, ["admit-steer:question-turn", "steer:question-turn"]);
     assert.strictEqual(harness.requests(), 0);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
+it.effect("binds an accepted projectless Turn to the original submission receipt", () =>
+  Effect.gen(function* () {
+    const harness = yield* makeHarness({ request: () => Effect.succeed(response()) });
+    const target = { kind: "thread", threadId: "thread-a" } as const;
+    const ticket = yield* harness.presentation.capture(11, {
+      target,
+      presentation: testSubmitPresentation,
+    });
+    const presentationClaim = yield* harness.presentation.claim(ticket, target, "client-1");
+    yield* harness.commands.start(target.threadId, "ship", {
+      presentationClaim,
+      clientUserMessageId: "client-1",
+    });
+    assert.equal(
+      harness.presentation.read(target.threadId, "turn-accepted")?.windowSessionId,
+      "window-a",
+    );
     yield* Scope.close(harness.scope, Exit.void);
   }),
 );

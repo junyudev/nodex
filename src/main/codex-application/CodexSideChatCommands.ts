@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import type { CodexTurnPresentationClaim } from "./CodexTurnPresentation";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -19,7 +20,7 @@ import {
   createCodexCanonicalWorkspacePermissionContext,
   resolveCodexCanonicalHydratedCwd,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
-import { buildCodexThreadConfigOverrides } from "../codex/codex-thread-capabilities";
+import { buildCodexThreadConfig } from "../codex/codex-thread-config";
 import {
   CodexGateway,
   CodexThreadHostResolver,
@@ -104,6 +105,10 @@ type CodexSideChatError =
 export interface CodexSideChatCommandsService {
   readonly start: (
     input: CodexSideChatStartInput,
+    context?: {
+      readonly presentationClaim?: CodexTurnPresentationClaim;
+      readonly clientUserMessageId?: string;
+    },
   ) => Effect.Effect<CodexSideChatStartResult, CodexSideChatError>;
   readonly discard: (threadId: string) => Effect.Effect<boolean, CodexSideChatError>;
 }
@@ -138,6 +143,10 @@ export const make: Effect.Effect<
 
   const prepare = Effect.fn("CodexSideChatCommands.prepare")(function* (
     input: CodexSideChatStartInput,
+    context?: {
+      readonly presentationClaim?: CodexTurnPresentationClaim;
+      readonly clientUserMessageId?: string;
+    },
   ): Effect.fn.Return<CodexSideChatPlan, CodexSideChatProjectionError> {
     const parentThreadId = input.parentThreadId.trim();
     if (!parentThreadId) {
@@ -244,7 +253,9 @@ export const make: Effect.Effect<
                 model_reasoning_effort: input.reasoningEffort ?? executionProfile?.reasoningEffort,
               }
             : {}),
-          ...buildCodexThreadConfigOverrides(),
+          ...buildCodexThreadConfig({
+            nativeMcp: parent.durable.executionHostId === gateway.localHostId,
+          }),
         },
         developerInstructions: SIDE_CHAT_DEVELOPER_INSTRUCTIONS,
         ephemeral: true,
@@ -263,6 +274,8 @@ export const make: Effect.Effect<
         ? {
             prompt: input.prompt?.trim() ?? promptInput?.text ?? "",
             overrides: {
+              presentationClaim: context?.presentationClaim,
+              clientUserMessageId: context?.clientUserMessageId,
               promptInput,
               model: input.model,
               serviceTier:
@@ -510,8 +523,8 @@ export const make: Effect.Effect<
     );
   });
 
-  const start: CodexSideChatCommandsService["start"] = (input) => {
-    return prepare(input).pipe(
+  const start: CodexSideChatCommandsService["start"] = (input, context) => {
+    return prepare(input, context).pipe(
       Effect.flatMap((plan) =>
         hostResolver.resolve(plan.parentThreadId).pipe(
           Effect.flatMap((hostId) =>

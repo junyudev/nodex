@@ -1,3 +1,4 @@
+import { automationNotificationDecision } from "../../shared/automation-notification-policy";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type {
   DesktopNotificationActionInvocation,
@@ -95,6 +96,33 @@ function setup(
 }
 
 describe("Codex thread notification handler", () => {
+  test("muted automations notify on failure while respecting global notification settings", () => {
+    const runtime = setup();
+    const emit = (target: ReturnType<typeof setup>, status: "completed" | "failed") =>
+      target.source.eventListener?.({
+        type: "turn-completed",
+        hostId: "default",
+        conversation: conversation(),
+        turnId: status,
+        status,
+        lastAgentMessage: "Run finished",
+        heartbeatAssistantMessage: {
+          decision: "DONT_NOTIFY",
+          visibleText: null,
+          notificationMessage: null,
+        },
+        automationNotificationDecision: automationNotificationDecision("failed_runs_only", status),
+        hasPendingContinuation: false,
+      });
+    emit(runtime, "completed");
+    expect(runtime.shown).toHaveLength(0);
+    emit(runtime, "failed");
+    expect(runtime.shown).toHaveLength(1);
+    const disabled = setup({ turnMode: "off", permissionsEnabled: true, questionsEnabled: true });
+    emit(disabled, "failed");
+    expect(disabled.shown).toHaveLength(0);
+  });
+
   test("shapes root turns and applies app focus without using conversation visibility", () => {
     const runtime = setup();
     runtime.setPresented(true);

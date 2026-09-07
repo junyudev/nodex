@@ -5,6 +5,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./openapi.json": "./openapi.json"
+    "./openapi.json": "./openapi.json",
+    "./runtime-schemas/*": "./runtime-schemas/*"
   }
 }

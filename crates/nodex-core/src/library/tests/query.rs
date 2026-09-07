@@ -483,3 +483,146 @@ fn retained_history_remains_queryable_after_page_archival() {
         })
         .unwrap();
 }
+
+#[test]
+fn agent_sql_validates_exact_turn_and_preserves_project_visibility() {
+    use nodex_core_contracts::query::{QueryRead, QueryReadValue};
+    use nodex_core_contracts::sql::{SqlQuery, SqlScope};
+    let (_directory, kernel, library) = fixture();
+    let bound = BoundModuleContext {
+        project_id: Some(ProjectId("project-1".into())),
+        ..context()
+    };
+    let workspace = ProjectWorkspaceModule::new("profile-1", "library-1", &kernel).unwrap();
+    workspace
+        .apply(
+            &bound,
+            ModuleApplyRequest {
+                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                operation_id: "query-thread".into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: ProjectWorkspaceIntent::UpsertThread {
+                    thread_id: "thread:query".into(),
+                    patch: Box::new(ProjectWorkspaceThreadPatch {
+                        project_id: Some(Some("project-1".into())),
+                        thread_name: Some(Some("Query".into())),
+                        created_at: Some(1),
+                        updated_at: Some(1),
+                        linked_at: Some(NOW.into()),
+                        ..Default::default()
+                    }),
+                },
+            },
+        )
+        .unwrap();
+    workspace
+        .apply(
+            &bound,
+            ModuleApplyRequest {
+                contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                operation_id: "query-turn".into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
+                    thread_id: "thread:query".into(),
+                    turn_id: "turn:query".into(),
+                    root_thread_id: "thread:query".into(),
+                    actor_project_id: Some("project-1".into()),
+                    source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
+                    read_only: true,
+                    inherited_from: None,
+                },
+            },
+        )
+        .unwrap();
+    let provenance = AgentTurnProvenance {
+        profile_id: "profile-1".into(),
+        authority: ProjectWorkspaceTurnAuthority {
+            thread_id: "thread:query".into(),
+            turn_id: "turn:query".into(),
+            root_thread_id: "thread:query".into(),
+            actor_project_id: Some("project-1".into()),
+            library_id: "library-1".into(),
+            store_epoch: "epoch-1".into(),
+            scope: ProjectWorkspaceTurnAuthorityScope::Project,
+            source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
+        },
+    };
+    let query = SqlQuery { scope: SqlScope::default(), sql: "SELECT pages.page_id, page_documents.nested_markdown FROM pages JOIN page_documents USING(page_id)".into(), parameters: BTreeMap::new() };
+    let agent = BoundModuleContext {
+        adapter: AdapterKind::Agent,
+        ..bound.clone()
+    };
+    let module = crate::query::QueryModule::new("profile-1", "library-1", &kernel);
+    let read = |provenance: AgentTurnProvenance| ModuleReadRequest {
+        contract_version: nodex_core_contracts::QUERY_CONTRACT_VERSION,
+        read: QueryRead::AgentQuery {
+            provenance: Box::new(provenance),
+            query: query.clone(),
+        },
+    };
+    let QueryReadValue::Query { value } =
+        module.read(&agent, read(provenance.clone())).unwrap().value
+    else {
+        panic!("query result")
+    };
+    assert_eq!(value.returned_count, 1);
+    assert_eq!(value.rows[0][0], json!("page:visible"));
+    let rejected = module
+        .read(
+            &agent,
+            ModuleReadRequest {
+                contract_version: nodex_core_contracts::QUERY_CONTRACT_VERSION,
+                read: QueryRead::Query {
+                    query: query.clone(),
+                },
+            },
+        )
+        .expect_err("Agent cannot borrow host admission");
+    assert_eq!(rejected.code, CoreErrorCode::Unauthorized);
+    for field in ["thread", "turn", "root", "project", "epoch", "profile"] {
+        let mut forged = provenance.clone();
+        match field {
+            "thread" => forged.authority.thread_id = "other".into(),
+            "turn" => forged.authority.turn_id = "other".into(),
+            "root" => forged.authority.root_thread_id = "other".into(),
+            "project" => forged.authority.actor_project_id = Some("other".into()),
+            "epoch" => forged.authority.store_epoch = "other".into(),
+            _ => forged.profile_id = "other".into(),
+        }
+        assert!(module.read(&agent, read(forged)).is_err(), "forged {field}");
+    }
+    library
+        .apply(
+            &context(),
+            ModuleApplyRequest {
+                contract_version: LIBRARY_CONTRACT_VERSION,
+                operation_id: "revoke-query-page".into(),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: LibraryIntent::SetProjectAccess {
+                    target: LibraryResourceTarget::Page {
+                        page_id: "page:visible".into(),
+                    },
+                    changes: vec![LibraryProjectAccessChange {
+                        project_id: "project-1".into(),
+                        access: None,
+                        expected_revision: Some(1),
+                    }],
+                },
+            },
+        )
+        .expect("revoke Page grant");
+    let QueryReadValue::Query { value } =
+        module.read(&agent, read(provenance.clone())).unwrap().value
+    else {
+        panic!("query result")
+    };
+    assert_eq!(value.returned_count, 0);
+    let cli = BoundModuleContext {
+        adapter: AdapterKind::NativeCli,
+        ..bound
+    };
+    assert!(
+        module.read(&cli, read(provenance)).is_err(),
+        "CLI cannot select Agent admission"
+    );
+}

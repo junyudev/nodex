@@ -112,6 +112,8 @@ const mixedBackendWindow = (kind: "sidebar_overview" | "task_window") => {
 
 const catalog = (input: {
   readonly read: (request: { readonly kind: string }) => Effect.Effect<unknown>;
+  readonly apply?: (request: unknown) => Effect.Effect<unknown>;
+  readonly sidebar?: Partial<CodexSidebarSyncRuntime["Service"]>;
   readonly requestLocal?: (
     method: string,
     params: Record<string, unknown>,
@@ -136,7 +138,7 @@ const catalog = (input: {
     ),
     Effect.provideService(
       CodexSidebarSyncRuntime,
-      CodexSidebarSyncRuntime.of({} as CodexSidebarSyncRuntime["Service"]),
+      CodexSidebarSyncRuntime.of((input.sidebar ?? {}) as CodexSidebarSyncRuntime["Service"]),
     ),
     Effect.provideService(
       CodexThreadDirectory,
@@ -148,9 +150,54 @@ const catalog = (input: {
     ),
     Effect.provideService(
       CoreModules,
-      CoreModules.of({ workspace: { read: input.read } } as unknown as CoreModuleClients),
+      CoreModules.of({
+        workspace: { read: input.read, apply: input.apply },
+      } as unknown as CoreModuleClients),
     ),
   );
+
+it.effect("materializes the Session before pinning a discovered Thread", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const events: string[] = [];
+      const applied: unknown[] = [];
+      const service = yield* catalog({
+        read: () =>
+          Effect.succeed({
+            value: { kind: "thread", thread: { thread_id: "thread-discovered", project_id: null } },
+          }),
+        apply: (request) =>
+          Effect.sync(() => {
+            events.push("pin:applied");
+            applied.push(request);
+          }),
+        sidebar: {
+          ensureSession: (threadId) =>
+            Effect.sync(() => {
+              assert.strictEqual(threadId, "thread-discovered");
+              events.push("session:ensured");
+              return { id: "session-discovered" } as never;
+            }),
+          changed: () =>
+            Effect.sync(() => {
+              events.push("sidebar:published");
+              return { snapshot: {} } as never;
+            }),
+        },
+      });
+
+      yield* service.setPinned(" thread-discovered ", true, "thread-before");
+
+      assert.deepEqual(events, ["session:ensured", "pin:applied", "sidebar:published"]);
+      assert.deepEqual((applied[0] as { intent: unknown }).intent, {
+        kind: "set_thread_pinned",
+        thread_id: "thread-discovered",
+        pinned: true,
+        placement: { kind: "before", thread_id: "thread-before" },
+      });
+    }),
+  ),
+);
 
 it.effect("fails closed instead of draining unbounded pinned Thread pages", () =>
   Effect.scoped(

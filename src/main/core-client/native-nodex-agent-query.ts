@@ -3,7 +3,10 @@ import {
   parseDatabaseViewId,
   parseDataSourceId,
 } from "../../shared/database-identities";
-import { parseDatabaseModuleReadResultV2 } from "../../shared/database-module-v2-transport";
+import {
+  parseDatabaseModuleReadResultV2,
+  parseLibraryDatabaseModuleReadResultV2,
+} from "../../shared/database-module-v2-transport";
 import type {
   NodexAgentV3ReadCommandResult,
   NodexAgentV3ReadRequest,
@@ -14,10 +17,14 @@ import {
   projectCoreDatabaseViewQuery,
   projectCoreDataSourceQuery,
 } from "../../shared/database-page-projection";
-import type { NativeNodexAgentCore } from "./native-nodex-agent-core";
+import { nativeAgentClient, type NativeNodexAgentCore } from "./native-nodex-agent-core";
 import { toCoreAgentExecutionAuthorization } from "./core-agent-execution-authorization";
 import { mapNativeNodexAgentCoreError } from "./native-nodex-agent-page-update";
-import { createCoreDatabaseModuleAdapter } from "./database-module-adapter";
+import type { LibraryDatabaseModuleReadRequestV2 } from "../../shared/database-module-v2";
+import {
+  createCoreDatabaseModuleAdapter,
+  createCoreLibraryDatabaseModuleAdapter,
+} from "./database-module-adapter";
 
 type QueryRequest = Extract<
   NodexAgentV3ReadRequest,
@@ -76,7 +83,7 @@ export async function readNativeDatabaseQuery(
               sort: request.input.sort ?? [],
             },
           };
-    const client = runtime.clientForProject(request.projectId);
+    const client = nativeAgentClient(runtime, request.projectId);
     const snapshot = signal
       ? await client.databaseRead(read, { class: "background", signal })
       : await client.databaseRead(read);
@@ -87,16 +94,23 @@ export async function readNativeDatabaseQuery(
       throw new Error("Core returned the wrong Agent Database query variant");
     }
     const window = snapshot.value.value;
-    const descriptorAdapter = createCoreDatabaseModuleAdapter({
-      client: runtime.clientForProject(request.projectId),
-      projectId: request.projectId,
+    const descriptorInput = {
+      client,
       libraryId: authority.libraryId,
       storeEpoch: snapshot.store_epoch,
       ...(signal ? { requestOptions: { class: "background" as const, signal } } : {}),
-    });
+    };
+    const actorProjectId = request.projectId;
+    const readDescriptor =
+      actorProjectId === null
+        ? createCoreLibraryDatabaseModuleAdapter(descriptorInput).read
+        : (read: LibraryDatabaseModuleReadRequestV2) =>
+            createCoreDatabaseModuleAdapter({
+              ...descriptorInput,
+              projectId: actorProjectId,
+            }).read({ ...read, projectId: actorProjectId });
     const [databaseResult, sourceResult] = await Promise.all([
-      descriptorAdapter.read({
-        projectId: request.projectId,
+      readDescriptor({
         read: {
           target: {
             kind: "database",
@@ -105,8 +119,7 @@ export async function readNativeDatabaseQuery(
           mode: "database",
         },
       }),
-      descriptorAdapter.read({
-        projectId: request.projectId,
+      readDescriptor({
         read: {
           target: {
             kind: "data_source",
@@ -137,8 +150,7 @@ export async function readNativeDatabaseQuery(
       if (snapshot.value.kind !== "agent_view_query") {
         throw new Error("Core returned the wrong Agent View query variant");
       }
-      const viewResult = await descriptorAdapter.read({
-        projectId: request.projectId,
+      const viewResult = await readDescriptor({
         read: {
           target: {
             kind: "view",
@@ -179,10 +191,16 @@ export async function readNativeDatabaseQuery(
         ),
       };
     }
-    const parsed = parseDatabaseModuleReadResultV2({
+    const parse =
+      actorProjectId === null
+        ? parseLibraryDatabaseModuleReadResultV2
+        : parseDatabaseModuleReadResultV2;
+    const parsed = parse({
       ok: true,
       value: {
-        projectId: request.projectId,
+        ...(actorProjectId === null
+          ? { accessContext: { kind: "library" } }
+          : { projectId: actorProjectId }),
         libraryId: authority.libraryId,
         storeEpoch: snapshot.store_epoch,
         commitSeq: snapshot.commit_head,

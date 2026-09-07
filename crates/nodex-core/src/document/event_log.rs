@@ -17,7 +17,7 @@ const MAX_EVENT_PAYLOAD_BYTES: usize = 1024 * 1024;
 #[derive(Debug)]
 pub(crate) struct ChangeLogRow {
     pub(crate) sequence: i64,
-    pub(crate) project_id: String,
+    pub(crate) project_id: Option<String>,
     pub(crate) store_epoch: String,
     pub(crate) kind: String,
     pub(crate) operation_id: Option<String>,
@@ -339,8 +339,10 @@ pub(crate) fn validate_change_log_row(
 ) -> Result<(), StoreError> {
     if row.sequence <= previous
         || row.sequence > commit_head
-        || row.project_id.is_empty()
-        || row.project_id.len() > 512
+        || row
+            .project_id
+            .as_deref()
+            .is_some_and(|id| id.is_empty() || id.len() > 512)
         || row.store_epoch.is_empty()
         || row.store_epoch.len() > 512
         || row.kind.is_empty()
@@ -375,7 +377,7 @@ mod tests {
     fn event_row(reference_evidence: &str) -> ChangeLogRow {
         ChangeLogRow {
             sequence: 1,
-            project_id: "project:test".to_owned(),
+            project_id: Some("project:test".to_owned()),
             store_epoch: "epoch:test".to_owned(),
             kind: "owned_document.document_updated".to_owned(),
             operation_id: Some("operation:test".to_owned()),

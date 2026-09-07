@@ -85,7 +85,7 @@ export interface PresentWorkbenchPanelSurfaceInput {
   readonly navigation: "select-owner" | "background";
 }
 
-function resolvePanelSurfaceTarget(
+export function resolvePanelSurfaceTarget(
   scene: WorkbenchSceneSnapshot,
   target: PresentWorkbenchPanelSurfaceInput["target"],
   previewEntries: readonly WorkbenchScenePreviewEntry[],
@@ -155,6 +155,10 @@ export interface WorkbenchSceneNavigatorIdentityFactory {
 }
 
 export interface WorkbenchSceneNavigatorPort {
+  readonly presentDurable: (
+    input: PresentWorkbenchPanelSurfaceInput,
+    surface: WorkbenchSurfaceDescriptor,
+  ) => Promise<PresentWorkbenchPanelSurfaceResult>;
   readonly hasAttachedThread: (sessionId: string) => boolean;
   readonly setScene: (
     owner: WorkbenchSceneOwner,
@@ -293,96 +297,6 @@ function makeSurfaceDescriptor(
         config: request.config,
       };
   }
-}
-
-function presentDurableSurface(
-  port: WorkbenchSceneNavigatorPort,
-  input: Omit<PresentWorkbenchPanelSurfaceInput, "request"> & {
-    readonly request: WorkbenchSurfaceOpenRequest;
-  },
-  candidate: WorkbenchSurfaceDescriptor,
-): PresentWorkbenchPanelSurfaceResult {
-  let result: PresentWorkbenchPanelSurfaceResult = {
-    status: "presented",
-    surfaceId: candidate.id,
-    reused: false,
-  };
-  let presentedSlot: {
-    readonly panelId: WorkbenchPanelId;
-    readonly leafId: string;
-  } | null = null;
-
-  const updateScene = (stored: WorkbenchSceneSnapshot | undefined) => {
-    const scene = stored ?? materializeInitialWorkbenchScene(input.owner);
-    const reuseKey = getWorkbenchSurfaceReuseKey(candidate);
-    if (
-      reuseKey !== null &&
-      scene.primary &&
-      getWorkbenchSurfaceReuseKey(scene.primary) === reuseKey
-    ) {
-      result = {
-        status: "presented",
-        surfaceId: scene.primary.id,
-        reused: true,
-      };
-      return scene;
-    }
-    const matching =
-      reuseKey === null
-        ? null
-        : (Object.values(scene.panelSurfacesById).find(
-            (surface) => getWorkbenchSurfaceReuseKey(surface) === reuseKey,
-          ) ?? null);
-    if (matching) {
-      for (const panelId of ["right", "bottom"] as const) {
-        const leaf = findWorkbenchPanelLeafForTab(scene.panels[panelId].layout, matching.id);
-        if (!leaf) continue;
-        result = {
-          status: "presented",
-          surfaceId: matching.id,
-          reused: true,
-        };
-        presentedSlot = { panelId, leafId: leaf.id };
-        return patchWorkbenchScenePanel(
-          activateWorkbenchSceneSurface(scene, panelId, leaf.id, matching.id),
-          panelId,
-          { collapsed: false },
-        );
-      }
-    }
-
-    const target = resolvePanelSurfaceTarget(
-      scene,
-      input.target,
-      port.preview?.list(input.owner) ?? [],
-    );
-    const leafId = target.leafId ?? target.scene.panels[target.panelId].layout.activeLeafId;
-    presentedSlot = { panelId: target.panelId, leafId };
-    return patchWorkbenchScenePanel(
-      createWorkbenchSceneSurface(target.scene, {
-        panelId: target.panelId,
-        targetLeafId: leafId,
-        surface: candidate,
-      }),
-      target.panelId,
-      { collapsed: false },
-    );
-  };
-
-  if (input.navigation === "select-owner") {
-    const location = sceneLocationForOwner(input.owner);
-    port.setSceneAndSelect(input.owner, updateScene, location);
-  } else {
-    port.setScene(input.owner, updateScene);
-  }
-  const settledSlot = presentedSlot as {
-    readonly panelId: WorkbenchPanelId;
-    readonly leafId: string;
-  } | null;
-  if (settledSlot) {
-    port.preview?.set(input.owner, settledSlot.panelId, settledSlot.leafId, null);
-  }
-  return result;
 }
 
 function matchingPreviewEntry(
@@ -571,33 +485,7 @@ export function createWorkbenchSceneNavigator(
     if (input.mode === "preview") {
       return presentPreviewSurface(port, input, candidate);
     }
-    const matchingPreview = matchingPreviewEntry(port, input.owner, candidate);
-    if (matchingPreview) {
-      const pinned = pinPreview(
-        {
-          owner: input.owner,
-          panelId: matchingPreview.panelId,
-          leafId: matchingPreview.leafId,
-          surfaceId: matchingPreview.surface.id,
-        },
-        input.navigation,
-      );
-      if (pinned) {
-        return {
-          status: "presented",
-          surfaceId: matchingPreview.surface.id,
-          reused: true,
-        };
-      }
-    }
-    return presentDurableSurface(
-      port,
-      {
-        ...input,
-        request: input.request,
-      },
-      candidate,
-    );
+    return port.presentDurable(input, candidate);
   };
 
   const clearPreview = (input: {
@@ -672,7 +560,7 @@ export function createWorkbenchSceneNavigator(
   };
 }
 
-function sceneLocationForOwner(owner: WorkbenchSceneOwner): WorkbenchSceneLocation {
+export function sceneLocationForOwner(owner: WorkbenchSceneOwner): WorkbenchSceneLocation {
   if (owner.kind === "project") {
     return { kind: "project", projectId: owner.projectId };
   }

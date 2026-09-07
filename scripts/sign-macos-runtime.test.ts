@@ -13,10 +13,57 @@ import {
   isPreservedCodexRuntimeVendorCode,
   refreshSignedBrowserRuntimeManifest,
   refreshSignedSparkleRuntimeManifest,
+  refreshSignedWorkspaceRuntimeManifest,
+  isWorkspaceRuntimeData,
   sparkleCodeSignArguments,
 } from "./sign-macos-runtime.mjs";
 
 const temporaryRoots: string[] = [];
+
+test("signs workspace Mach-O code while leaving document and bytecode data to the outer seal", () => {
+  const app = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-workspace-code-"));
+  temporaryRoots.push(app);
+  const root = path.join(app, "Contents/Resources/workspace-runtime");
+  fs.mkdirSync(root, { recursive: true });
+  const binary = path.join(root, "extension.so");
+  const data = path.join(root, "template.docx");
+  fs.writeFileSync(binary, Buffer.from([0xcf, 0xfa, 0xed, 0xfe]));
+  fs.writeFileSync(data, Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+  expect(isWorkspaceRuntimeData(app, binary)).toBe(false);
+  expect(isWorkspaceRuntimeData(app, data)).toBe(true);
+  expect(isWorkspaceRuntimeData(app, app)).toBe(false);
+});
+
+test("reseals signed workspace binaries and rejects escaping artifact paths", () => {
+  const app = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-signed-workspace-"));
+  temporaryRoots.push(app);
+  const root = path.join(app, "Contents/Resources/workspace-runtime");
+  fs.mkdirSync(path.join(root, "python/bin"), { recursive: true });
+  const executable = path.join(root, "python/bin/python3.13");
+  fs.writeFileSync(executable, "signed Python");
+  const manifestPath = path.join(root, "workspace-runtime-manifest.json");
+  const manifest = {
+    schemaVersion: 1,
+    targetPlatform: "darwin",
+    targetArch: "arm64",
+    pythonExecutable: "python/bin/python3.13",
+    artifacts: [{ path: "python/bin/python3.13", size: 0, sha256: "old", executable: true }],
+  };
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+  refreshSignedWorkspaceRuntimeManifest(app);
+  expect(JSON.parse(fs.readFileSync(manifestPath, "utf8")).artifacts).toEqual([
+    {
+      ...manifest.artifacts[0],
+      size: 13,
+      sha256: createHash("sha256").update("signed Python").digest("hex"),
+    },
+  ]);
+  manifest.artifacts[0]!.path = "../outside";
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+  expect(() => refreshSignedWorkspaceRuntimeManifest(app)).toThrow(
+    "Invalid workspace artifact path",
+  );
+});
 
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) {

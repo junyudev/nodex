@@ -39,7 +39,7 @@ pub(super) fn apply(
     let source = require_source(connection, library_id, source_id)?;
     authorize_write(
         connection,
-        &authority.actor_project_id,
+        authority.actor_project_id.as_deref(),
         &source.database_id,
         DatabaseWriteAction::ManageSchema,
         authority.is_library(),

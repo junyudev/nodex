@@ -94,6 +94,7 @@ export const PageBodyUpdateV3Schema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("patch"),
     patches: z.array(ExactMarkdownPatchV3Schema).min(1).max(100),
+    ifMatch: ETagSchema.optional(),
   }),
   z.strictObject({
     kind: z.literal("replace"),

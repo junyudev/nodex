@@ -30,11 +30,13 @@ pub(crate) struct DeliveryAtomDraft {
 pub(crate) fn compile(
     connection: &Connection,
     library_id: &str,
-    physical_project_id: &str,
+    physical_project_id: Option<&str>,
     payload: CoreModuleEventPayload,
 ) -> Result<Vec<DeliveryAtomDraft>, StoreError> {
     validate_identity(library_id, "DeliveryAtom Library")?;
-    validate_identity(physical_project_id, "DeliveryAtom physical Project")?;
+    if let Some(project_id) = physical_project_id {
+        validate_identity(project_id, "DeliveryAtom physical Project")?;
+    }
     let atoms = match payload {
         CoreModuleEventPayload::Library(event) => compile_library(library_id, event)?,
         CoreModuleEventPayload::Database(event) => compile_database(library_id, event),
@@ -212,9 +214,9 @@ pub(crate) fn payload_claims(
             claims.insert(ResourceKey::Library {
                 library_id: library_id.clone(),
             });
-            claims.insert(ResourceKey::Project {
+            claims.extend(project_id.iter().map(|project_id| ResourceKey::Project {
                 project_id: project_id.clone(),
-            });
+            }));
             claims.extend(
                 event
                     .page_ids
@@ -784,7 +786,7 @@ fn compile_page_file_body_usage(
 
 fn compile_workspace(
     library_id: &str,
-    physical_project_id: &str,
+    physical_project_id: Option<&str>,
     event: ProjectWorkspaceEvent,
 ) -> Vec<DeliveryAtomDraft> {
     let mut atoms = Vec::new();
@@ -818,18 +820,17 @@ fn compile_workspace(
     if has_project_payload || atoms.is_empty() {
         atoms.push(atom(
             DeliveryAtomKind::ProjectWorkspaceChanged,
-            [
-                library(library_id),
+            std::iter::once(library(library_id)).chain(physical_project_id.map(|project_id| {
                 ResourceKey::Project {
-                    project_id: physical_project_id.to_owned(),
-                },
-            ],
+                    project_id: project_id.to_owned(),
+                }
+            })),
             DeliveryAtomPayload::ProjectWorkspace {
                 library_id: library_id.to_owned(),
                 event: ProjectWorkspaceEvent {
                     kind: event.kind,
                     project_catalog_change: None,
-                    project_ids: vec![physical_project_id.to_owned()],
+                    project_ids: physical_project_id.map(str::to_owned).into_iter().collect(),
                     session_ids: event.session_ids,
                     thread_ids: event.thread_ids,
                     session_summary_scopes: event.session_summary_scopes,
@@ -843,7 +844,7 @@ fn compile_workspace(
 
 fn compile_automation(
     library_id: &str,
-    project_id: &str,
+    project_id: Option<&str>,
     mut event: AutomationEvent,
 ) -> Vec<DeliveryAtomDraft> {
     // Content identities drive projection/document lanes and are not part of
@@ -854,15 +855,14 @@ fn compile_automation(
     event.database_ids.clear();
     vec![atom(
         DeliveryAtomKind::AutomationChanged,
-        [
-            library(library_id),
+        std::iter::once(library(library_id)).chain(project_id.map(|project_id| {
             ResourceKey::Project {
                 project_id: project_id.to_owned(),
-            },
-        ],
+            }
+        })),
         DeliveryAtomPayload::Automation {
             library_id: library_id.to_owned(),
-            project_id: project_id.to_owned(),
+            project_id: project_id.map(str::to_owned),
             event,
         },
     )]
@@ -1042,7 +1042,7 @@ mod tests {
         let atoms = compile(
             &connection,
             "library:test",
-            "project:test",
+            Some("project:test"),
             CoreModuleEventPayload::Library(LibraryEvent {
                 file_revisions: Default::default(),
                 kind: nodex_core_contracts::library::LibraryEventKind::LibraryChanged,
@@ -1130,7 +1130,7 @@ mod tests {
         let atoms = compile(
             &connection,
             "library:test",
-            "project:test",
+            Some("project:test"),
             CoreModuleEventPayload::OwnedDocument(
                 nodex_core_contracts::document::OwnedDocumentEvent::DocumentUpdated {
                     document_id: "document:test".to_owned(),
@@ -1192,7 +1192,7 @@ mod tests {
         let atoms = compile(
             &connection,
             "library:test",
-            "project:test",
+            Some("project:test"),
             CoreModuleEventPayload::Database(DatabaseEvent {
                 kind: DatabaseEventKind::DatabaseChanged,
                 project_id: Some("project:test".to_owned()),
@@ -1228,7 +1228,7 @@ mod tests {
         let atoms = compile(
             &connection,
             "library:test",
-            "project:test",
+            Some("project:test"),
             CoreModuleEventPayload::Database(DatabaseEvent {
                 kind: DatabaseEventKind::DatabaseChanged,
                 project_id: Some("project:test".to_owned()),
@@ -1284,7 +1284,7 @@ mod tests {
         let atoms = compile(
             &connection,
             "library:test",
-            "project:test",
+            Some("project:test"),
             CoreModuleEventPayload::OwnedDocument(
                 nodex_core_contracts::document::OwnedDocumentEvent::CanvasUpdated {
                     document_id: "document:test".to_owned(),

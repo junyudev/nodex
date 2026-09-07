@@ -70,7 +70,7 @@ export function resolveSessionPanelActiveTabId(
 }
 
 export function resolveSessionPanelActiveLeafId(
-  session: WorkbenchSessionRenderProjection,
+  session: Pick<WorkbenchSessionRenderProjection, "panels">,
   panelId: PanelId,
 ): string {
   return getWorkbenchPanelActiveLeaf(session.panels[panelId].layout).id;
@@ -131,10 +131,10 @@ export function readPageStagePanelTabPageRef(
   tab: WorkbenchTabProjection | null | undefined,
 ): { projectId: string; pageId: string } | null {
   if (!tab || tab.kind !== "page_stage") return null;
-  if (!("projectId" in tab.config) || !("pageId" in tab.config)) return null;
+  if (tab.config.accessContext.kind !== "project") return null;
 
   return {
-    projectId: tab.config.projectId,
+    projectId: tab.config.accessContext.projectId,
     pageId: tab.config.pageId,
   };
 }
@@ -143,9 +143,10 @@ export function readCanvasStagePanelTabCanvasRef(
   tab: WorkbenchTabProjection | null | undefined,
 ): { projectId: string; canvasBlockId: string } | null {
   if (!tab || tab.kind !== "canvas_stage") return null;
+  if (tab.config.accessContext.kind !== "project") return null;
 
   return {
-    projectId: tab.config.projectId,
+    projectId: tab.config.accessContext.projectId,
     canvasBlockId: tab.config.canvasBlockId,
   };
 }

@@ -1,3 +1,8 @@
+import { CodexTurnPresentation } from "./CodexTurnPresentation";
+import {
+  makeTestTurnPresentation,
+  testSubmitPresentation,
+} from "./CodexTurnPresentation.test-support";
 import type { Thread, Turn } from "@nodex/codex-app-server-protocol/v2";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -57,6 +62,7 @@ const parentAuthority: FrozenNodexAgentTurnAuthority = {
   libraryId: "library-a",
   storeEpoch: "epoch-a",
   frozenAtMs: 1_785_491_085_000,
+  readOnly: false,
   scope: "library",
   source: "builtin_full_access",
 };
@@ -131,13 +137,15 @@ const makeHarness = (trace: string[]) =>
             } as unknown as ReturnType<ConversationEntityMap["Service"]["entity"]>)
           : null,
     } as unknown as ConversationEntityMap["Service"]);
+    const presentation = yield* makeTestTurnPresentation;
     const admission = yield* make.pipe(
       Effect.provideService(CodexInternalThreadRegistry, internalThreads),
       Effect.provideService(CodexSubagentDirectory, subagents),
       Effect.provideService(CodexTurnAuthority, authority),
+      Effect.provideService(CodexTurnPresentation, presentation),
       Effect.provideService(ConversationEntityMap, conversations),
     );
-    return { admission, internalThreads, subagents };
+    return { admission, internalThreads, subagents, presentation };
   });
 
 it.effect("suppresses structured-title and non-sidebar helpers before visible projection", () =>
@@ -230,6 +238,43 @@ it.effect("inherits parent authority and drops unopened child deltas", () =>
         (yield* admission.decide({ notification: delta("child"), threadId: "child" }))._tag,
         "Admit",
       );
+    }),
+  ),
+);
+
+it.effect("binds submit presentation only when notification user-message identity matches", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { admission, presentation } = yield* makeHarness([]);
+      const target = { kind: "thread", threadId: "origin-thread" } as const;
+      const ticket = yield* presentation.capture(11, {
+        target,
+        presentation: testSubmitPresentation,
+      });
+      const claim = yield* presentation.claim(ticket, target, "origin-message");
+      const launch = yield* presentation.begin(claim, target.threadId);
+      yield* admission.decide({
+        notification: startedTurn(target.threadId, "accepted-turn"),
+        threadId: target.threadId,
+      });
+      assert.isNull(presentation.read(target.threadId, "accepted-turn"));
+      yield* admission.decide({
+        notification: {
+          method: "item/started",
+          params: {
+            threadId: target.threadId,
+            turnId: "accepted-turn",
+            startedAtMs: 1,
+            item: { type: "userMessage", id: "user-item", clientId: "origin-message", content: [] },
+          },
+        },
+        threadId: target.threadId,
+      });
+      assert.equal(
+        presentation.read(target.threadId, "accepted-turn")?.windowSessionId,
+        "window-a",
+      );
+      yield* presentation.bind(launch, "accepted-turn");
     }),
   ),
 );

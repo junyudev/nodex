@@ -9,7 +9,7 @@ export interface NodexAgentAuthorizationFootprint {
     | "advanced_update_page"
     | "move_pages"
     | "duplicate_page";
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly effect: "write" | "destructive";
   readonly resources: readonly string[];
   readonly deletions: readonly string[];

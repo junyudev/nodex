@@ -34,7 +34,7 @@ const MAX_DOCUMENT_CURSOR_BYTES: usize = 2_048;
 #[derive(Debug, Deserialize, Serialize)]
 struct AgentDocumentCursorPayload {
     version: u32,
-    project_id: String,
+    project_id: Option<String>,
     store_epoch: String,
     document_id: String,
     target_block_id: String,
@@ -46,7 +46,7 @@ struct AgentDocumentCursorPayload {
 
 #[derive(Clone, Copy)]
 pub(crate) struct AgentDocumentCursorCoordinate<'a> {
-    pub(crate) project_id: &'a str,
+    pub(crate) project_id: Option<&'a str>,
     pub(crate) store_epoch: &'a str,
     pub(crate) document_id: &'a str,
     pub(crate) target_block_id: &'a str,
@@ -80,7 +80,7 @@ pub(crate) struct PreparedSemanticMutation {
 
 pub(crate) struct SemanticMutationContext<'a> {
     pub(crate) document_id: &'a str,
-    pub(crate) project_id: &'a str,
+    pub(crate) project_id: Option<&'a str>,
     pub(crate) store_epoch: &'a str,
     pub(crate) schema: BlockDocumentSchema,
     pub(crate) full_state_v1: &'a [u8],
@@ -133,11 +133,17 @@ pub(crate) fn prepare_semantic_mutation(
                 old_fragment,
                 new_fragment,
                 expected_matches,
-            } => patches.push(ExactNfmPatch {
-                old_nfm: old_fragment.clone(),
-                new_nfm: new_fragment.clone(),
-                expected_matches: expected_matches.map(|value| value as usize).or(Some(1)),
-            }),
+                expected_etag,
+            } => {
+                if let Some(expected_etag) = expected_etag {
+                    assert_etag(expected_etag, &body_etag)?;
+                }
+                patches.push(ExactNfmPatch {
+                    old_nfm: old_fragment.clone(),
+                    new_nfm: new_fragment.clone(),
+                    expected_matches: expected_matches.map(|value| value as usize).or(Some(1)),
+                });
+            }
             DocumentSemanticCommand::InsertBody {
                 anchor,
                 nested_markdown,
@@ -597,7 +603,7 @@ fn assert_etag(supplied: &str, expected: &str) -> Result<(), SemanticMutationErr
 pub(crate) fn mint_etag(
     connection: &Connection,
     kind: &str,
-    project_id: &str,
+    project_id: Option<&str>,
     store_epoch: &str,
     subject: &[&str],
     state: Value,
@@ -629,7 +635,7 @@ pub(crate) fn mint_agent_document_cursor(
 ) -> Result<String, SemanticMutationError> {
     let payload = AgentDocumentCursorPayload {
         version: 1,
-        project_id: coordinate.project_id.to_owned(),
+        project_id: coordinate.project_id.map(str::to_owned),
         store_epoch: coordinate.store_epoch.to_owned(),
         document_id: coordinate.document_id.to_owned(),
         target_block_id: coordinate.target_block_id.to_owned(),
@@ -688,7 +694,7 @@ pub(crate) fn decode_agent_document_cursor(
         SemanticMutationError::Invalid("Agent Document cursor payload is invalid".to_owned())
     })?;
     let exact = payload.version == 1
-        && payload.project_id == coordinate.project_id
+        && payload.project_id.as_deref() == coordinate.project_id
         && payload.store_epoch == coordinate.store_epoch
         && payload.document_id == coordinate.document_id
         && payload.target_block_id == coordinate.target_block_id
@@ -734,7 +740,7 @@ fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
 
 pub(crate) fn mint_document_semantic_etags(
     connection: &Connection,
-    project_id: &str,
+    project_id: Option<&str>,
     store_epoch: &str,
     document_id: &str,
     materialization: &DocumentMaterialization,
@@ -752,7 +758,7 @@ pub(crate) fn mint_document_semantic_etags(
 /// Mints the title edit condition without requiring the Page body.
 pub(crate) fn mint_document_title_etag(
     connection: &Connection,
-    project_id: &str,
+    project_id: Option<&str>,
     store_epoch: &str,
     document_id: &str,
     rich_title: Value,
@@ -769,7 +775,7 @@ pub(crate) fn mint_document_title_etag(
 
 pub(crate) fn mint_document_projection_etags(
     connection: &Connection,
-    project_id: &str,
+    project_id: Option<&str>,
     store_epoch: &str,
     document_id: &str,
     rich_title: Value,
@@ -790,7 +796,7 @@ pub(crate) fn mint_document_projection_etags(
 
 pub(crate) fn mint_document_block_etag(
     connection: &Connection,
-    project_id: &str,
+    project_id: Option<&str>,
     store_epoch: &str,
     document_id: &str,
     block: &MaterializedBlockNode,
@@ -813,7 +819,7 @@ pub(crate) fn mint_document_block_etag(
 
 pub(crate) fn mint_document_subtree_etag(
     connection: &Connection,
-    project_id: &str,
+    project_id: Option<&str>,
     store_epoch: &str,
     document_id: &str,
     block: &MaterializedBlockNode,
@@ -974,7 +980,7 @@ mod tests {
             mint_etag(
                 &connection,
                 "title",
-                "project:test",
+                Some("project:test"),
                 "epoch:test",
                 &["document:test"],
                 json!({
@@ -1020,7 +1026,7 @@ mod tests {
         assert_eq!(
             mint_document_block_etag(
                 &connection,
-                "project:test",
+                Some("project:test"),
                 "epoch:test",
                 "document:test",
                 &block,
@@ -1031,7 +1037,7 @@ mod tests {
         assert_eq!(
             mint_document_subtree_etag(
                 &connection,
-                "project:test",
+                Some("project:test"),
                 "epoch:test",
                 "document:test",
                 &block,

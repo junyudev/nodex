@@ -12,6 +12,8 @@ export interface WindowRuntimePrimaryWindowSnapshot extends WindowRuntimeWindowS
   readonly activeSessionId: string | null;
   readonly kind: "primary";
   readonly layoutRevision: number;
+  /** Current main-frame document identity; null while navigating or after renderer loss. */
+  readonly rendererGeneration: string | null;
   readonly windowSessionId: string;
 }
 
@@ -31,6 +33,17 @@ export interface WindowRuntimeSnapshot {
 }
 
 export type WindowRuntimeLifecycleEvent =
+  | {
+      readonly kind: "renderer-changed";
+      readonly reason:
+        | "navigation-started"
+        | "navigation-committed"
+        | "process-gone"
+        | "presentation-owner-replaced";
+      readonly previousRendererGeneration: string | null;
+      readonly revision: number;
+      readonly window: WindowRuntimePrimaryWindowSnapshot;
+    }
   | {
       readonly kind: "registered";
       readonly revision: number;

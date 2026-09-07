@@ -60,6 +60,11 @@ import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { conversationIngressOverflow } from "./internal/ConversationEntityState";
 import { ThreadCreationRuntime, type ThreadCreationRelease } from "./ThreadCreationRuntime";
 import { NODEX_APP_TOOL_NAMESPACE } from "../../shared/nodex-agent-tools/identity";
+import {
+  buildCodexAppDynamicToolFailure,
+  CODEX_APP_LOCAL_HOST_ID,
+  CODEX_APP_TOOL_NAMESPACE,
+} from "../codex/codex-app-meta-thread-tools";
 import { NodexAgentProtocolTools } from "../nodex-agent-application/NodexAgentProtocolTools";
 
 const ProtocolRequestPending = Symbol("CodexApplicationProtocol.ProtocolRequestPending");
@@ -514,7 +519,28 @@ export const make: Effect.Effect<
 
   const handleRequest = Effect.fn("CodexApplicationProtocol.handleRequest")(function* (
     request: CodexServerRequest,
+    hostId: string,
   ) {
+    if (hostId === CODEX_APP_LOCAL_HOST_ID && request.method === "item/tool/call") {
+      if (request.params.namespace === NODEX_APP_TOOL_NAMESPACE) {
+        return buildCodexAppDynamicToolFailure(
+          "Nodex content tools are available through native MCP. Use the nodex_app MCP server instead of this retired dynamic tool.",
+        );
+      }
+      if (
+        request.params.namespace === CODEX_APP_TOOL_NAMESPACE &&
+        request.params.tool === "setup_codex_step"
+      ) {
+        return buildCodexAppDynamicToolFailure(
+          "Interactive setup is unavailable through application tools. Continue in the Nodex interface.",
+        );
+      }
+      if (request.params.namespace === CODEX_APP_TOOL_NAMESPACE) {
+        return buildCodexAppDynamicToolFailure(
+          "Application tools are available through native MCP. Use the nodex_app MCP server instead of this retired dynamic tool.",
+        );
+      }
+    }
     if (isCodexOneShotServerRequest(request)) return yield* oneShot.handle(request);
     if (request.method === "inbox-items-create") {
       const occurrenceId = request[CODEX_SERVER_REQUEST_OCCURRENCE_ID];
@@ -567,47 +593,51 @@ export const make: Effect.Effect<
     return notificationAdmission.decide({ notification, threadId }).pipe(
       Effect.flatMap((decision) =>
         decision._tag === "Admit"
-          ? notificationEffects
-              .apply({
-                hostId: occurrence.hostId,
-                generation: occurrence.generation,
-                notification,
-                occurrenceId: occurrence.occurrenceId,
-                occurrenceToken: occurrence.occurrenceToken,
-              })
-              .pipe(
-                Effect.catch((error) =>
-                  Effect.logError("Codex notification consequence failed").pipe(
-                    Effect.annotateLogs({
-                      hostId: occurrence.hostId,
-                      generation: occurrence.generation,
-                      method: notification.method,
-                      threadId: threadId ?? "unknown",
-                      error,
-                      errorCause: Cause.pretty(error.cause),
-                      errorDetail: readActionableErrorMessage(Cause.squash(error.cause), {
-                        fallback: "Codex notification consequence failed",
-                        maximumLength: 1_000,
-                      }),
-                    }),
-                    Effect.andThen(inbox.failGeneration(occurrence, error)),
-                    Effect.flatMap((failed) =>
-                      failed
-                        ? Effect.void
-                        : Effect.logWarning(
-                            "Codex consequence failed after generation retirement",
-                          ).pipe(
-                            Effect.annotateLogs({
-                              hostId: occurrence.hostId,
-                              generation: occurrence.generation,
-                              method: notification.method,
-                            }),
-                          ),
+          ? inbox.observeAppCallNotification(occurrence, notification).pipe(
+              Effect.andThen(
+                notificationEffects
+                  .apply({
+                    hostId: occurrence.hostId,
+                    generation: occurrence.generation,
+                    notification,
+                    occurrenceId: occurrence.occurrenceId,
+                    occurrenceToken: occurrence.occurrenceToken,
+                  })
+                  .pipe(
+                    Effect.catch((error) =>
+                      Effect.logError("Codex notification consequence failed").pipe(
+                        Effect.annotateLogs({
+                          hostId: occurrence.hostId,
+                          generation: occurrence.generation,
+                          method: notification.method,
+                          threadId: threadId ?? "unknown",
+                          error,
+                          errorCause: Cause.pretty(error.cause),
+                          errorDetail: readActionableErrorMessage(Cause.squash(error.cause), {
+                            fallback: "Codex notification consequence failed",
+                            maximumLength: 1_000,
+                          }),
+                        }),
+                        Effect.andThen(inbox.failGeneration(occurrence, error)),
+                        Effect.flatMap((failed) =>
+                          failed
+                            ? Effect.void
+                            : Effect.logWarning(
+                                "Codex consequence failed after generation retirement",
+                              ).pipe(
+                                Effect.annotateLogs({
+                                  hostId: occurrence.hostId,
+                                  generation: occurrence.generation,
+                                  method: notification.method,
+                                }),
+                              ),
+                        ),
+                        Effect.as("retain" as const),
+                      ),
                     ),
-                    Effect.as("retain" as const),
                   ),
-                ),
-              )
+              ),
+            )
           : Effect.succeed("retain" as const),
       ),
     );
@@ -654,7 +684,8 @@ export const make: Effect.Effect<
     parseRequest(occurrence).pipe(
       Effect.flatMap((request) => {
         const threadId = threadIdForRequest(request);
-        if (!threadId) return interpretOperation(occurrence, handleRequest(request));
+        if (!threadId)
+          return interpretOperation(occurrence, handleRequest(request, occurrence.hostId));
         return interpretOperation(
           occurrence,
           conversations.runCommand(
@@ -683,7 +714,7 @@ export const make: Effect.Effect<
                 }
                 return admission === "buffered"
                   ? Effect.succeed(ProtocolRequestBuffered)
-                  : handleRequest(request);
+                  : handleRequest(request, occurrence.hostId);
               }),
             ),
           ),
@@ -781,7 +812,9 @@ export const make: Effect.Effect<
   ): Effect.Effect<boolean> => {
     if (occurrence.kind === "request") {
       return parseRequest(occurrence).pipe(
-        Effect.flatMap((request) => interpretOperation(occurrence, handleRequest(request))),
+        Effect.flatMap((request) =>
+          interpretOperation(occurrence, handleRequest(request, occurrence.hostId)),
+        ),
         Effect.catch((error) =>
           inbox
             .settle(occurrence, {

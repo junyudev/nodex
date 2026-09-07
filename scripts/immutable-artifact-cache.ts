@@ -17,7 +17,11 @@ import type { ReadableStream as WebReadableStream } from "node:stream/web";
 
 export const LOCAL_ARTIFACT_CACHE_DIRECTORY = "cache.local";
 
-export type ImmutableArtifactFamily = "agent-runtime" | "browser-runtime" | "sparkle";
+export type ImmutableArtifactFamily =
+  | "agent-runtime"
+  | "browser-runtime"
+  | "sparkle"
+  | "workspace-runtime";
 
 type CacheLockOwner = {
   readonly pid: number;

@@ -340,7 +340,7 @@ function resolveItemPinned(entry: SidebarThreadSortEntry): boolean {
 }
 
 function resolveItemPinnedOrder(entry: SidebarThreadSortEntry): number {
-  return entry.item.pinnedOrder ?? entry.session?.pinnedOrder ?? Number.MAX_SAFE_INTEGER;
+  return entry.session?.pinnedOrder ?? entry.item.pinnedOrder ?? Number.MAX_SAFE_INTEGER;
 }
 
 function resolveItemRecencyAt(entry: SidebarThreadSortEntry): number {
@@ -401,6 +401,23 @@ export function sortSidebarThreadKeysForDisplay(input: {
     })
     .sort(compareSidebarThreadSortEntries)
     .map((entry) => entry.key);
+}
+
+/** Merge durable Session pins before applying pending-worktree anchors. */
+export function orderSidebarPinnedSessionKeys(input: {
+  threadKeys: readonly string[];
+  itemsByKey: ReadonlyMap<string, CodexSidebarThreadItem>;
+  sessionsById: ReadonlyMap<string, SidebarThreadSortSession>;
+}): string[] {
+  const durableKeys = sortSidebarThreadKeysForDisplay({
+    ...input,
+    threadKeys: input.threadKeys.filter((key) => !input.itemsByKey.get(key)?.pendingWorktreeId),
+  });
+  return orderCodexSidebarPinnedThreadKeys({
+    threadKeys: input.threadKeys,
+    pinnedThreadIds: listRealThreadIdsForSidebarKeys(durableKeys, input.itemsByKey),
+    itemsByKey: input.itemsByKey,
+  });
 }
 
 export function buildSidebarThreadSyncModel(input: {

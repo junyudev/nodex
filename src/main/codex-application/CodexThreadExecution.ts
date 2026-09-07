@@ -15,7 +15,7 @@ import {
   type CodexAppServerCapabilitySnapshot,
 } from "../codex-runtime/CodexAppServerCapabilities";
 import { projectCodexGatewayThreadResumeResponse } from "../codex-runtime/CodexGatewayProtocolProjection";
-import { buildCodexThreadConfigOverrides } from "../codex/codex-thread-capabilities";
+import { buildCodexThreadConfig } from "../codex/codex-thread-config";
 import { rewriteExecutionWorkspaceRoots } from "../codex/codex-execution-workspace-roots";
 import type { CodexThreadExecutionLocation } from "../codex/codex-thread-handoff-journal";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -84,24 +84,6 @@ const resumePermissions = (context: CodexCanonicalHydratedPermissionContext) => 
       }),
   runtimeWorkspaceRoots: [...context.runtimeWorkspaceRoots],
 });
-
-const normalizeJson = (value: unknown): Schema.Json => {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
-    return value;
-  }
-  if (Array.isArray(value)) return value.map(normalizeJson);
-  if (typeof value !== "object") throw new Error("Thread configuration must contain JSON values");
-  return Object.fromEntries(
-    Object.entries(value).flatMap(([key, entry]) =>
-      entry === undefined ? [] : [[key, normalizeJson(entry)]],
-    ),
-  );
-};
 
 const assertResumeLocation = (
   threadId: string,
@@ -323,10 +305,10 @@ export const live: Layer.Layer<
         const toolConfig = yield* tools.threadConfig;
         const config = yield* Effect.try({
           try: () =>
-            normalizeJson({
-              ...(toolConfig ?? {}),
-              ...buildCodexThreadConfigOverrides(),
-            }) as Schema.JsonObject,
+            buildCodexThreadConfig({
+              nativeMcp: location.hostId === gateway.localHostId,
+              overrides: toolConfig,
+            }),
           catch: (cause) => error("switch-runtime", threadId, cause),
         });
         yield* ensureCurrent(capability);

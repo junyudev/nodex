@@ -197,6 +197,40 @@ const start = (runtime: CodexThreadHandoffRuntime["Service"], operationId = "ope
     followUpPrompt: "continue",
   });
 
+it.effect("reads retained handoff outcomes after restart without repeating execution", () =>
+  Effect.gen(function* () {
+    for (const phase of ["completed", "completed-with-warning", "failed"] as const) {
+      const calls: string[] = [];
+      const entry: CodexThreadHandoffJournalEntry = {
+        ...makeEntry(),
+        phase,
+        completedAt: 3,
+        updatedAt: 3,
+        followUpDispatchStarted: true,
+        warnings: phase === "completed-with-warning" ? ["Cleanup needs attention"] : [],
+        lastError: phase === "failed" ? "Destination unavailable" : null,
+        failedPhase: phase === "failed" ? "preparing-destination" : null,
+      };
+      const runtime = yield* makeHarness({ calls, initial: [entry] });
+      const before = yield* runtime.snapshot;
+      const result = yield* runtime.get(entry.operationId);
+      const after = yield* runtime.snapshot;
+      assert.isAbove(after.revision, before.revision);
+      assert.deepEqual(after.operations, result ? [result] : []);
+      assert.strictEqual(
+        result?.status,
+        phase === "completed" ? "success" : phase === "failed" ? "error" : "warning",
+      );
+      assert.strictEqual(result?.completedAt, 3);
+      assert.strictEqual(result?.sourceThreadId, entry.threadId);
+      assert.deepEqual(yield* runtime.waitForRevision(entry.operationId, 999, 60_000), result);
+      assert.deepEqual(yield* runtime.recover(), []);
+      assert.isNull(yield* runtime.get("unknown-operation"));
+      assert.deepEqual(calls, []);
+    }
+  }),
+);
+
 it.effect("commits one handoff in semantic order", () =>
   Effect.gen(function* () {
     const calls: string[] = [];

@@ -162,6 +162,11 @@ function buildAutomationCronSchema(modes: string[], requiresId: boolean) {
         description: "Use cron for standalone recurring jobs against workspaces.",
       },
       ...AUTOMATION_COMMON_PROPERTIES,
+      projectId: {
+        anyOf: [{ type: "string" }, { type: "null" }],
+        description:
+          "Selected Project id, or null for an independent projectless local run. All cwds must belong to this Project; use an empty array for no Project.",
+      },
       cwds: AUTOMATION_CWDS_SCHEMA,
       destination: {
         type: "string",
@@ -187,6 +192,7 @@ function buildAutomationCronSchema(modes: string[], requiresId: boolean) {
     required: [
       ...AUTOMATION_COMMON_REQUIRED_FIELDS,
       ...(requiresId ? ["id"] : []),
+      "projectId",
       "cwds",
       "executionEnvironment",
       "model",

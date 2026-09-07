@@ -81,7 +81,7 @@ const MAX_EVENT_PAYLOAD_BYTES: usize = 1024 * 1024;
 const MAX_EVENT_IDENTITIES: usize = 10_000;
 
 pub(crate) struct NewChangeLogEntry<'a> {
-    pub project_id: &'a str,
+    pub project_id: Option<&'a str>,
     pub store_epoch: &'a str,
     pub kind: &'a str,
     pub operation_id: Option<&'a str>,
@@ -1123,7 +1123,7 @@ fn reconstruct_event(
             validate_personal_view_changes(&metadata.personal_view_changes)?;
             if let Some(project_id) = metadata.project_id.as_deref() {
                 validate_identity(project_id, "Database Project")?;
-                if project_id != row.project_id {
+                if Some(project_id) != row.project_id.as_deref() {
                     return Err(corrupt(
                         "Database event Project and ledger authority diverge",
                     ));
@@ -1856,7 +1856,7 @@ mod tests {
                     editor_history_owner: None,
                     profile_id: ProfileId("profile:events".to_owned()),
                     library_id: LibraryId("library:events".to_owned()),
-                    project_id: Some(ProjectId(project_id)),
+                    project_id: project_id.map(|id| ProjectId(id.to_owned())),
                     connection_id: "connection:events".to_owned(),
                     adapter: AdapterKind::Test,
                 },
@@ -1890,7 +1890,7 @@ mod tests {
                     "library",
                     vec![
                         NewChangeLogEntry {
-                            project_id: "project:events",
+                            project_id: Some("project:events"),
                             store_epoch: &store_epoch,
                             kind: "library.changed",
                             operation_id: Some("fixture:mixed-epoch"),
@@ -1902,7 +1902,7 @@ mod tests {
                             committed_at: "2026-01-01T00:00:00.000Z",
                         },
                         NewChangeLogEntry {
-                            project_id: "project:events",
+                            project_id: Some("project:events"),
                             store_epoch: &other_store_epoch,
                             kind: "library.changed",
                             operation_id: Some("fixture:mixed-epoch"),
@@ -1934,7 +1934,7 @@ mod tests {
     fn legacy_typescript_library_payloads_reconstruct_as_library_events() {
         let row = ChangeLogRow {
             sequence: 1,
-            project_id: "project:events".to_owned(),
+            project_id: Some("project:events".to_owned()),
             store_epoch: "epoch:events".to_owned(),
             kind: "block_transfer".to_owned(),
             operation_id: Some("operation:legacy-transfer".to_owned()),
@@ -2006,7 +2006,7 @@ mod tests {
         ] {
             let row = ChangeLogRow {
                 sequence: 1,
-                project_id: "project:events".to_owned(),
+                project_id: Some("project:events".to_owned()),
                 store_epoch: "epoch:events".to_owned(),
                 kind: kind.to_owned(),
                 operation_id: Some("operation:legacy".to_owned()),
@@ -2049,7 +2049,7 @@ mod tests {
                     connection,
                     "project_workspace",
                     NewChangeLogEntry {
-                        project_id: "project:events",
+                        project_id: Some("project:events"),
                         store_epoch: "epoch:events",
                         kind: "project_workspace.changed",
                         operation_id: Some("workspace:canonical-impact"),
@@ -2172,7 +2172,7 @@ mod tests {
                         connection,
                         module_name,
                         NewChangeLogEntry {
-                            project_id: "project:events",
+                            project_id: Some("project:events"),
                             store_epoch: "epoch:events",
                             kind,
                             operation_id: Some(operation_id),
@@ -2249,7 +2249,7 @@ mod tests {
                     "library",
                     vec![
                         NewChangeLogEntry {
-                            project_id: "project:events",
+                            project_id: Some("project:events"),
                             store_epoch: "epoch:events",
                             kind: "library.changed",
                             operation_id: Some("transfer:grouped"),
@@ -2261,7 +2261,7 @@ mod tests {
                             committed_at: "2026-01-01T00:00:00.000Z",
                         },
                         NewChangeLogEntry {
-                            project_id: "project:events",
+                            project_id: Some("project:events"),
                             store_epoch: "epoch:events",
                             kind: "block_mutation",
                             operation_id: Some("transfer:grouped"),
@@ -2309,7 +2309,7 @@ mod tests {
                     connection,
                     "library",
                     NewChangeLogEntry {
-                        project_id: "project:events",
+                        project_id: Some("project:events"),
                         store_epoch: "epoch:events",
                         kind: "library.changed",
                         operation_id: Some("library:tamper-proof"),
@@ -2362,7 +2362,7 @@ mod tests {
                     connection,
                     "library",
                     NewChangeLogEntry {
-                        project_id: "project:events",
+                        project_id: Some("project:events"),
                         store_epoch: "epoch:events",
                         kind: "library.changed",
                         operation_id: Some("library:payload-evidence"),
@@ -2417,7 +2417,7 @@ mod tests {
                     connection,
                     "library",
                     NewChangeLogEntry {
-                        project_id: "project:events",
+                        project_id: Some("project:events"),
                         store_epoch: "epoch:events",
                         kind: "library.changed",
                         operation_id: Some("library:project-evidence"),
@@ -2471,7 +2471,7 @@ mod tests {
                     connection,
                     "library",
                     NewChangeLogEntry {
-                        project_id: "project:events",
+                        project_id: Some("project:events"),
                         store_epoch: "epoch:events",
                         kind: "library.changed",
                         operation_id: Some("transfer:epoch"),
@@ -2518,7 +2518,7 @@ mod tests {
                         connection,
                         "library",
                         NewChangeLogEntry {
-                            project_id: "project:events",
+                            project_id: Some("project:events"),
                             store_epoch: "epoch:events",
                             kind: "library.changed",
                             operation_id: Some(&operation_id),
@@ -2558,7 +2558,7 @@ mod tests {
                     connection,
                     "project_workspace",
                     NewChangeLogEntry {
-                        project_id: "project:events",
+                        project_id: Some("project:events"),
                         store_epoch: "epoch:events",
                         kind: "project_workspace.changed",
                         operation_id: Some("workspace:corrupt-impact"),
@@ -2623,7 +2623,7 @@ mod tests {
                     connection,
                     "project_workspace",
                     NewChangeLogEntry {
-                        project_id: "project:events",
+                        project_id: Some("project:events"),
                         store_epoch: "epoch:events",
                         kind: "project_workspace.changed",
                         operation_id: Some("workspace:legacy-move"),
@@ -2677,7 +2677,7 @@ mod tests {
                     connection,
                     "project_workspace",
                     NewChangeLogEntry {
-                        project_id: "project:events",
+                        project_id: Some("project:events"),
                         store_epoch: &store_epoch,
                         kind: "project_workspace.changed",
                         operation_id: Some("workspace:gap:first"),
@@ -2711,7 +2711,7 @@ mod tests {
                     connection,
                     "project_workspace",
                     NewChangeLogEntry {
-                        project_id: "project:events",
+                        project_id: Some("project:events"),
                         store_epoch: &store_epoch,
                         kind: "project_workspace.changed",
                         operation_id: Some("workspace:gap:second"),
@@ -2871,7 +2871,7 @@ mod tests {
                     connection,
                     "project_workspace",
                     NewChangeLogEntry {
-                        project_id: "project:events",
+                        project_id: Some("project:events"),
                         store_epoch: &store_epoch,
                         kind: "project_workspace.changed",
                         operation_id: Some("workspace:unrelated-to-document"),
@@ -2935,7 +2935,7 @@ mod tests {
                         connection,
                         "project_workspace",
                         NewChangeLogEntry {
-                            project_id: "project:events",
+                            project_id: Some("project:events"),
                             store_epoch: &store_epoch,
                             kind: "project_workspace.changed",
                             operation_id: Some(if index == 0 {
@@ -3075,7 +3075,7 @@ mod tests {
                     connection,
                     "library",
                     NewChangeLogEntry {
-                        project_id: "project:a",
+                        project_id: Some("project:a"),
                         store_epoch: &store_epoch,
                         kind: "library.changed",
                         operation_id: Some("page:move:a-to-b"),
@@ -3285,7 +3285,7 @@ mod tests {
                     connection,
                     "library",
                     NewChangeLogEntry {
-                        project_id: "project:owner",
+                        project_id: Some("project:owner"),
                         store_epoch: &store_epoch,
                         kind: "library.changed",
                         operation_id: Some("library:mixed-resource"),

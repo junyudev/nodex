@@ -24,7 +24,11 @@ export interface WorkbenchAutomationDraft {
   id: string | null;
   kind: CodexScheduledAutomationKind;
   status: CodexScheduledAutomationStatus;
+  projectId: string | null;
   targetThreadId: string;
+  targetSessionId?: string | null;
+  notificationPolicy?: CodexScheduledAutomationCreateInput["notificationPolicy"];
+  expectedRevision?: number;
   name: string;
   prompt: string;
   rrule: string;
@@ -105,7 +109,10 @@ export function createWorkbenchAutomationDraft(
     id: automation?.id ?? input.id ?? createCodexScheduledAutomationId(),
     kind,
     status: normalizeStatus(automation?.status ?? "ACTIVE"),
+    projectId: automation?.projectId ?? null,
     targetThreadId: automation?.targetThreadId ?? "",
+    targetSessionId: automation?.targetSessionId,
+    notificationPolicy: automation?.notificationPolicy,
     name: automation?.name ?? "",
     prompt: automation?.prompt ?? "",
     rrule: automation?.rrule ?? DEFAULT_WORKBENCH_AUTOMATION_RRULE,
@@ -116,7 +123,7 @@ export function createWorkbenchAutomationDraft(
         : "",
     serviceTier: kind === "cron" ? (automation?.serviceTier ?? "") : "",
     cwds: kind === "cron" ? [...(automation?.cwds ?? [])] : [],
-    executionEnvironment: normalizeExecutionEnvironment(automation?.executionEnvironment),
+    executionEnvironment: automation?.executionEnvironment ?? "local",
     localEnvironmentConfigPath:
       kind === "cron" ? (automation?.localEnvironmentConfigPath ?? "") : "",
   };
@@ -130,7 +137,10 @@ export function createWorkbenchAutomationDraftFromCreateInput(
     id: createCodexScheduledAutomationId(),
     kind,
     status: "ACTIVE",
+    projectId: kind === "cron" ? (input.projectId ?? null) : null,
     targetThreadId: kind === "heartbeat" ? (input.targetThreadId ?? "") : "",
+    targetSessionId: kind === "heartbeat" ? input.targetSessionId : undefined,
+    notificationPolicy: input.notificationPolicy,
     name: input.name ?? "",
     prompt: input.prompt ?? "",
     rrule: input.rrule ?? DEFAULT_WORKBENCH_AUTOMATION_RRULE,
@@ -141,7 +151,7 @@ export function createWorkbenchAutomationDraftFromCreateInput(
         : "",
     serviceTier: kind === "cron" ? (input.serviceTier ?? "") : "",
     cwds: kind === "cron" ? [...(input.cwds ?? [])] : [],
-    executionEnvironment: normalizeExecutionEnvironment(input.executionEnvironment),
+    executionEnvironment: input.executionEnvironment ?? (input.projectId ? "worktree" : "local"),
     localEnvironmentConfigPath: kind === "cron" ? (input.localEnvironmentConfigPath ?? "") : "",
   };
 }
@@ -151,16 +161,30 @@ export function createWorkbenchAutomationDraftFromUpdateInput(input: {
   automation?: CodexScheduledAutomation | null;
 }): WorkbenchAutomationDraft {
   const { update, automation } = input;
-  const base = automation
-    ? createWorkbenchAutomationDraft({ automation })
-    : createWorkbenchAutomationDraft({ id: update.id });
+  const base =
+    update.expectedRevision !== undefined
+      ? createWorkbenchAutomationDraftFromCreateInput(update)
+      : automation
+        ? createWorkbenchAutomationDraft({ automation })
+        : createWorkbenchAutomationDraft({ id: update.id });
   const kind = normalizeKind(update.kind ?? base.kind);
   return {
     ...base,
     id: update.id,
+    expectedRevision: update.expectedRevision,
+    notificationPolicy: update.notificationPolicy,
     kind,
     status: normalizeStatus(update.status ?? base.status),
-    targetThreadId: kind === "heartbeat" ? (update.targetThreadId ?? base.targetThreadId) : "",
+    projectId:
+      kind === "cron" ? (update.projectId === undefined ? base.projectId : update.projectId) : null,
+    targetThreadId:
+      kind === "heartbeat" && !update.targetSessionId
+        ? (update.targetThreadId ?? base.targetThreadId)
+        : "",
+    targetSessionId:
+      kind === "heartbeat"
+        ? (update.targetSessionId ?? (update.targetThreadId ? undefined : base.targetSessionId))
+        : undefined,
     name: update.name ?? base.name,
     prompt: update.prompt ?? base.prompt,
     rrule: update.rrule ?? base.rrule,
@@ -267,11 +291,19 @@ export function resolveWorkbenchAutomationDraftMissingRequirements(
     missingRequirements.push("prompt");
   }
 
-  if (draft.kind === "heartbeat" && !normalizeOptionalText(draft.targetThreadId)) {
+  if (
+    draft.kind === "heartbeat" &&
+    !normalizeOptionalText(draft.targetSessionId ?? draft.targetThreadId)
+  ) {
     missingRequirements.push("thread");
   }
 
-  if (draft.kind === "cron" && draft.cwds.length === 0) {
+  if (
+    draft.kind === "cron" &&
+    ((draft.projectId !== null && draft.cwds.length === 0) ||
+      (draft.projectId === null &&
+        (draft.cwds.length > 0 || draft.executionEnvironment === "worktree")))
+  ) {
     missingRequirements.push("cwd");
   }
 
@@ -369,7 +401,15 @@ function buildCodexScheduledAutomationDraftPayload(
   return {
     kind,
     status: normalizeStatus(draft.status),
-    targetThreadId: isHeartbeat ? normalizeOptionalText(draft.targetThreadId) : null,
+    projectId: isHeartbeat ? null : draft.projectId,
+    targetThreadId:
+      isHeartbeat && !draft.targetSessionId ? normalizeOptionalText(draft.targetThreadId) : null,
+    ...(isHeartbeat && draft.targetSessionId !== undefined
+      ? { targetSessionId: normalizeOptionalText(draft.targetSessionId ?? "") }
+      : {}),
+    ...(draft.notificationPolicy !== undefined
+      ? { notificationPolicy: draft.notificationPolicy }
+      : {}),
     name,
     prompt,
     rrule,
@@ -393,7 +433,12 @@ export function buildCodexScheduledAutomationCreateInput(input: {
   if (!payload) return null;
   return {
     kind: payload.kind,
+    projectId: payload.projectId,
     targetThreadId: payload.targetThreadId,
+    ...(payload.targetSessionId !== undefined ? { targetSessionId: payload.targetSessionId } : {}),
+    ...(payload.notificationPolicy !== undefined
+      ? { notificationPolicy: payload.notificationPolicy }
+      : {}),
     name: payload.name,
     prompt: payload.prompt,
     rrule: payload.rrule,
@@ -417,6 +462,9 @@ export function buildCodexScheduledAutomationUpdateInput(input: {
   return {
     id,
     ...payload,
+    ...(input.draft.expectedRevision !== undefined
+      ? { expectedRevision: input.draft.expectedRevision }
+      : {}),
   };
 }
 
@@ -429,9 +477,14 @@ export function isWorkbenchAutomationDraftDirty(input: {
 
   return (
     normalizeKind(draft.kind) !== existing.kind ||
+    draft.projectId !== existing.projectId ||
     normalizeStatus(draft.status) !== existing.status ||
-    (draft.kind === "heartbeat" ? normalizeOptionalText(draft.targetThreadId) : null) !==
-      existing.targetThreadId ||
+    (draft.kind === "heartbeat" && draft.targetSessionId
+      ? draft.targetSessionId !== existing.targetSessionId
+      : (draft.kind === "heartbeat" ? normalizeOptionalText(draft.targetThreadId) : null) !==
+        existing.targetThreadId) ||
+    (draft.notificationPolicy !== undefined &&
+      draft.notificationPolicy !== existing.notificationPolicy) ||
     normalizeOptionalText(draft.name) !== existing.name ||
     normalizeOptionalText(draft.prompt) !== existing.prompt ||
     normalizeOptionalText(draft.rrule) !== existing.rrule ||
@@ -456,6 +509,7 @@ export function hasWorkbenchAutomationCreateDraftChanges(
   if (initialDraft) {
     return (
       normalizeKind(draft.kind) !== normalizeKind(initialDraft.kind) ||
+      draft.projectId !== initialDraft.projectId ||
       normalizeStatus(draft.status) !== normalizeStatus(initialDraft.status) ||
       normalizeOptionalText(draft.targetThreadId) !==
         normalizeOptionalText(initialDraft.targetThreadId) ||
@@ -477,6 +531,7 @@ export function hasWorkbenchAutomationCreateDraftChanges(
 
   return (
     normalizeKind(draft.kind) !== "cron" ||
+    draft.projectId !== null ||
     normalizeStatus(draft.status) !== "ACTIVE" ||
     normalizeOptionalText(draft.targetThreadId) !== null ||
     normalizeOptionalText(draft.name) !== null ||
@@ -487,7 +542,7 @@ export function hasWorkbenchAutomationCreateDraftChanges(
       draft.reasoningEffort !== DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT) ||
     normalizeOptionalText(draft.serviceTier) !== null ||
     draft.cwds.length > 0 ||
-    normalizeExecutionEnvironment(draft.executionEnvironment) !== "worktree" ||
+    normalizeExecutionEnvironment(draft.executionEnvironment) !== "local" ||
     normalizeOptionalText(draft.localEnvironmentConfigPath) !== null
   );
 }

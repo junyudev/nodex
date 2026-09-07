@@ -1,5 +1,13 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { live as appToolInterpreterLive } from "../app-tools/AppToolInterpreter";
+import { live as sessionWaiterLive } from "../app-tools/SessionWaiter";
+import { live as sessionObservationLive } from "../app-tools/SessionObservation";
+import { live as workbenchObservationLive } from "../app-tools/WorkbenchObservation";
+import {
+  WorkbenchContentAccess,
+  make as makeWorkbenchContentAccess,
+} from "../app-tools/WorkbenchContentAccess";
 import { live as automationExecutionLive } from "../automation-application/AutomationExecution";
 import {
   CodexBackgroundProcesses,
@@ -28,13 +36,35 @@ import { live as agentBackendRegistryLive } from "../agent-backend/AgentBackendR
 import { live as acpBackendSessionManagerLive } from "../agent-backend/acp/AcpBackendSessionManager";
 import { live as acpAgentLaunchProbeLive } from "../platform/node/AcpAgentLaunchProbe";
 import { live as acpSessionTransportLive } from "../platform/node/AcpSessionTransport";
+import { live as workspaceDependencyLive } from "../host-runtime/WorkspaceDependencyRuntime";
+
+const workspaceDependencies = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    const codex = yield* CodexPlatform;
+    const browser = codex.runtime.browserRuntime;
+    return workspaceDependencyLive({
+      root: config.isPackaged
+        ? `${config.resourcesPath}/workspace-runtime`
+        : `${config.projectRootPath}/.generated/workspace-runtime/${config.arch}`,
+      platform: config.platform,
+      arch: config.arch,
+      node:
+        browser.status === "available"
+          ? {
+              executable: browser.bundle.paths.node,
+              version: browser.bundle.manifest.runtimeVersions.node,
+            }
+          : null,
+    });
+  }),
+);
 
 const automationExecution = Layer.unwrap(
   Effect.gen(function* () {
     const codex = yield* CodexPlatform;
     return automationExecutionLive({
       runtimeStateHome: codex.runtimeStateHome,
-      runtimeVersion: codex.runtime.appServerRuntimeVersion ?? codex.runtime.version,
     });
   }),
 );
@@ -92,4 +122,17 @@ const agentBackends = agentBackendApplicationLive.pipe(
 );
 
 /** Application operations that depend on the Core, host, and canonical Conversation graphs. */
-export const live = agentBackends;
+export const live = appToolInterpreterLive.pipe(
+  Layer.provideMerge(workspaceDependencies),
+  Layer.provideMerge(
+    Layer.merge(
+      workbenchObservationLive,
+      Layer.effect(WorkbenchContentAccess, makeWorkbenchContentAccess),
+    ),
+  ),
+  Layer.provideMerge(
+    sessionWaiterLive.pipe(
+      Layer.provideMerge(sessionObservationLive.pipe(Layer.provideMerge(agentBackends))),
+    ),
+  ),
+);

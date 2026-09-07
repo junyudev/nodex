@@ -3,9 +3,7 @@ import { BrowserTabFavicon } from "@/features/browser-sidebar/browser-tab-favico
 import { isPanelActionTargetAllowed, type PanelNewTabAction } from "@/lib/workbench-panel-actions";
 import { resolveWorkbenchSceneTabPresentation } from "@/lib/workbench-scene-tab-presentation";
 import type { WorkbenchSceneDurablePanelCommands } from "@/lib/use-workbench-panel-controller";
-import { resolvePanelTabCloseReplacement } from "@/lib/panel-tab-close-routing";
-import { makeWorkbenchPanelSlotKey } from "@/lib/workbench-panel-slot-key";
-import type { WorkbenchPanelTabOpenerStore } from "@/lib/workbench-panel-tab-opener-state";
+import type { ExecuteWorkbenchUiCommand } from "@/lib/use-workbench-scene-commands";
 import type { PanelId, Project } from "@/lib/types";
 import {
   makePageTitleResourceKey,
@@ -37,7 +35,7 @@ export interface WorkbenchScenePanelsProps {
   readonly browserTabSnapshotByKey: ReadonlyMap<string, BrowserSidebarTabSnapshot>;
   readonly pageTitleStore: PageTitleProjectionStore;
   readonly commands: WorkbenchSceneDurablePanelCommands;
-  readonly tabOpenerStore: WorkbenchPanelTabOpenerStore;
+  readonly executeCommand: ExecuteWorkbenchUiCommand;
   readonly previewSurfaceIds: ReadonlySet<string>;
   readonly isMac: boolean;
   readonly commandKeymapState?: CommandKeymapState | null;
@@ -64,12 +62,7 @@ export interface WorkbenchScenePanelsProps {
     destination: PanelDestination,
   ) => Promise<void>;
   readonly onFocusGroup?: (panelId: PanelId, leafId: string) => void;
-  readonly onClearPreview: (panelId: PanelId, leafId: string, surfaceId: string) => void;
   readonly onPinPreview: (panelId: PanelId, leafId: string, surfaceId: string) => void;
-  readonly onCloseSurface?: (
-    surface: WorkbenchSurfaceDescriptor,
-    removeDescriptor: () => void,
-  ) => Promise<void>;
 }
 
 function makePanelItems(
@@ -171,7 +164,7 @@ export function buildWorkbenchScenePanels({
   browserTabSnapshotByKey,
   pageTitleStore,
   commands,
-  tabOpenerStore,
+  executeCommand,
   previewSurfaceIds,
   isMac,
   commandKeymapState,
@@ -187,9 +180,7 @@ export function buildWorkbenchScenePanels({
   onOpenAction,
   onOpenDestination,
   onFocusGroup,
-  onClearPreview,
   onPinPreview,
-  onCloseSurface,
 }: WorkbenchScenePanelsProps) {
   const ownerKey = makeWorkbenchSceneKey(scene.owner);
 
@@ -228,49 +219,17 @@ export function buildWorkbenchScenePanels({
         renderNewTab={renderNewTab ? (leafId) => renderNewTab(panelId, leafId) : undefined}
         renderEmptyLeaf={renderEmptyLeaf ? (leafId) => renderEmptyLeaf(panelId, leafId) : undefined}
         commands={{
-          selectTab: (leafId, surfaceId) => {
-            if (previewSurfaceIds.has(surfaceId)) return;
-            const activePreview = projection.itemsByLeafId[leafId]?.find((item) => item.preview);
-            if (activePreview) {
-              onClearPreview(panelId, leafId, activePreview.id);
-            }
-            commands.activateSurface(scene.owner, panelId, leafId, surfaceId);
+          selectTab: (_leafId, surfaceId) => {
+            void executeCommand(scene.owner, { kind: "activate_tab", tabId: surfaceId });
           },
           closeTab: (_leafId, surfaceId) => {
-            if (previewSurfaceIds.has(surfaceId)) {
-              onClearPreview(panelId, _leafId, surfaceId);
-              return;
-            }
-            const surface = resolveWorkbenchSceneSurface(scene, surfaceId);
-            if (!surface) return;
-            const replacementSurfaceId = resolvePanelTabCloseReplacement({
-              tabs: projection.itemsByLeafId[_leafId] ?? [],
-              activeTabId: projection.activeTabIdsByLeafId[_leafId] ?? null,
-              closingTabId: surfaceId,
-              openerState: tabOpenerStore.get(
-                makeWorkbenchPanelSlotKey(ownerKey, panelId, _leafId),
-              ),
-            });
-            const removeDescriptor = () => {
-              commands.removeSurface(scene.owner, surfaceId, {
-                preferredActiveLeafId: replacementSurfaceId ? _leafId : undefined,
-                preferredActiveSurfaceId: replacementSurfaceId ?? undefined,
-              });
-            };
-            if (!onCloseSurface) {
-              removeDescriptor();
-              return;
-            }
-            void (async () => {
-              await onCloseSurface(surface, removeDescriptor);
-            })();
+            void executeCommand(scene.owner, { kind: "close_tab", tabId: surfaceId });
           },
           pinTab: (leafId, surfaceId) => {
             if (!previewSurfaceIds.has(surfaceId)) return;
             onPinPreview(panelId, leafId, surfaceId);
           },
           reorderTab: (leafId, surfaceId, targetIndex) => {
-            if (previewSurfaceIds.has(surfaceId)) return;
             const leaf = listWorkbenchPanelLeaves(scene.panels[panelId].layout).find(
               (candidate) => candidate.id === leafId,
             );
@@ -281,30 +240,44 @@ export function buildWorkbenchScenePanels({
             if (sourceIndex === targetIndex) return;
             orderedSurfaceIds.splice(sourceIndex, 1);
             orderedSurfaceIds.splice(targetIndex, 0, surfaceId);
-            commands.reorderSurfaces(scene.owner, {
+            void executeCommand(scene.owner, {
+              kind: "reorder_tabs",
               panelId,
-              leafId,
-              orderedSurfaceIds,
-              movedSurfaceId: surfaceId,
+              groupId: leafId,
+              tabIds: orderedSurfaceIds,
             });
           },
           moveTab: (surfaceId, targetPanelId, targetLeafId, targetIndex, splitTarget) => {
-            if (previewSurfaceIds.has(surfaceId)) return;
-            commands.moveSurface(scene.owner, {
-              surfaceId,
-              targetPanelId,
-              targetLeafId,
-              targetIndex,
-              splitTarget,
+            const groupId =
+              splitTarget?.leafId ??
+              targetLeafId ??
+              scene.panels[targetPanelId].layout.activeLeafId;
+            const leaf = listWorkbenchPanelLeaves(scene.panels[targetPanelId].layout).find(
+              (candidate) => candidate.id === groupId,
+            );
+            if (!leaf) return;
+            const index = splitTarget
+              ? 0
+              : Math.min(
+                  targetIndex ?? leaf.tabIds.length,
+                  leaf.tabIds.filter((id) => id !== surfaceId).length,
+                );
+            void executeCommand(scene.owner, {
+              kind: "move_tab",
+              tabId: surfaceId,
+              panelId: targetPanelId,
+              groupId,
+              index,
+              ...(splitTarget ? { splitSide: splitTarget.side } : {}),
             });
           },
           splitGroup: (leafId, side, surfaceId) => {
-            if (surfaceId && previewSurfaceIds.has(surfaceId)) return;
-            commands.splitLeaf(scene.owner, {
+            void executeCommand(scene.owner, {
+              kind: "split_group",
               panelId,
-              leafId,
+              groupId: leafId,
               side,
-              surfaceId,
+              ...(surfaceId ? { tabId: surfaceId } : {}),
             });
           },
           focusGroup: (leafId) => {
@@ -312,7 +285,11 @@ export function buildWorkbenchScenePanels({
             commands.activateSurface(scene.owner, panelId, leafId);
           },
           activateGroup: (leafId, surfaceId) => {
-            commands.activateSurface(scene.owner, panelId, leafId, surfaceId);
+            if (surfaceId) {
+              void executeCommand(scene.owner, { kind: "activate_tab", tabId: surfaceId });
+              return;
+            }
+            commands.activateSurface(scene.owner, panelId, leafId);
           },
           resizeGroup: (branchId, ratio) => {
             commands.resizeBranch(scene.owner, {

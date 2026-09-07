@@ -1,3 +1,4 @@
+import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import {
   GIT_ACTION_COMMIT_OR_PUSH_PROMPT,
@@ -30,7 +31,26 @@ vi.mock("@/lib/renderer-command", () => ({
   invokeRendererQuery: (...args: readonly unknown[]) => invokeMock(...args),
 }));
 
+const submitPresentation: WorkbenchSubmitPresentation = {
+  rendererGeneration: "renderer-a",
+  sceneOwner: { kind: "pages" },
+  presentationRevision: 7,
+  selectedTabs: [],
+  focusedTarget: { tabId: "tab-page", panelId: "right", groupId: "group-a" },
+};
+
 function buildInput(overrides?: Partial<ThreadActionControllerInput>): ThreadActionControllerInput {
+  if (overrides?.codexControl) {
+    overrides = {
+      ...overrides,
+      codexControl: {
+        ...overrides.codexControl,
+        captureSubmissionPresentation:
+          overrides.codexControl.captureSubmissionPresentation ??
+          (() => structuredClone(submitPresentation)),
+      },
+    };
+  }
   const settingsUpdates: unknown[] = [];
   const draftModes: string[] = [];
   const draftModels: string[] = [];
@@ -39,6 +59,7 @@ function buildInput(overrides?: Partial<ThreadActionControllerInput>): ThreadAct
   return {
     activeThreadId: "thread_1",
     codexControl: {
+      captureSubmissionPresentation: () => structuredClone(submitPresentation),
       setConversationThreadSettings: async (threadId: string, patch: unknown) => {
         settingsUpdates.push({ threadId, patch });
         return {
@@ -85,6 +106,77 @@ function buildInput(overrides?: Partial<ThreadActionControllerInput>): ThreadAct
 }
 
 describe("createThreadStageActions settings routing", () => {
+  test.each(["idle", "fresh"] as const)(
+    "retains the submitted Scene while %s preparation awaits",
+    async (kind) => {
+      let currentPresentation = structuredClone(submitPresentation);
+      const origin = structuredClone(currentPresentation);
+      let releasePreparation: () => void = () => undefined;
+      const preparation = new Promise<void>((resolve) => {
+        releasePreparation = resolve;
+      });
+      const captures: WorkbenchSubmitPresentation[] = [];
+      const starts: (WorkbenchSubmitPresentation | undefined)[] = [];
+      invokeMock.mockReset();
+      invokeMock.mockImplementation(async () => {
+        if (kind === "idle") await preparation;
+        return { ok: true };
+      });
+      const actions = createThreadStageActions(
+        buildInput({
+          activeThreadId: kind === "idle" ? "thread_1" : null,
+          browserUseViewScopeId: "window-a",
+          onMaterializeProjectDraft: async () => {
+            await preparation;
+            return { id: "materialized-session" } as never;
+          },
+          codexControl: {
+            captureSubmissionPresentation: () => {
+              const captured = structuredClone(currentPresentation);
+              captures.push(captured);
+              return captured;
+            },
+            startTurn: async (
+              _threadId: string,
+              _prompt: string,
+              _opts: unknown,
+              presentation?: WorkbenchSubmitPresentation,
+            ) => {
+              starts.push(presentation);
+            },
+            startThreadForSession: async (
+              _input: unknown,
+              presentation?: WorkbenchSubmitPresentation,
+            ) => {
+              starts.push(presentation);
+              return { kind: "started", detail: { threadId: "fresh-thread" } };
+            },
+          } as unknown as ThreadActionControllerInput["codexControl"],
+        }),
+      );
+      const sending =
+        kind === "idle"
+          ? actions.onSendPrompt("Continue")
+          : actions.onStartThreadForSession?.({
+              projectId: "project_1",
+              sessionId: "session_1",
+              projectDraftId: "draft-1",
+              prompt: "Begin",
+            });
+      expect(captures).toEqual([origin]);
+      expect(starts).toEqual([]);
+      currentPresentation = {
+        ...currentPresentation,
+        sceneOwner: { kind: "session", sessionId: "other-session" },
+        presentationRevision: 8,
+        focusedTarget: null,
+      };
+      releasePreparation();
+      await sending;
+      expect(starts).toEqual([origin]);
+    },
+  );
+
   test("sets the host personality and current-thread next-turn personality together", async () => {
     const calls: string[] = [];
     const input = buildInput({

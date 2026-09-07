@@ -65,7 +65,11 @@ pub(super) fn read(
         &scope,
         &block_types,
         include_archived,
-        &authorization.provenance.authority.actor_project_id,
+        authorization
+            .provenance
+            .authority
+            .actor_project_id
+            .as_deref(),
     )?;
     let after = search_cursor_identity(connection, requested_cursor, library_id, &subject)?;
     let limit = search_limit(limit)?;
@@ -520,7 +524,7 @@ fn search_subject(
     scope: &LibraryAgentSearchScope,
     block_types: &Option<Vec<String>>,
     include_archived: bool,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
 ) -> Result<Vec<String>, StoreError> {
     let canonical = serde_json::to_vec(&(
         query,

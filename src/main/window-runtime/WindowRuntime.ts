@@ -5,6 +5,7 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import { nativeTheme, screen, type BrowserWindow } from "electron";
+import { randomUUID } from "node:crypto";
 import type { InitialProjectPresentation } from "../../shared/initial-project-welcome";
 import type {
   WindowRestorePolicy,
@@ -47,6 +48,9 @@ interface ManagedWindowClose {
   focusHandler: () => void;
   moveHandler: () => void;
   resizeHandler: () => void;
+  navigationStartedHandler: (details: Electron.WebContentsDidStartNavigationEventParams) => void;
+  navigationCommittedHandler: () => void;
+  rendererGoneHandler: () => void;
   timeoutPending: boolean;
   window: BrowserWindow;
 }
@@ -60,6 +64,8 @@ interface RegisteredPrimaryWindow extends RegisteredWindowBase {
   activeSessionId: string | null;
   readonly kind: "primary";
   layoutRevision: number;
+  rendererGeneration: string | null;
+  presentationOwnerId: string | null;
   readonly windowSessionId: string;
 }
 
@@ -192,6 +198,9 @@ export interface WindowRuntimeService {
     },
   ) => WindowSessionRecord | null;
   readonly resolveSessionId: (webContentsId: number) => string | null;
+  readonly resolveRendererGeneration: (webContentsId: number) => string | null;
+  /** A replacement presentation owner cannot reuse observations from the previous mount. */
+  readonly claimPresentationGeneration: (webContentsId: number, ownerId: string) => string | null;
   readonly rollbackReopenSession: (
     previousRecord: ReopenedWindowSession["previousRecord"],
   ) => WindowSessionRecord | null;
@@ -250,6 +259,7 @@ export const fromState = (
             focused: currentFocusedWebContentsId === entry.window.webContents.id,
             kind: entry.kind,
             layoutRevision: entry.layoutRevision,
+            rendererGeneration: entry.rendererGeneration,
             webContentsId: entry.window.webContents.id,
             windowId: entry.window.id,
             windowSessionId: entry.windowSessionId,
@@ -315,6 +325,18 @@ export const fromState = (
             managed.window.removeListener("focus", managed.focusHandler);
             managed.window.removeListener("move", managed.moveHandler);
             managed.window.removeListener("resize", managed.resizeHandler);
+            managed.window.webContents.removeListener(
+              "did-start-navigation",
+              managed.navigationStartedHandler,
+            );
+            managed.window.webContents.removeListener(
+              "did-navigate",
+              managed.navigationCommittedHandler,
+            );
+            managed.window.webContents.removeListener(
+              "render-process-gone",
+              managed.rendererGoneHandler,
+            );
           };
 
           const release: WindowRuntimeService["release"] = (webContentsId, input) => {
@@ -427,6 +449,26 @@ export const fromState = (
             };
             managed.moveHandler = updateBounds;
             managed.resizeHandler = updateBounds;
+            const changeRenderer = (
+              reason: "navigation-started" | "navigation-committed" | "process-gone",
+            ): void => {
+              const previousRendererGeneration = entry.rendererGeneration;
+              entry.rendererGeneration = reason === "navigation-committed" ? randomUUID() : null;
+              entry.presentationOwnerId = null;
+              initializedRenderers.delete(webContentsId);
+              publishLifecycle({
+                kind: "renderer-changed",
+                reason,
+                previousRendererGeneration,
+                window: toPrimaryWindowSnapshot(entry),
+              });
+            };
+            managed.navigationStartedHandler = (details) => {
+              if (!details.isMainFrame || details.isSameDocument) return;
+              changeRenderer("navigation-started");
+            };
+            managed.navigationCommittedHandler = () => changeRenderer("navigation-committed");
+            managed.rendererGoneHandler = () => changeRenderer("process-gone");
             managedCloses.set(webContentsId, managed);
             window.on("close", managed.closeHandler);
             window.on("closed", managed.closedHandler);
@@ -434,6 +476,9 @@ export const fromState = (
             window.on("focus", managed.focusHandler);
             window.on("move", managed.moveHandler);
             window.on("resize", managed.resizeHandler);
+            window.webContents.on("did-start-navigation", managed.navigationStartedHandler);
+            window.webContents.on("did-navigate", managed.navigationCommittedHandler);
+            window.webContents.on("render-process-gone", managed.rendererGoneHandler);
           };
 
           const runtime = WindowRuntime.of({
@@ -453,6 +498,8 @@ export const fromState = (
                 focusSequence: null,
                 kind: "primary",
                 layoutRevision: session.layoutRevision,
+                rendererGeneration: null,
+                presentationOwnerId: null,
                 window,
                 windowSessionId: session.id,
               };
@@ -547,6 +594,27 @@ export const fromState = (
             },
             release,
             resolveSessionId: (webContentsId) => sessions.getSessionIdForWindow(webContentsId),
+            resolveRendererGeneration: (webContentsId) => {
+              const entry = registeredWindows.get(webContentsId);
+              return entry?.kind === "primary" ? entry.rendererGeneration : null;
+            },
+            claimPresentationGeneration: (webContentsId, ownerId) => {
+              const entry = registeredWindows.get(webContentsId);
+              if (entry?.kind !== "primary" || !entry.rendererGeneration) return null;
+              if (entry.presentationOwnerId === ownerId) return entry.rendererGeneration;
+              const previousOwnerId = entry.presentationOwnerId;
+              entry.presentationOwnerId = ownerId;
+              if (previousOwnerId === null) return entry.rendererGeneration;
+              const previousRendererGeneration = entry.rendererGeneration;
+              entry.rendererGeneration = randomUUID();
+              publishLifecycle({
+                kind: "renderer-changed",
+                reason: "presentation-owner-replaced",
+                previousRendererGeneration,
+                window: toPrimaryWindowSnapshot(entry),
+              });
+              return entry.rendererGeneration;
+            },
             rollbackReopenSession: (previousRecord) =>
               sessions.rollbackReopenSession(previousRecord),
             saveLayout: (webContentsId, input, bounds) => {

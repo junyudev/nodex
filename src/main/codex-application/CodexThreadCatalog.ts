@@ -813,6 +813,7 @@ export const make = (
           Effect.gen(function* () {
             const thread = yield* readCoreThread(normalized);
             if (!thread) return yield* readSnapshot();
+            if (pinned) yield* sidebar.ensureSession(normalized);
             yield* core.workspace.apply({
               operationId: createOperationId("thread-catalog.pin"),
               intent: {

@@ -13,6 +13,7 @@ import type {
   ProjectSessionUpdateInput,
 } from "./types";
 import type {
+  BuiltinSidebarLane,
   SidebarSectionArchiveInput,
   SidebarSectionCreateInput,
   SidebarSectionMoveItemInput,
@@ -155,9 +156,29 @@ export type SidebarSectionMoveItemCommandInput =
 export type SidebarSectionReorderCommandInput = OperationIdentifiedCommand<{
   readonly sectionIds: readonly string[];
 }>;
+export type SidebarSectionItemsReorderCommandInput = OperationIdentifiedCommand<{
+  readonly sectionId: string;
+  readonly items: readonly {
+    readonly placementId: string;
+    readonly expectedRevision: number;
+    readonly expectedRankKey: number;
+  }[];
+}>;
 export type SidebarSectionSessionsReorderCommandInput =
   OperationIdentifiedCommand<SidebarSectionSessionsReorderCommandPayload>;
 export type SidebarSectionSessionsArchiveCommandInput =
   OperationIdentifiedCommand<SidebarSectionSessionsArchiveCommandPayload>;
 export type SidebarSectionSessionCreateCommandInput =
   OperationIdentifiedCommand<SidebarSectionSessionCreateCommandPayload>;
+
+export type BuiltinSidebarReorderCommandInput = OperationIdentifiedCommand<{
+  readonly lane: BuiltinSidebarLane;
+  readonly expectedOrderRevision: string;
+  readonly itemIds: readonly string[];
+}>;
+
+export type BuiltinSidebarProjectPriorityCommandInput = OperationIdentifiedCommand<{
+  readonly lane: Exclude<BuiltinSidebarLane, "pinned_sessions">;
+  readonly expectedOrderRevision: string;
+  readonly projectIds: readonly string[];
+}>;

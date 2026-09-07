@@ -169,7 +169,7 @@ fn create_internal(
                     persist_parent_operations_detailed_with_local_commit(
                         connection,
                         ParentDocumentWriteContext {
-                            actor_project_id: &actor_project_id,
+                            actor_project_id: actor_project_id.as_deref(),
                             store_epoch,
                             operation_id,
                             commit: scope.evidence(),
@@ -283,7 +283,12 @@ pub(super) fn rename(
                 None,
                 canvas.location_revision,
                 expected_metadata_revision + 1,
-                &resolved_current_location(connection, library_id, &actor_project_id, &canvas)?,
+                &resolved_current_location(
+                    connection,
+                    library_id,
+                    actor_project_id.as_deref(),
+                    &canvas,
+                )?,
                 canvas.document_head_seq,
                 Vec::new(),
                 now.clone(),
@@ -350,7 +355,7 @@ pub(super) fn move_canvas(
 
             let mut document_commits = Vec::new();
             let parent_write = ParentDocumentWriteContext {
-                actor_project_id: &actor_project_id,
+                actor_project_id: actor_project_id.as_deref(),
                 store_epoch,
                 operation_id,
                 commit: scope.evidence(),
@@ -424,7 +429,12 @@ pub(super) fn move_canvas(
                 && let Some(project_id) = resolved.parent.creator_project_id.as_deref()
             {
                 insert_creator_resource_grant(
-                    connection, project_id, library_id, "canvas", canvas_id, &now,
+                    connection,
+                    Some(project_id),
+                    library_id,
+                    "canvas",
+                    canvas_id,
+                    &now,
                 )?;
             }
             if target_document_id.is_none() {
@@ -590,7 +600,7 @@ pub(super) fn delete(
                     persist_parent_operations_detailed_with_local_commit(
                         connection,
                         ParentDocumentWriteContext {
-                            actor_project_id: &actor_project_id,
+                            actor_project_id: actor_project_id.as_deref(),
                             store_epoch,
                             operation_id,
                             commit: scope.evidence(),
@@ -608,14 +618,18 @@ pub(super) fn delete(
                 .transpose()?;
             insert_creator_resource_grant(
                 connection,
-                &actor_project_id,
+                actor_project_id.as_deref(),
                 library_id,
                 "canvas",
                 canvas_id,
                 &now,
             )?;
-            let resolved =
-                resolved_current_location(connection, library_id, &actor_project_id, &canvas)?;
+            let resolved = resolved_current_location(
+                connection,
+                library_id,
+                actor_project_id.as_deref(),
+                &canvas,
+            )?;
             seal_canvas_mutation(
                 scope,
                 context,
@@ -996,7 +1010,7 @@ fn find_block<'a>(
 fn resolved_current_location(
     connection: &Connection,
     library_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     canvas: &CanvasAuthority,
 ) -> Result<ResolvedCanvasDestination, StoreError> {
     let page_id = canvas
@@ -1020,7 +1034,7 @@ fn resolved_current_location(
                 .as_ref()
                 .map_or_else(|| "library".to_owned(), |id| format!("page:{id}")),
             page_id,
-            actor_project_id: actor_project_id.to_owned(),
+            actor_project_id: actor_project_id.map(str::to_owned),
             creator_project_id: None,
             document: None,
             before_block_id: None,
@@ -1182,7 +1196,12 @@ fn create_canvas_records(
         )?;
         if let Some(project_id) = resolved.parent.creator_project_id.as_deref() {
             insert_creator_resource_grant(
-                connection, project_id, library_id, "canvas", canvas_id, now,
+                connection,
+                Some(project_id),
+                library_id,
+                "canvas",
+                canvas_id,
+                now,
             )?;
         }
     }

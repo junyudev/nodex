@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "scope",
+    "sql"
+  ],
+  "properties": {
+    "parameters": {
+      "type": "object",
+      "additionalProperties": {},
+      "propertyNames": {
+        "type": "string"
+      }
+    },
+    "scope": {
+      "$ref": "#/$defs/SqlScope"
+    },
+    "sql": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "SqlBinding": {
+      "type": "object",
+      "required": [
+        "table",
+        "data_source_id"
+      ],
+      "properties": {
+        "data_source_id": {
+          "type": "string"
+        },
+        "table": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SqlScope": {
+      "type": "object",
+      "properties": {
+        "bindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SqlBinding"
+          }
+        },
+        "database_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import type { components } from "@nodex/core-protocol";
 import type { ProjectAppearance } from "./project-appearance";
 import type { Project, ProjectSessionSummary } from "./types";
 
@@ -113,4 +114,14 @@ export interface SidebarSectionSessionCreateInput {
 
 export interface SidebarSectionArchiveInput {
   readonly createReplacement?: boolean;
+}
+
+export type BuiltinSidebarLane = components["schemas"]["ProjectWorkspaceBuiltinSidebarLane"];
+
+export interface BuiltinSidebarOrderWindow {
+  readonly orderRevision: string;
+  readonly items: readonly (SidebarSectionItemRef & { readonly title: string })[];
+  readonly nextCursor: string | null;
+  readonly hasMore: boolean;
+  readonly projectionRevision: number;
 }

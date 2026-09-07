@@ -423,7 +423,7 @@ describe("Yjs/Yrs compatibility", () => {
     Y.applyUpdate(consumer, readFileSync(updatePath));
 
     expect(materializeWithSearchUnits(consumer)).toEqual(summary.materialization);
-    expect(summary.writeFenceBlockIds).toHaveLength(20);
+    expect(summary.writeFenceBlockIds).toEqual(["matrix-heading"]);
     expect(summary.titleWriteFenceRequired).toBe(true);
     expect(normalizedStateVector(Uint8Array.from(summary.stateVectorV1))).toEqual(
       normalizedStateVector(Y.encodeStateVector(consumer)),

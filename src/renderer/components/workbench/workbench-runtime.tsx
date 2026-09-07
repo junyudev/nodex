@@ -35,13 +35,11 @@ import {
   HeaderShellSlot,
 } from "./workbench-header-actions";
 import { HistoryPanel } from "./workbench-history-panel";
-import { terminalSessionStore, useTerminalSessionStoreVersion } from "@/lib/terminal-session-store";
+import { useTerminalSessionStoreVersion } from "@/lib/terminal-session-store";
 import { BrowserSidebarHiddenWebviewHosts } from "@/features/browser-sidebar/browser-sidebar-hidden-webview-hosts";
 import { BrowserSidebarPanel } from "@/features/browser-sidebar/browser-sidebar-panel";
-import { invokeBrowserSidebarCommand } from "@/features/browser-sidebar/browser-sidebar-commands";
 import { useBrowserSidebarRendererState } from "@/features/browser-sidebar/browser-sidebar-renderer-state-store";
 import { WorkspaceFilesPanel, type WorkspaceFilesTab } from "@/features/workspace-files";
-import { workspaceTextDocumentRegistry } from "@/features/workspace-files/workspace-text-document-controller";
 import {
   getBrowserDocumentBottomKey,
   useBrowserDocumentBottom,
@@ -105,11 +103,6 @@ import {
   type SidebarDisclosureSectionId,
 } from "@/lib/sidebar-section-prefs";
 import { useWorkbenchSidebarState } from "@/lib/use-workbench-sidebar-state";
-import { makeEditorSurfaceKey, documentSessionRegistry } from "@/lib/document-session-registry";
-import {
-  canvasSceneSurfaceRegistry,
-  makeCanvasSceneSurfaceKey,
-} from "@/lib/canvas-scene-surface-runtime";
 import type { WorkbenchCommandPort } from "@/lib/use-workbench-command-ingress";
 import {
   executeDesktopNotificationAction,
@@ -133,7 +126,6 @@ import {
   collectWorkbenchScenePresentedPageIds,
   makeWorkbenchSceneKey,
   materializeInitialWorkbenchScene,
-  resolveWorkbenchSceneSurface,
   updateWorkbenchSceneSurface,
   type WorkbenchSceneOwner,
   type WorkbenchSceneSnapshot,
@@ -184,6 +176,7 @@ import { WorkbenchSessionScene } from "./workbench-session-scene";
 import { ProjectSessionThreadComposerDock } from "./workbench-session-thread-route";
 import { WorkbenchSceneFrame } from "./workbench-scene-frame";
 import { DbViewSessionTab } from "./workbench-db-view-panel";
+import { WorkbenchLibraryResourceSurface } from "./workbench-library-resource-surface";
 import { WorkbenchCanvasStagePanel } from "./workbench-canvas-stage-panel";
 import { WorkbenchDatabaseViewSurface } from "./workbench-database-view-surface";
 import { WorkbenchLibraryPageSurface } from "./workbench-library-page-surface";
@@ -223,6 +216,8 @@ import type { CodexPendingWorktreeEntry } from "../../../shared/codex-pending-wo
 import { useBrowserUsePresentationCoordinator } from "@/lib/use-browser-use-presentation-coordinator";
 import { useWorkbenchPreferences } from "./use-workbench-preferences";
 import { useWorkbenchWindowState } from "@/lib/use-workbench-window-state";
+import { useWorkbenchAgentBridge } from "@/lib/use-workbench-agent-bridge";
+import { useWorkbenchSceneCommands } from "@/lib/use-workbench-scene-commands";
 import {
   getWorkbenchSceneReturnLocation,
   type WorkbenchLayoutSnapshot,
@@ -280,7 +275,6 @@ import { panelTabCycleRequestDirectionToOffset } from "@/lib/workbench-panel-tab
 import {
   buildWorkbenchScenePanelTabShortcutProjection,
   projectWorkbenchPanelTabShortcutProjection,
-  type WorkbenchPanelTabShortcutFocus,
   type WorkbenchPanelTabShortcutState,
 } from "@/lib/workbench-panel-tab-shortcut";
 import { projectWorkspaceRootOrNull } from "@/lib/workbench-workspace-context";
@@ -354,11 +348,6 @@ export interface WorkbenchRuntimeProps {
   onLoadMoreProjects?: () => Promise<void>;
   projectCatalogError?: string | null;
   onRetryProjects?: () => Promise<void> | void;
-  onSceneMutation?: (
-    owner: WorkbenchSceneOwner,
-    previous: WorkbenchSceneSnapshot,
-    next: WorkbenchSceneSnapshot,
-  ) => void;
   sidebar?: {
     collapsed: boolean;
     width: number;
@@ -424,7 +413,6 @@ export function WorkbenchRuntime({
   onLoadMoreProjects,
   projectCatalogError = null,
   onRetryProjects,
-  onSceneMutation,
   recentPageSessions = EMPTY_RECENT_PAGE_SESSIONS,
   sidebar,
   pageStageCloseRef,
@@ -682,12 +670,11 @@ export function WorkbenchRuntime({
       workbenchWindow.setScene(owner, (stored) => {
         const previous = stored ?? materializeInitialWorkbenchScene(owner);
         next = mutation(previous);
-        onSceneMutation?.(owner, previous, next);
         return next;
       });
       return next;
     },
-    [onSceneMutation, workbenchWindow],
+    [workbenchWindow],
   );
   const updateSceneSurfacePresentation = useCallback(
     (
@@ -701,14 +688,13 @@ export function WorkbenchRuntime({
         (stored) => {
           const previous = stored ?? materializeInitialWorkbenchScene(owner);
           next = updateWorkbenchSceneSurface(previous, surfaceId, patch);
-          onSceneMutation?.(owner, previous, next);
           return next;
         },
         { recordHistory: false },
       );
       return next;
     },
-    [onSceneMutation, workbenchWindow],
+    [workbenchWindow],
   );
   const panelController = useWorkbenchPanelController({
     mutateScene,
@@ -742,9 +728,16 @@ export function WorkbenchRuntime({
   workbenchWindowRef.current = workbenchWindow;
   const sessionCatalogRef = useRef(sessionCatalog);
   sessionCatalogRef.current = sessionCatalog;
+  const sceneCommandsRef = useRef<ReturnType<typeof useWorkbenchSceneCommands> | null>(null);
   const sceneNavigator = useMemo(
     () =>
       createWorkbenchSceneNavigator({
+        presentDurable: (input, surface) => {
+          const capability = sceneCommandsRef.current;
+          if (!capability)
+            return Promise.resolve({ status: "unavailable", reason: "Workbench is starting" });
+          return capability.present(input, surface);
+        },
         hasAttachedThread(sessionId) {
           return (sessionCatalogRef.current.findById(sessionId)?.domain.thread ?? null) !== null;
         },
@@ -798,20 +791,29 @@ export function WorkbenchRuntime({
     imageEditorActiveTabByPanel,
     activePlanKeyBySession,
     panelCollapsedOverrides,
+    tabOrderByPanelGroup,
   } = panelController;
   const projectScenePresentation = useMemo(
     () =>
       activeProjectScene
-        ? projectWorkbenchScenePreviews(activeProjectScene, previewSurfacesByPanel)
+        ? projectWorkbenchScenePreviews(
+            activeProjectScene,
+            previewSurfacesByPanel,
+            tabOrderByPanelGroup,
+          )
         : null,
-    [activeProjectScene, previewSurfacesByPanel],
+    [activeProjectScene, previewSurfacesByPanel, tabOrderByPanelGroup],
   );
   const pagesScenePresentation = useMemo(
     () =>
       activePagesScene
-        ? projectWorkbenchScenePreviews(activePagesScene, previewSurfacesByPanel)
+        ? projectWorkbenchScenePreviews(
+            activePagesScene,
+            previewSurfacesByPanel,
+            tabOrderByPanelGroup,
+          )
         : null,
-    [activePagesScene, previewSurfacesByPanel],
+    [activePagesScene, previewSurfacesByPanel, tabOrderByPanelGroup],
   );
   const activeOwnedScenePresentation = projectScenePresentation ?? pagesScenePresentation;
   const projectScenePresentedPageIds = useMemo<ReadonlySet<string>>(
@@ -879,7 +881,7 @@ export function WorkbenchRuntime({
     useState<ContentSearchOpenRequest | null>(null);
   const workbenchRootRef = useRef<HTMLDivElement | null>(null);
   const pinningPreviewTabIdsRef = useRef<Set<string>>(new Set());
-  const focusedPanelGroupRef = useRef<WorkbenchPanelTabShortcutFocus | null>(null);
+  const focusedPanelGroupRef = workbenchWindow.owner.focusedPanelGroupRef;
   const panelTabShortcutStateRef = useRef<WorkbenchPanelTabShortcutState | null>(null);
   const panelGroupTabsRef = useRef<PanelGroupTabsByPanel>({
     right: { itemsByLeafId: {}, activeTabIdsByLeafId: {} },
@@ -1249,24 +1251,47 @@ export function WorkbenchRuntime({
     });
   }, []);
   const createSessionViewTab = useCallback(
-    (input: WorkbenchTabCreateInput): WorkbenchTabProjection | null => {
+    async (input: WorkbenchTabCreateInput): Promise<WorkbenchTabProjection | null> => {
       if (!activeSession || input.sessionId !== activeSession.id) return null;
-      const tab = workbenchSurfaceFromCreateInput(input);
-      const next = panelControllerRef.current.durable.createTab(activeSession, {
-        panelId: input.panelId,
-        presentation: input.presentation,
-        targetLeafId: input.targetLeafId,
-        targetIndex: input.targetIndex,
-        openerTabId: input.openerTabId,
-        tab,
-      });
-      return (
-        presentWorkbenchSessionDomainWithScene(activeSession, next).tabs.find(
-          (candidate) => candidate.id === tab.id,
-        ) ?? null
+      const commands = sceneCommandsRef.current;
+      if (!commands) return null;
+      const surface = workbenchSurfaceFromCreateInput(input);
+      const sceneOwner = { kind: "session" as const, sessionId: input.sessionId };
+      const scene =
+        workbenchWindow.owner.read().windowState.scenesByOwnerKey[
+          makeWorkbenchSceneKey(sceneOwner)
+        ];
+      if (!scene) return null;
+      const { id, state: _state, stateKey: _stateKey, ...opening } = surface;
+      const receipt = await commands.execute(
+        sceneOwner,
+        {
+          kind: "open_tab",
+          panelId: input.panelId,
+          groupId: input.targetLeafId ?? scene.panels[input.panelId].layout.activeLeafId,
+          surface: opening,
+        },
+        {
+          surfaceId: id,
+          open: {
+            presentation: input.presentation,
+            targetIndex: input.targetIndex,
+            openerTabId: input.openerTabId,
+          },
+        },
       );
+      if (receipt.error || !receipt.tabId) return null;
+      const next =
+        workbenchWindow.owner.read().windowState.scenesByOwnerKey[
+          makeWorkbenchSceneKey(sceneOwner)
+        ];
+      return next
+        ? (presentWorkbenchSessionDomainWithScene(activeSession, next).tabs.find(
+            (candidate) => candidate.id === receipt.tabId,
+          ) ?? null)
+        : null;
     },
-    [activeSession],
+    [activeSession, workbenchWindow.owner],
   );
   const updateSessionViewTab = useCallback(
     (tabId: string, patch: WorkbenchSurfaceUpdatePatch): WorkbenchTabProjection | null => {
@@ -1369,6 +1394,22 @@ export function WorkbenchRuntime({
   );
   const processManagerConversationsById = useConversationSubset(processManagerThreadIds);
   const workbenchCodexControl = useCodexAppServerControl(activeProject?.id ?? activeProjectId);
+  const sceneCommands = useWorkbenchSceneCommands(
+    workbenchWindow.owner,
+    windowSessionId,
+    workbenchCodexControl.discardSideChat,
+    panelController.tabOpenerStore,
+  );
+  sceneCommandsRef.current = sceneCommands;
+  const executeSceneCommand = sceneCommands.execute;
+  useWorkbenchAgentBridge(
+    workbenchWindow.owner,
+    {
+      resolveSessionProjectId: (sessionId) =>
+        sessionCatalogRef.current.findById(sessionId)?.domain.projectId,
+    },
+    sceneCommands.executor,
+  );
   const codexAppServerRegistry = useCodexAppServerRegistry();
   const activeProjectBoard = useBoard({
     projectId: activeProject?.id ?? activeProjectId ?? "",
@@ -1408,10 +1449,12 @@ export function WorkbenchRuntime({
             imageEditorActiveTabByPanel,
             panelCollapsedOverrides,
             activePlanKeyBySession,
+            tabOrderByPanelGroup,
           })
         : null,
     [
       activePlanKeyBySession,
+      tabOrderByPanelGroup,
       activeRenderSession,
       automationActiveTabByPanel,
       automationTabsBySession,
@@ -1851,6 +1894,7 @@ export function WorkbenchRuntime({
     async (
       target: LibraryRouteTarget,
       options: {
+        readonly owner?: WorkbenchSceneOwner;
         readonly titleSnapshot?: string;
         readonly placement?: PresentWorkbenchPanelSurfaceInput["target"]["placement"];
         readonly targetLeafId?: string;
@@ -1904,7 +1948,7 @@ export function WorkbenchRuntime({
                     titleSnapshot: options.titleSnapshot,
                   };
         const presented = await sceneNavigator.presentPanelSurface({
-          owner: { kind: "pages" },
+          owner: options.owner ?? { kind: "pages" },
           request,
           target: {
             panelId: options.targetPanelId ?? "right",
@@ -1987,13 +2031,12 @@ export function WorkbenchRuntime({
   }, [activeProjectId, projects, workbenchWindow]);
 
   const panelLifecycle = useWorkbenchPanelLifecycle({
+    executeSceneCommand,
+    windowOwner: workbenchWindow.owner,
     activeSession,
     controller: panelController,
     createSessionViewTab,
-    codexControl: workbenchCodexControl,
-    panelGroupTabsRef,
     pinningPreviewTabIdsRef,
-    windowSessionId,
   });
   const {
     updateActivePanel,
@@ -2009,41 +2052,31 @@ export function WorkbenchRuntime({
       if (!activeOwnedSceneOwner) {
         return await updateActivePanel(panelId, input);
       }
-      return (
-        panelControllerRef.current.sceneDurable?.patchPanel(activeOwnedSceneOwner, panelId, {
-          ...(input.collapsed === undefined ? {} : { collapsed: input.collapsed }),
-          ...(input.size === undefined ? {} : { size: input.size }),
-        }) ?? null
-      );
+      const receipt = await executeSceneCommand(activeOwnedSceneOwner, {
+        kind: "set_panel_state",
+        panelId,
+        ...(input.collapsed === undefined ? {} : { collapsed: input.collapsed }),
+        ...(input.size === undefined ? {} : { size: input.size }),
+      });
+      return receipt.error
+        ? null
+        : (workbenchWindow.owner.read().windowState.scenesByOwnerKey[
+            makeWorkbenchSceneKey(activeOwnedSceneOwner)
+          ] ?? null);
     },
-    [activeOwnedSceneOwner, updateActivePanel],
+    [activeOwnedSceneOwner, executeSceneCommand, updateActivePanel, workbenchWindow.owner],
   );
   const setActiveWorkbenchPanelCollapsed = useCallback(
     async (panelId: PanelId, collapsed: boolean) => {
       if (activeOwnedSceneOwner && panelId === "right" && collapsed) {
         return activeOwnedScene?.panels.right ?? null;
       }
-      if (!activeOwnedSceneOwner || !activeOwnedSceneKey) {
+      if (!activeOwnedSceneOwner) {
         return await setActivePanelCollapsed(panelId, collapsed);
       }
-      const overrideKey = makeWorkbenchPanelSlotKey(activeOwnedSceneKey, panelId);
-      panelControllerRef.current.updatePanelCollapsedOverrides((current) => ({
-        ...current,
-        [overrideKey]: collapsed,
-      }));
-      try {
-        return await updateActiveWorkbenchPanel(panelId, { collapsed });
-      } finally {
-        panelControllerRef.current.updatePanelCollapsedOverrides((current) => {
-          if (!(overrideKey in current)) return current;
-          const next = { ...current };
-          delete next[overrideKey];
-          return next;
-        });
-      }
+      return await updateActiveWorkbenchPanel(panelId, { collapsed });
     },
     [
-      activeOwnedSceneKey,
       activeOwnedSceneOwner,
       activeOwnedScene?.panels.right,
       setActivePanelCollapsed,
@@ -2404,6 +2437,11 @@ export function WorkbenchRuntime({
         activeSearchQuery,
         browserViewScopeId: windowSessionId,
         onOpenBrowserSettings: openBrowserSettings,
+        onOpenLibraryTarget: (target, { sourceSurfaceId, ...options }) =>
+          presentLibraryTarget(target, {
+            ...options,
+            placement: { kind: "same-group", sourceSurfaceId },
+          }),
         windowSessionId,
         onLeavePageStage,
         pageStageCloseRef,
@@ -3258,23 +3296,70 @@ export function WorkbenchRuntime({
         ...(previewEntry ? { preview: true as const } : {}),
       };
       const closeSurface = () => {
-        if (previewEntry) {
-          sceneNavigator.clearPreview({
-            owner: activeProjectScene.owner,
-            panelId: previewEntry.panelId,
-            leafId: previewEntry.leafId,
-            surfaceId: surface.id,
-          });
-          return;
-        }
-        if (!projectSceneOwner) return;
-        panelControllerRef.current.sceneDurable?.removeSurface(projectSceneOwner, surface.id);
+        void executeSceneCommand(activeProjectScene.owner, {
+          kind: "close_tab",
+          tabId: surface.id,
+        });
       };
 
+      if (
+        (surface.kind === "db_view" ||
+          surface.kind === "page_stage" ||
+          surface.kind === "canvas_stage") &&
+        surface.config.accessContext.kind === "library"
+      ) {
+        return (
+          <WorkbenchLibraryResourceSurface
+            surface={surface}
+            owner={workbenchWindow.owner}
+            sceneOwner={activeProjectScene.owner}
+            windowSessionId={windowSessionId}
+            active={context.active}
+            presentedPageIds={projectScenePresentedPageIds}
+            onClose={closeSurface}
+            onTitleChange={(titleSnapshot) => {
+              updateSceneSurfacePresentation(activeProjectScene.owner, surface.id, {
+                titleSnapshot,
+              });
+            }}
+            onOpenTarget={(target, options) => {
+              void presentLibraryTarget(target, {
+                ...options,
+                owner: activeProjectScene.owner,
+                targetPanelId: context.panelId,
+                placement: { kind: "same-group", sourceSurfaceId: surface.id },
+              });
+            }}
+          />
+        );
+      }
+
       if (surface.kind === "db_view") {
+        if (surface.config.accessContext.kind !== "project") return null;
+        const accessContext = surface.config.accessContext;
+        if (surface.config.target.kind === "database-default")
+          return (
+            <WorkbenchDatabaseViewSurface
+              workbenchPresentation={{
+                owner: workbenchWindow.owner,
+                sceneOwner: activeProjectScene.owner,
+                surface,
+              }}
+              accessContext={accessContext}
+              target={surface.config.target}
+              presentedPageIds={projectScenePresentedPageIds}
+              onOpenPage={(pageId, titleSnapshot, openMode) => {
+                void openProjectScenePage(accessContext.projectId, pageId, titleSnapshot, {
+                  openMode,
+                  placement: { kind: "same-group", sourceSurfaceId: surface.id },
+                });
+              }}
+            />
+          );
         const databaseViewId =
           surface.config.target.kind === "project-default"
-            ? activeProject.defaultDatabaseViewId
+            ? projects.find((project) => project.id === accessContext.projectId)
+                ?.defaultDatabaseViewId
             : surface.config.target.kind === "database-view"
               ? surface.config.target.databaseViewId
               : null;
@@ -3289,15 +3374,17 @@ export function WorkbenchRuntime({
           ...common,
           kind: "db_view",
           config: {
-            projectId:
-              surface.config.accessContext.kind === "project"
-                ? surface.config.accessContext.projectId
-                : activeProject.id,
-            databaseViewId,
+            accessContext,
+            target: { kind: "database-view", databaseViewId },
           },
         };
         return (
           <DbViewSessionTab
+            workbenchPresentation={{
+              owner: workbenchWindow.owner,
+              sceneOwner: activeProjectScene.owner,
+              surface,
+            }}
             sessionId={`${windowSessionId}:${projectSceneKey}:${surface.id}`}
             tab={tab}
             projects={projects}
@@ -3328,10 +3415,8 @@ export function WorkbenchRuntime({
       }
 
       if (surface.kind === "canvas_stage") {
-        const projectId =
-          surface.config.accessContext.kind === "project"
-            ? surface.config.accessContext.projectId
-            : activeProject.id;
+        if (surface.config.accessContext.kind !== "project") return null;
+        const projectId = surface.config.accessContext.projectId;
         return (
           <WorkbenchCanvasStagePanel
             surface={surface}
@@ -3356,32 +3441,17 @@ export function WorkbenchRuntime({
       }
 
       if (surface.kind === "page_stage") {
+        if (surface.config.accessContext.kind !== "project") return null;
+        const pageAccessProjectId = surface.config.accessContext.projectId;
         const tab: WorkbenchTabProjection = {
           ...common,
           kind: "page_stage",
-          config: {
-            projectId:
-              surface.config.accessContext.kind === "project"
-                ? surface.config.accessContext.projectId
-                : activeProject.id,
-            pageId: surface.config.pageId,
-            ...(surface.config.titleSnapshot
-              ? { titleSnapshot: surface.config.titleSnapshot }
-              : {}),
-          },
+          config: surface.config,
         };
         return (
           <PageStageSessionTab
             tab={tab}
-            project={
-              projects.find(
-                (item) =>
-                  item.id ===
-                  (surface.config.accessContext.kind === "project"
-                    ? surface.config.accessContext.projectId
-                    : activeProject.id),
-              ) ?? null
-            }
+            project={projects.find((item) => item.id === pageAccessProjectId) ?? null}
             closeRef={pageStageCloseRef}
             persistRef={pageStagePersistRef}
             sessionSnapshotRef={pageStageSessionSnapshotRef}
@@ -3556,6 +3626,7 @@ export function WorkbenchRuntime({
       return null;
     },
     [
+      executeSceneCommand,
       activeProject,
       activeProjectScene,
       activeSearchQuery,
@@ -3567,6 +3638,7 @@ export function WorkbenchRuntime({
       openProjectSceneCanvas,
       openProjectSceneManualSurface,
       openProjectScenePage,
+      presentLibraryTarget,
       sessionCommands.openPageInNewChat,
       sessionCommands.openProjectSessionById,
       sessionCommands.linkPageToChat,
@@ -3584,34 +3656,14 @@ export function WorkbenchRuntime({
       previewSurfacesByPanel,
       refreshProjectSessions,
       searchByProject,
-      sceneNavigator,
       setSearchQuery,
       taskSearchOpenTick,
       togglePageStageHistoryModal,
       rightPanelMotion.animatedSize,
       updateSceneSurfacePresentation,
+      workbenchWindow.owner,
       windowSessionId,
     ],
-  );
-  const closePagesSceneSurfaceRuntime = useCallback(
-    async (surface: WorkbenchSurfaceDescriptor, removeDescriptor: () => void): Promise<void> => {
-      if (surface.kind === "canvas_stage" && pagesSceneKey) {
-        try {
-          await canvasSceneSurfaceRegistry.dispose(
-            makeCanvasSceneSurfaceKey(windowSessionId, pagesSceneKey, surface.id),
-          );
-        } catch {
-          toast.danger("Canvas changes could not be saved locally");
-          return;
-        }
-      }
-      removeDescriptor();
-      if (surface.kind !== "page_stage") return;
-      await documentSessionRegistry.dispose(`library-page:${surface.id}`).catch(() => {
-        toast.danger("Page changes could not be saved locally");
-      });
-    },
-    [pagesSceneKey, windowSessionId],
   );
   const renderPagesSceneSurface = useCallback(
     (
@@ -3621,25 +3673,8 @@ export function WorkbenchRuntime({
       if (!activePagesScene || !pagesSceneOwner || !pagesSceneKey) {
         return null;
       }
-      const previewEntry =
-        listWorkbenchScenePreviewEntries(activePagesScene, previewSurfacesByPanel).find(
-          (entry) => entry.surface.id === surface.id,
-        ) ?? null;
       const removeSurface = () => {
-        if (previewEntry) {
-          sceneNavigator.clearPreview({
-            owner: activePagesScene.owner,
-            panelId: previewEntry.panelId,
-            leafId: previewEntry.leafId,
-            surfaceId: surface.id,
-          });
-          return;
-        }
-        void (async () => {
-          await closePagesSceneSurfaceRuntime(surface, () => {
-            panelControllerRef.current.sceneDurable?.removeSurface(pagesSceneOwner, surface.id);
-          });
-        })();
+        void executeSceneCommand(activePagesScene.owner, { kind: "close_tab", tabId: surface.id });
       };
       const publishTitle = (title: string) => {
         if (surface.titleSnapshot === title) return;
@@ -3656,6 +3691,11 @@ export function WorkbenchRuntime({
         }
         return (
           <WorkbenchDatabaseViewSurface
+            workbenchPresentation={{
+              owner: workbenchWindow.owner,
+              sceneOwner: pagesSceneOwner,
+              surface,
+            }}
             accessContext={surface.config.accessContext}
             target={surface.config.target}
             keyboardSurface={{
@@ -3751,106 +3791,28 @@ export function WorkbenchRuntime({
       );
     },
     [
+      executeSceneCommand,
       activePagesScene,
-      closePagesSceneSurfaceRuntime,
       presentLibraryTarget,
       pagesSceneKey,
       pagesScenePresentedPageIds,
       pagesSceneOwner,
       pageStageCloseRef,
-      previewSurfacesByPanel,
       projects,
-      sceneNavigator,
       sessionCommands.openPageInNewChat,
       sessionCommands.openProjectSessionById,
       sessionCommands.sendPageToChat,
       updateSceneSurfacePresentation,
+      workbenchWindow.owner,
       windowSessionId,
     ],
   );
-  const closeProjectSceneSurfaceRuntime = useCallback(
-    async (surface: WorkbenchSurfaceDescriptor, removeDescriptor: () => void): Promise<void> => {
-      if (!projectSceneKey) return;
-      if (surface.kind === "files") {
-        const saved = await workspaceTextDocumentRegistry.flush(surface.id);
-        if (!saved) {
-          toast.danger("Resolve the file conflict before closing this tab");
-          return;
-        }
-      }
-      if (surface.kind === "canvas_stage") {
-        try {
-          await canvasSceneSurfaceRegistry.dispose(
-            makeCanvasSceneSurfaceKey(windowSessionId, projectSceneKey, surface.id),
-          );
-        } catch {
-          toast.danger("Canvas changes could not be saved locally");
-          return;
-        }
-      }
-      if (surface.kind === "terminal") {
-        terminalSessionStore.release(surface.config.terminalSessionId);
-      }
-      removeDescriptor();
-      if (surface.kind === "page_stage") {
-        await documentSessionRegistry
-          .dispose(makeEditorSurfaceKey(projectSceneKey, surface.id))
-          .catch(() => {
-            toast.danger("Page changes could not be saved locally");
-          });
-      }
-      if (surface.kind === "browser") {
-        try {
-          await invokeBrowserSidebarCommand({
-            type: "close-tab",
-            browserConversationId: projectSceneKey,
-            browserViewScopeId: windowSessionId,
-            browserTabId: surface.config.browserTabId,
-          });
-        } catch {
-          // Browser runtime cleanup is best effort; the durable descriptor still closes.
-        }
-      }
-    },
-    [projectSceneKey, windowSessionId],
-  );
   const closeActiveOwnedScenePanelTab = useCallback(
     async (tabId: string): Promise<void> => {
-      if (!activeOwnedScene || !activeOwnedSceneOwner) return;
-      const previewEntry = listWorkbenchScenePreviewEntries(
-        activeOwnedScene,
-        previewSurfacesByPanel,
-      ).find((entry) => entry.surface.id === tabId);
-      if (previewEntry) {
-        sceneNavigator.clearPreview({
-          owner: activeOwnedSceneOwner,
-          panelId: previewEntry.panelId,
-          leafId: previewEntry.leafId,
-          surfaceId: tabId,
-        });
-        return;
-      }
-      const surface = resolveWorkbenchSceneSurface(activeOwnedScene, tabId);
-      if (!surface) return;
-      const removeDescriptor = () => {
-        panelControllerRef.current.sceneDurable?.removeSurface(activeOwnedSceneOwner, surface.id);
-      };
-      if (activeOwnedSceneOwner.kind === "project") {
-        await closeProjectSceneSurfaceRuntime(surface, removeDescriptor);
-        return;
-      }
-      if (activeOwnedSceneOwner.kind === "pages") {
-        await closePagesSceneSurfaceRuntime(surface, removeDescriptor);
-      }
+      if (!activeOwnedSceneOwner) return;
+      await executeSceneCommand(activeOwnedSceneOwner, { kind: "close_tab", tabId });
     },
-    [
-      activeOwnedScene,
-      activeOwnedSceneOwner,
-      closePagesSceneSurfaceRuntime,
-      closeProjectSceneSurfaceRuntime,
-      previewSurfacesByPanel,
-      sceneNavigator,
-    ],
+    [activeOwnedSceneOwner, executeSceneCommand],
   );
   const projectScenePanels =
     projectScenePresentation && activeProject && panelController.sceneDurable
@@ -3863,7 +3825,7 @@ export function WorkbenchRuntime({
           browserTabSnapshotByKey,
           pageTitleStore,
           commands: panelController.sceneDurable,
-          tabOpenerStore: panelController.tabOpenerStore,
+          executeCommand: executeSceneCommand,
           previewSurfaceIds: projectScenePresentation.previewSurfaceIds,
           isMac: isMacPlatform,
           commandKeymapState,
@@ -3892,17 +3854,8 @@ export function WorkbenchRuntime({
           bottomPanelGlobalHeaderInsetWidth,
           panelTabScrollEndPaddingPx,
           renderSurface: renderProjectSceneSurface,
-          onCloseSurface: closeProjectSceneSurfaceRuntime,
           onFocusGroup: (panelId, leafId) => {
             panelCommands.rememberFocusedPanelGroup(panelId, leafId);
-          },
-          onClearPreview: (panelId, leafId, surfaceId) => {
-            sceneNavigator.clearPreview({
-              owner: projectScenePresentation.scene.owner,
-              panelId,
-              leafId,
-              surfaceId,
-            });
           },
           onPinPreview: (panelId, leafId, surfaceId) => {
             sceneNavigator.pinPreview({
@@ -3998,7 +3951,7 @@ export function WorkbenchRuntime({
           browserTabSnapshotByKey,
           pageTitleStore,
           commands: panelController.sceneDurable,
-          tabOpenerStore: panelController.tabOpenerStore,
+          executeCommand: executeSceneCommand,
           previewSurfaceIds: pagesScenePresentation.previewSurfaceIds,
           isMac: isMacPlatform,
           commandKeymapState,
@@ -4031,17 +3984,8 @@ export function WorkbenchRuntime({
               }}
             />
           ),
-          onCloseSurface: closePagesSceneSurfaceRuntime,
           onFocusGroup: (panelId, leafId) => {
             panelCommands.rememberFocusedPanelGroup(panelId, leafId);
-          },
-          onClearPreview: (panelId, leafId, surfaceId) => {
-            sceneNavigator.clearPreview({
-              owner: pagesScenePresentation.scene.owner,
-              panelId,
-              leafId,
-              surfaceId,
-            });
           },
           onPinPreview: (panelId, leafId, surfaceId) => {
             sceneNavigator.pinPreview({

@@ -1,3 +1,4 @@
+import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -300,6 +301,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
             return true;
           }),
         setRequired: () => Effect.die("unused"),
+        syncCommittedTitle: () => Effect.die("unused"),
       }),
     ),
     Effect.provideService(
@@ -346,6 +348,7 @@ it.effect("commits an exact persistent fork through canonical Session ownership"
             "features.apply_patch_streaming_events": true,
             "features.concurrent_reasoning_summaries": true,
             "features.thread_tools": true,
+            "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name),
           },
         },
         scheduling: {

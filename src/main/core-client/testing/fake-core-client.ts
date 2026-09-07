@@ -16,6 +16,8 @@ import type {
   DatabaseApplyResult,
   DatabaseRead,
   DatabaseReadSnapshot,
+  QueryRead,
+  QueryReadSnapshot,
   DocumentLiveRepair,
   ProjectionLiveRepair,
   LibraryApplyInput,
@@ -188,6 +190,8 @@ export class FakeCoreClient implements CoreClientPort {
     readonly threadId: string;
     readonly contentHash: string;
   }> = [];
+  readonly queryReads: QueryRead[] = [];
+  readonly #queryReadResults: QueryReadSnapshot[] = [];
   readonly databaseReads: DatabaseRead[] = [];
   readonly databaseApplies: DatabaseApplyInput[] = [];
   readonly workspaceReads: ProjectWorkspaceRead[] = [];
@@ -267,6 +271,10 @@ export class FakeCoreClient implements CoreClientPort {
 
   enqueueFileBlobRead(result: ManagedBlobBytes): void {
     this.#fileBlobReadResults.push(result);
+  }
+
+  enqueueQueryRead(result: QueryReadSnapshot): void {
+    this.#queryReadResults.push(result);
   }
 
   enqueueDatabaseRead(result: DatabaseReadSnapshot): void {
@@ -403,6 +411,13 @@ export class FakeCoreClient implements CoreClientPort {
     this.readFileBlobs.push(input);
     const result = this.#fileBlobReadResults.shift();
     if (!result) throw new Error("Fake Core client has no queued File Blob read");
+    return result;
+  }
+
+  async queryRead(read: QueryRead): Promise<QueryReadSnapshot> {
+    this.queryReads.push(read);
+    const result = this.#queryReadResults.shift();
+    if (!result) throw new Error("Fake Core client has no queued Query read");
     return result;
   }
 

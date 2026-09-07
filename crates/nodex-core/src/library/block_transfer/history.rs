@@ -82,7 +82,7 @@ struct Retention {
 pub(super) struct Prepared {
     pub(super) token: LibraryBlockTransferUndoToken,
     pub(super) symmetric: bool,
-    project: String,
+    project: Option<String>,
     library: String,
     payload: history_payload::EncodedPayload,
     roots: Retention,
@@ -126,7 +126,7 @@ pub(super) fn prepare_promotion_restore(
     let mut prepared = prepare(
         operation_id,
         state,
-        &state.undo.project_id,
+        Some(&state.undo.project_id),
         &state.undo.library_id,
         &state.undo.store_epoch,
         roots,
@@ -164,7 +164,7 @@ pub(super) fn prepare_promotion(
     let mut prepared = prepare(
         operation_id,
         recipe,
-        &recipe.project_id,
+        Some(&recipe.project_id),
         &recipe.library_id,
         &recipe.store_epoch,
         promotion_retention(recipe),
@@ -184,7 +184,7 @@ pub(super) fn prepare_relocation(
     prepare(
         operation_id,
         recipe,
-        &recipe.project_id,
+        recipe.project_id.as_deref(),
         &recipe.library_id,
         &recipe.store_epoch,
         relocation_retention(recipe),
@@ -194,7 +194,7 @@ pub(super) fn prepare_relocation(
 fn prepare(
     operation_id: &str,
     recipe: &impl Serialize,
-    project: &str,
+    project: Option<&str>,
     library: &str,
     epoch: &str,
     roots: Retention,
@@ -208,7 +208,7 @@ fn prepare(
             recipe_hash: sha256(json.as_bytes()),
             store_epoch: epoch.to_owned(),
         },
-        project: project.to_owned(),
+        project: project.map(str::to_owned),
         library: library.to_owned(),
         payload: history_payload::prepare_transfer(json),
         roots,
@@ -219,13 +219,13 @@ fn prepare(
 // the original hash: durable receipts continue to carry the original capability.
 fn retention(
     json: &str,
-    project: &str,
+    project: Option<&str>,
     library: &str,
     epoch: &str,
 ) -> Result<Retention, StoreError> {
     if let Ok(recipe) = serde_json::from_str::<BlockTransferUndoRecipeV4>(json) {
         if ![3, BLOCK_TRANSFER_UNDO_RECIPE_VERSION].contains(&recipe.version)
-            || recipe.project_id != project
+            || Some(recipe.project_id.as_str()) != project
             || recipe.library_id != library
             || recipe.store_epoch != epoch
         {
@@ -236,7 +236,7 @@ fn retention(
     if let Ok(recipe) = serde_json::from_str::<PageRelocationUndoRecipeV3>(json)
         && recipe.version == PAGE_RELOCATION_UNDO_RECIPE_VERSION
     {
-        if recipe.project_id != project
+        if recipe.project_id.as_deref() != project
             || recipe.library_id != library
             || recipe.store_epoch != epoch
         {
@@ -247,7 +247,7 @@ fn retention(
     let legacy = serde_json::from_str::<LegacyPageRelocationUndoRecipeV2>(json)
         .map_err(|_| corrupt("Transfer history payload is invalid"))?;
     if legacy.version != 2
-        || legacy.project_id != project
+        || Some(legacy.project_id.as_str()) != project
         || legacy.library_id != library
         || legacy.store_epoch != epoch
     {
@@ -289,7 +289,7 @@ pub(super) fn persist(
         connection,
         &value.transfer_operation_id,
         library,
-        project,
+        project.as_deref(),
         &value.store_epoch,
         &value.recipe_hash,
         payload,
@@ -333,7 +333,7 @@ pub(super) fn read(
     context: &BoundModuleContext,
     library: &str,
     value: &LibraryBlockTransferUndoToken,
-) -> Result<(String, String), StoreError> {
+) -> Result<(String, Option<String>), StoreError> {
     // An untrusted token must not make the import decoder inspect another
     // capability's payload or expose its corruption/consumption state.
     let legacy = connection
@@ -368,8 +368,9 @@ pub(super) fn read(
 
 pub(super) fn consume(
     connection: &Connection,
+    library: &str,
     value: &LibraryBlockTransferUndoToken,
-    project: &str,
+    project: Option<&str>,
     now: &str,
     commit: &local_commit::CommitContext,
 ) -> Result<(), StoreError> {
@@ -381,13 +382,7 @@ pub(super) fn consume(
     if changed != 1 {
         return Err(conflict("Transfer history was already consumed"));
     }
-    local_commit::require_projection_read(
-        connection,
-        commit,
-        nodex_core_contracts::LocalProjectionScope::StructuralHistory {
-            project_id: project.to_owned(),
-        },
-    )?;
+    structural_edit::require_history_projection_read(connection, commit, library, project)?;
     history_owner::release_terminal_recipe(connection, &value.transfer_operation_id)
 }
 
@@ -395,7 +390,7 @@ fn import(connection: &Connection, id: &str) -> Result<(), StoreError> {
     let row = connection.query_row(
         "SELECT project_id, library_id, store_epoch, recipe_hash, recipe_json, consumed_at, created_at \
          FROM block_transfer_undo_recipes WHERE transfer_operation_id = ?1", [id],
-        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
+        |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
             row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, Option<String>>(5)?, row.get::<_, String>(6)?)),
     ).optional()?;
     let Some((project, library, epoch, hash, json, consumed_at, created_at)) = row else {
@@ -409,7 +404,7 @@ fn import(connection: &Connection, id: &str) -> Result<(), StoreError> {
     if sha256(json.as_bytes()) != value.recipe_hash {
         return Err(corrupt("Transfer history payload hash changed"));
     }
-    let roots = retention(&json, &project, &library, &value.store_epoch)?;
+    let roots = retention(&json, project.as_deref(), &library, &value.store_epoch)?;
     persist(
         connection,
         &Prepared {
@@ -465,11 +460,11 @@ mod tests {
             }
         })
         .to_string();
-        let roots = retention(&raw, "project", "library", "epoch").unwrap();
+        let roots = retention(&raw, Some("project"), "library", "epoch").unwrap();
         assert_eq!(roots.blocks, BTreeSet::from(["moved-page".to_owned()]));
         assert_eq!(roots.data_sources, BTreeSet::from(["source".to_owned()]));
         assert!(serde_json::from_str::<PageRelocationUndoRecipeV3>(&raw).is_err());
-        assert!(retention(&raw, "another-project", "library", "epoch").is_err());
+        assert!(retention(&raw, Some("another-project"), "library", "epoch").is_err());
     }
 
     #[test]
@@ -511,7 +506,7 @@ mod tests {
         };
         let relocation = PageRelocationUndoRecipeV3 {
             version: PAGE_RELOCATION_UNDO_RECIPE_VERSION,
-            project_id: "project".into(),
+            project_id: Some("project".into()),
             library_id: "library".into(),
             store_epoch: "epoch".into(),
             page_id: "relocated-page".into(),
@@ -574,14 +569,14 @@ mod tests {
             let metadata = connection.query_row(
                 "SELECT library_id, project_id, store_epoch, recipe_hash, state, consumed_at, created_at \
                  FROM structural_history_recipes WHERE recipe_operation_id = ?1", [&id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?,
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?,
                     row.get::<_, String>(4)?, row.get::<_, Option<String>>(5)?, row.get::<_, String>(6)?)),
             ).unwrap();
             assert_eq!(
                 metadata,
                 (
                     "library".into(),
-                    "project".into(),
+                    Some("project".into()),
                     "epoch".into(),
                     sha256(body.as_bytes()),
                     if index == 0 { "available" } else { "consumed" }.into(),

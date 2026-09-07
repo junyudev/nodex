@@ -10,6 +10,7 @@ import type { CodexServerNotification } from "../codex-runtime/CodexApplicationP
 import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
 import { CodexSubagentDirectory } from "./CodexSubagentDirectory";
 import { CodexTurnAuthority } from "./CodexTurnAuthority";
+import { CodexTurnPresentation } from "./CodexTurnPresentation";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
 export type CodexNotificationAdmissionDecision =
@@ -59,12 +60,14 @@ export const make: Effect.Effect<
   | CodexInternalThreadRegistry
   | CodexSubagentDirectory
   | CodexTurnAuthority
+  | CodexTurnPresentation
   | ConversationEntityMap
   | Scope.Scope
 > = Effect.gen(function* () {
   const internalThreads = yield* CodexInternalThreadRegistry;
   const subagents = yield* CodexSubagentDirectory;
   const authority = yield* CodexTurnAuthority;
+  const presentation = yield* CodexTurnPresentation;
   const conversations = yield* ConversationEntityMap;
   const inheritedBySubagentThreadId = new Map<string, FrozenNodexAgentTurnAuthority>();
 
@@ -137,6 +140,41 @@ export const make: Effect.Effect<
   return CodexNotificationAdmission.of({
     decide: ({ notification, threadId }) =>
       Effect.gen(function* () {
+        if (notification.method === "turn/started") {
+          for (const item of notification.params.turn.items) {
+            if (item.type !== "userMessage") continue;
+            yield* presentation
+              .observeUserMessage(
+                notification.params.threadId,
+                notification.params.turn.id,
+                item.clientId,
+              )
+              .pipe(
+                Effect.catchCause((cause) =>
+                  logAuthorityFailure("bind-started-turn", notification.params.threadId, cause),
+                ),
+              );
+          }
+        }
+        if (
+          notification.method === "item/started" &&
+          notification.params.item.type === "userMessage"
+        ) {
+          yield* presentation
+            .observeUserMessage(
+              notification.params.threadId,
+              notification.params.turnId,
+              notification.params.item.clientId,
+            )
+            .pipe(
+              Effect.catchCause((cause) =>
+                logAuthorityFailure("bind-started-turn", notification.params.threadId, cause),
+              ),
+            );
+        }
+        if (notification.method === "turn/completed") {
+          presentation.finish(notification.params.threadId, notification.params.turn.id);
+        }
         if (notification.method === "turn/started") yield* observeStartedTurn(notification);
         if (notification.method === "thread/started") yield* observeStartedThread(notification);
 

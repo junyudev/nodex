@@ -31,6 +31,34 @@ struct ProjectAuthority {
     primary_database_id: Option<String>,
 }
 
+enum ResourceAuthority {
+    Library,
+    Project {
+        project: ProjectAuthority,
+        grants: Vec<ProjectGrant>,
+    },
+}
+
+fn resource_authority(
+    connection: &Connection,
+    library_id: &str,
+    authority: &ProjectWorkspaceTurnAuthority,
+) -> Result<ResourceAuthority, StoreError> {
+    if authority.scope == ProjectWorkspaceTurnAuthorityScope::Library {
+        return Ok(ResourceAuthority::Library);
+    }
+    let project_id = authority
+        .actor_project_id
+        .as_deref()
+        .ok_or_else(|| unauthorized("Project-scoped authority requires an actor Project"))?;
+    let project = read_project(connection, library_id, project_id)?
+        .ok_or_else(|| unauthorized("Agent Turn Project is unavailable"))?;
+    Ok(ResourceAuthority::Project {
+        project,
+        grants: read_project_grants(connection, project_id)?,
+    })
+}
+
 #[derive(Clone)]
 struct ResourceCoordinates {
     target: AgentAuthorizationTarget,
@@ -81,8 +109,17 @@ pub(super) fn plan(
     }
 
     let authority = &provenance.authority;
-    let project = read_project(connection, library_id, &authority.actor_project_id)?
-        .ok_or_else(|| unauthorized("Agent Turn Project is unavailable"))?;
+    if crate::workspace::turn_is_read_only(connection, &authority.thread_id, &authority.turn_id)?
+        && let Some(intent) = intents
+            .iter()
+            .find(|intent| intent.action != AgentProjectResourceAction::Read)
+    {
+        return Ok(denied(
+            intent,
+            AgentResourceAuthorizationReason::TurnReadOnly,
+        ));
+    }
+    let project = resource_authority(connection, library_id, authority)?;
     let mut requirements = Vec::new();
     let mut uses_task_access = false;
 
@@ -143,14 +180,7 @@ pub(super) fn plan(
                 ));
             }
         };
-        let direct = authorize_resource(
-            connection,
-            authority.scope,
-            &authority.actor_project_id,
-            &project,
-            &coordinates,
-            intent.action,
-        )?;
+        let direct = authorize_resource(&project, &coordinates, intent.action);
         if direct == AgentResourceAuthorizationReason::Allowed {
             continue;
         }
@@ -208,7 +238,10 @@ pub(super) fn plan(
             turn_id: Some(authority.turn_id.clone()),
             call_id: Some(call_id.to_owned()),
             root_thread_id: authority.root_thread_id.clone(),
-            actor_project_id: authority.actor_project_id.clone(),
+            actor_project_id: authority
+                .actor_project_id
+                .clone()
+                .ok_or_else(|| unauthorized("Consent requires an actor Project"))?,
             library_id: authority.library_id.clone(),
             store_epoch: authority.store_epoch.clone(),
             grants: canonicalize_grants(&grants)?,
@@ -225,16 +258,9 @@ pub(crate) fn authorize_execution(
     target: &AgentAuthorizationTarget,
     action: AgentProjectResourceAction,
 ) -> Result<String, StoreError> {
-    validate_execution_transport_context(context, &authorization.provenance)?;
-    validate_id("call_id", &authorization.call_id)?;
-    let authority_fingerprint =
-        validate_persisted_turn_authority(connection, library_id, &authorization.provenance)?;
-    if let Some(overlay) = authorization.resource_access.as_ref() {
-        validate_overlay_shape(overlay)?;
-    }
+    let (authority_fingerprint, project) =
+        validate_execution_authority(connection, context, library_id, authorization, action)?;
     let authority = &authorization.provenance.authority;
-    let project = read_project(connection, library_id, &authority.actor_project_id)?
-        .ok_or_else(|| unauthorized("Agent Turn Project is unavailable"))?;
     if let AgentAuthorizationTarget::Library {
         library_id: target_library_id,
     } = target
@@ -268,43 +294,29 @@ pub(crate) fn authorize_execution(
             "Agent target requires Library resource consent",
         ));
     }
-    let coordinates = match resolve_coordinates(connection, library_id, target)? {
-        CoordinateResolution::Found(coordinates) => coordinates,
-        CoordinateResolution::Missing => {
-            return Err(StoreError::new(
-                StoreErrorCode::NotFound,
-                "Agent target resource was not found",
-                false,
-            ));
-        }
-        CoordinateResolution::Corrupt => {
-            return Err(corrupt("Agent target resource hierarchy is corrupt"));
-        }
-    };
-    let direct = authorize_resource(
+    let reason = resource_execution_access(
         connection,
-        authority.scope,
-        &authority.actor_project_id,
+        library_id,
+        authorization,
         &project,
-        &coordinates,
+        target,
         action,
     )?;
-    let overlay_allowed = authorization
-        .resource_access
-        .as_ref()
-        .is_some_and(|overlay| {
-            overlay_covers_resource(
-                authority,
-                overlay,
-                &coordinates,
-                action,
-                &authorization.call_id,
-            )
-        });
-    if direct == AgentResourceAuthorizationReason::Allowed || overlay_allowed {
+    if reason == AgentResourceAuthorizationReason::Allowed {
         return Ok(authority_fingerprint);
     }
-    Err(unauthorized(match direct {
+    if reason == AgentResourceAuthorizationReason::ResourceNotFound {
+        return Err(StoreError::new(
+            StoreErrorCode::NotFound,
+            "Agent target resource was not found",
+            false,
+        ));
+    }
+    if reason == AgentResourceAuthorizationReason::ResourceHierarchyCorrupt {
+        return Err(corrupt("Agent target resource hierarchy is corrupt"));
+    }
+    Err(unauthorized(match reason {
+        AgentResourceAuthorizationReason::TurnReadOnly => "This Agent Turn permits only reads",
         AgentResourceAuthorizationReason::GrantMissing => {
             "Agent target requires Project resource consent"
         }
@@ -318,14 +330,147 @@ pub(crate) fn authorize_execution(
         AgentResourceAuthorizationReason::LibraryMismatch => {
             "Agent target belongs to another Library"
         }
-        AgentResourceAuthorizationReason::ResourceNotFound => "Agent target resource was not found",
-        AgentResourceAuthorizationReason::ResourceHierarchyCorrupt => {
-            "Agent target resource hierarchy is corrupt"
-        }
         AgentResourceAuthorizationReason::ProjectNotFound => "Agent Turn Project is unavailable",
         AgentResourceAuthorizationReason::AuthorityStale => "Agent Turn authority is stale",
-        AgentResourceAuthorizationReason::Allowed => unreachable!("allowed returned above"),
+        AgentResourceAuthorizationReason::Allowed
+        | AgentResourceAuthorizationReason::ResourceNotFound
+        | AgentResourceAuthorizationReason::ResourceHierarchyCorrupt => {
+            unreachable!("handled above")
+        }
     }))
+}
+
+fn validate_execution_authority(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    authorization: &nodex_core_contracts::agent::AgentExecutionAuthorization,
+    action: AgentProjectResourceAction,
+) -> Result<(String, ResourceAuthority), StoreError> {
+    validate_execution_transport_context(context, &authorization.provenance)?;
+    validate_id("call_id", &authorization.call_id)?;
+    let authority_fingerprint =
+        validate_persisted_turn_authority(connection, library_id, &authorization.provenance)?;
+    if let Some(overlay) = authorization.resource_access.as_ref() {
+        validate_overlay_shape(overlay)?;
+    }
+    let authority = &authorization.provenance.authority;
+    if action != AgentProjectResourceAction::Read
+        && crate::workspace::turn_is_read_only(
+            connection,
+            &authority.thread_id,
+            &authority.turn_id,
+        )?
+    {
+        return Err(unauthorized("This Agent Turn permits only reads"));
+    }
+    let project = resource_authority(connection, library_id, authority)?;
+    Ok((authority_fingerprint, project))
+}
+
+fn resource_execution_access(
+    connection: &Connection,
+    library_id: &str,
+    authorization: &nodex_core_contracts::agent::AgentExecutionAuthorization,
+    project: &ResourceAuthority,
+    target: &AgentAuthorizationTarget,
+    action: AgentProjectResourceAction,
+) -> Result<AgentResourceAuthorizationReason, StoreError> {
+    let authority = &authorization.provenance.authority;
+    let coordinates = match resolve_coordinates(connection, library_id, target)? {
+        CoordinateResolution::Found(coordinates) => coordinates,
+        CoordinateResolution::Missing => {
+            return Ok(AgentResourceAuthorizationReason::ResourceNotFound);
+        }
+        CoordinateResolution::Corrupt => {
+            return Ok(AgentResourceAuthorizationReason::ResourceHierarchyCorrupt);
+        }
+    };
+    let direct = authorize_resource(project, &coordinates, action);
+    let overlay_allowed = authorization
+        .resource_access
+        .as_ref()
+        .is_some_and(|overlay| {
+            overlay_covers_resource(
+                authority,
+                overlay,
+                &coordinates,
+                action,
+                &authorization.call_id,
+            )
+        });
+    if direct == AgentResourceAuthorizationReason::Allowed || overlay_allowed {
+        return Ok(AgentResourceAuthorizationReason::Allowed);
+    }
+    Ok(direct)
+}
+
+pub(super) fn validate_metadata_read_authority(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    authorization: &nodex_core_contracts::agent::AgentExecutionAuthorization,
+) -> Result<(), StoreError> {
+    validate_execution_authority(
+        connection,
+        context,
+        library_id,
+        authorization,
+        AgentProjectResourceAction::Read,
+    )?;
+    Ok(())
+}
+
+/// Classify metadata access without returning consent targets or inspection grants.
+pub(super) fn metadata_read_access(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    authorization: &nodex_core_contracts::agent::AgentExecutionAuthorization,
+    target: &AgentAuthorizationTarget,
+) -> Result<AgentResourceAuthorizationReason, StoreError> {
+    let (_, project) = validate_execution_authority(
+        connection,
+        context,
+        library_id,
+        authorization,
+        AgentProjectResourceAction::Read,
+    )?;
+    resource_execution_access(
+        connection,
+        library_id,
+        authorization,
+        &project,
+        target,
+        AgentProjectResourceAction::Read,
+    )
+}
+
+/// Standalone Canvases use existing Project grants; they have no Page consent overlay.
+pub(super) fn standalone_canvas_metadata_read_allowed(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    authorization: &nodex_core_contracts::agent::AgentExecutionAuthorization,
+    canvas_id: &str,
+) -> Result<bool, StoreError> {
+    validate_metadata_read_authority(connection, context, library_id, authorization)?;
+    if authorization.provenance.authority.scope == ProjectWorkspaceTurnAuthorityScope::Library {
+        return Ok(true);
+    }
+    Ok(super::canvas_grant_authorization_proof(
+        connection,
+        library_id,
+        authorization
+            .provenance
+            .authority
+            .actor_project_id
+            .as_deref()
+            .ok_or_else(|| unauthorized("Canvas Project grants require an actor Project"))?,
+        canvas_id,
+        false,
+    )?
+    .is_some())
 }
 
 pub(crate) fn authorized_page_ids(
@@ -342,22 +487,14 @@ pub(crate) fn authorized_page_ids(
         validate_overlay_shape(overlay)?;
     }
     let authority = &authorization.provenance.authority;
-    let project = read_project(connection, library_id, &authority.actor_project_id)?
-        .ok_or_else(|| unauthorized("Agent Turn Project is unavailable"))?;
-    let grants = read_project_grants(connection, &authority.actor_project_id)?;
+    let project = resource_authority(connection, library_id, authority)?;
     let coordinates = page_coordinates_batch(connection, library_id, page_ids)?;
     let mut authorized = HashSet::new();
     for page_id in page_ids {
         let Some(coordinates) = coordinates.get(page_id) else {
             continue;
         };
-        let direct = authorize_resource_with_grants(
-            authority.scope,
-            &project,
-            coordinates,
-            AgentProjectResourceAction::Read,
-            &grants,
-        );
+        let direct = authorize_resource(&project, coordinates, AgentProjectResourceAction::Read);
         let overlay_allowed = authorization
             .resource_access
             .as_ref()
@@ -391,7 +528,7 @@ pub(super) fn validate_transport_context(
             .project_id
             .as_ref()
             .map(|project| project.0.as_str())
-            == Some(authority.actor_project_id.as_str())
+            == authority.actor_project_id.as_deref()
         && !context.connection_id.is_empty()
         && context.connection_id.len() <= MAX_ID_BYTES;
     if valid {
@@ -416,7 +553,7 @@ fn validate_execution_transport_context(
             .project_id
             .as_ref()
             .map(|project| project.0.as_str())
-            == Some(authority.actor_project_id.as_str())
+            == authority.actor_project_id.as_deref()
         && !context.connection_id.is_empty()
         && context.connection_id.len() <= MAX_ID_BYTES;
     if valid {
@@ -480,7 +617,11 @@ pub(super) fn persist_project_grants(
     if grants.is_empty() {
         return Err(invalid("Agent Project grant batch cannot be empty"));
     }
-    let project_id = provenance.authority.actor_project_id.as_str();
+    let project_id = provenance
+        .authority
+        .actor_project_id
+        .as_deref()
+        .ok_or_else(|| unauthorized("Persistent grants require an actor Project"))?;
     let project = read_project(connection, library_id, project_id)?
         .ok_or_else(|| unauthorized("Agent Turn Project is unavailable"))?;
     if project.lifecycle != "active" {
@@ -622,7 +763,7 @@ pub(super) fn persist_project_grants(
                     page_file_entries: Vec::new(),
                     file_revisions: BTreeMap::new(),
                     file_mutation: Default::default(),
-                    project_id: project_id.to_owned(),
+                    project_id: Some(project_id.to_owned()),
                     operation_kind: "persist_agent_project_resource_grants",
                     change_kind: "library.changed",
                     did_mutate,
@@ -932,33 +1073,13 @@ fn page_hierarchy(
 }
 
 fn authorize_resource(
-    connection: &Connection,
-    scope: ProjectWorkspaceTurnAuthorityScope,
-    project_id: &str,
-    project: &ProjectAuthority,
+    authority: &ResourceAuthority,
     coordinates: &ResourceCoordinates,
     action: AgentProjectResourceAction,
-) -> Result<AgentResourceAuthorizationReason, StoreError> {
-    let grants = read_project_grants(connection, project_id)?;
-    Ok(authorize_resource_with_grants(
-        scope,
-        project,
-        coordinates,
-        action,
-        &grants,
-    ))
-}
-
-fn authorize_resource_with_grants(
-    scope: ProjectWorkspaceTurnAuthorityScope,
-    project: &ProjectAuthority,
-    coordinates: &ResourceCoordinates,
-    action: AgentProjectResourceAction,
-    grants: &[ProjectGrant],
 ) -> AgentResourceAuthorizationReason {
-    if scope == ProjectWorkspaceTurnAuthorityScope::Library {
+    let ResourceAuthority::Project { project, grants } = authority else {
         return AgentResourceAuthorizationReason::Allowed;
-    }
+    };
     let implicit = project
         .primary_database_id
         .as_ref()
@@ -1181,7 +1302,7 @@ fn overlay_identity_matches(
     call_id: &str,
 ) -> bool {
     if overlay.kind != AgentResourceAccessOverlayKind::Consent
-        || overlay.actor_project_id != authority.actor_project_id
+        || Some(overlay.actor_project_id.as_str()) != authority.actor_project_id.as_deref()
         || overlay.library_id != authority.library_id
         || overlay.store_epoch != authority.store_epoch
         || overlay.root_thread_id != authority.root_thread_id

@@ -81,12 +81,12 @@ const userInputParams = (threadId: string) => ({
   turnId: `turn-${threadId}`,
 });
 
-const directCodexAppParams = (threadId: string) => ({
+const directDynamicToolParams = (threadId: string) => ({
   threadId,
   turnId: `turn-${threadId}`,
   callId: `call-${threadId}`,
-  namespace: "codex_app",
-  tool: "setup_codex_step",
+  namespace: "example_app",
+  tool: "example_step",
   arguments: { step: "complete" },
 });
 
@@ -98,6 +98,8 @@ const withProtocol = <A, E>(
     readonly appliedThreadStartedTurns: (readonly unknown[])[];
     readonly appliedTurnStartedItems: (readonly unknown[])[];
     readonly protocol: CodexApplicationProtocol["Service"];
+    readonly executedDynamicTools: string[];
+    readonly forwardedRequests: unknown[];
     readonly threadStarts: ThreadCreationRuntime["Service"];
     readonly autoResolution: CodexUserInputAutoResolution["Service"];
   }) => Effect.Effect<A, E>,
@@ -137,18 +139,26 @@ const withProtocol = <A, E>(
     const automationInbox = CodexAutomationInbox.of({
       create: () => Effect.succeed({ items: [] }),
     });
+    const executedDynamicTools: string[] = [];
+    const forwardedRequests: unknown[] = [];
     const nodexAgentTools = NodexAgentProtocolTools.of({
       execute: (params) =>
-        Effect.succeed({
-          success: true,
-          contentItems: [{ type: "inputText", text: params.tool }],
+        Effect.sync(() => {
+          executedDynamicTools.push(`nodex:${params.tool}`);
+          return {
+            success: true,
+            contentItems: [{ type: "inputText" as const, text: params.tool }],
+          };
         }),
     });
     const codexAppTools = CodexAppProtocolTools.of({
       execute: (params) =>
-        Effect.succeed({
-          success: true,
-          contentItems: [{ type: "inputText", text: params.tool }],
+        Effect.sync(() => {
+          executedDynamicTools.push(`app:${params.tool}`);
+          return {
+            success: true,
+            contentItems: [{ type: "inputText" as const, text: params.tool }],
+          };
         }),
       respond: () => Effect.succeed(null),
     });
@@ -196,7 +206,13 @@ const withProtocol = <A, E>(
       Effect.provideService(CodexOneShotServerRequests, oneShot),
       Effect.provideService(CodexPendingServerRequestRuntime, pending),
       Effect.provideService(CodexProtocolNotificationEffects, notificationEffects),
-      Effect.provideService(CodexRendererConversationCoordinator, coordinator),
+      Effect.provideService(CodexRendererConversationCoordinator, {
+        ...coordinator,
+        forwardServerRequest: (request) => {
+          forwardedRequests.push(request);
+          return false;
+        },
+      }),
       Effect.provideService(CodexRendererConversationRegistry, rendererRegistry),
       Effect.provideService(ThreadCreationRuntime, threadStarts),
       Effect.provideService(CodexUserInputAutoResolution, autoResolution),
@@ -226,6 +242,8 @@ const withProtocol = <A, E>(
       inbox,
       conversations,
       protocol,
+      executedDynamicTools,
+      forwardedRequests,
       threadStarts,
     }).pipe(Effect.provideService(Scope.Scope, rootScope));
     yield* Scope.close(rootScope, Exit.void);
@@ -398,8 +416,14 @@ it.effect("retires the exact Conversation Entity after a terminal notification c
   ),
 );
 
-it.effect("settles Nodex Agent calls directly from the protocol command lane", () =>
-  withProtocol(({ inbox }) =>
+it.effect.each([
+  { namespace: "nodex_app", tool: "get_context", message: /native MCP/ },
+  { namespace: "codex_app", tool: "create_thread", message: /native MCP/ },
+  { namespace: "codex_app", tool: "automation_update", message: /native MCP/ },
+  { namespace: "codex_app", tool: "read_thread_terminal", message: /native MCP/ },
+  { namespace: "codex_app", tool: "setup_codex_step", message: /unavailable/ },
+])("rejects retired local $namespace.$tool before dispatch or renderer storage", (input) =>
+  withProtocol(({ inbox, conversations, executedDynamicTools, forwardedRequests }) =>
     Effect.gen(function* () {
       const generationScope = yield* Scope.make();
       const generation = yield* inbox
@@ -407,15 +431,15 @@ it.effect("settles Nodex Agent calls directly from the protocol command lane", (
         .pipe(Effect.provideService(Scope.Scope, generationScope));
       const settled = yield* generation.settlements.pipe(Stream.runHead, Effect.forkChild);
       yield* generation.admit({
-        requestId: "nodex-call",
+        requestId: "retired-call",
         protocol: "generated",
         method: "item/tool/call",
         params: {
           threadId: "thread-a",
           turnId: "turn-a",
           callId: "call-a",
-          namespace: "nodex_app",
-          tool: "get_context",
+          namespace: input.namespace,
+          tool: input.tool,
           arguments: {},
         },
       });
@@ -423,14 +447,17 @@ it.effect("settles Nodex Agent calls directly from the protocol command lane", (
       const settlement = yield* Fiber.join(settled);
       assert.strictEqual(settlement._tag, "Some");
       if (settlement._tag === "Some") {
-        assert.deepEqual(settlement.value.outcome, {
-          kind: "result",
-          value: {
-            success: true,
-            contentItems: [{ type: "inputText", text: "get_context" }],
-          },
-        });
+        const outcome = settlement.value.outcome;
+        assert.strictEqual(outcome.kind, "result");
+        if (outcome.kind === "result") {
+          const result = outcome.value as { success: boolean; contentItems: { text: string }[] };
+          assert.isFalse(result.success);
+          assert.match(result.contentItems[0]!.text, input.message);
+        }
       }
+      assert.deepEqual(executedDynamicTools, []);
+      assert.deepEqual(forwardedRequests, []);
+      assert.deepEqual(conversations.entity("thread-a").readServerRequests(), []);
       yield* Scope.close(generationScope, Exit.void);
     }),
   ),
@@ -469,7 +496,7 @@ it.effect("lets another Thread respond while the first Thread command lane is oc
         requestId: "fast",
         protocol: "generated",
         method: "item/tool/call",
-        params: directCodexAppParams("thread-b"),
+        params: directDynamicToolParams("thread-b"),
       });
 
       const response = yield* Fiber.join(responseFiber);
@@ -479,7 +506,7 @@ it.effect("lets another Thread respond while the first Thread command lane is oc
           kind: "result",
           value: {
             success: true,
-            contentItems: [{ type: "inputText", text: "setup_codex_step" }],
+            contentItems: [{ type: "inputText", text: "example_step" }],
           },
         });
       }

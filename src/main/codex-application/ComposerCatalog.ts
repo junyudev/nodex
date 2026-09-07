@@ -51,6 +51,27 @@ export type ComposerCatalogError =
   | ComposerCatalogInputError
   | ComposerCatalogProjectionError;
 
+export type PluginRemovalResult =
+  | { readonly status: "uninstalled" | "still_installed"; readonly pluginId: string }
+  | {
+      readonly status:
+        | "not_installed"
+        | "protected"
+        | "cancelled"
+        | "inventory_unavailable"
+        | "outcome_unavailable";
+    }
+  | {
+      readonly status: "selection_required";
+      readonly candidates: readonly { readonly pluginId: string; readonly name: string }[];
+    };
+
+const managedDesktopPlugins = new Set([
+  "browser@openai-bundled",
+  "chrome@openai-bundled",
+  "computer-use@openai-bundled",
+]);
+
 export class ComposerCatalog extends Context.Service<
   ComposerCatalog,
   {
@@ -69,6 +90,11 @@ export class ComposerCatalog extends Context.Service<
     readonly activatePlugin: (
       input: CodexComposerPluginActivateInput,
     ) => Effect.Effect<void, ComposerCatalogError>;
+    readonly uninstallPlugin: (input: {
+      readonly plugin: string;
+      readonly cwds: readonly string[];
+      readonly isCurrent: Effect.Effect<boolean>;
+    }) => Effect.Effect<PluginRemovalResult, ComposerCatalogError>;
     readonly listSkills: (
       cwds: readonly string[],
     ) => Effect.Effect<readonly CodexComposerSkill[], ComposerCatalogError>;
@@ -204,6 +230,59 @@ export const live: Layer.Layer<ComposerCatalog, never, CodexGateway> = Layer.eff
     });
 
     return ComposerCatalog.of({
+      uninstallPlugin: Effect.fn("ComposerCatalog.uninstallPlugin")(
+        function* (input): Effect.fn.Return<PluginRemovalResult, ComposerCatalogError> {
+          yield* awaitReady;
+          if (!(yield* input.isCurrent)) return { status: "cancelled" };
+          const query = input.plugin.trim();
+          if (!query)
+            return yield* new ComposerCatalogInputError({
+              message: "Plugin name or ID is required",
+            });
+          const cwds = normalizeCwds(input.cwds);
+          const inventory = yield* readInstalled(cwds);
+          if ((inventory.marketplaceLoadErrors?.length ?? 0) > 0)
+            return { status: "inventory_unavailable" };
+          const plugins = [
+            ...new Map(
+              inventory.marketplaces.flatMap((marketplace) =>
+                marketplace.plugins
+                  .filter((plugin) => plugin.installed)
+                  .map((plugin) => [plugin.id, plugin] as const),
+              ),
+            ).values(),
+          ];
+          const exact = plugins.find((plugin) => plugin.id === query);
+          const matches = exact
+            ? [exact]
+            : plugins.filter(
+                (plugin) =>
+                  plugin.name.toLowerCase() === query.toLowerCase() ||
+                  plugin.interface?.displayName?.toLowerCase() === query.toLowerCase(),
+              );
+          if (!(yield* input.isCurrent)) return { status: "cancelled" };
+          if (matches.length === 0) return { status: "not_installed" };
+          if (matches.length > 1)
+            return {
+              status: "selection_required",
+              candidates: matches.map((plugin) => ({
+                pluginId: plugin.id,
+                name: plugin.interface?.displayName ?? plugin.name,
+              })),
+            };
+          const pluginId = matches[0]!.id;
+          // These plugins are acquired by the Desktop Host and reconciled on launch.
+          if (managedDesktopPlugins.has(pluginId)) return { status: "protected" };
+          yield* gateway.requestLocal("plugin/uninstall", { pluginId });
+          const refreshed = yield* readInstalled(cwds);
+          if ((refreshed.marketplaceLoadErrors?.length ?? 0) > 0)
+            return { status: "outcome_unavailable" };
+          const remains = refreshed.marketplaces.some((marketplace) =>
+            marketplace.plugins.some((plugin) => plugin.id === pluginId && plugin.installed),
+          );
+          return { status: remains ? "still_installed" : "uninstalled", pluginId };
+        },
+      ),
       listModels: listModels(),
       listExperimentalFeatures: Effect.gen(function* () {
         yield* awaitReady;

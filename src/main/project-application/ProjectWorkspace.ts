@@ -52,6 +52,8 @@ import type {
   ProjectSessionReorderCommandInput,
   ProjectSessionUnreadCommandInput,
   ProjectSessionUpdateCommandInput,
+  BuiltinSidebarReorderCommandInput,
+  BuiltinSidebarProjectPriorityCommandInput,
   SidebarSectionCreateCommandInput,
   SidebarSectionDeleteCommandInput,
   SidebarSectionMoveItemCommandInput,
@@ -61,8 +63,11 @@ import type {
   SidebarSectionSessionCreateCommandInput,
   SidebarSectionSessionsArchiveCommandInput,
   SidebarSectionSessionsReorderCommandInput,
+  SidebarSectionItemsReorderCommandInput,
 } from "../../shared/workspace-catalog-commands";
 import type {
+  BuiltinSidebarLane,
+  BuiltinSidebarOrderWindow,
   SidebarSectionItemPlacement,
   SidebarSectionItemRef,
   SidebarSectionItemWindow,
@@ -208,6 +213,16 @@ export interface ProjectWorkspaceService {
   readonly setProjectLifecycle: (
     command: ProjectLifecycleCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<Project>>;
+  readonly listBuiltinSidebarOrder: (
+    lane: BuiltinSidebarLane,
+    input?: Pick<SidebarSectionWindowInput, "after" | "first">,
+  ) => ProjectWorkspaceEffect<BuiltinSidebarOrderWindow>;
+  readonly reorderBuiltinSidebarItems: (
+    command: BuiltinSidebarReorderCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
+  readonly prioritizeBuiltinSidebarProjects: (
+    command: BuiltinSidebarProjectPriorityCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly listSidebarSections: (
     input?: SidebarSectionWindowInput,
   ) => ProjectWorkspaceEffect<SidebarSectionWindow>;
@@ -235,6 +250,9 @@ export interface ProjectWorkspaceService {
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly reorderSidebarSections: (
     command: SidebarSectionReorderCommandInput,
+  ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
+  readonly reorderSidebarSectionItems: (
+    command: SidebarSectionItemsReorderCommandInput,
   ) => ProjectWorkspaceEffect<ProjectWorkspaceCommandResult<void>>;
   readonly reorderSidebarSectionSessions: (
     command: SidebarSectionSessionsReorderCommandInput,
@@ -643,6 +661,57 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       });
     });
 
+    const listBuiltinSidebarOrder = Effect.fn("ProjectWorkspace.listBuiltinSidebarOrder")(
+      function* (
+        lane: BuiltinSidebarLane,
+        input: Pick<SidebarSectionWindowInput, "after" | "first"> = {},
+      ) {
+        const snapshot = yield* read("sidebar.builtin-order.window", {
+          kind: "builtin_sidebar_order",
+          lane,
+          window: { after: input.after ?? null, first: input.first ?? 100 },
+        });
+        return yield* evaluate("sidebar.builtin-order.window", () => {
+          const { items, order_revision } = expectVariant(snapshot, "builtin_sidebar_order");
+          return {
+            orderRevision: order_revision,
+            items: items.items.map(({ item, title }) =>
+              item.kind === "project"
+                ? { kind: item.kind, projectId: item.project_id, title }
+                : { kind: item.kind, sessionId: item.session_id, title },
+            ),
+            nextCursor: items.next_cursor ?? null,
+            hasMore: items.next_cursor != null,
+            projectionRevision: items.authority.projection_revision,
+          } satisfies BuiltinSidebarOrderWindow;
+        });
+      },
+    );
+
+    const reorderBuiltinSidebarItems = Effect.fn("ProjectWorkspace.reorderBuiltinSidebarItems")(
+      function* (command: BuiltinSidebarReorderCommandInput) {
+        const applied = yield* applyWithId("sidebar.builtin-order.reorder", command.operationId, {
+          kind: "reorder_builtin_sidebar_items",
+          lane: command.payload.lane,
+          expected_order_revision: command.payload.expectedOrderRevision,
+          item_ids: [...command.payload.itemIds],
+        });
+        return { value: undefined, apply: applied };
+      },
+    );
+
+    const prioritizeBuiltinSidebarProjects = Effect.fn(
+      "ProjectWorkspace.prioritizeBuiltinSidebarProjects",
+    )(function* (command: BuiltinSidebarProjectPriorityCommandInput) {
+      const applied = yield* applyWithId("sidebar.projects.prioritize", command.operationId, {
+        kind: "prioritize_builtin_sidebar_projects",
+        lane: command.payload.lane,
+        expected_order_revision: command.payload.expectedOrderRevision,
+        project_ids: [...command.payload.projectIds],
+      });
+      return { value: undefined, apply: applied };
+    });
+
     const listSidebarSections = Effect.fn("ProjectWorkspace.listSidebarSections")(function* (
       input: SidebarSectionWindowInput = {},
     ) {
@@ -812,6 +881,21 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       });
       return { value: undefined, apply: applied };
     });
+
+    const reorderSidebarSectionItems = Effect.fn("ProjectWorkspace.reorderSidebarSectionItems")(
+      function* (command: SidebarSectionItemsReorderCommandInput) {
+        const applied = yield* applyWithId("sidebar-section.items.reorder", command.operationId, {
+          kind: "reorder_sidebar_section_items",
+          section_id: command.payload.sectionId,
+          items: command.payload.items.map((item) => ({
+            placement_id: item.placementId,
+            expected_revision: item.expectedRevision,
+            expected_rank_key: item.expectedRankKey,
+          })),
+        });
+        return { value: undefined, apply: applied };
+      },
+    );
 
     const reorderSidebarSectionSessions = Effect.fn(
       "ProjectWorkspace.reorderSidebarSectionSessions",
@@ -1332,6 +1416,9 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       readProjectBootstrap,
       listProjects,
       listProjectWindow,
+      listBuiltinSidebarOrder,
+      reorderBuiltinSidebarItems,
+      prioritizeBuiltinSidebarProjects,
       listSidebarSections,
       listSidebarSectionItems,
       readSidebarSectionPlacement,
@@ -1342,6 +1429,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
       moveSidebarSectionItem,
       reorderSidebarSections,
       reorderSidebarSectionSessions,
+      reorderSidebarSectionItems,
       archiveSidebarSectionSessions,
       createSessionInSidebarSection,
       readProjectActivitySummaries,

@@ -40,7 +40,7 @@ export class AutomationRoutingIndexError extends Schema.TaggedError<AutomationRo
 
 interface AutomationRoutingState {
   readonly accepting: boolean;
-  readonly activeHeartbeatByThreadId: ReadonlyMap<string, string>;
+  readonly activeHeartbeatBySessionId: ReadonlyMap<string, string>;
   readonly completedRefresh: number;
   readonly mutationRevision: number;
   readonly requestedRefresh: number;
@@ -54,14 +54,14 @@ export class AutomationRoutingIndex extends Context.Service<
     readonly commit: (input: AutomationRoutingCommit) => void;
     /** Rebuilds the complete routing projection from canonical Core state. */
     readonly synchronize: Effect.Effect<void, CoreRuntimeError | AutomationRoutingIndexError>;
-    readonly activeHeartbeatAutomationId: (threadId: string) => string | null;
+    readonly activeHeartbeatAutomationId: (sessionId: string) => string | null;
     readonly runAutomationId: (threadId: string) => string | null;
   }
 >()("nodex/main/core-runtime/AutomationRoutingIndex") {}
 
 const emptyState = (): AutomationRoutingState => ({
   accepting: true,
-  activeHeartbeatByThreadId: new Map(),
+  activeHeartbeatBySessionId: new Map(),
   completedRefresh: 0,
   mutationRevision: 0,
   requestedRefresh: 0,
@@ -76,11 +76,11 @@ const definitionIndex = (
     if (
       definition.kind !== "heartbeat" ||
       definition.status !== "ACTIVE" ||
-      !definition.target_thread_id
+      !definition.target_session_id
     ) {
       continue;
     }
-    index.set(definition.target_thread_id, definition.automation_id);
+    index.set(definition.target_session_id, definition.automation_id);
   }
   return index;
 };
@@ -94,26 +94,26 @@ const applyCommit = (
 ): AutomationRoutingState => {
   if (!state.accepting) return state;
 
-  const activeHeartbeatByThreadId = new Map(state.activeHeartbeatByThreadId);
+  const activeHeartbeatBySessionId = new Map(state.activeHeartbeatBySessionId);
   const runAutomationByThreadId = new Map(state.runAutomationByThreadId);
   const definitionChanges = input.definitions;
   const runChanges = input.runs;
 
   for (const automationId of definitionChanges?.removeIds ?? []) {
-    for (const [threadId, indexedAutomationId] of activeHeartbeatByThreadId) {
-      if (indexedAutomationId === automationId) activeHeartbeatByThreadId.delete(threadId);
+    for (const [sessionId, indexedAutomationId] of activeHeartbeatBySessionId) {
+      if (indexedAutomationId === automationId) activeHeartbeatBySessionId.delete(sessionId);
     }
   }
   for (const definition of definitionChanges?.upsert ?? []) {
-    for (const [threadId, automationId] of activeHeartbeatByThreadId) {
-      if (automationId === definition.automation_id) activeHeartbeatByThreadId.delete(threadId);
+    for (const [sessionId, automationId] of activeHeartbeatBySessionId) {
+      if (automationId === definition.automation_id) activeHeartbeatBySessionId.delete(sessionId);
     }
     if (
       definition.kind === "heartbeat" &&
       definition.status === "ACTIVE" &&
-      definition.target_thread_id
+      definition.target_session_id
     ) {
-      activeHeartbeatByThreadId.set(definition.target_thread_id, definition.automation_id);
+      activeHeartbeatBySessionId.set(definition.target_session_id, definition.automation_id);
     }
   }
 
@@ -126,7 +126,7 @@ const applyCommit = (
 
   return {
     ...state,
-    activeHeartbeatByThreadId,
+    activeHeartbeatBySessionId,
     mutationRevision: state.mutationRevision + 1,
     runAutomationByThreadId,
   };
@@ -234,7 +234,7 @@ export const live: Layer.Layer<AutomationRoutingIndex, never, CoreModules> = Lay
               committed = true;
               return {
                 ...current,
-                activeHeartbeatByThreadId: definitionIndex(definitions),
+                activeHeartbeatBySessionId: definitionIndex(definitions),
                 completedRefresh: refreshRevision,
                 runAutomationByThreadId: runIndex(runs),
               };
@@ -251,15 +251,15 @@ export const live: Layer.Layer<AutomationRoutingIndex, never, CoreModules> = Lay
         MutableRef.set(state, {
           ...MutableRef.get(state),
           accepting: false,
-          activeHeartbeatByThreadId: new Map(),
+          activeHeartbeatBySessionId: new Map(),
           runAutomationByThreadId: new Map(),
         });
       }),
     );
 
     return AutomationRoutingIndex.of({
-      activeHeartbeatAutomationId: (threadId) =>
-        MutableRef.get(state).activeHeartbeatByThreadId.get(threadId) ?? null,
+      activeHeartbeatAutomationId: (sessionId) =>
+        MutableRef.get(state).activeHeartbeatBySessionId.get(sessionId) ?? null,
       commit: (input) => MutableRef.update(state, (current) => applyCommit(current, input)),
       runAutomationId: (threadId) =>
         MutableRef.get(state).runAutomationByThreadId.get(threadId) ?? null,

@@ -445,7 +445,7 @@ fn retire_moved_document(
                 .collect::<Vec<_>>();
         commits.push(persist_prepared_update(
             connection,
-            &recipe.project_id,
+            Some(&recipe.project_id),
             &parent.authority,
             &parent.base_materialization,
             &mut parent.engine,
@@ -931,7 +931,7 @@ fn remove_restored_source(
         .collect::<Vec<_>>();
     let persisted = persist_prepared_update(
         connection,
-        &recipe.project_id,
+        Some(&recipe.project_id),
         &parent.authority,
         &parent.base_materialization,
         &mut parent.engine,
@@ -1084,7 +1084,7 @@ fn restore_moved_document(
         .collect::<Vec<_>>();
     persist_prepared_update(
         connection,
-        &recipe.project_id,
+        Some(&recipe.project_id),
         &parent.authority,
         &parent.base_materialization,
         &mut parent.engine,
@@ -1221,7 +1221,7 @@ pub(super) fn restore(
                 page_file_entries: Vec::new(),
                 file_revisions: BTreeMap::new(),
                 file_mutation: Default::default(),
-                project_id: state.undo.project_id.clone(),
+                project_id: Some(state.undo.project_id.clone()),
                 operation_kind: "reverse_structural_edit",
                 change_kind: "block_mutation",
                 did_mutate: true,
@@ -1277,12 +1277,13 @@ pub(super) fn restore(
                 history::persist(connection, &prepared, &now)?;
                 history::consume(
                     connection,
+                    library_id,
                     &LibraryBlockTransferUndoToken {
                         transfer_operation_id: token.recipe_operation_id.clone(),
                         recipe_hash: token.recipe_hash.clone(),
                         store_epoch: token.store_epoch.clone(),
                     },
-                    &state.undo.project_id,
+                    Some(&state.undo.project_id),
                     &now,
                     scope.evidence(),
                 )

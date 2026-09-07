@@ -210,6 +210,11 @@ same compound selection; scalar draft defaults are fallback only when no profile
 was selected. Main revalidates a selected profile against the live model
 catalog and rejects a mismatched Thread-start response before linking the Thread
 or admitting its first Turn.
+Managed-worktree setup preserves an explicitly selected model through queuing
+and uses it for both Thread creation and the first Turn. Without a compound
+profile, omitted settings continue to use the runtime defaults.
+An explicit launch title is set before the first Turn. Omitting the title keeps
+automatic naming available.
 
 Fast Mode is a global preference with the focused contract in
 [Codex Fast Mode Core Enablement](codex-fast-mode-core-enablement.md). Codex

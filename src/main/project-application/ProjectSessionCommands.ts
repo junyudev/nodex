@@ -2,7 +2,9 @@ import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as RcMap from "effect/RcMap";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
 import { normalizeCodexManualThreadTitle } from "../../shared/codex-thread-title";
 import type { ProjectSession } from "../../shared/types";
@@ -17,6 +19,7 @@ import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { CodexSidebarSectionSync } from "../codex-application/CodexSidebarSectionSync";
 import { CodexThreadTitlePersistence } from "../codex-application/CodexThreadTitlePersistence";
 import { ConversationCommands } from "../codex-application/ConversationCommands";
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { ProjectWorkspace, type ProjectWorkspaceCommandResult } from "./ProjectWorkspace";
 
 type SessionResult<Value> = Effect.Effect<Value, ProjectSessionCommandsError>;
@@ -38,6 +41,7 @@ export class ProjectSessionCommandsError extends Schema.TaggedError<ProjectSessi
       "set-pinned",
     ]),
     cause: Schema.Defect(),
+    committedOperationId: Schema.optionalKey(Schema.String),
   },
 ) {}
 
@@ -80,6 +84,15 @@ export const live: Layer.Layer<
     const sections = yield* CodexSidebarSectionSync;
     const threadTitles = yield* CodexThreadTitlePersistence;
     const workspace = yield* ProjectWorkspace;
+    const lanes = yield* RcMap.make({ lookup: (_sessionId: string) => Semaphore.make(1) });
+
+    const runSerial = <Value>(sessionId: string, operation: SessionResult<Value>) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const lane = yield* RcMap.get(lanes, sessionId);
+          return yield* lane.withPermit(operation);
+        }),
+      );
 
     const attempt = <Value>(
       operation: ProjectSessionCommandsError["operation"],
@@ -90,6 +103,20 @@ export const live: Layer.Layer<
       );
     const syncSections = <Value>(effect: SessionResult<Value>): SessionResult<Value> =>
       effect.pipe(Effect.tap(() => sections.request("local-mutation")));
+    const afterCommit = <Value>(
+      operationId: string,
+      effect: SessionResult<Value>,
+    ): SessionResult<Value> =>
+      effect.pipe(
+        Effect.mapError(
+          (error) =>
+            new ProjectSessionCommandsError({
+              operation: error.operation,
+              cause: error.cause,
+              committedOperationId: operationId,
+            }),
+        ),
+      );
     const read = (sessionId: string) => attempt("read", workspace.getProjectSession(sessionId));
     const closeBrowserConversation = (sessionId: string): Effect.Effect<void> =>
       browser.closeConversation(sessionId).pipe(
@@ -115,23 +142,20 @@ export const live: Layer.Layer<
           cause: new TypeError("Project Session title is invalid"),
         });
       }
-      if (existing.thread && isCodexAgentBackendBinding(existing.thread.backendBinding)) {
-        yield* attempt(
-          "rename-title",
-          threadTitles.set({
-            threadId: existing.thread.threadId,
-            name: command.payload.input.title,
-            normalization: "manual",
-          }),
-        );
-      }
-      return yield* attempt(
+      const result = yield* attempt(
         "rename-session",
         workspace.renameProjectSession({
           ...command,
           payload: { ...command.payload, input: { title } },
         }),
       );
+      if (result.value.thread && isCodexAgentBackendBinding(result.value.thread.backendBinding)) {
+        yield* afterCommit(
+          command.operationId,
+          attempt("rename-title", threadTitles.syncCommittedTitle(result.value.thread.threadId)),
+        );
+      }
+      return result;
     }, syncSections);
 
     const deleteSession = Effect.fn("ProjectSessionCommands.delete")(function* (
@@ -150,27 +174,41 @@ export const live: Layer.Layer<
       command: ProjectSessionArchiveCommandInput,
       archived: boolean,
     ) {
-      const existing = yield* read(command.payload.sessionId);
-      if (existing?.thread) {
-        if (isCodexAgentBackendBinding(existing.thread.backendBinding)) {
-          if (archived) {
-            yield* attempt("archive-conversation", conversation.archive(existing.thread.threadId));
-          } else {
-            yield* attempt(
-              "unarchive-conversation",
-              conversation.unarchive(existing.thread.threadId),
-            );
-          }
-        } else if (archived) {
-          yield* attempt("close-backend-session", acpSessions.close(existing.thread.threadId));
-        }
-      }
-      return yield* attempt(
+      const result = yield* attempt(
         archived ? "archive-session" : "unarchive-session",
         archived
           ? workspace.archiveProjectSession(command)
           : workspace.unarchiveProjectSession(command),
       );
+      // A later lifecycle commit supersedes replayed receipts; never undo its backend state.
+      if (result.value.archived !== archived) return result;
+      const thread = result.value.thread;
+      const affectedThreadIds = result.apply.outcome.affected_thread_ids;
+      if (!thread && affectedThreadIds.length === 0) return result;
+      if (!thread || affectedThreadIds.length !== 1 || affectedThreadIds[0] !== thread.threadId) {
+        return yield* new ProjectSessionCommandsError({
+          operation: archived ? "archive-conversation" : "unarchive-conversation",
+          cause: new Error("Session attachment changed after its lifecycle commit"),
+          committedOperationId: command.operationId,
+        });
+      }
+      // Only the committed Session receipt admits host-owned backend and descendant cleanup.
+      // These follow-up projection/lifecycle writes are not new Agent organization commands.
+      yield* afterCommit(
+        command.operationId,
+        Effect.gen(function* () {
+          if (isCodexAgentBackendBinding(thread.backendBinding)) {
+            if (archived) {
+              yield* attempt("archive-conversation", conversation.archive(thread.threadId));
+            } else {
+              yield* attempt("unarchive-conversation", conversation.unarchive(thread.threadId));
+            }
+          } else if (archived) {
+            yield* attempt("close-backend-session", acpSessions.close(thread.threadId));
+          }
+        }).pipe(Effect.provideService(CoreApplicationAgent, null)),
+      );
+      return result;
     }, syncSections);
 
     const setPinned = Effect.fn("ProjectSessionCommands.setPinned")(function* (
@@ -180,11 +218,11 @@ export const live: Layer.Layer<
     }, syncSections);
 
     return ProjectSessionCommands.of({
-      rename,
-      delete: deleteSession,
-      archive: (command) => setArchived(command, true),
-      unarchive: (command) => setArchived(command, false),
-      setPinned,
+      rename: (command) => runSerial(command.payload.sessionId, rename(command)),
+      delete: (command) => runSerial(command.payload.sessionId, deleteSession(command)),
+      archive: (command) => runSerial(command.payload.sessionId, setArchived(command, true)),
+      unarchive: (command) => runSerial(command.payload.sessionId, setArchived(command, false)),
+      setPinned: (command) => runSerial(command.payload.sessionId, setPinned(command)),
     });
   }),
 );

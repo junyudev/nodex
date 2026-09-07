@@ -211,6 +211,7 @@ export interface AutomationUpdateToolResult {
 }
 
 export interface AutomationUpdateRenderState {
+  proposalId?: string;
   automationId: string | null;
   canAccept: boolean;
   createInput: CodexScheduledAutomationCreateInput | null;
@@ -434,6 +435,7 @@ function buildAutomationUpdateCreateInput(
     name,
     prompt,
     rrule,
+    projectId: normalizeOptionalString(args.projectId),
     cwds,
     executionEnvironment,
     localEnvironmentConfigPath: localEnvironmentConfigPath ?? null,

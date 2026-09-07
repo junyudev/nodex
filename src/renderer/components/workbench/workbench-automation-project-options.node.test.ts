@@ -5,6 +5,7 @@ import {
   formatWorkbenchAutomationProjectTriggerLabel,
   resolveWorkbenchAutomationProjectForRoot,
   toggleWorkbenchAutomationProjectRoot,
+  selectWorkbenchAutomationProjectRoot,
 } from "./workbench-automation-project-options";
 
 function makeProject(input: {
@@ -36,6 +37,7 @@ function makeProject(input: {
 describe("workbench automation project options", () => {
   test("uses local project roots as selectable cwd values", () => {
     const options = buildWorkbenchAutomationProjectOptions({
+      selectedProjectId: "nodex",
       projects: [
         makeProject({ id: "nodex", name: "Nodex", roots: ["/Users/asc/repo/nodex"] }),
         makeProject({ id: "scratch", name: "Scratch", roots: [] }),
@@ -51,6 +53,7 @@ describe("workbench automation project options", () => {
 
   test("keeps unmatched selected roots visible for existing automations", () => {
     const options = buildWorkbenchAutomationProjectOptions({
+      selectedProjectId: "nodex",
       projects: [makeProject({ id: "nodex", name: "Nodex", roots: ["/Users/asc/repo/nodex"] })],
       selectedRoots: ["/tmp/legacy"],
     });
@@ -63,25 +66,32 @@ describe("workbench automation project options", () => {
 
   test("formats trigger labels for empty, single, and multi-root selections", () => {
     const options = buildWorkbenchAutomationProjectOptions({
+      selectedProjectId: "nodex",
       projects: [makeProject({ id: "nodex", name: "Nodex", roots: ["/Users/asc/repo/nodex"] })],
       selectedRoots: [],
     });
 
-    expect(formatWorkbenchAutomationProjectTriggerLabel({ selectedRoots: [], options })).toBe(
-      "Select project",
-    );
     expect(
       formatWorkbenchAutomationProjectTriggerLabel({
+        selectedProjectId: "nodex",
+        selectedRoots: [],
+        options,
+      }),
+    ).toBe("Select project");
+    expect(
+      formatWorkbenchAutomationProjectTriggerLabel({
+        selectedProjectId: "nodex",
         selectedRoots: ["/Users/asc/repo/nodex"],
         options,
       }),
     ).toBe("Nodex");
     expect(
       formatWorkbenchAutomationProjectTriggerLabel({
+        selectedProjectId: "nodex",
         selectedRoots: ["/Users/asc/repo/nodex", "/tmp/legacy"],
         options,
       }),
-    ).toBe("2 projects");
+    ).toBe("Nodex · 2 folders");
   });
 
   test("toggles selected roots without duplicating cwd values", () => {
@@ -112,10 +122,49 @@ describe("workbench automation project options", () => {
     ];
 
     expect(
-      resolveWorkbenchAutomationProjectForRoot({ projects, root: "/repo/beta-extra" })?.id,
+      resolveWorkbenchAutomationProjectForRoot({
+        projectId: "beta",
+        projects,
+        root: "/repo/beta-extra",
+      })?.id,
     ).toBe("beta");
-    expect(resolveWorkbenchAutomationProjectForRoot({ projects, root: "/repo/missing" })).toBe(
-      null,
-    );
+    expect(
+      resolveWorkbenchAutomationProjectForRoot({
+        projectId: "beta",
+        projects,
+        root: "/repo/missing",
+      }),
+    ).toBe(null);
   });
+});
+
+test("keeps Projects sharing a directory distinct and clears folders when switching Project", () => {
+  const projects = [
+    makeProject({ id: "a", roots: ["/shared"] }),
+    makeProject({ id: "b", roots: ["/shared"] }),
+  ];
+  const options = buildWorkbenchAutomationProjectOptions({
+    projects,
+    selectedProjectId: "b",
+    selectedRoots: ["/shared"],
+  });
+  expect(options.map((option) => option.projectId)).toEqual(["a", "b"]);
+  expect(
+    resolveWorkbenchAutomationProjectForRoot({ projects, projectId: "b", root: "/shared" })?.id,
+  ).toBe("b");
+  expect(
+    selectWorkbenchAutomationProjectRoot({
+      projectId: "b",
+      selectedProjectId: "a",
+      selectedRoots: ["/only-a", "/shared"],
+      root: "/shared",
+    }),
+  ).toEqual({ projectId: "b", cwds: ["/shared"] });
+  expect(
+    formatWorkbenchAutomationProjectTriggerLabel({
+      selectedProjectId: null,
+      selectedRoots: [],
+      options,
+    }),
+  ).toBe("No project");
 });

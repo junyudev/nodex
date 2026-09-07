@@ -217,6 +217,26 @@ describe("nodex_app@4 contracts", () => {
     });
     expect(NODEX_AGENT_V3_TOOL_CONTRACTS.update_page.classifyEffect(patch)).toBe("write");
     expect(
+      UpdatePageV3InputSchema.parse({
+        pageId: "page-1",
+        body: {
+          kind: "patch",
+          ifMatch: ETAG,
+          patches: [{ oldMarkdown: "old", newMarkdown: "new" }],
+        },
+      }).body,
+    ).toMatchObject({ kind: "patch", ifMatch: ETAG });
+    expect(
+      UpdatePageV3InputSchema.safeParse({
+        pageId: "page-1",
+        body: {
+          kind: "patch",
+          ifMatch: "invalid-etag",
+          patches: [{ oldMarkdown: "old", newMarkdown: "new" }],
+        },
+      }).success,
+    ).toBe(false);
+    expect(
       UpdatePageV3InputSchema.safeParse({
         pageId: "page-1",
         body: { kind: "replace", markdown: "Replacement" },

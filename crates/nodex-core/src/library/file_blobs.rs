@@ -127,17 +127,14 @@ impl LibraryModule {
                     let project_id = match context.project_id.as_ref() {
                         Some(project_id) => {
                             require_project_in_library(transaction, &library_id, &project_id.0)?;
-                            project_id.0.clone()
+                            Some(project_id.0.clone())
                         }
                         None if matches!(
                             context.adapter,
                             AdapterKind::ElectronHost | AdapterKind::NativeCli | AdapterKind::Test
                         ) =>
                         {
-                            super::mutation::resolve_library_actor_project_id(
-                                transaction,
-                                &library_id,
-                            )?
+                            None
                         }
                         None => {
                             return Err(StoreError::new(
@@ -227,7 +224,7 @@ impl LibraryModule {
                                 [&receipt_id],
                                 |row| {
                                     Ok((
-                                        row.get::<_, String>(0)?,
+                                        row.get::<_, Option<String>>(0)?,
                                         row.get::<_, String>(1)?,
                                         row.get::<_, String>(2)?,
                                         row.get::<_, String>(3)?,
@@ -239,7 +236,7 @@ impl LibraryModule {
                             )
                             .optional()?;
                         let expected = (
-                            project_id.as_str(),
+                            project_id.as_deref(),
                             library_id.as_str(),
                             store_epoch.as_str(),
                             content_hash.as_str(),
@@ -263,7 +260,7 @@ impl LibraryModule {
                             ));
                         };
                         let observed = (
-                            existing_project_id.as_str(),
+                            existing_project_id.as_deref(),
                             existing_library_id.as_str(),
                             existing_store_epoch.as_str(),
                             existing_content_hash.as_str(),

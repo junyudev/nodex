@@ -71,7 +71,7 @@ struct MovePreflight {
     destination: LibraryPageCopyDestination,
     destination_document: Option<LibraryAgentDocumentHead>,
     destination_database_id: Option<String>,
-    actor_project_id: String,
+    actor_project_id: Option<String>,
     destination_authority_hash: String,
     steps: Vec<PreparedMoveStep>,
     batch_documents: Option<PreparedAgentPageDocumentBatch>,
@@ -479,6 +479,14 @@ fn apply_pages(
     let mut committed_revisions = BTreeMap::new();
     affected_parent_keys.insert(destination_parent_key(library_id, &request.destination));
 
+    super::block_transfer::detach_agent_page_move_sources(
+        connection,
+        preflight
+            .batch_documents
+            .as_ref()
+            .ok_or_else(|| corrupt("Agent Page move omitted its prepared Document batch"))?,
+    )?;
+
     for (index, step) in preflight.steps.iter_mut().enumerate() {
         affected_parent_keys.insert(source_parent_key(library_id, &step.source));
         if step.same_data_source {
@@ -492,7 +500,7 @@ fn apply_pages(
             &preflight.destination,
             authorization,
         )?;
-        let transfer_authority = transfer_authority(&preflight.actor_project_id);
+        let transfer_authority = transfer_authority(preflight.actor_project_id.as_deref());
         let prepared_transfer = step
             .prepared_transfer
             .take()
@@ -537,8 +545,7 @@ fn apply_pages(
         context
             .project_id
             .as_ref()
-            .map(|project_id| project_id.0.as_str())
-            .ok_or_else(|| unauthorized("Agent Page move requires a bound Project"))?,
+            .map(|project_id| project_id.0.as_str()),
         operation_id,
         store_epoch,
         preflight
@@ -567,7 +574,7 @@ fn apply_pages(
         let finalization = finalize_agent_moved_pages_in_data_source_prevalidated(
             connection,
             library_id,
-            &preflight.actor_project_id,
+            preflight.actor_project_id.as_deref(),
             &request.page_ids,
             &destination,
             now,
@@ -650,7 +657,7 @@ fn compile_preflight(
         &destination,
         &destination_heads,
         &destination_database_id,
-        &actor_project_id,
+        actor_project_id.as_deref(),
     ))?;
     let mut source_fingerprints = Vec::with_capacity(request.page_ids.len());
     let mut steps = Vec::with_capacity(request.page_ids.len());
@@ -703,7 +710,7 @@ fn compile_preflight(
                 &destination,
                 authorization,
             )?;
-            let transfer_authority = transfer_authority(&actor_project_id);
+            let transfer_authority = transfer_authority(actor_project_id.as_deref());
             let prepared = super::block_transfer::prepare_for_agent_page_move(
                 connection,
                 document_runtime_cache,
@@ -785,7 +792,7 @@ fn compile_preflight(
         destination_fingerprint,
         store_epoch,
         &destination,
-        &actor_project_id,
+        actor_project_id.as_deref(),
         &steps,
         &document_heads,
     ))?;
@@ -846,7 +853,7 @@ fn revalidate_preflight(
         &destination,
         destination_heads,
         destination_database_id,
-        &actor_project_id,
+        actor_project_id.as_deref(),
     ))?;
     if destination_authority_hash != preflight.destination_authority_hash
         || actor_project_id != preflight.actor_project_id
@@ -1184,9 +1191,9 @@ fn data_source_destination(
     })
 }
 
-fn transfer_authority(actor_project_id: &str) -> AgentPageMoveTransferAuthority {
+fn transfer_authority(actor_project_id: Option<&str>) -> AgentPageMoveTransferAuthority {
     AgentPageMoveTransferAuthority {
-        actor_project_id: actor_project_id.to_owned(),
+        actor_project_id: actor_project_id.map(str::to_owned),
     }
 }
 
@@ -1554,10 +1561,6 @@ fn validate_id(value: &str, field: &str) -> Result<(), StoreError> {
 
 fn invalid(message: impl Into<String>) -> StoreError {
     StoreError::new(StoreErrorCode::InvalidInput, message, false)
-}
-
-fn unauthorized(message: impl Into<String>) -> StoreError {
-    StoreError::new(StoreErrorCode::Unauthorized, message, false)
 }
 
 fn not_found(message: impl Into<String>) -> StoreError {

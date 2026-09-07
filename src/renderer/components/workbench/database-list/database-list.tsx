@@ -31,7 +31,14 @@ import {
 } from "@/lib/data-source-relation-runtime";
 import { readDatabasePropertyOptions } from "@/lib/database-view-authoring";
 import { collectRequiredPropertyOptionIds } from "@/lib/database-option-registry-requirements";
-import { databasePropertyValueSearchText } from "@/lib/database-property-search-text";
+import { databaseRowPropertySearchText } from "@/lib/database-property-search-text";
+import { useWorkbenchViewContent } from "@/lib/use-workbench-view-content";
+import {
+  createWorkbenchViewSnapshot,
+  workbenchElementInViewport,
+  workbenchViewOccurrence,
+  type WorkbenchViewContentBinding,
+} from "@/lib/workbench-view-content";
 import { resolveDatabaseTaskFilterCapabilities } from "@/lib/database-view-task-filter";
 import {
   buildDatabaseViewColumns,
@@ -75,6 +82,7 @@ import {
   buildDatabaseListProjection,
   captureDatabaseListScrollAnchor,
   computeDatabaseListVirtualWindow,
+  databaseListViewportOccurrenceKeys,
   databaseListScrollTopForOccurrence,
   databaseListMountedActiveOccurrenceKey,
   databaseListGroupKey,
@@ -172,6 +180,7 @@ const IDLE_OVERSCAN_STEP = 600;
 const IDLE_OVERSCAN_PASSES = 3;
 
 interface DatabaseListProps {
+  readonly workbenchContent?: WorkbenchViewContentBinding;
   readonly model: DatabaseViewRenderModel;
   readonly effectivePresentation?: EffectiveDatabaseView;
   readonly groupPagination?: ReadonlyMap<string, ColumnPaginationState>;
@@ -283,18 +292,7 @@ const searchablePropertyValues = (
 ): string => {
   const row = model.query.rows.find((candidate) => candidate.page.pageId === pageId);
   if (!row) return "";
-  const propertyById = new Map(
-    model.query.properties.map((property) => [String(property.propertyId), property] as const),
-  );
-  return Object.values(row.values)
-    .map((entry) => {
-      const property = propertyById.get(entry.propertyId);
-      return databasePropertyValueSearchText(entry.value, {
-        optionBacked: property?.valueType === "select" || property?.valueType === "multi_select",
-        options: optionRegistries[entry.propertyId],
-      });
-    })
-    .join(" ");
+  return databaseRowPropertySearchText(row, model.query.properties, optionRegistries);
 };
 
 const searchableAuthorityValues = (
@@ -302,18 +300,7 @@ const searchableAuthorityValues = (
   properties: readonly DataSourcePropertyRecordV2[],
   optionRegistries: Readonly<Record<string, readonly DatabasePropertyOption[]>>,
 ): string => {
-  const propertyById = new Map(
-    properties.map((property) => [String(property.propertyId), property] as const),
-  );
-  return Object.values(authority.values)
-    .map((entry) => {
-      const property = propertyById.get(entry.propertyId);
-      return databasePropertyValueSearchText(entry.value, {
-        optionBacked: property?.valueType === "select" || property?.valueType === "multi_select",
-        options: optionRegistries[entry.propertyId],
-      });
-    })
-    .join(" ");
+  return databaseRowPropertySearchText(authority, properties, optionRegistries);
 };
 
 const availableListFields = (
@@ -396,6 +383,7 @@ const samePageIds = (left: ReadonlySet<string>, right: ReadonlySet<string>): boo
   left.size === right.size && [...left].every((pageId) => right.has(pageId));
 
 export function DatabaseList({
+  workbenchContent,
   model,
   effectivePresentation,
   groupPagination,
@@ -777,6 +765,96 @@ export function DatabaseList({
     [dndActive, overscan, projection, scrollTop, viewportHeight],
   );
   const renderedRows = projection.slice(virtualWindow.startIndex, virtualWindow.endIndex);
+  useWorkbenchViewContent(workbenchContent, (request) => {
+    const scroller = scrollerRef.current;
+    if (!workbenchContent || !hostRef.current?.isConnected || !scroller?.isConnected) return null;
+    const actualScrollTop = scroller.scrollTop;
+    const actualViewportHeight = scroller.clientHeight;
+    const viewportKnown = workbenchElementInViewport(scroller) && actualViewportHeight > 0;
+    const viewportKeys = databaseListViewportOccurrenceKeys({
+      rows: projection,
+      scrollTop: actualScrollTop,
+      viewportHeight: viewportKnown ? actualViewportHeight : 0,
+      mountedStartIndex: virtualWindow.startIndex,
+      mountedEndIndex: virtualWindow.endIndex,
+    });
+    const occurrences = projection.flatMap((entry, index) => {
+      if (entry.kind !== "page") return [];
+      const authority = authorityByPageId.get(entry.pageId);
+      if (!authority) return [];
+      const mounted = index >= virtualWindow.startIndex && index < virtualWindow.endIndex;
+      return [
+        workbenchViewOccurrence({
+          row: authority,
+          displayKey: entry.key,
+          occurrenceKey: usesCoreAuthority ? entry.key : null,
+          groupPath: presentation.group
+            ? presentation.subgroup
+              ? [entry.groupKey, entry.subgroupKey]
+              : [entry.groupKey]
+            : [],
+          ancestorPageIds: entry.ancestorPageIds,
+          mounted,
+          inViewport: viewportKeys.has(entry.key),
+          selected: isDatabaseListOccurrenceSelected(selection, entry.key),
+        }),
+      ];
+    });
+    const searched = compiledSearchQuery.normalizedQuery.length > 0;
+    const allRowsLoaded = usesCoreAuthority
+      ? coreWindow.isComplete && !coreWindow.loading && coreWindow.error === null
+      : groupPagination === undefined ||
+        [...groupPagination.values()].every(
+          (entry) => !entry.hasMore && !entry.loadingMore && entry.error === null,
+        );
+    return createWorkbenchViewSnapshot({
+      request,
+      binding: workbenchContent,
+      model: {
+        ...model,
+        storeEpoch: coreWindow.storeEpoch ?? model.storeEpoch,
+        commitSeq: coreWindow.active ? coreWindow.commitSeq : model.commitSeq,
+      },
+      effective,
+      search: { current: searchQuery, deferred: deferredSearchQuery },
+      pending: {
+        optimistic:
+          coreWindow.presentationOwner.hasPendingPresentation() ||
+          mutationPending ||
+          dndActive ||
+          blockDropPreview !== null,
+        loading:
+          usesCoreAuthority &&
+          (!coreWindow.active ||
+            coreWindow.loading ||
+            coreWindow.loadingMore ||
+            coreWindow.error !== null),
+        options:
+          searched &&
+          Object.values(propertyOptionRegistries.states).some((state) => state !== "ready"),
+      },
+      selection: {
+        allMatching: selection.allMatching,
+        selectedOccurrenceKeys: [...selection.selectedOccurrenceKeys],
+        excludedOccurrenceKeys: [...selection.excludedOccurrenceKeys],
+        anchorOccurrenceKey: selection.anchorOccurrenceKey,
+        activeOccurrenceKey: selection.activeOccurrenceKey,
+      },
+      collapsedOccurrenceKeys: [...collapsedOccurrenceKeys],
+      occurrences,
+      totalOccurrenceCount: searched
+        ? allRowsLoaded && collapsedOccurrenceKeys.size === 0
+          ? occurrences.length
+          : null
+        : usesCoreAuthority
+          ? coreWindow.totalOccurrenceCount
+          : allRowsLoaded
+            ? occurrences.length
+            : null,
+      allRowsLoaded,
+      viewportKnown,
+    });
+  });
   const mountedActiveOccurrenceKey = databaseListMountedActiveOccurrenceKey({
     rows: projection,
     startIndex: virtualWindow.startIndex,

@@ -31,6 +31,11 @@ import { CodexConversationMaterialization } from "./CodexConversationMaterializa
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexTurnAuthority, type CodexTurnAuthorityLaunch } from "./CodexTurnAuthority";
 import {
+  CodexTurnPresentation,
+  type CodexTurnPresentationClaim,
+  type CodexTurnPresentationLaunch,
+} from "./CodexTurnPresentation";
+import {
   CodexTurnPreparation,
   type CodexTurnStartPlan,
   type CodexTurnSteerPlan,
@@ -41,6 +46,7 @@ type GatewayTurnStartParams = ClientRequestParamsByMethod["turn/start"];
 type GatewayTurnSteerParams = ClientRequestParamsByMethod["turn/steer"];
 
 export type CodexTurnStartOverrides = CodexTurnStartOptions & {
+  readonly presentationClaim?: CodexTurnPresentationClaim;
   readonly agentConfigPermissionMode?: boolean;
   readonly clientUserMessageId?: string;
   readonly preparedPrompt?: CodexPreparedPrompt;
@@ -49,11 +55,13 @@ export type CodexTurnStartOverrides = CodexTurnStartOptions & {
 };
 
 export interface CodexPreparedRendererTurn {
+  readonly presentationClaim?: CodexTurnPresentationClaim;
   readonly threadId: string;
   readonly projectId: string | null;
   readonly request: TurnStartParams;
   readonly clientUserMessageId: string;
   readonly verifiedBuiltinFullAccess: boolean;
+  readonly executionReadOnly: boolean;
   readonly startedAtMs: number;
 }
 
@@ -161,6 +169,7 @@ export const make: Effect.Effect<
   | CodexAutomationRunAcceptance
   | CodexGateway
   | CodexTurnAuthority
+  | CodexTurnPresentation
   | CodexTurnPreparation
   | ConversationEntityMap
   | CoreModules
@@ -175,6 +184,7 @@ export const make: Effect.Effect<
   const projection = yield* CodexConversationProjection;
   const preparation = yield* CodexTurnPreparation;
   const authority = yield* CodexTurnAuthority;
+  const presentation = yield* CodexTurnPresentation;
   const core = yield* CoreModules;
 
   const commandError = (
@@ -211,6 +221,9 @@ export const make: Effect.Effect<
     plan: CodexTurnStartPlan,
     state: {
       readonly launch: CodexTurnAuthorityLaunch | null;
+      readonly presentationLaunch: CodexTurnPresentationLaunch | null;
+      readonly requestDispatched: boolean;
+      readonly requestRejected: boolean;
       readonly optimisticAdmitted: boolean;
       readonly protocolCommitted: boolean;
     },
@@ -218,6 +231,9 @@ export const make: Effect.Effect<
     Effect.gen(function* () {
       if (state.protocolCommitted) return;
       authority.abort(state.launch);
+      if (!state.requestDispatched || state.requestRejected) {
+        presentation.abort(state.presentationLaunch);
+      }
       if (!state.optimisticAdmitted) return;
       const observedAtMs = yield* Clock.currentTimeMillis;
       yield* projection.rejectTurn({
@@ -259,9 +275,19 @@ export const make: Effect.Effect<
 
         const transaction: {
           launch: CodexTurnAuthorityLaunch | null;
+          presentationLaunch: CodexTurnPresentationLaunch | null;
+          requestDispatched: boolean;
+          requestRejected: boolean;
           optimisticAdmitted: boolean;
           protocolCommitted: boolean;
-        } = { launch: null, optimisticAdmitted: false, protocolCommitted: false };
+        } = {
+          launch: null,
+          presentationLaunch: null,
+          requestDispatched: false,
+          requestRejected: false,
+          optimisticAdmitted: false,
+          protocolCommitted: false,
+        };
 
         return yield* Effect.gen(function* () {
           if (!plan.rendererOwnsState && canonicalParams && plan.permissionContext) {
@@ -274,6 +300,11 @@ export const make: Effect.Effect<
           transaction.launch = yield* authority.begin(
             plan.threadId,
             plan.verifiedBuiltinFullAccess,
+            plan.executionReadOnly,
+          );
+          transaction.presentationLaunch = yield* presentation.begin(
+            plan.presentationClaim,
+            plan.threadId,
           );
           if (!plan.rendererOwnsState && canonicalParams && options.projectOptimisticTurn) {
             yield* projection.admitTurn({
@@ -287,16 +318,34 @@ export const make: Effect.Effect<
             yield* projection.markThreadActive(plan.threadId);
           }
 
-          const response = (yield* gateway.requestForThread(
-            plan.threadId,
-            "turn/start",
-            plan.request as GatewayTurnStartParams,
-          )) as unknown as TurnStartResponse;
+          transaction.requestDispatched = true;
+          const response = (yield* gateway
+            .requestForThread(plan.threadId, "turn/start", plan.request as GatewayTurnStartParams)
+            .pipe(
+              Effect.tapError((error) =>
+                Effect.sync(() => {
+                  transaction.requestRejected = error.reason !== "outcome-unknown";
+                }),
+              ),
+            )) as unknown as TurnStartResponse;
 
           yield* Effect.uninterruptible(
             Effect.sync(() => {
               transaction.protocolCommitted = true;
             }).pipe(
+              Effect.andThen(
+                presentation.bind(transaction.presentationLaunch, response.turn.id).pipe(
+                  Effect.catch((cause) =>
+                    Effect.logError("Accepted Turn presentation could not be bound").pipe(
+                      Effect.annotateLogs({
+                        threadId: plan.threadId,
+                        turnId: response.turn.id,
+                        cause,
+                      }),
+                    ),
+                  ),
+                ),
+              ),
               Effect.andThen(
                 authority.bind(plan.threadId, transaction.launch, response.turn.id).pipe(
                   Effect.catch((cause) =>
@@ -459,17 +508,40 @@ export const make: Effect.Effect<
             payloadRef: null,
           },
         } as const);
-      const plan = yield* preparation
-        .steer({
-          command: input,
-          steerId: intent.steerId,
-          recoveryRow: intent.recoveryRow,
-        })
-        .pipe(Effect.mapError((cause) => commandError("steer", input.threadId, cause)));
-      return yield* runSteerTransaction(plan);
+      const presentationClaim = input.presentationTicket
+        ? yield* presentation
+            .claim(
+              input.presentationTicket,
+              { kind: "thread", threadId: input.threadId },
+              intent.recoveryRow.clientUserMessageId,
+            )
+            .pipe(Effect.mapError((cause) => commandError("steer", input.threadId, cause)))
+        : presentation.readQueued(input.threadId, intent.recoveryRow.clientUserMessageId);
+      return yield* Effect.gen(function* () {
+        const plan = yield* preparation
+          .steer({
+            command: input,
+            steerId: intent.steerId,
+            recoveryRow: intent.recoveryRow,
+          })
+          .pipe(Effect.mapError((cause) => commandError("steer", input.threadId, cause)));
+        const result = yield* runSteerTransaction(plan, presentationClaim);
+        if (result) presentation.retainQueued(presentationClaim);
+        else presentation.releaseClaim(presentationClaim);
+        return result;
+      }).pipe(
+        Effect.tapError(() =>
+          input.presentationTicket
+            ? Effect.sync(() => presentation.releaseClaim(presentationClaim))
+            : Effect.void,
+        ),
+      );
     });
 
-  const runSteerTransaction = (plan: CodexTurnSteerPlan) => {
+  const runSteerTransaction = (
+    plan: CodexTurnSteerPlan,
+    presentationClaim?: CodexTurnPresentationClaim,
+  ) => {
     let optimisticAdmitted = false;
     let targetTurnId = plan.expectedTurnId;
     const rollback = () =>
@@ -545,7 +617,7 @@ export const make: Effect.Effect<
             startInLane(
               plan.threadId,
               plan.fallbackStart.prompt,
-              plan.fallbackStart.overrides,
+              { ...plan.fallbackStart.overrides, presentationClaim },
               false,
             ),
           ),

@@ -12,7 +12,7 @@ pub(crate) fn read_receipt(
     connection: &Connection,
     store_epoch: &str,
     library_id: &str,
-    project_id: &str,
+    project_id: Option<&str>,
     operation_id: &str,
     receipt_id: &str,
 ) -> Result<PreparedBlob, StoreError> {
@@ -33,7 +33,7 @@ pub(crate) fn read_receipt(
              FROM prepared_blob_receipts receipt \
              JOIN managed_blobs blob ON blob.content_hash = receipt.content_hash \
                AND blob.byte_length = receipt.byte_length \
-             WHERE receipt.receipt_id = ?1 AND receipt.project_id = ?2 \
+             WHERE receipt.receipt_id = ?1 AND receipt.project_id IS ?2 \
                AND receipt.library_id = ?3 AND receipt.store_epoch = ?4 \
                AND receipt.operation_id = ?5 AND receipt.state = 'prepared' \
                AND receipt.expires_at_unix_ms >= \

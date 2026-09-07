@@ -35,6 +35,7 @@ pub(crate) use file_restore::{
 mod files;
 pub(crate) use file_access::file_grant_authorization_proof;
 pub(crate) use files::capture_snapshot as capture_file_snapshot;
+mod agent_surface;
 mod file_blobs;
 mod mutation_ledger;
 mod page_file_entries;
@@ -1149,7 +1150,10 @@ fn unix_timestamp_millis() -> String {
 
 #[cfg(test)]
 mod tests {
+    mod agent_surface;
+    mod effective_view_query;
     mod manual_order;
+    mod projectless_agent_authority;
     mod query;
     use nodex_core_contracts::agent::{
         AgentAuthorizationTarget, AgentExecutionAuthorization, AgentProjectResourceAccess,
@@ -1416,10 +1420,11 @@ mod tests {
                     operation_id: "agent-turn-authority".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
+                        read_only: false,
                         thread_id: "thread:agent".to_owned(),
                         turn_id: "turn:agent".to_owned(),
                         root_thread_id: "thread:agent".to_owned(),
-                        actor_project_id: "project:default".to_owned(),
+                        actor_project_id: Some("project:default".to_owned()),
                         source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
                         inherited_from: None,
                     },
@@ -1451,7 +1456,7 @@ mod tests {
                 thread_id: "thread:agent".to_owned(),
                 turn_id: "turn:agent".to_owned(),
                 root_thread_id: "thread:agent".to_owned(),
-                actor_project_id: "project:default".to_owned(),
+                actor_project_id: Some("project:default".to_owned()),
                 library_id: "library-1".to_owned(),
                 store_epoch: "epoch-1".to_owned(),
                 scope: ProjectWorkspaceTurnAuthorityScope::Project,
@@ -1517,6 +1522,82 @@ mod tests {
             "persist_agent_project_resource_grants"
         );
         assert!(replay.committed.receipt.mutation.duplicate);
+
+        workspace
+            .apply(
+                &context,
+                ModuleApplyRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    operation_id: "agent-read-only-turn".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
+                        thread_id: "thread:agent".to_owned(),
+                        turn_id: "turn:read-only".to_owned(),
+                        root_thread_id: "thread:agent".to_owned(),
+                        actor_project_id: Some("project:default".to_owned()),
+                        source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
+                        read_only: true,
+                        inherited_from: None,
+                    },
+                },
+            )
+            .expect("freeze read-only Turn");
+        let mut read_only_provenance = provenance.clone();
+        read_only_provenance.authority.turn_id = "turn:read-only".to_owned();
+        let mut read_only_plan = plan_request.clone();
+        if let LibraryRead::PlanAgentResourceAccess { provenance, .. } = &mut read_only_plan.read {
+            *provenance = Box::new(read_only_provenance.clone());
+        }
+        let LibraryReadValue::AgentResourceAccessPlan { value } = module
+            .read(&context, read_only_plan)
+            .expect("read-only resource plan")
+            .value
+        else {
+            panic!("resource plan")
+        };
+        assert!(matches!(
+            *value,
+            AgentResourceAccessPlan::Denied {
+                reason: nodex_core_contracts::agent::AgentResourceAuthorizationReason::TurnReadOnly,
+                ..
+            }
+        ));
+        let read_only_context = context.clone();
+        kernel
+            .readers()
+            .read_default(move |connection| {
+                let authorization = AgentExecutionAuthorization {
+                    provenance: read_only_provenance,
+                    call_id: "call:read-only".to_owned(),
+                    resource_access: None,
+                };
+                let target = AgentAuthorizationTarget::Page {
+                    page_id: "page:agent-target".to_owned(),
+                };
+                super::agent_authorization::authorize_execution(
+                    connection,
+                    &read_only_context,
+                    "library-1",
+                    &authorization,
+                    &target,
+                    AgentProjectResourceAction::Read,
+                )?;
+                let rejected = super::agent_authorization::authorize_execution(
+                    connection,
+                    &read_only_context,
+                    "library-1",
+                    &authorization,
+                    &target,
+                    AgentProjectResourceAction::Write,
+                )
+                .expect_err("Page grant cannot elevate read-only Turn");
+                assert_eq!(
+                    rejected.code,
+                    crate::infrastructure::sqlite::StoreErrorCode::Unauthorized
+                );
+                Ok(())
+            })
+            .expect("read-only execution boundary");
 
         let LibraryReadValue::AgentResourceAccessPlan { value } = module
             .read(&context, plan_request)
@@ -6425,7 +6506,8 @@ mod tests {
                         read: DatabaseRead::ListWindow {
                             target: DatabaseViewReadTarget::PresentedView {
                                 view_id: LIST_VIEW.to_owned(),
-                                preferences_override: DatabaseViewPreferencesOverrideInput::default(
+                                preferences_override: Box::new(
+                                    DatabaseViewPreferencesOverrideInput::default(),
                                 ),
                             },
                             window: CollectionWindowRequest {
@@ -6736,7 +6818,7 @@ mod tests {
                     read: DatabaseRead::ListWindow {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: LIST_VIEW.to_owned(),
-                            preferences_override: priority_presentation.clone(),
+                            preferences_override: Box::new(priority_presentation.clone()),
                         },
                         window: CollectionWindowRequest {
                             after: None,
@@ -9208,7 +9290,6 @@ pub(crate) use page_copy::{OccurrencePageCloneInput, clone_page_for_occurrence};
 mod mutation;
 pub(crate) use mutation::{
     insert_creator_resource_grant, insert_library_placement, require_project_in_library,
-    resolve_library_actor_project_id,
 };
 mod navigation;
 mod page_copy;

@@ -6,8 +6,9 @@ use nodex_core_contracts::automation::{
     AutomationCommitValue, AutomationDefinition, AutomationDefinitionInput,
     AutomationDefinitionKind, AutomationDefinitionStatus, AutomationDueWorkPlan, AutomationEvent,
     AutomationEventKind, AutomationExecutionEnvironment, AutomationIntent, AutomationLease,
-    AutomationLeaseStatus, AutomationReceipt, AutomationRun, AutomationRunBulkResult,
-    PageOccurrenceMutationResult, ReminderLease, ReminderSnooze,
+    AutomationLeaseStatus, AutomationNotificationPolicy, AutomationNotificationPreference,
+    AutomationReceipt, AutomationRun, AutomationRunBulkResult, PageOccurrenceMutationResult,
+    ReminderLease, ReminderSnooze,
 };
 use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, CoreModuleEventPayload, ModuleApplyRequest,
@@ -51,7 +52,9 @@ const MAX_RETRY_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 struct NormalizedDefinition {
     kind: AutomationDefinitionKind,
-    target_thread_id: Option<String>,
+    project_id: Option<String>,
+    target_session_id: Option<String>,
+    notification_policy: Option<AutomationNotificationPolicy>,
     name: String,
     prompt: String,
     rrule: String,
@@ -199,28 +202,44 @@ pub(super) fn apply(
                 ));
             }
             validate_id("operation_id", &request.operation_id)?;
-            require_trusted_host(&context, &request.intent)?;
-            let fingerprint = if is_page_occurrence_intent(&request.intent) {
-                serde_json::to_vec(&(
-                    &profile_id,
-                    &library_id,
-                    &context.project_id,
-                    request.contract_version,
-                    &request.store_epoch,
-                    &request.intent,
-                ))
-            } else {
-                serde_json::to_vec(&(
-                    &context.profile_id,
-                    &context.library_id,
-                    &context.project_id,
-                    &context.adapter,
-                    request.contract_version,
-                    &request.store_epoch,
-                    &request.intent,
-                ))
-            }
-            .map_err(|_| internal("Automation mutation cannot be fingerprinted"))?;
+            let intent =
+                super::agent_command::admit(transaction, &library_id, &context, &request.intent)?;
+            require_trusted_host(&context, intent)?;
+            // Current Turn authority is revalidated above; retries bind the semantic
+            // command to its actor Project, not to a particular Turn episode.
+            let fingerprint =
+                if let AutomationIntent::AgentCommand { provenance, .. } = &request.intent {
+                    serde_json::to_vec(&(
+                        "agent_definition",
+                        &profile_id,
+                        &library_id,
+                        &context.project_id,
+                        &provenance.authority.thread_id,
+                        request.contract_version,
+                        &request.store_epoch,
+                        intent,
+                    ))
+                } else if is_page_occurrence_intent(&request.intent) {
+                    serde_json::to_vec(&(
+                        &profile_id,
+                        &library_id,
+                        &context.project_id,
+                        request.contract_version,
+                        &request.store_epoch,
+                        &request.intent,
+                    ))
+                } else {
+                    serde_json::to_vec(&(
+                        &context.profile_id,
+                        &context.library_id,
+                        &context.project_id,
+                        &context.adapter,
+                        request.contract_version,
+                        &request.store_epoch,
+                        &request.intent,
+                    ))
+                }
+                .map_err(|_| internal("Automation mutation cannot be fingerprinted"))?;
             let request_hash = sha256(&fingerprint);
             if let Some(stored) =
                 read_module_receipt(transaction, MODULE_NAME, &request.operation_id)?
@@ -246,7 +265,10 @@ pub(super) fn apply(
                 });
             }
 
-            match &request.intent {
+            match intent {
+                AutomationIntent::AgentCommand { .. } => {
+                    Err(invalid("Nested Agent Automation commands are unavailable"))
+                }
                 AutomationIntent::CreateDefinition {
                     automation_id,
                     definition,
@@ -677,7 +699,7 @@ fn create_definition(
         return Err(conflict("Scheduled Automation id already exists"));
     }
     require_active_definition_capacity(connection)?;
-    let definition = normalize_definition(connection, input)?;
+    let definition = normalize_definition(connection, input, None)?;
     require_unique_active_heartbeat(
         connection,
         automation_id,
@@ -692,17 +714,17 @@ fn create_definition(
         .map_err(|_| internal("Normalized Agent backend binding is invalid"))?;
     connection.execute(
         "INSERT INTO codex_scheduled_automations(\
-           automation_id, kind, status, target_thread_id, name, prompt, rrule, model, \
+           automation_id, kind, status, target_session_id, name, prompt, rrule, model, \
            reasoning_effort, service_tier, cwds_json, agent_backend_kind, \
            agent_backend_definition_id, agent_backend_instance_config_id, \
            execution_environment, local_environment_config_path, next_run_at, last_run_at, \
-           created_at, updated_at, definition_revision\
+           created_at, updated_at, definition_revision, notification_policy, project_id\
          ) VALUES (?1, ?2, 'ACTIVE', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, \
-           ?13, ?14, ?15, ?16, NULL, ?17, ?17, 1)",
+           ?13, ?14, ?15, ?16, NULL, ?17, ?17, 1, ?18, ?19)",
         params![
             automation_id,
             kind_string(definition.kind),
-            definition.target_thread_id,
+            definition.target_session_id,
             definition.name,
             definition.prompt,
             definition.rrule,
@@ -717,6 +739,8 @@ fn create_definition(
             definition.local_environment_config_path,
             next_run,
             now_ms,
+            definition.notification_policy.map(|_| "failed_runs_only"),
+            definition.project_id,
         ],
     )?;
     let stored = read_definition(connection, automation_id)?
@@ -783,7 +807,7 @@ fn update_definition(
     if current.status == AutomationDefinitionStatus::Deleted {
         require_active_definition_capacity(connection)?;
     }
-    let definition = normalize_definition(connection, input)?;
+    let definition = normalize_definition(connection, input, current.notification_policy)?;
     require_unique_active_heartbeat(connection, automation_id, status, &definition)?;
     let (now_ms, committed_at) = core_now(connection)?;
     let schedule_changed = current.kind != definition.kind
@@ -804,17 +828,17 @@ fn update_definition(
         .map_err(|_| internal("Normalized Agent backend binding is invalid"))?;
     let changed = connection.execute(
         "UPDATE codex_scheduled_automations SET \
-           kind = ?1, status = ?2, target_thread_id = ?3, name = ?4, prompt = ?5, rrule = ?6, \
+           kind = ?1, status = ?2, target_session_id = ?3, name = ?4, prompt = ?5, rrule = ?6, \
            model = ?7, reasoning_effort = ?8, service_tier = ?9, cwds_json = ?10, \
            agent_backend_kind = ?11, agent_backend_definition_id = ?12, \
            agent_backend_instance_config_id = ?13, execution_environment = ?14, \
            local_environment_config_path = ?15, next_run_at = ?16, updated_at = ?17, \
-           definition_revision = definition_revision + 1 \
+           definition_revision = definition_revision + 1, notification_policy = ?20, project_id = ?21 \
          WHERE automation_id = ?18 AND definition_revision = ?19",
         params![
             kind_string(definition.kind),
             status_string(status),
-            definition.target_thread_id,
+            definition.target_session_id,
             definition.name,
             definition.prompt,
             definition.rrule,
@@ -831,6 +855,8 @@ fn update_definition(
             now_ms,
             automation_id,
             expected_revision,
+            definition.notification_policy.map(|_| "failed_runs_only"),
+            definition.project_id,
         ],
     )?;
     if changed != 1 {
@@ -1313,7 +1339,7 @@ fn seal_mutation(
     let event_sequence = append_change_log(
         connection,
         NewChangeLogEntry {
-            project_id: &project_id,
+            project_id: project_id.as_deref(),
             store_epoch,
             kind: "automation.changed",
             operation_id: Some(operation_id),
@@ -1490,6 +1516,7 @@ fn is_page_occurrence_intent(intent: &AutomationIntent) -> bool {
 fn normalize_definition(
     connection: &Connection,
     input: &AutomationDefinitionInput,
+    current_notification_policy: Option<AutomationNotificationPolicy>,
 ) -> Result<NormalizedDefinition, StoreError> {
     let name = input.name.trim();
     if name.is_empty() || name.chars().count() > MAX_NAME_CHARS {
@@ -1512,14 +1539,20 @@ fn normalize_definition(
         "service_tier",
     )?;
     binding_storage(&input.backend_binding).map_err(invalid)?;
-    let target_thread_id = normalize_optional_string(
-        input.target_thread_id.as_deref(),
+    let project_id =
+        normalize_optional_string(input.project_id.as_deref(), MAX_ID_LENGTH, "project_id")?;
+    let target_session_id = normalize_optional_string(
+        input.target_session_id.as_deref(),
         MAX_ID_LENGTH,
-        "target_thread_id",
+        "target_session_id",
     )?;
-    let execution_environment = input
-        .execution_environment
-        .unwrap_or(AutomationExecutionEnvironment::Worktree);
+    let execution_environment = input.execution_environment.unwrap_or(
+        if input.kind == AutomationDefinitionKind::Cron && project_id.is_none() {
+            AutomationExecutionEnvironment::Local
+        } else {
+            AutomationExecutionEnvironment::Worktree
+        },
+    );
     let local_environment_config_path = input
         .local_environment_config_path
         .as_deref()
@@ -1529,18 +1562,25 @@ fn normalize_definition(
 
     match input.kind {
         AutomationDefinitionKind::Cron => {
-            if cwds.is_empty() {
-                return Err(invalid(
-                    "Cron Scheduled Automation requires at least one cwd",
-                ));
-            }
-            if target_thread_id.is_some() {
-                return Err(invalid("Cron Scheduled Automation cannot target a Thread"));
+            validate_cron_project_target(
+                connection,
+                project_id.as_deref(),
+                &cwds,
+                execution_environment,
+                local_environment_config_path.as_deref(),
+            )?;
+            if target_session_id.is_some() {
+                return Err(invalid("Cron Scheduled Automation cannot target a Session"));
             }
         }
         AutomationDefinitionKind::Heartbeat => {
-            let target = target_thread_id.as_deref().ok_or_else(|| {
-                invalid("Heartbeat Scheduled Automation requires a target Thread")
+            if project_id.is_some() {
+                return Err(invalid(
+                    "Heartbeat execution context belongs to its target Session",
+                ));
+            }
+            let target = target_session_id.as_deref().ok_or_else(|| {
+                invalid("Heartbeat Scheduled Automation requires a target Session")
             })?;
             if !cwds.is_empty() || local_environment_config_path.is_some() {
                 return Err(invalid(
@@ -1549,21 +1589,26 @@ fn normalize_definition(
             }
             let exists = connection
                 .query_row(
-                    "SELECT 1 FROM codex_threads WHERE thread_id = ?1",
+                    "SELECT 1 FROM project_sessions WHERE id = ?1 AND archived = 0",
                     [target],
                     |_| Ok(()),
                 )
                 .optional()?
                 .is_some();
             if !exists {
-                return Err(not_found("Heartbeat target Thread is unavailable"));
+                return Err(not_found("Heartbeat target Session is unavailable"));
             }
         }
     }
 
     Ok(NormalizedDefinition {
         kind: input.kind,
-        target_thread_id,
+        project_id,
+        target_session_id,
+        notification_policy: match input.notification_policy {
+            AutomationNotificationPreference::Preserve => current_notification_policy,
+            AutomationNotificationPreference::Set { value } => value,
+        },
         name: name.to_owned(),
         prompt: prompt.to_owned(),
         rrule,
@@ -1579,6 +1624,59 @@ fn normalize_definition(
             None
         },
     })
+}
+
+pub(super) fn validate_cron_project_target(
+    connection: &Connection,
+    project_id: Option<&str>,
+    cwds: &[String],
+    environment: AutomationExecutionEnvironment,
+    local_environment_path: Option<&str>,
+) -> Result<(), StoreError> {
+    let Some(project_id) = project_id else {
+        if environment != AutomationExecutionEnvironment::Local || local_environment_path.is_some()
+        {
+            return Err(invalid(
+                "A projectless Automation requires local execution without an Environment",
+            ));
+        }
+        if cwds.is_empty() {
+            return Ok(());
+        }
+        return Err(invalid(
+            "Projectless Automations cannot select Project folders",
+        ));
+    };
+    let active = connection
+        .query_row(
+            "SELECT lifecycle = 'active' FROM projects WHERE id = ?1",
+            [project_id],
+            |row| row.get::<_, bool>(0),
+        )
+        .optional()?
+        .unwrap_or(false);
+    if !active {
+        return Err(not_found("Automation Project is unavailable"));
+    }
+    if cwds.is_empty() {
+        return Err(invalid(
+            "A Project Automation requires at least one Project folder",
+        ));
+    }
+    let roots = connection
+        .prepare("SELECT root FROM project_sources WHERE project_id = ?1")?
+        .query_map([project_id], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let roots = roots
+        .iter()
+        .map(|root| normalize_absolute_path(root, "Project source"))
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    if cwds.iter().any(|cwd| !roots.contains(cwd)) {
+        return Err(invalid(
+            "Automation folders must belong to its selected Project",
+        ));
+    }
+    Ok(())
 }
 
 fn normalize_cwds(values: &[String]) -> Result<Vec<String>, StoreError> {
@@ -1678,14 +1776,14 @@ fn require_unique_active_heartbeat(
         .query_row(
             "SELECT 1 FROM codex_scheduled_automations \
              WHERE automation_id <> ?1 AND kind = 'heartbeat' AND status = 'ACTIVE' \
-               AND target_thread_id = ?2",
-            params![automation_id, definition.target_thread_id],
+               AND target_session_id = ?2",
+            params![automation_id, definition.target_session_id],
             |_| Ok(()),
         )
         .optional()?
         .is_some();
     if duplicate {
-        return Err(conflict("Target Thread already has an active heartbeat"));
+        return Err(conflict("Target Session already has an active heartbeat"));
     }
     Ok(())
 }
@@ -1762,7 +1860,7 @@ fn event_project_id(
     connection: &Connection,
     library_id: &str,
     context: &BoundModuleContext,
-) -> Result<String, StoreError> {
+) -> Result<Option<String>, StoreError> {
     if let Some(project_id) = context.project_id.as_ref() {
         let bound = connection
             .query_row(
@@ -1772,7 +1870,7 @@ fn event_project_id(
             )
             .optional()?;
         if let Some(bound) = bound {
-            return Ok(bound);
+            return Ok(Some(bound));
         }
         return Err(StoreError::new(
             StoreErrorCode::Unauthorized,
@@ -1780,15 +1878,7 @@ fn event_project_id(
             false,
         ));
     }
-    connection
-        .query_row(
-            "SELECT id FROM projects WHERE library_id = ?1 \
-             ORDER BY CASE lifecycle WHEN 'active' THEN 0 ELSE 1 END, created, id LIMIT 1",
-            [library_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?
-        .ok_or_else(|| corrupt("Automation event has no Project scope"))
+    Ok(None)
 }
 
 fn core_now(connection: &Connection) -> Result<(i64, String), StoreError> {
@@ -1942,7 +2032,8 @@ mod tests {
     use nodex_core_contracts::agent::AgentBackendBinding;
     use nodex_core_contracts::automation::{
         AutomationDefinitionInput, AutomationDefinitionKind, AutomationDefinitionStatus,
-        AutomationDueWorkLane, AutomationIntent, AutomationLeaseStatus, AutomationRead,
+        AutomationDueWorkLane, AutomationExecutionEnvironment, AutomationIntent,
+        AutomationLeaseStatus, AutomationNotificationPreference, AutomationRead,
         AutomationReadValue, AutomationRunStatus, PageOccurrenceSchedulePatch,
         PageOccurrenceUpdateScope, ReminderLeaseStatus,
     };
@@ -2002,6 +2093,32 @@ mod tests {
         let workspace =
             ProjectWorkspaceModule::new("profile-1", "library-1", &kernel).expect("Workspace");
         workspace.seed_rootless_default_project_for_test();
+        workspace
+            .apply(
+                &BoundModuleContext {
+                    editor_history_owner: None,
+                    profile_id: ProfileId("profile-1".to_owned()),
+                    library_id: LibraryId("library-1".to_owned()),
+                    project_id: None,
+                    connection_id: "test-connection".to_owned(),
+                    adapter: AdapterKind::Test,
+                },
+                ModuleApplyRequest {
+                    contract_version: nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    operation_id: "automation-project-source".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent:
+                        nodex_core_contracts::workspace::ProjectWorkspaceIntent::UpdateProject {
+                            project_id: "project:default".to_owned(),
+                            expected_binding_revision: 1,
+                            name: None,
+                            description: None,
+                            appearance: None,
+                            source_roots: Some(vec!["/workspace/report".to_owned()]),
+                        },
+                },
+            )
+            .expect("Project source");
         let module = AutomationModule::new("profile-1", "library-1", &kernel);
         Harness {
             _home: home,
@@ -2022,7 +2139,9 @@ mod tests {
     fn definition() -> AutomationDefinitionInput {
         AutomationDefinitionInput {
             kind: AutomationDefinitionKind::Cron,
-            target_thread_id: None,
+            project_id: Some("project:default".to_owned()),
+            target_session_id: None,
+            notification_policy: AutomationNotificationPreference::Preserve,
             name: "Daily report".to_owned(),
             prompt: Some("Prepare the report".to_owned()),
             rrule: Some("FREQ=MINUTELY;INTERVAL=5".to_owned()),
@@ -2034,6 +2153,398 @@ mod tests {
             execution_environment: None,
             local_environment_config_path: None,
         }
+    }
+
+    #[test]
+    fn agent_definition_commands_revalidate_authority_and_targets_before_replay() {
+        use nodex_core_contracts::agent::AgentTurnProvenance;
+        use nodex_core_contracts::workspace::{
+            ProjectWorkspaceIntent, ProjectWorkspaceThreadPatch, ProjectWorkspaceTurnAuthority,
+            ProjectWorkspaceTurnAuthorityScope, ProjectWorkspaceTurnAuthoritySource,
+        };
+        use nodex_core_contracts::{CoreErrorCode, PROJECT_WORKSPACE_CONTRACT_VERSION};
+        let harness = harness();
+        let workspace =
+            ProjectWorkspaceModule::new("profile-1", "library-1", &harness.kernel).unwrap();
+        let workspace_apply = |operation: &str, intent| {
+            workspace
+                .apply(
+                    &project_context(&harness),
+                    ModuleApplyRequest {
+                        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        operation_id: operation.to_owned(),
+                        store_epoch: harness.store_epoch.clone(),
+                        intent,
+                    },
+                )
+                .unwrap()
+        };
+        workspace_apply(
+            "caller",
+            ProjectWorkspaceIntent::UpsertThread {
+                thread_id: "caller".into(),
+                patch: Box::new(ProjectWorkspaceThreadPatch {
+                    project_id: Some(Some("project:default".into())),
+                    ..Default::default()
+                }),
+            },
+        );
+        for (turn, read_only) in [("write", false), ("retry", false), ("read", true)] {
+            workspace_apply(
+                turn,
+                ProjectWorkspaceIntent::FreezeTurnAuthority {
+                    thread_id: "caller".into(),
+                    turn_id: turn.into(),
+                    root_thread_id: "caller".into(),
+                    actor_project_id: Some("project:default".into()),
+                    source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
+                    read_only,
+                    inherited_from: None,
+                },
+            );
+        }
+        let provenance = |turn: &str| AgentTurnProvenance {
+            profile_id: "profile-1".into(),
+            authority: ProjectWorkspaceTurnAuthority {
+                thread_id: "caller".into(),
+                turn_id: turn.into(),
+                root_thread_id: "caller".into(),
+                actor_project_id: Some("project:default".into()),
+                library_id: "library-1".into(),
+                store_epoch: "epoch-1".into(),
+                scope: ProjectWorkspaceTurnAuthorityScope::Project,
+                source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
+            },
+        };
+        let mut agent_context = project_context(&harness);
+        agent_context.adapter = AdapterKind::Agent;
+        let command = |turn: &str, intent| AutomationIntent::AgentCommand {
+            provenance: Box::new(provenance(turn)),
+            intent: Box::new(intent),
+        };
+        let create = AutomationIntent::CreateDefinition {
+            automation_id: "agent-report".into(),
+            definition: definition(),
+        };
+        assert_eq!(
+            apply_with_context(&harness, &agent_context, "bare", create.clone())
+                .unwrap_err()
+                .code,
+            CoreErrorCode::Unauthorized
+        );
+        assert_eq!(
+            apply_with_context(
+                &harness,
+                &agent_context,
+                "read-write",
+                command("read", create.clone())
+            )
+            .unwrap_err()
+            .code,
+            CoreErrorCode::Unauthorized
+        );
+        let first = apply_with_context(
+            &harness,
+            &agent_context,
+            "agent-create",
+            command("write", create.clone()),
+        )
+        .unwrap();
+        let replay = apply_with_context(
+            &harness,
+            &agent_context,
+            "agent-create",
+            command("write", create.clone()),
+        )
+        .unwrap();
+        assert!(replay.committed.receipt.mutation.duplicate);
+        assert_eq!(
+            first.committed.value.definitions,
+            replay.committed.value.definitions
+        );
+        assert!(
+            apply_with_context(
+                &harness,
+                &agent_context,
+                "agent-create",
+                command("retry", create.clone())
+            )
+            .unwrap()
+            .committed
+            .receipt
+            .mutation
+            .duplicate
+        );
+        let mut changed_input = definition();
+        changed_input.prompt = Some("Changed command".into());
+        assert_eq!(
+            apply_with_context(
+                &harness,
+                &agent_context,
+                "agent-create",
+                command(
+                    "retry",
+                    AutomationIntent::CreateDefinition {
+                        automation_id: "agent-report".into(),
+                        definition: changed_input,
+                    }
+                )
+            )
+            .unwrap_err()
+            .code,
+            CoreErrorCode::IdempotencyKeyReused
+        );
+        let list = |provenance, after| {
+            let snapshot = harness.module.read(
+                &agent_context,
+                ModuleReadRequest {
+                    contract_version: AUTOMATION_CONTRACT_VERSION,
+                    read: AutomationRead::AgentDefinitions {
+                        provenance,
+                        search_query: Some("REPORT".into()),
+                        window: nodex_core_contracts::collection::CollectionWindowRequest {
+                            first: Some(1),
+                            after,
+                        },
+                    },
+                },
+            )?;
+            let AutomationReadValue::Definitions { window } = snapshot.value else {
+                panic!("definition window");
+            };
+            Ok::<_, nodex_core_contracts::CoreError>(window)
+        };
+        let read = |provenance, automation_id: &str| {
+            harness.module.read(
+                &agent_context,
+                ModuleReadRequest {
+                    contract_version: AUTOMATION_CONTRACT_VERSION,
+                    read: AutomationRead::AgentDefinition {
+                        provenance,
+                        automation_id: automation_id.into(),
+                    },
+                },
+            )
+        };
+        assert!(read(provenance("read"), "agent-report").is_ok());
+        assert_eq!(
+            harness
+                .module
+                .read(
+                    &agent_context,
+                    ModuleReadRequest {
+                        contract_version: AUTOMATION_CONTRACT_VERSION,
+                        read: AutomationRead::Definition {
+                            automation_id: "agent-report".into()
+                        },
+                    }
+                )
+                .unwrap_err()
+                .code,
+            CoreErrorCode::Unauthorized
+        );
+        let mut projectless = definition();
+        projectless.project_id = None;
+        projectless.cwds = None;
+        apply(
+            &harness,
+            "host-projectless",
+            AutomationIntent::CreateDefinition {
+                automation_id: "projectless".into(),
+                definition: projectless.clone(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            read(provenance("write"), "projectless").unwrap_err().code,
+            CoreErrorCode::Unauthorized
+        );
+        assert_eq!(
+            apply_with_context(
+                &harness,
+                &agent_context,
+                "escape-target",
+                command(
+                    "write",
+                    AutomationIntent::UpdateDefinition {
+                        automation_id: "agent-report".into(),
+                        expected_revision: 1,
+                        status: AutomationDefinitionStatus::Active,
+                        definition: projectless,
+                    }
+                )
+            )
+            .unwrap_err()
+            .code,
+            CoreErrorCode::Unauthorized
+        );
+        let own_window = list(provenance("read"), None).unwrap();
+        assert_eq!(own_window.items.len(), 1);
+        assert_eq!(own_window.items[0].automation_id, "agent-report");
+        assert!(own_window.next_cursor.is_none());
+        let mut forged = provenance("write");
+        forged.authority.scope = ProjectWorkspaceTurnAuthorityScope::Library;
+        assert_eq!(
+            read(forged, "projectless").unwrap_err().code,
+            CoreErrorCode::Unauthorized
+        );
+        assert_eq!(
+            apply_with_context(
+                &harness,
+                &agent_context,
+                "agent-dispatch",
+                command(
+                    "write",
+                    AutomationIntent::DispatchNow {
+                        automation_id: "agent-report".into(),
+                    }
+                )
+            )
+            .unwrap_err()
+            .code,
+            CoreErrorCode::Unauthorized
+        );
+        workspace_apply(
+            "heartbeat-session",
+            ProjectWorkspaceIntent::CreateSession {
+                session_id: "agent-heartbeat-session".into(),
+                project_id: Some("project:default".into()),
+                title: "Heartbeat target".into(),
+                initial_page_ids: vec![],
+            },
+        );
+        let mut heartbeat = definition();
+        heartbeat.kind = AutomationDefinitionKind::Heartbeat;
+        heartbeat.project_id = None;
+        heartbeat.target_session_id = Some("agent-heartbeat-session".into());
+        heartbeat.cwds = None;
+        let heartbeat_create = AutomationIntent::CreateDefinition {
+            automation_id: "agent-heartbeat".into(),
+            definition: heartbeat,
+        };
+        apply_with_context(
+            &harness,
+            &agent_context,
+            "agent-heartbeat-create",
+            command("write", heartbeat_create.clone()),
+        )
+        .unwrap();
+        workspace_apply(
+            "move-heartbeat",
+            ProjectWorkspaceIntent::MoveSession {
+                session_id: "agent-heartbeat-session".into(),
+                project_id: None,
+            },
+        );
+        assert_eq!(
+            read(provenance("read"), "agent-heartbeat")
+                .unwrap_err()
+                .code,
+            CoreErrorCode::Unauthorized
+        );
+        assert_eq!(
+            apply_with_context(
+                &harness,
+                &agent_context,
+                "agent-heartbeat-create",
+                command("write", heartbeat_create)
+            )
+            .unwrap_err()
+            .code,
+            CoreErrorCode::Unauthorized
+        );
+        workspace_apply(
+            "full-access",
+            ProjectWorkspaceIntent::SetProjectPermissionMode {
+                project_id: "project:default".into(),
+                mode: nodex_core_contracts::workspace::CodexPermissionMode::FullAccess,
+            },
+        );
+        workspace_apply(
+            "library-turn",
+            ProjectWorkspaceIntent::FreezeTurnAuthority {
+                thread_id: "caller".into(),
+                turn_id: "library".into(),
+                root_thread_id: "caller".into(),
+                actor_project_id: Some("project:default".into()),
+                source: ProjectWorkspaceTurnAuthoritySource::BuiltinFullAccess,
+                read_only: false,
+                inherited_from: None,
+            },
+        );
+        let mut library = provenance("library");
+        library.authority.scope = ProjectWorkspaceTurnAuthorityScope::Library;
+        library.authority.source = ProjectWorkspaceTurnAuthoritySource::BuiltinFullAccess;
+        assert!(read(library.clone(), "projectless").is_ok());
+        let library_window = list(library.clone(), None).unwrap();
+        let cursor = library_window
+            .next_cursor
+            .expect("Library sees more than the Project window");
+        assert!(list(provenance("read"), Some(cursor.clone())).is_err());
+        assert_eq!(list(library.clone(), Some(cursor)).unwrap().items.len(), 1);
+        let delete = AutomationIntent::AgentCommand {
+            provenance: Box::new(library),
+            intent: Box::new(AutomationIntent::DeleteDefinition {
+                automation_id: "projectless".into(),
+                expected_revision: 1,
+            }),
+        };
+        apply_with_context(&harness, &agent_context, "agent-delete", delete.clone()).unwrap();
+        assert!(
+            apply_with_context(&harness, &agent_context, "agent-delete", delete)
+                .unwrap()
+                .committed
+                .receipt
+                .mutation
+                .duplicate
+        );
+        let mut moved_definition = definition();
+        moved_definition.project_id = None;
+        moved_definition.cwds = None;
+        apply(
+            &harness,
+            "move-definition",
+            AutomationIntent::UpdateDefinition {
+                automation_id: "agent-report".into(),
+                expected_revision: 1,
+                status: AutomationDefinitionStatus::Active,
+                definition: moved_definition,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            apply_with_context(
+                &harness,
+                &agent_context,
+                "agent-create",
+                command("write", create.clone())
+            )
+            .unwrap_err()
+            .code,
+            CoreErrorCode::Unauthorized
+        );
+        workspace_apply(
+            "archive-project",
+            ProjectWorkspaceIntent::SetProjectLifecycle {
+                project_id: "project:default".into(),
+                lifecycle: nodex_core_contracts::workspace::ProjectLifecycle::Archived,
+            },
+        );
+        assert_eq!(
+            read(provenance("write"), "agent-report").unwrap_err().code,
+            CoreErrorCode::NotFound
+        );
+        assert_eq!(
+            apply_with_context(
+                &harness,
+                &agent_context,
+                "agent-create",
+                command("write", create)
+            )
+            .unwrap_err()
+            .code,
+            CoreErrorCode::NotFound
+        );
     }
 
     #[test]
@@ -2415,6 +2926,275 @@ mod tests {
     }
 
     #[test]
+    fn cron_project_identity_bounds_folders_and_is_revalidated_before_execution() {
+        let harness = harness();
+        let mut foreign = definition();
+        foreign.cwds = Some(vec!["/foreign".to_owned()]);
+        assert!(
+            apply(
+                &harness,
+                "foreign-folder",
+                AutomationIntent::CreateDefinition {
+                    automation_id: "foreign".to_owned(),
+                    definition: foreign
+                }
+            )
+            .is_err()
+        );
+        create(&harness);
+        let snapshot = harness
+            .module
+            .read(
+                &harness.context,
+                ModuleReadRequest {
+                    contract_version: AUTOMATION_CONTRACT_VERSION,
+                    read: AutomationRead::ExecutionDefinition {
+                        automation_id: "daily-report".to_owned(),
+                    },
+                },
+            )
+            .expect("valid execution target");
+        let AutomationReadValue::Definition { item: Some(saved) } = snapshot.value else {
+            panic!("definition")
+        };
+        assert_eq!(saved.project_id.as_deref(), Some("project:default"));
+        let workspace = ProjectWorkspaceModule::new("profile-1", "library-1", &harness.kernel)
+            .expect("workspace");
+        workspace
+            .apply(
+                &harness.context,
+                ModuleApplyRequest {
+                    contract_version: nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    operation_id: "remove-project-source".to_owned(),
+                    store_epoch: harness.store_epoch.clone(),
+                    intent:
+                        nodex_core_contracts::workspace::ProjectWorkspaceIntent::UpdateProject {
+                            project_id: "project:default".to_owned(),
+                            expected_binding_revision: 2,
+                            name: None,
+                            description: None,
+                            appearance: None,
+                            source_roots: Some(vec![]),
+                        },
+                },
+            )
+            .expect("remove source");
+        assert!(
+            harness
+                .module
+                .read(
+                    &harness.context,
+                    ModuleReadRequest {
+                        contract_version: AUTOMATION_CONTRACT_VERSION,
+                        read: AutomationRead::ExecutionDefinition {
+                            automation_id: "daily-report".to_owned()
+                        }
+                    }
+                )
+                .is_err()
+        );
+        let mut projectless = definition();
+        projectless.project_id = None;
+        projectless.cwds = None;
+        projectless.execution_environment = Some(AutomationExecutionEnvironment::Local);
+        let result = apply(
+            &harness,
+            "projectless",
+            AutomationIntent::CreateDefinition {
+                automation_id: "projectless".to_owned(),
+                definition: projectless,
+            },
+        )
+        .expect("projectless automation");
+        assert_eq!(result.committed.value.definitions[0].project_id, None);
+        assert!(result.committed.value.definitions[0].cwds.is_empty());
+    }
+
+    #[test]
+    fn heartbeat_follows_its_session_attachment_without_rewriting_the_definition() {
+        use nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION;
+        use nodex_core_contracts::workspace::{ProjectSessionIntent, ProjectWorkspaceIntent};
+        let harness = harness();
+        let workspace = ProjectWorkspaceModule::new("profile-1", "library-1", &harness.kernel)
+            .expect("workspace");
+        let command = |operation: &str, intent| {
+            workspace
+                .apply(
+                    &harness.context,
+                    ModuleApplyRequest {
+                        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        operation_id: operation.to_owned(),
+                        store_epoch: harness.store_epoch.clone(),
+                        intent,
+                    },
+                )
+                .expect("workspace command")
+        };
+        command(
+            "session-create",
+            ProjectWorkspaceIntent::CreateSession {
+                session_id: "session-target".to_owned(),
+                project_id: None,
+                title: "Target".to_owned(),
+                initial_page_ids: vec![],
+            },
+        );
+        let mut input = definition();
+        input.kind = AutomationDefinitionKind::Heartbeat;
+        input.project_id = None;
+        input.target_session_id = Some("session-target".to_owned());
+        input.cwds = None;
+        let created = apply(
+            &harness,
+            "heartbeat-create",
+            AutomationIntent::CreateDefinition {
+                automation_id: "heartbeat".to_owned(),
+                definition: input,
+            },
+        )
+        .expect("heartbeat");
+        assert_eq!(
+            created.committed.value.definitions[0]
+                .target_session_id
+                .as_deref(),
+            Some("session-target")
+        );
+        assert_eq!(
+            created.committed.value.definitions[0].target_thread_id,
+            None
+        );
+        let read_target = || {
+            let result = harness
+                .module
+                .read(
+                    &harness.context,
+                    ModuleReadRequest {
+                        contract_version: AUTOMATION_CONTRACT_VERSION,
+                        read: AutomationRead::Definition {
+                            automation_id: "heartbeat".to_owned(),
+                        },
+                    },
+                )
+                .expect("read heartbeat");
+            let AutomationReadValue::Definition { item: Some(item) } = result.value else {
+                panic!("heartbeat definition")
+            };
+            item
+        };
+        for (index, thread_id) in ["backend-first", "backend-replacement"].iter().enumerate() {
+            command(
+                &format!("thread-{index}"),
+                ProjectWorkspaceIntent::UpsertThread {
+                    thread_id: (*thread_id).to_owned(),
+                    patch: Box::default(),
+                },
+            );
+            if index > 0 {
+                command(
+                    "unlink-first",
+                    ProjectWorkspaceIntent::MutateSession {
+                        session_id: "session-target".to_owned(),
+                        intent: ProjectSessionIntent::UnlinkThread {
+                            thread_id: "backend-first".to_owned(),
+                        },
+                    },
+                );
+                assert_eq!(read_target().target_thread_id, None);
+            }
+            command(
+                &format!("link-{index}"),
+                ProjectWorkspaceIntent::MutateSession {
+                    session_id: "session-target".to_owned(),
+                    intent: ProjectSessionIntent::LinkThread {
+                        thread_id: (*thread_id).to_owned(),
+                        expected_project_id: None,
+                        thread_patch: None,
+                        execution_location: None,
+                    },
+                },
+            );
+            let saved = read_target();
+            assert_eq!(saved.target_thread_id.as_deref(), Some(*thread_id));
+            assert_eq!(saved.target_session_id.as_deref(), Some("session-target"));
+            assert_eq!(saved.definition_revision, 1);
+        }
+    }
+
+    #[test]
+    fn notification_preferences_round_trip_and_can_be_cleared() {
+        use nodex_core_contracts::automation::AutomationNotificationPolicy;
+        let harness = harness();
+        let mut muted = definition();
+        muted.notification_policy = AutomationNotificationPreference::Set {
+            value: Some(AutomationNotificationPolicy::FailedRunsOnly),
+        };
+        let created = apply(
+            &harness,
+            "create-muted",
+            AutomationIntent::CreateDefinition {
+                automation_id: "daily-report".to_owned(),
+                definition: muted,
+            },
+        )
+        .expect("create muted automation");
+        assert_eq!(
+            created.committed.value.definitions[0].notification_policy,
+            Some(AutomationNotificationPolicy::FailedRunsOnly)
+        );
+        let reopened = AutomationModule::new("profile-1", "library-1", &harness.kernel);
+        let snapshot = reopened
+            .read(
+                &harness.context,
+                ModuleReadRequest {
+                    contract_version: AUTOMATION_CONTRACT_VERSION,
+                    read: AutomationRead::Definition {
+                        automation_id: "daily-report".to_owned(),
+                    },
+                },
+            )
+            .expect("read saved preference");
+        let AutomationReadValue::Definition { item: Some(saved) } = snapshot.value else {
+            panic!("saved definition")
+        };
+        assert_eq!(
+            saved.notification_policy,
+            Some(AutomationNotificationPolicy::FailedRunsOnly)
+        );
+        let preserved = apply(
+            &harness,
+            "preserve-muted",
+            AutomationIntent::UpdateDefinition {
+                automation_id: "daily-report".to_owned(),
+                expected_revision: 1,
+                status: AutomationDefinitionStatus::Active,
+                definition: definition(),
+            },
+        )
+        .expect("preserve preference");
+        assert_eq!(
+            preserved.committed.value.definitions[0].notification_policy,
+            Some(AutomationNotificationPolicy::FailedRunsOnly)
+        );
+        let mut clear = definition();
+        clear.notification_policy = AutomationNotificationPreference::Set { value: None };
+        let unmuted = apply(
+            &harness,
+            "unmute",
+            AutomationIntent::UpdateDefinition {
+                automation_id: "daily-report".to_owned(),
+                expected_revision: 2,
+                status: AutomationDefinitionStatus::Active,
+                definition: clear,
+            },
+        )
+        .expect("clear preference");
+        assert_eq!(
+            unmuted.committed.value.definitions[0].notification_policy,
+            None
+        );
+    }
+
+    #[test]
     fn definitions_are_typed_revisioned_and_exactly_replayed() {
         let harness = harness();
         let created = apply(
@@ -2459,6 +3239,7 @@ mod tests {
                 ModuleReadRequest {
                     contract_version: AUTOMATION_CONTRACT_VERSION,
                     read: AutomationRead::Definitions {
+                        search_query: None,
                         include_deleted: None,
                         window: Default::default(),
                     },

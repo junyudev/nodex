@@ -83,7 +83,7 @@ struct RoutingEvidence {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) struct DocumentDeliveryResource {
     pub effect_order: i64,
-    pub project_id: String,
+    pub project_id: Option<String>,
     pub page_id: Option<String>,
     pub document_id: String,
     pub generation: i64,
@@ -151,7 +151,7 @@ impl CommitContext {
 #[derive(Debug, Clone)]
 pub(crate) struct RegisteredPhysicalEffect<'a> {
     pub change_log_seq: i64,
-    pub project_id: &'a str,
+    pub project_id: Option<&'a str>,
     pub module: ModuleName,
     pub kind: &'a str,
     pub operation_id: Option<&'a str>,
@@ -171,7 +171,7 @@ pub(crate) struct PhysicalEffectResources {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RegisteredDocumentEffect<'a> {
-    pub project_id: &'a str,
+    pub project_id: Option<&'a str>,
     pub page_id: Option<&'a str>,
     pub document_id: &'a str,
     pub generation: i64,
@@ -252,7 +252,7 @@ struct CanonicalVisibilityDeltaEvidence {
 struct CanonicalPhysicalEffect {
     effect_order: i64,
     change_log_seq: i64,
-    project_id: String,
+    project_id: Option<String>,
     module: ModuleName,
     kind: String,
     operation_id: Option<String>,
@@ -292,7 +292,7 @@ struct CanonicalAtomIdentity<'a> {
 #[derive(Clone, Debug, Serialize)]
 struct CanonicalDocumentEffect {
     effect_order: i64,
-    project_id: String,
+    project_id: Option<String>,
     page_id: Option<String>,
     document_id: String,
     generation: i64,
@@ -307,7 +307,7 @@ struct CanonicalDocumentEffect {
 pub(crate) type PhysicalEffectEvidence = (
     i64,
     i64,
-    String,
+    Option<String>,
     ModuleName,
     String,
     Option<String>,
@@ -410,7 +410,9 @@ pub(crate) fn record_effect(
     if effect.change_log_seq < 1 {
         return Err(corrupt("LocalCommit physical effect sequence is invalid"));
     }
-    validate_identity(effect.project_id, "LocalCommit effect Project")?;
+    if let Some(project_id) = effect.project_id {
+        validate_identity(project_id, "LocalCommit effect Project")?;
+    }
     validate_identity(effect.kind, "LocalCommit effect kind")?;
     if let Some(operation_id) = effect.operation_id {
         validate_identity(operation_id, "LocalCommit physical operation")?;
@@ -606,7 +608,9 @@ pub(crate) fn record_document_effect(
     effect: RegisteredDocumentEffect<'_>,
 ) -> Result<i64, StoreError> {
     assert_open(connection, context)?;
-    validate_identity(effect.project_id, "LocalCommit Document Project")?;
+    if let Some(project_id) = effect.project_id {
+        validate_identity(project_id, "LocalCommit Document Project")?;
+    }
     if let Some(page_id) = effect.page_id {
         validate_identity(page_id, "LocalCommit Document Page")?;
     }
@@ -1095,7 +1099,7 @@ fn compile_delivery_atoms(
         let drafts = super::delivery_atom::compile(
             connection,
             &audience.library_id,
-            &effect.project_id,
+            effect.project_id.as_deref(),
             event.payload,
         )?;
         record_delivery_atoms(connection, context, drafts)?;
@@ -1233,8 +1237,8 @@ pub(crate) fn physical_effect_evidence(
         .query_map(
             params![coordinate.store_epoch, coordinate.commit_seq],
             |row| {
-                let effect_project_id = row.get::<_, String>(2)?;
-                let change_project_id = row.get::<_, String>(3)?;
+                let effect_project_id = row.get::<_, Option<String>>(2)?;
+                let change_project_id = row.get::<_, Option<String>>(3)?;
                 if effect_project_id != change_project_id {
                     return Err(rusqlite::Error::InvalidColumnType(
                         3,
@@ -1969,8 +1973,12 @@ fn derive_audience(
 ) -> Result<RoutingEvidence, StoreError> {
     let mut project_ids = effects
         .iter()
-        .map(|effect| effect.project_id.clone())
-        .chain(documents.iter().map(|effect| effect.project_id.clone()))
+        .filter_map(|effect| effect.project_id.clone())
+        .chain(
+            documents
+                .iter()
+                .filter_map(|effect| effect.project_id.clone()),
+        )
         .collect::<Vec<_>>();
     project_ids.sort();
     project_ids.dedup();

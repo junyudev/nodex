@@ -7,6 +7,7 @@ import {
   createRef,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentProps,
@@ -57,12 +58,12 @@ import {
   makeProject,
   makeSession,
   makeSessionTab,
-  makeSessionViewFixture,
   replaceSession,
   sortProjectSessionsForTest,
   updateSessionTab,
 } from "./workbench-shell-fixtures";
 import type { ProjectSession } from "./workbench-shell-fixtures";
+import { makeSessionSceneFixture } from "./session-scene-fixture";
 import { resetDatabaseRowDetailStoreForTests } from "@/lib/database-row-detail-store";
 import { resetPageDetailStoreForTests } from "@/lib/page-detail-store";
 import { resetDatabaseViewPersonalPreferencesForTests } from "@/lib/database-view-personal-preferences";
@@ -80,6 +81,7 @@ import { TestQueryProvider } from "../../../test/query";
 import { RendererStateProvider } from "../../../app-providers";
 import { NodexModalHost } from "@/lib/modal-registry";
 import { AppShellHeaderContentRegistrar } from "@/lib/workbench-ui-scopes";
+import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import { __resetNodexToastStoreForTests } from "@/components/ui/toast";
 import {
   buildCommandPaletteCommands,
@@ -115,7 +117,10 @@ import {
   listWorkbenchPanelLeaves,
 } from "../../../../shared/workbench-panel-layout";
 import { type WorkbenchSessionViewSnapshot } from "../../../../shared/workbench-session-view";
-import { projectWorkbenchSceneToLegacySessionView } from "../../../../shared/workbench-scene";
+import {
+  makeWorkbenchSceneKey,
+  projectWorkbenchSceneToLegacySessionView,
+} from "../../../../shared/workbench-scene";
 import {
   PageTitleProjectionPublisher,
   type PageTitleResourceIdentity,
@@ -254,6 +259,13 @@ export function emitCodexEvent(event: CodexEvent): void {
 }
 
 export const mockCodexControl = {
+  captureSubmissionPresentation: () => ({
+    rendererGeneration: "test-generation",
+    sceneOwner: null,
+    presentationRevision: 0,
+    focusedTarget: null,
+    selectedTabs: [],
+  }),
   availableModels: DEFAULT_TEST_CODEX_MODELS,
   threadSettings: { model: "gpt-5.5", reasoningEffort: "medium" },
   reasoningEffortOptions: [{ reasoningEffort: "medium", description: "Balanced" }],
@@ -2618,6 +2630,11 @@ export function renderWorkbench({
         value: { kind: "list", page: { drafts: [], pending_count: 0 } },
       };
     }
+    if (channel === "workbench-agent:register")
+      return { windowSessionId: "window-session:test", rendererGeneration: "test-generation" };
+    if (channel === "workbench-agent:release") return undefined;
+    if (channel === "workbench-agent:reply") return true;
+
     if (channel === "library-module:read") {
       const request = args[1] as {
         readonly read?: {
@@ -3142,6 +3159,9 @@ export function renderWorkbench({
       const saved: CodexScheduledAutomation = {
         id: `automation-${scheduledAutomations.length + 1}`,
         definitionRevision: 1,
+        projectId: input.projectId ?? null,
+        targetSessionId: null,
+        notificationPolicy: null,
         kind: input.kind,
         status: "ACTIVE",
         targetThreadId: input.targetThreadId ?? null,
@@ -3169,6 +3189,9 @@ export function renderWorkbench({
       const saved: CodexScheduledAutomation = {
         id: input.id,
         definitionRevision: (existing?.definitionRevision ?? 0) + 1,
+        projectId: input.projectId === undefined ? (existing?.projectId ?? null) : input.projectId,
+        targetSessionId: null,
+        notificationPolicy: null,
         kind: input.kind,
         status: input.status,
         targetThreadId: input.targetThreadId ?? null,
@@ -4141,11 +4164,11 @@ export function renderWorkbench({
 
   function WorkbenchShellTestHarness() {
     const [renderedProjects, setRenderedProjects] = useState(projects);
-    const sessionViewsBySessionId = Object.fromEntries(
-      [...Object.values(sessionsByProject).flat(), ...projectlessSessions].map((session) => [
-        session.id,
-        makeSessionViewFixture(session),
-      ]),
+    const scenesByOwnerKey = Object.fromEntries(
+      [...Object.values(sessionsByProject).flat(), ...projectlessSessions].map((session) => {
+        const scene = makeSessionSceneFixture(session);
+        return [makeWorkbenchSceneKey(scene.owner), scene];
+      }),
     );
     const [sidebarState, setSidebarState] = useState<TestSidebarState>(() => ({
       collapsed: false,
@@ -4193,33 +4216,51 @@ export function renderWorkbench({
     const initialWindowLayoutSnapshotRef = useRef(
       initialWindowLayoutSnapshot ??
         WorkbenchLayoutSnapshotSchema.parse({
-          version: 4 as const,
+          version: 7 as const,
           location: resolvedInitialSelectedSessionId
             ? {
                 kind: "session" as const,
-                activeProjectId: projects[0]?.id ?? null,
+                projectContextId: projects[0]?.id ?? null,
                 sessionId: resolvedInitialSelectedSessionId,
               }
-            : {
-                kind: "empty" as const,
-                activeProjectId: projects[0]?.id ?? null,
-              },
+            : projects[0]
+              ? { kind: "project" as const, projectId: projects[0].id }
+              : { kind: "empty" as const },
           databaseSearchByProject: searchByProject,
-          sessionViewsBySessionId,
+          scenesByOwnerKey,
         }),
     );
+    const owner = useWorkbenchWindowOwner(initialWindowLayoutSnapshotRef.current);
+    useLayoutEffect(() => {
+      let previous = owner.read().windowState.scenesByOwnerKey;
+      let revision = 0;
+      const releaseCommit = owner.registerPersistenceCommit(async (snapshot) => ({
+        ...snapshot,
+        sessionId: "window-session:test",
+        layoutRevision: ++revision,
+      }));
+      const unsubscribe = owner.subscribe(() => {
+        const next = owner.read().windowState.scenesByOwnerKey;
+        for (const [key, scene] of Object.entries(next)) {
+          const before = previous[key];
+          if (scene.owner.kind !== "session" || !before || before === scene) continue;
+          recordSessionViewMutation(
+            projectWorkbenchSceneToLegacySessionView(before),
+            projectWorkbenchSceneToLegacySessionView(scene),
+          );
+        }
+        previous = next;
+      });
+      return () => {
+        unsubscribe();
+        releaseCommit();
+      };
+    }, [owner]);
     return (
       <WorkbenchShell
         windowSessionId="window-session:test"
         initialWindowLayoutSnapshot={initialWindowLayoutSnapshotRef.current}
         projects={renderedProjects}
-        onSceneMutation={(owner, previous, next) => {
-          if (owner.kind !== "session") return;
-          recordSessionViewMutation(
-            projectWorkbenchSceneToLegacySessionView(previous),
-            projectWorkbenchSceneToLegacySessionView(next),
-          );
-        }}
         sidebar={sidebarState}
         pageStageCloseRef={createRef()}
         pendingViewDeepLinkOpen={pendingViewOpen}

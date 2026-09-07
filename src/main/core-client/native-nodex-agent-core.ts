@@ -10,3 +10,10 @@ export interface NativeNodexAgentCore {
   readonly rootClient: CoreGenerationClient;
   readonly clientForProject: (projectId: string) => CoreGenerationClient;
 }
+
+/** Null is an actual Library binding; it never selects another Project. */
+export const nativeAgentClient = (
+  runtime: NativeNodexAgentCore,
+  actorProjectId: string | null,
+): CoreGenerationClient =>
+  actorProjectId === null ? runtime.rootClient : runtime.clientForProject(actorProjectId);

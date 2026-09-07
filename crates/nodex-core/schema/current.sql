@@ -139,7 +139,7 @@ CREATE TABLE nodex_agent_turn_authorities (
       thread_id TEXT NOT NULL,
       turn_id TEXT NOT NULL,
       root_thread_id TEXT NOT NULL,
-      actor_project_id TEXT NOT NULL,
+      actor_project_id TEXT,
       library_id TEXT NOT NULL,
       profile_id TEXT NOT NULL,
       store_epoch TEXT NOT NULL,
@@ -149,6 +149,7 @@ CREATE TABLE nodex_agent_turn_authorities (
       authority_fingerprint TEXT NOT NULL,
       provenance_version INTEGER NOT NULL,
       created_at TEXT NOT NULL,
+      read_only INTEGER NOT NULL DEFAULT 1 CHECK (read_only IN (0, 1)),
       PRIMARY KEY (thread_id, turn_id),
       CHECK (length(trim(thread_id)) BETWEEN 1 AND 512),
       CHECK (length(trim(turn_id)) BETWEEN 1 AND 512),
@@ -158,6 +159,9 @@ CREATE TABLE nodex_agent_turn_authorities (
       CHECK (length(trim(profile_id)) BETWEEN 1 AND 512),
       CHECK (length(trim(store_epoch)) BETWEEN 1 AND 512),
       CHECK (scope IN ('project', 'library')),
+      CHECK (actor_project_id IS NOT NULL OR scope = 'library'),
+      CHECK ((scope = 'project' AND source = 'project_turn') OR
+        (scope = 'library' AND source IN ('builtin_full_access', 'inherited_builtin_full_access'))),
       CHECK (source IN (
         'project_turn',
         'builtin_full_access',
@@ -288,7 +292,7 @@ CREATE TABLE document_update_receipts (
     ) WITHOUT ROWID;
 CREATE TABLE change_log (
       seq INTEGER PRIMARY KEY AUTOINCREMENT,
-      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
       store_epoch TEXT NOT NULL,
       kind TEXT NOT NULL,
       operation_id TEXT,
@@ -312,7 +316,8 @@ CREATE TABLE change_log (
 CREATE TABLE block_relocation_source_states (
       relocation_id TEXT PRIMARY KEY,
       document_id TEXT NOT NULL,
-      project_id TEXT NOT NULL,
+      project_id TEXT,
+      library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE RESTRICT,
       generation INTEGER NOT NULL CHECK (generation >= 1),
       head_seq INTEGER NOT NULL CHECK (head_seq >= 0),
       pre_state_vector BLOB NOT NULL,
@@ -322,9 +327,9 @@ CREATE TABLE block_relocation_source_states (
       pre_state_hash TEXT NOT NULL,
       captured_at TEXT NOT NULL,
       FOREIGN KEY (
-        relocation_id, document_id, project_id, generation, head_seq
+        relocation_id, document_id, library_id, generation, head_seq
       ) REFERENCES block_relocations(
-        id, source_document_id, project_id, source_generation,
+        id, source_document_id, library_id, source_generation,
         source_base_head_seq
       ) ON DELETE CASCADE,
       CHECK (length(pre_state_vector) > 0),
@@ -337,7 +342,7 @@ CREATE TABLE block_relocation_source_states (
     ) WITHOUT ROWID;
 CREATE TABLE document_recovery_artifacts (
       id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
       store_epoch TEXT NOT NULL,
       document_id TEXT NOT NULL,
       generation INTEGER NOT NULL CHECK (generation >= 1),
@@ -392,7 +397,7 @@ CREATE TABLE document_recovery_artifacts (
 CREATE TABLE document_versions (
       version_id TEXT PRIMARY KEY,
       document_id TEXT NOT NULL,
-      project_id TEXT NOT NULL,
+      project_id TEXT,
       generation INTEGER NOT NULL CHECK (generation >= 1),
       base_head_seq INTEGER NOT NULL CHECK (base_head_seq >= 0),
       schema_key TEXT NOT NULL,
@@ -512,7 +517,7 @@ CREATE TABLE document_revision_sessions (
     ) WITHOUT ROWID;
 CREATE TABLE block_mutations (
       mutation_id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
       store_epoch TEXT NOT NULL,
       mutation_kind TEXT NOT NULL,
       actor_json TEXT NOT NULL DEFAULT '{}',
@@ -762,7 +767,7 @@ CREATE TABLE "codex_scheduled_automations" (
            automation_id TEXT PRIMARY KEY,
            kind TEXT NOT NULL,
            status TEXT NOT NULL,
-           target_thread_id TEXT,
+           target_session_id TEXT,
            name TEXT NOT NULL,
            prompt TEXT NOT NULL DEFAULT '',
            rrule TEXT,
@@ -779,7 +784,7 @@ CREATE TABLE "codex_scheduled_automations" (
            definition_revision INTEGER NOT NULL DEFAULT 1 CHECK (definition_revision >= 1),
            agent_backend_kind TEXT NOT NULL DEFAULT 'codex' CHECK (agent_backend_kind IN ('codex', 'acp')),
            agent_backend_definition_id TEXT CHECK (agent_backend_definition_id IS NULL OR (agent_backend_definition_id = trim(agent_backend_definition_id) AND length(agent_backend_definition_id) BETWEEN 1 AND 512)),
-           agent_backend_instance_config_id TEXT CHECK (((agent_backend_kind = 'codex' AND agent_backend_definition_id IS NULL AND agent_backend_instance_config_id IS NULL) OR (agent_backend_kind = 'acp' AND agent_backend_definition_id IS NOT NULL AND (agent_backend_instance_config_id IS NULL OR (agent_backend_instance_config_id = trim(agent_backend_instance_config_id) AND length(agent_backend_instance_config_id) BETWEEN 1 AND 512))))),
+           agent_backend_instance_config_id TEXT CHECK (((agent_backend_kind = 'codex' AND agent_backend_definition_id IS NULL AND agent_backend_instance_config_id IS NULL) OR (agent_backend_kind = 'acp' AND agent_backend_definition_id IS NOT NULL AND (agent_backend_instance_config_id IS NULL OR (agent_backend_instance_config_id = trim(agent_backend_instance_config_id) AND length(agent_backend_instance_config_id) BETWEEN 1 AND 512))))), notification_policy TEXT CHECK (notification_policy IS NULL OR notification_policy = 'failed_runs_only'), project_id TEXT CHECK (project_id IS NULL OR (project_id = trim(project_id) AND length(project_id) BETWEEN 1 AND 512)),
            CHECK (kind IN ('cron', 'heartbeat')),
            CHECK (status IN ('ACTIVE', 'PAUSED', 'DELETED')),
            CHECK (execution_environment IN ('local', 'worktree')),
@@ -1234,7 +1239,7 @@ CREATE TABLE "local_commit_effects" (
   CHECK (module_name IN (
     'library', 'database', 'owned_document', 'project_workspace',
     'automation', 'store_administration'
-  )), effect_kind TEXT NOT NULL DEFAULT 'historical', project_id TEXT NOT NULL DEFAULT 'historical', resources_json TEXT NOT NULL DEFAULT '{}'
+  )), effect_kind TEXT NOT NULL DEFAULT 'historical', project_id TEXT, resources_json TEXT NOT NULL DEFAULT '{}'
   CHECK (json_valid(resources_json) AND json_type(resources_json) = 'object'), payload_hash TEXT NOT NULL
   DEFAULT '0000000000000000000000000000000000000000000000000000000000000000'
   CHECK (length(payload_hash) = 64 AND payload_hash NOT GLOB '*[^0-9a-f]*'), projection_impact_json TEXT NOT NULL DEFAULT '{}'
@@ -1258,7 +1263,7 @@ CREATE TABLE "local_commit_documents" (
   head_seq INTEGER NOT NULL CHECK (head_seq >= 0),
   update_id TEXT,
   update_hash TEXT, document_order INTEGER NOT NULL DEFAULT 0
-  CHECK (document_order >= 0), project_id TEXT NOT NULL DEFAULT 'historical', page_id TEXT, base_head_seq INTEGER NOT NULL DEFAULT 0
+  CHECK (document_order >= 0), project_id TEXT, page_id TEXT, base_head_seq INTEGER NOT NULL DEFAULT 0
   CHECK (base_head_seq >= 0), update_byte_length INTEGER NOT NULL DEFAULT 0
   CHECK (update_byte_length >= 0),
   PRIMARY KEY (store_epoch, commit_seq, document_id, generation, head_seq),
@@ -1730,7 +1735,7 @@ CREATE TABLE managed_blobs (
 ) WITHOUT ROWID, STRICT;
 CREATE TABLE prepared_blob_receipts (
   receipt_id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
   store_epoch TEXT NOT NULL,
   content_hash TEXT NOT NULL REFERENCES managed_blobs(content_hash) ON DELETE RESTRICT,
@@ -1765,7 +1770,7 @@ CREATE TABLE library_files (
   head_version INTEGER NOT NULL CHECK (head_version >= 1),
   revision INTEGER NOT NULL CHECK (revision >= 1),
   lifecycle TEXT NOT NULL CHECK (lifecycle IN ('live', 'trashed')),
-  created_by_actor_id TEXT NOT NULL CHECK (length(created_by_actor_id) BETWEEN 1 AND 512),
+  created_by_actor_id TEXT CHECK (length(created_by_actor_id) BETWEEN 1 AND 512),
   created_by_turn_id TEXT,
   created_at TEXT NOT NULL CHECK (length(created_at) > 0),
   updated_at TEXT NOT NULL CHECK (length(updated_at) > 0),
@@ -1782,7 +1787,7 @@ CREATE TABLE file_versions (
   blob_hash TEXT NOT NULL REFERENCES managed_blobs(content_hash) ON DELETE RESTRICT,
   mime_type TEXT NOT NULL CHECK (length(mime_type) BETWEEN 1 AND 255),
   byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
-  actor_id TEXT NOT NULL CHECK (length(actor_id) BETWEEN 1 AND 512),
+  actor_id TEXT CHECK (length(actor_id) BETWEEN 1 AND 512),
   turn_id TEXT,
   operation_id TEXT NOT NULL CHECK (length(operation_id) BETWEEN 1 AND 512),
   occurred_at TEXT NOT NULL CHECK (length(occurred_at) > 0),
@@ -2199,7 +2204,7 @@ CREATE TABLE "retired_block_identities" (
 ) WITHOUT ROWID, STRICT;
 CREATE TABLE "block_relocations" (
   id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE RESTRICT,
   store_epoch TEXT NOT NULL,
   request_hash TEXT NOT NULL,
@@ -2367,7 +2372,7 @@ CREATE TABLE document_page_references ( document_id TEXT NOT NULL REFERENCES doc
 CREATE TABLE block_transfer_undo_recipes (
   transfer_operation_id TEXT PRIMARY KEY
     REFERENCES block_mutations(mutation_id) ON DELETE CASCADE,
-  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
   store_epoch TEXT NOT NULL,
   recipe_hash TEXT NOT NULL,
@@ -2435,7 +2440,7 @@ CREATE TABLE structural_history_recipes (
   recipe_operation_id TEXT PRIMARY KEY
     REFERENCES block_mutations(mutation_id) ON DELETE CASCADE,
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
-  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
   store_epoch TEXT NOT NULL,
   recipe_hash TEXT NOT NULL,
   payload_ref_json TEXT NOT NULL,
@@ -2640,8 +2645,8 @@ CREATE UNIQUE INDEX idx_core_automation_leases_active_occurrence
 CREATE INDEX idx_core_automation_leases_inbox
   ON core_automation_leases(status, expires_at_ms, scheduled_for_ms, lease_id);
 CREATE UNIQUE INDEX idx_codex_scheduled_automations_active_heartbeat
-           ON codex_scheduled_automations(target_thread_id)
-           WHERE kind = 'heartbeat' AND status = 'ACTIVE' AND target_thread_id IS NOT NULL;
+           ON codex_scheduled_automations(target_session_id)
+           WHERE kind = 'heartbeat' AND status = 'ACTIVE' AND target_session_id IS NOT NULL;
 CREATE INDEX idx_workspace_sidebar_positions_lane_rank
   ON workspace_sidebar_positions(scope_key, rank_key, thread_id);
 CREATE INDEX idx_workspace_sidebar_positions_thread
@@ -2925,7 +2930,7 @@ CREATE TRIGGER block_mutations_reject_id_collision
         FROM block_mutations existing
         WHERE existing.mutation_id = NEW.mutation_id
           AND (
-            existing.project_id <> NEW.project_id
+            existing.project_id IS NOT NEW.project_id
             OR existing.store_epoch <> NEW.store_epoch
             OR existing.mutation_kind <> NEW.mutation_kind
             OR existing.actor_json <> NEW.actor_json
@@ -3025,7 +3030,7 @@ CREATE TRIGGER document_recovery_artifacts_validate_insert
           SELECT 1
           FROM block_relocations relocation
           WHERE relocation.id = relocation_id.value
-            AND relocation.project_id = NEW.project_id
+            AND relocation.project_id IS NEW.project_id
         )
       ) OR (
         SELECT COUNT(*) FROM json_each(NEW.relocation_ids_json)
@@ -3039,7 +3044,7 @@ CREATE TRIGGER document_recovery_artifacts_validate_insert
 CREATE TRIGGER document_recovery_artifacts_validate_update
       BEFORE UPDATE ON document_recovery_artifacts
       WHEN NEW.id <> OLD.id
-        OR NEW.project_id <> OLD.project_id
+        OR NEW.project_id IS NOT OLD.project_id
         OR NEW.store_epoch <> OLD.store_epoch
         OR NEW.document_id <> OLD.document_id
         OR NEW.generation <> OLD.generation
@@ -4022,7 +4027,7 @@ END;
 CREATE TRIGGER prepared_blob_receipts_validate_update
 BEFORE UPDATE ON prepared_blob_receipts
 WHEN OLD.receipt_id <> NEW.receipt_id
-  OR OLD.project_id <> NEW.project_id
+  OR OLD.project_id IS NOT NEW.project_id
   OR OLD.library_id <> NEW.library_id
   OR OLD.store_epoch <> NEW.store_epoch
   OR OLD.content_hash <> NEW.content_hash
@@ -4364,11 +4369,13 @@ CREATE TRIGGER block_relocations_are_immutable BEFORE UPDATE ON block_relocation
 END;
 CREATE TRIGGER block_relocations_validate_insert BEFORE INSERT ON block_relocations
 WHEN NOT EXISTS (
-  SELECT 1 FROM projects actor
-  JOIN documents source
-    ON source.id = NEW.source_document_id AND source.library_id = actor.library_id
+  SELECT 1 FROM documents source
   LEFT JOIN documents target ON target.id = NEW.target_document_id
-  WHERE actor.id = NEW.project_id AND actor.library_id = NEW.library_id
+  WHERE source.id = NEW.source_document_id AND source.library_id = NEW.library_id
+    AND (NEW.project_id IS NULL OR EXISTS (
+      SELECT 1 FROM projects actor WHERE actor.id = NEW.project_id
+        AND actor.library_id = NEW.library_id
+    ))
     AND (NEW.target_document_id IS NULL OR target.library_id = NEW.library_id)
     AND (
       NEW.target_parent_block_id IS NULL OR EXISTS (
@@ -4470,16 +4477,18 @@ CREATE TRIGGER block_mutations_validate_insert
                 SELECT 1 FROM json_each(NEW.target_block_ids_json) target
                 WHERE NOT EXISTS (
                   SELECT 1 FROM blocks block
-                  JOIN projects actor_project
-                    ON actor_project.id = NEW.project_id
-                   AND actor_project.library_id = block.library_id
                   WHERE block.id = target.value
+                    AND (NEW.project_id IS NULL OR EXISTS (
+                      SELECT 1 FROM projects actor_project
+                      WHERE actor_project.id = NEW.project_id
+                        AND actor_project.library_id = block.library_id
+                    ))
                 )
               )
               OR NOT EXISTS (
                 SELECT 1 FROM change_log change
                 WHERE change.seq = NEW.change_log_seq
-                  AND change.project_id = NEW.project_id
+                  AND change.project_id IS NEW.project_id
                   AND change.store_epoch = NEW.store_epoch
                   AND change.operation_id = NEW.mutation_id
               )
@@ -4492,10 +4501,12 @@ CREATE TRIGGER document_versions_validate_insert
         BEFORE INSERT ON document_versions
         WHEN NOT EXISTS (
           SELECT 1 FROM documents document
-          JOIN projects actor_project
-            ON actor_project.id = NEW.project_id
-           AND actor_project.library_id = document.library_id
           WHERE document.id = NEW.document_id
+            AND (NEW.project_id IS NULL OR EXISTS (
+              SELECT 1 FROM projects actor_project
+              WHERE actor_project.id = NEW.project_id
+                AND actor_project.library_id = document.library_id
+            ))
             AND document.readiness = 'ready'
             AND document.generation = NEW.generation
             AND document.head_seq >= NEW.base_head_seq
@@ -4859,7 +4870,7 @@ WHEN NOT (
   OLD.consumed_at IS NULL
   AND NEW.consumed_at IS NOT NULL
   AND OLD.transfer_operation_id = NEW.transfer_operation_id
-  AND OLD.project_id = NEW.project_id
+  AND OLD.project_id IS NEW.project_id
   AND OLD.library_id = NEW.library_id
   AND OLD.store_epoch = NEW.store_epoch
   AND OLD.recipe_hash = NEW.recipe_hash
@@ -4901,7 +4912,7 @@ CREATE TRIGGER structural_history_recipes_transition_once
 BEFORE UPDATE ON structural_history_recipes
 WHEN NOT (OLD.recipe_operation_id = NEW.recipe_operation_id
   AND OLD.library_id = NEW.library_id
-  AND OLD.project_id = NEW.project_id
+  AND OLD.project_id IS NEW.project_id
   AND OLD.store_epoch = NEW.store_epoch
   AND OLD.recipe_hash = NEW.recipe_hash
   AND OLD.created_at = NEW.created_at
@@ -5049,7 +5060,7 @@ CREATE TABLE block_mutation_body_gc (
   check_after_ms INTEGER NOT NULL DEFAULT 0 CHECK (check_after_ms >= 0)
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX idx_block_mutation_body_gc_due ON block_mutation_body_gc(check_after_ms, mutation_id);
-PRAGMA user_version = 160;
+PRAGMA user_version = 165;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

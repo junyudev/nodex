@@ -1777,6 +1777,7 @@ function HydratedThreadComposer({
           return false;
         }
 
+        const submittedPresentation = actions.onCaptureSubmissionPresentation?.();
         setBusyAction("send");
         onErrorMessage(null);
         let prompt = draft.objective;
@@ -1809,6 +1810,7 @@ function HydratedThreadComposer({
             sessionId: target.sessionId,
             projectDraftId: target.projectDraftId,
             prompt,
+            submittedPresentation,
             threadGoalDraft,
             ...(threadGoalMaterializedDraft === undefined ? {} : { threadGoalMaterializedDraft }),
             runInTarget: target.runInTarget,
@@ -2149,8 +2151,10 @@ function HydratedThreadComposer({
                   resolve: actions.onResolveQueuedFollowUpsAfterFreshStart,
                 }
               : null;
+          const submittedPresentation = actions.onCaptureSubmissionPresentation?.();
           await intelligenceController.flush();
           await actions.onSendPrompt(nextPrompt, {
+            submittedPresentation,
             collaborationMode: model.selectedCollaborationMode,
             promptInput,
             ...intelligenceController.turnOverrides,

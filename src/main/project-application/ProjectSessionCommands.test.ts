@@ -1,5 +1,7 @@
 import { assert, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import { vi } from "vite-plus/test";
 import type { ProjectSession } from "../../shared/types";
@@ -9,9 +11,15 @@ import { BrowserApplication } from "../browser-application/BrowserApplication";
 import { CodexSidebarSectionSync } from "../codex-application/CodexSidebarSectionSync";
 import { CodexThreadTitlePersistence } from "../codex-application/CodexThreadTitlePersistence";
 import { ConversationCommands } from "../codex-application/ConversationCommands";
+import { CodexConversationArchiveError } from "../codex-application/CodexConversationArchive";
 import type { ProjectWorkspaceApplyResult } from "../core-client/types";
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { ProjectSessionCommands, live } from "./ProjectSessionCommands";
-import { ProjectWorkspace, type ProjectWorkspaceService } from "./ProjectWorkspace";
+import {
+  ProjectWorkspace,
+  ProjectWorkspaceError,
+  type ProjectWorkspaceService,
+} from "./ProjectWorkspace";
 
 const session: ProjectSession = {
   id: "session:one",
@@ -47,7 +55,7 @@ const applied = {
   outcome: {
     affected_project_ids: [],
     affected_session_ids: [session.id],
-    affected_thread_ids: [],
+    affected_thread_ids: [session.thread!.threadId],
   },
   receipt: {
     operation_id: "operation:test",
@@ -64,11 +72,27 @@ const applied = {
 
 it.effect("owns Session title, browser, archive, and Section orchestration", () => {
   const events: string[] = [];
+  const mutationCallers: Array<{ name: string; authority: unknown }> = [];
+  const backendCallers: unknown[] = [];
+  let backendUnavailable = false;
+  let barrier: { entered: Deferred.Deferred<void>; release: Deferred.Deferred<void> } | null = null;
   const reads = vi.fn(() => Effect.succeed(session));
   const mutation = (name: string) => (command: { readonly operationId: string }) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
+      if (command.operationId === "operation:denied")
+        return yield* new ProjectWorkspaceError({
+          operation: name,
+          cause: new Error("Permission denied"),
+        });
+      mutationCallers.push({ name, authority: yield* CoreApplicationAgent });
       events.push(`${name}:${command.operationId}`);
-      return { value: session, apply: applied };
+      return {
+        value: {
+          ...session,
+          archived: name === "archive" && command.operationId !== "operation:superseded",
+        },
+        apply: applied,
+      };
     });
   const workspace = ProjectWorkspace.of({
     getProjectSession: reads,
@@ -98,15 +122,33 @@ it.effect("owns Session title, browser, archive, and Section orchestration", () 
         Layer.succeed(
           CodexThreadTitlePersistence,
           CodexThreadTitlePersistence.of({
-            set: ({ name }) => Effect.sync(() => (events.push(`title:${name}`), true)),
+            set: () => Effect.die("Session rename must use the committed Core title"),
             setRequired: () => Effect.die("unused"),
+            syncCommittedTitle: (threadId) =>
+              Effect.sync(() => {
+                events.push(`title:${threadId}`);
+              }),
           }),
         ),
         Layer.succeed(
           ConversationCommands,
           ConversationCommands.of({
             archive: (threadId: string) =>
-              Effect.sync(() => (events.push(`archive:${threadId}`), true)),
+              Effect.gen(function* () {
+                events.push(`archive:${threadId}`);
+                backendCallers.push(yield* CoreApplicationAgent);
+                if (backendUnavailable)
+                  return yield* new CodexConversationArchiveError({
+                    operation: "archive",
+                    threadId,
+                    cause: new Error("Backend unavailable"),
+                  });
+                if (barrier) {
+                  yield* Deferred.succeed(barrier.entered, undefined);
+                  yield* Deferred.await(barrier.release);
+                }
+                return true;
+              }),
             unarchive: (threadId: string) =>
               Effect.sync(() => (events.push(`unarchive:${threadId}`), null)),
           } as unknown as ConversationCommands["Service"]),
@@ -131,6 +173,18 @@ it.effect("owns Session title, browser, archive, and Section orchestration", () 
 
   return Effect.gen(function* () {
     const commands = yield* ProjectSessionCommands;
+    const denied = yield* commands
+      .rename({
+        operationId: "operation:denied",
+        payload: { sessionId: session.id, input: { title: "Rejected title" } },
+      })
+      .pipe(Effect.flip);
+    assert.strictEqual(denied.operation, "rename-session");
+    const deniedArchive = yield* commands
+      .archive({ operationId: "operation:denied", payload: { sessionId: session.id } })
+      .pipe(Effect.flip);
+    assert.strictEqual(deniedArchive.operation, "archive-session");
+    assert.deepStrictEqual(events, []);
     yield* commands.rename({
       operationId: "operation:rename",
       payload: { sessionId: session.id, input: { title: "  New   title  " } },
@@ -141,10 +195,31 @@ it.effect("owns Session title, browser, archive, and Section orchestration", () 
       payload: { sessionId: session.id },
     });
     assert.strictEqual(reads.mock.calls.length, readsBeforeDelete + 1);
-    yield* commands.archive({
-      operationId: "operation:archive",
-      payload: { sessionId: session.id },
-    });
+    const caller = {
+      profile_id: "profile:test",
+      authority: {
+        thread_id: "thread:caller",
+        turn_id: "turn:caller",
+        root_thread_id: "thread:caller",
+        actor_project_id: "project:one",
+        library_id: "library:test",
+        store_epoch: "epoch:test",
+        scope: "project",
+        source: "project_turn",
+      },
+    } as const;
+    yield* commands
+      .archive({
+        operationId: "operation:archive",
+        payload: { sessionId: session.id },
+      })
+      .pipe(Effect.provideService(CoreApplicationAgent, caller));
+    assert.deepStrictEqual(
+      mutationCallers.find((item) => item.name === "archive")?.authority,
+      caller,
+    );
+    assert.deepStrictEqual(backendCallers, [null]);
+    assert.strictEqual(yield* CoreApplicationAgent, null);
     yield* commands.unarchive({
       operationId: "operation:unarchive",
       payload: { sessionId: session.id },
@@ -155,21 +230,60 @@ it.effect("owns Session title, browser, archive, and Section orchestration", () 
     });
 
     assert.deepStrictEqual(events, [
-      "title:  New   title  ",
       "rename:operation:rename",
+      `title:${session.thread?.threadId}`,
       "sections",
       "delete:operation:delete",
       `browser:${session.id}`,
       "sections",
-      `archive:${session.thread?.threadId}`,
       "archive:operation:archive",
+      `archive:${session.thread?.threadId}`,
       "sections",
-      `unarchive:${session.thread?.threadId}`,
       "unarchive:operation:unarchive",
+      `unarchive:${session.thread?.threadId}`,
       "sections",
       "pinned:operation:pinned",
       "sections",
     ]);
+    events.length = 0;
+    barrier = { entered: yield* Deferred.make<void>(), release: yield* Deferred.make<void>() };
+    const archiving = yield* commands
+      .archive({ operationId: "operation:blocked", payload: { sessionId: session.id } })
+      .pipe(Effect.forkChild);
+    yield* Deferred.await(barrier.entered);
+    const restoring = yield* commands
+      .unarchive({ operationId: "operation:following", payload: { sessionId: session.id } })
+      .pipe(Effect.forkChild);
+    yield* Effect.yieldNow;
+    assert.deepStrictEqual(events, [
+      "archive:operation:blocked",
+      `archive:${session.thread?.threadId}`,
+    ]);
+    yield* Deferred.succeed(barrier.release, undefined);
+    yield* Fiber.join(archiving);
+    yield* Fiber.join(restoring);
+    assert.deepStrictEqual(events, [
+      "archive:operation:blocked",
+      `archive:${session.thread?.threadId}`,
+      "sections",
+      "unarchive:operation:following",
+      `unarchive:${session.thread?.threadId}`,
+      "sections",
+    ]);
+    backendUnavailable = true;
+    const synchronizationFailure = yield* commands
+      .archive({ operationId: "operation:retry", payload: { sessionId: session.id } })
+      .pipe(Effect.flip);
+    assert.strictEqual(synchronizationFailure.committedOperationId, "operation:retry");
+    backendUnavailable = false;
+    yield* commands.archive({ operationId: "operation:retry", payload: { sessionId: session.id } });
+    const backendCallsBeforeReplay = backendCallers.length;
+    const superseded = yield* commands.archive({
+      operationId: "operation:superseded",
+      payload: { sessionId: session.id },
+    });
+    assert.strictEqual(superseded.value.archived, false);
+    assert.strictEqual(backendCallers.length, backendCallsBeforeReplay);
     // oxlint-disable-next-line effecttsgo/strict-effect-provide -- this test owns the complete ProjectSessionCommands layer.
   }).pipe(Effect.provide(layer));
 });
@@ -190,7 +304,7 @@ it.effect("keeps ACP Session lifecycle inside Core and the ACP runtime owner", (
   const mutation = (name: string) => (command: { readonly operationId: string }) =>
     Effect.sync(() => {
       events.push(`${name}:${command.operationId}`);
-      return { value: acpSession, apply: applied };
+      return { value: { ...acpSession, archived: name === "archive" }, apply: applied };
     });
   const workspace = ProjectWorkspace.of({
     getProjectSession: () => Effect.succeed(acpSession),
@@ -264,8 +378,8 @@ it.effect("keeps ACP Session lifecycle inside Core and the ACP runtime owner", (
     assert.deepStrictEqual(events, [
       "rename:operation:rename",
       "sections",
-      `close:${acpSession.thread?.threadId}`,
       "archive:operation:archive",
+      `close:${acpSession.thread?.threadId}`,
       "sections",
       "unarchive:operation:unarchive",
       "sections",

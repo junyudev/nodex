@@ -15,6 +15,23 @@ use crate::infrastructure::cursor::{
 };
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
+pub(super) const TASK_SUMMARY_COLUMNS: &str = "session.id AS session_id, session.project_id, \
+             session.no_thread_fallback_title, session.\"order\", session.pinned, \
+             session.pinned_order, session.archived, session.archived_at, session.unread, \
+             session.created_at, session.updated_at, \
+             thread.thread_id, thread.project_id, thread.forked_from_id, \
+             thread.parent_thread_id, thread.thread_name, thread.thread_source, \
+             thread.service_name, thread.agent_nickname, thread.agent_role, thread.agent_path, \
+             substr(thread.thread_preview, 1, 1024), thread.model_id, \
+             thread.reasoning_effort, thread.service_tier, \
+             thread.agent_backend_kind, thread.agent_backend_definition_id, \
+             thread.agent_backend_instance_config_id, \
+             thread.execution_host_id, thread.cwd, thread.managed_worktree_path, \
+             thread.projectless_output_directory, thread.projectless_workspace_browser_root, \
+             thread.status_type, \
+             thread.status_active_flags_json, thread.archived, thread.created_at, \
+             thread.updated_at, thread.recency_at, thread.linked_at";
+
 const MAX_PREVIEW_UTF16: usize = 240;
 const MAX_PREVIEW_BYTES: usize = 1_024;
 
@@ -136,22 +153,7 @@ fn read_task_window_in_scope(
     let limit_parameter = parameters.len();
     let sql = format!(
         "WITH task_rows AS (\
-           SELECT session.id AS session_id, session.project_id, \
-             session.no_thread_fallback_title, session.\"order\", session.pinned, \
-             session.pinned_order, session.archived, session.archived_at, session.unread, \
-             session.created_at, session.updated_at, \
-             thread.thread_id, thread.project_id, thread.forked_from_id, \
-             thread.parent_thread_id, thread.thread_name, thread.thread_source, \
-             thread.service_name, thread.agent_nickname, thread.agent_role, thread.agent_path, \
-             substr(thread.thread_preview, 1, 1024), thread.model_id, \
-             thread.reasoning_effort, thread.service_tier, \
-             thread.agent_backend_kind, thread.agent_backend_definition_id, \
-             thread.agent_backend_instance_config_id, \
-             thread.execution_host_id, thread.cwd, thread.managed_worktree_path, \
-             thread.projectless_output_directory, thread.projectless_workspace_browser_root, \
-             thread.status_type, \
-             thread.status_active_flags_json, thread.archived, thread.created_at, \
-             thread.updated_at, thread.recency_at, thread.linked_at, \
+           SELECT {TASK_SUMMARY_COLUMNS}, \
              CASE WHEN session.pinned = 1 THEN 0 ELSE 1 END AS pin_bucket, \
              CASE WHEN session.pinned = 1 \
                THEN COALESCE(session.pinned_order, 9223372036854775807) \

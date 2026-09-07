@@ -129,6 +129,10 @@ export class TerminalSessions extends Context.Service<
       sessionId: string,
     ) => Effect.Effect<TerminalSessionSnapshot | null>;
     readonly getThreadSnapshot: (threadId: string) => Effect.Effect<TerminalSessionSnapshot | null>;
+    readonly listSnapshotsForOwners: (input: {
+      readonly conversationIds: ReadonlySet<string>;
+      readonly projectSessionIds: ReadonlySet<string>;
+    }) => Effect.Effect<readonly TerminalSessionSnapshot[]>;
     readonly listLiveSessionsForOwners: (input: {
       readonly conversationIds: ReadonlySet<string>;
       readonly projectSessionIds: ReadonlySet<string>;
@@ -434,7 +438,32 @@ export const live: Layer.Layer<
       );
     });
 
+    const listSnapshotsForOwners = (
+      input: {
+        readonly conversationIds: ReadonlySet<string>;
+        readonly projectSessionIds: ReadonlySet<string>;
+      },
+      liveOnly = false,
+    ) =>
+      Ref.get(records).pipe(
+        Effect.andThen((current) =>
+          Effect.all(
+            [...current.values()]
+              .filter(
+                (record) =>
+                  (!liveOnly || record.runtime !== null) &&
+                  ((record.config.conversationId !== null &&
+                    input.conversationIds.has(record.config.conversationId)) ||
+                    (record.config.projectSessionId !== null &&
+                      input.projectSessionIds.has(record.config.projectSessionId))),
+              )
+              .map(readSnapshot),
+          ),
+        ),
+        Effect.map((snapshots) => snapshots.filter((snapshot) => snapshot !== null)),
+      );
     return TerminalSessions.of({
+      listSnapshotsForOwners,
       events: Stream.fromPubSub(events),
       create: (owner, request) => {
         if (request.backendKind === "remote") {
@@ -646,24 +675,7 @@ export const live: Layer.Layer<
             return record === undefined ? Effect.succeed(null) : readSnapshot(record);
           }),
         ),
-      listLiveSessionsForOwners: (input) =>
-        Ref.get(records).pipe(
-          Effect.andThen((current) =>
-            Effect.all(
-              [...current.values()]
-                .filter(
-                  (record) =>
-                    record.runtime !== null &&
-                    ((record.config.conversationId !== null &&
-                      input.conversationIds.has(record.config.conversationId)) ||
-                      (record.config.projectSessionId !== null &&
-                        input.projectSessionIds.has(record.config.projectSessionId))),
-                )
-                .map(readSnapshot),
-            ),
-          ),
-          Effect.map((snapshots) => snapshots.filter((snapshot) => snapshot !== null)),
-        ),
+      listLiveSessionsForOwners: (input) => listSnapshotsForOwners(input, true),
       discardExitedSessionsForOwners: (input) =>
         Ref.modify(records, (current) => {
           const next = new Map(current);

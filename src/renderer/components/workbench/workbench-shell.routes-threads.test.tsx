@@ -6,6 +6,7 @@ import { WORKBENCH_AUTOMATION_FIRST_RUN_SUGGESTIONS } from "./workbench-automati
 import { THREAD_QUEUE_FOLLOW_UPS_STORAGE_KEY } from "@/lib/thread-composer-follow-up-mode";
 import { COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY } from "@/lib/composer-enter-behavior";
 import { type CodexScheduledAutomationCreateInput } from "@/lib/types";
+import type { ThreadStageActions } from "@/features/local-conversation/thread-stage-types";
 import { __getNodexToastSnapshotForTests } from "@/components/ui/toast";
 import { parseDatabaseId, parseDatabaseViewId } from "../../../shared/database-identities";
 import type { LibraryDatabaseNavigationNode } from "../../../shared/library-module";
@@ -69,6 +70,85 @@ const openStandaloneTasksDatabase = async (screen: ReturnType<typeof renderWorkb
 };
 
 describe("workbench session shell / routes-threads", () => {
+  test.each(["suggested-create", "suggested-update"] as const)(
+    "reviews a projectless %s without saving until explicit submission",
+    async (mode) => {
+      installTerminalEventApiMock();
+      const screen = renderWorkbench({
+        projects: [],
+        projectlessSessions: [makeAttachedSession({ id: "session:projectless", projectId: null })],
+        scheduledAutomations:
+          mode === "suggested-update"
+            ? [
+                makeScheduledAutomation({
+                  id: "automation-reviewed",
+                  definitionRevision: 5,
+                  targetSessionId: "session:newer",
+                }),
+              ]
+            : [],
+      });
+      await settleAsyncRender();
+      await settleAsyncRender();
+      const open = getLastThreadStageActions()
+        .onOpenSummaryScheduledAutomation as ThreadStageActions["onOpenSummaryScheduledAutomation"];
+      expect(open).toBeTypeOf("function");
+      const definition: CodexScheduledAutomationCreateInput = {
+        kind: "heartbeat",
+        name: "Review original target",
+        prompt: "Check progress",
+        rrule: "FREQ=DAILY",
+        targetSessionId: "session:original",
+        notificationPolicy: null,
+      };
+      await act(async () => {
+        await open?.({
+          proposalId: "proposal-projectless",
+          mode,
+          title: definition.name,
+          ...(mode === "suggested-create"
+            ? { createInput: definition }
+            : {
+                updateInput: {
+                  ...definition,
+                  id: "automation-reviewed",
+                  expectedRevision: 4,
+                  status: "PAUSED",
+                },
+              }),
+        });
+        await Promise.resolve();
+      });
+      const chat = await screen.findByRole("textbox", { name: "Chat" });
+      expect((chat as HTMLInputElement).value).toBe("session:original");
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      });
+      const channel =
+        mode === "suggested-create"
+          ? "codex:scheduled-automations:create"
+          : "codex:scheduled-automations:update";
+      expect(invokeCalls.filter((call) => call[0] === channel)).toEqual([]);
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole("button", {
+            name: mode === "suggested-create" ? "Create scheduled task" : "Apply changes",
+          }),
+        );
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(invokeCalls.find((call) => call[0] === channel)?.[1]).toMatchObject({
+          targetSessionId: "session:original",
+          targetThreadId: null,
+          notificationPolicy: null,
+          ...(mode === "suggested-update" ? { expectedRevision: 4 } : {}),
+        }),
+      );
+      await settleAsyncRender();
+    },
+  );
+
   test("opens settings as a full-window route shell from the sidebar settings button", async () => {
     const screen = renderWorkbench();
     await settleAsyncRender();
@@ -355,7 +435,7 @@ describe("workbench session shell / routes-threads", () => {
       kind: "db_view",
       title: "Tasks",
       order: 0,
-      config: { projectId: "alpha" },
+      config: { accessContext: { kind: "project", projectId: "alpha" } },
     });
     const screen = renderWorkbench({
       sessionsByProject: {
@@ -433,8 +513,8 @@ describe("workbench session shell / routes-threads", () => {
       kind: "db_view",
       title: "Primary",
       config: {
-        projectId: "alpha",
-        databaseViewId: "view-alpha-primary",
+        accessContext: { kind: "project", projectId: "alpha" },
+        target: { kind: "database-view", databaseViewId: "view-alpha-primary" },
       },
     });
     const focusedTab = makeSessionTab({
@@ -442,8 +522,8 @@ describe("workbench session shell / routes-threads", () => {
       kind: "db_view",
       title: "Focused",
       config: {
-        projectId: "alpha",
-        databaseViewId: "view-alpha-focused",
+        accessContext: { kind: "project", projectId: "alpha" },
+        target: { kind: "database-view", databaseViewId: "view-alpha-focused" },
       },
     });
     const screen = renderWorkbench({
@@ -702,6 +782,7 @@ describe("workbench session shell / routes-threads", () => {
         createInput: {
           kind: "cron",
           name: "Review release notes",
+          projectId: "alpha",
           prompt: "Review release notes and summarize risks.",
           rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
           cwds: ["/tmp/project"],
@@ -774,6 +855,7 @@ describe("workbench session shell / routes-threads", () => {
         createInput: {
           kind: "cron",
           name: "Broken proposal",
+          projectId: "alpha",
           prompt: "Try to create and fail.",
           rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
           cwds: ["/tmp/project"],

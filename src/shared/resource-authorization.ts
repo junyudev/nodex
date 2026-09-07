@@ -33,6 +33,7 @@ export type ProjectResourceAuthorizationReason =
   | "authority_stale"
   | "grant_missing"
   | "project_read_only"
+  | "turn_read_only"
   | "grant_read_only"
   | "structural_capability_required";
 

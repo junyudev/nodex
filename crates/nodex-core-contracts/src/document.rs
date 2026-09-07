@@ -14,7 +14,7 @@ use crate::{
 mod recovery;
 pub use recovery::*;
 
-pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 13;
+pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 14;
 pub const OWNED_DOCUMENT_DESCRIPTOR_VERSION: u32 = 3;
 
 /// A bounded local edit group addressed by stable Block identity. Unchanged
@@ -479,6 +479,9 @@ pub enum DocumentSemanticCommand {
         new_fragment: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         expected_matches: Option<u32>,
+        /// When supplied, preserves the caller's observed body revision through execution.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        expected_etag: Option<String>,
     },
     InsertBody {
         anchor: DocumentSemanticAnchor,

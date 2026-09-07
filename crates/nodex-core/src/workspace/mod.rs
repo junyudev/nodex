@@ -1,3 +1,4 @@
+mod agent_command;
 mod child_thread_window;
 mod execution;
 mod managed_worktree_lifecycle;
@@ -9,8 +10,13 @@ mod project_window;
 pub(crate) mod queued_follow_up;
 mod read;
 mod session_lifecycle;
+mod session_listing;
 mod session_mutation;
 mod sidebar;
+mod sidebar_builtin;
+#[cfg(test)]
+mod sidebar_builtin_tests;
+mod sidebar_pins;
 mod sidebar_section;
 mod subagent_projection;
 mod task_window;
@@ -19,7 +25,7 @@ mod test_support;
 mod thread;
 mod thread_assets;
 
-pub(crate) use execution::validate_persisted_turn_authority;
+pub(crate) use execution::{turn_is_read_only, validate_persisted_turn_authority};
 pub use thread_assets::ThreadAssetBlob;
 
 use std::path::PathBuf;
@@ -144,6 +150,7 @@ impl ProjectWorkspaceModule {
                     authorization: None,
                     value: read::read(
                         &transaction,
+                        &context,
                         &library_id,
                         commit_seq,
                         &assets_root,

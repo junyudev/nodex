@@ -75,7 +75,7 @@ impl<'a> DataEditTargets<'a> {
         for database_id in databases {
             authorize_write(
                 connection,
-                &authority.actor_project_id,
+                authority.actor_project_id.as_deref(),
                 &database_id,
                 DatabaseWriteAction::Write,
                 authority.is_library(),
@@ -479,7 +479,7 @@ pub(super) fn reverse(
         position_page_runs(
             connection,
             library_id,
-            &authority.actor_project_id,
+            authority.actor_project_id.as_deref(),
             view_id,
             &pages,
             &runs,

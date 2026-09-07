@@ -110,6 +110,26 @@ pub const PUBLISHED_STORE_FORMATS: &[PublishedStoreFormat] = &[
         160,
         "6f27a506b4572a15d3bfc544265972fb282e5e8da3cf48ece81a418464c8483a",
     ),
+    format(
+        161,
+        "12053bfc2f20b68250e7ff8ff11097b9a37d669a21170d02ab5800eb58bdfef0",
+    ),
+    format(
+        162,
+        "33d2e6ebc7ff15502782edf2902c31e3777d452b5b277e18f002cf5aca196810",
+    ),
+    format(
+        163,
+        "2347e4144fc948fa58208554dabc7d148818e10729174ed0c55034bf7482e792",
+    ),
+    format(
+        164,
+        "2c6f549bfd922d8ca76ead202a6ae94e1e7145f9ee035552ee73fd1f49e69492",
+    ),
+    format(
+        165,
+        "460130364dab6853a08a49891f016fce7a93a824baebf8ac6e4f9ad5ac9e7c7e",
+    ),
 ];
 
 pub const CURRENT_STORE_FORMAT: PublishedStoreFormat =

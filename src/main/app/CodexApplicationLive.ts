@@ -86,6 +86,13 @@ import { CoreModules } from "../core-runtime/CoreModules";
 import { getThreadGoalAttachmentsRoot } from "../thread-goal-attachments";
 import { MainConfig } from "./MainConfig";
 import { MainApplicationError } from "./MainExit";
+import {
+  AppToolInvocationInbox,
+  make as makeAppToolInvocationInbox,
+} from "../app-tools/AppToolInvocationInbox";
+import { make as makeAppToolSession } from "../app-tools/CodexAppToolSession";
+import { appToolsEntrypoint } from "../codex/app-tools-launch-config";
+import type { CodexAppServerSessionOptions } from "../codex-runtime/CodexAppServerSession";
 
 export class CodexPlatform extends Context.Service<
   CodexPlatform,
@@ -176,30 +183,45 @@ const runtime = Layer.unwrap(
                 }),
             ),
           );
-    return CodexRuntimeLive.live({
-      local: {
-        hostId: "local",
-        command: codex.runtime.binaryPath,
-        args: [...standaloneCodexAppServerArgs(), ...cliArgs],
-        env: {},
-        resolveEnv: () =>
-          resolveCodexProcessEnvironment({
-            additionalSearchPaths: codex.runtime.additionalSearchPaths,
-            pathDelimiter: config.platform === "win32" ? ";" : ":",
-            runtimeStateHome: codex.runtimeStateHome,
-          }),
-        forceTermination: "2 seconds",
-        initializeParams: {
-          clientInfo: { name: "nodex", title: "Nodex", version: "0.5.0" },
-          capabilities: {
-            experimentalApi: true,
-            extensions: { "openai/form": {} },
-            requestAttestation: false,
-          },
+    const appToolSession = yield* makeAppToolSession;
+    const local: Omit<CodexAppServerSessionOptions, "generation"> = {
+      hostId: "local",
+      command: codex.runtime.binaryPath,
+      args: [...standaloneCodexAppServerArgs(), ...cliArgs],
+      env: {},
+      resolveEnv: () =>
+        resolveCodexProcessEnvironment({
+          additionalSearchPaths: codex.runtime.additionalSearchPaths,
+          pathDelimiter: config.platform === "win32" ? ";" : ":",
+          runtimeStateHome: codex.runtimeStateHome,
+        }),
+      forceTermination: "2 seconds",
+      initializeParams: {
+        clientInfo: { name: "nodex", title: "Nodex", version: "0.5.0" },
+        capabilities: {
+          experimentalApi: true,
+          extensions: { "openai/form": {} },
+          requestAttestation: false,
         },
-        initializeTimeout: "20 seconds",
-        expectedCodexHome: codex.runtimeStateHome,
       },
+      initializeTimeout: "20 seconds",
+      expectedCodexHome: codex.runtimeStateHome,
+    };
+    const browserRuntime = codex.runtime.browserRuntime;
+    return CodexRuntimeLive.live({
+      local,
+      ...(browserRuntime.status === "available"
+        ? {
+            localSessionLayer: (generation: number) =>
+              appToolSession(
+                { ...local, generation },
+                {
+                  runtime: browserRuntime.bundle,
+                  entrypoint: appToolsEntrypoint(config),
+                },
+              ),
+          }
+        : {}),
       requestTimeout: "180 seconds",
     });
   }),
@@ -207,9 +229,11 @@ const runtime = Layer.unwrap(
 
 const conversationEntities = conversationEntityMapLive;
 const conversations = codexConversationsLive.pipe(Layer.provideMerge(conversationEntities));
+const appToolInvocations = Layer.effect(AppToolInvocationInbox, makeAppToolInvocationInbox);
 const foundations = Layer.mergeAll(
   platform,
   requestInbox,
+  appToolInvocations,
   conversations,
   CodexSessionTransport.nodeLive,
 );
@@ -307,6 +331,7 @@ const applicationServices = Layer.mergeAll(
 /** Stable Codex host generations and application-owned conversation foundations. */
 export const live: Layer.Layer<
   | CodexPlatform
+  | AppToolInvocationInbox
   | CodexApplicationRequestInbox
   | CodexPendingServerRequestRuntime
   | CodexConversations

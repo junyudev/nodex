@@ -53,6 +53,13 @@ Project assignment, goal/pin/title metadata, and client Thread identity. The
 renderer then opens the pending client route. It does not call app-server
 `thread/start` until the worktree is ready.
 
+Application tools may explicitly request `onMissing: "create-branch"` for a named
+branch. If absent, that exact branch starts at the repository's default branch;
+the source checkout stays unchanged and the managed worktree retains detached
+execution with that branch's synchronization metadata. Existing branches follow
+normal starting-state resolution. Without the option, missing branches fail.
+Creation failure removes the newly created branch only if its commit is unchanged.
+
 ## Environment resolution
 
 Environment selection distinguishes three user intents and never collapses

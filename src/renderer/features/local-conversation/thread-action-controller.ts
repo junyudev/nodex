@@ -195,6 +195,7 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
       await input.codexControl.setPermissionMode(input.projectId, mode);
     },
     onQueueingEnabledChange: input.onQueueingEnabledChange,
+    onCaptureSubmissionPresentation: input.codexControl.captureSubmissionPresentation,
     onStartThreadForSession: (request) => {
       if (input.newThreadStartBlockedReason) {
         throw new Error(input.newThreadStartBlockedReason);
@@ -204,6 +205,8 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
         : `session:${request.sessionId}`;
       const existing = startsInFlight.get(startKey);
       if (existing) return existing;
+      const submittedPresentation =
+        request.submittedPresentation ?? input.codexControl.captureSubmissionPresentation();
       const firstSubmission = sessionFirstSubmissionOwner.begin({
         backend: "codex",
         originProjectId: input.currentSessionProjectId,
@@ -278,24 +281,27 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
           throw error;
         }
         failureStage = "startingThread";
-        const result = await input.codexControl.startThreadForSession({
-          firstSubmission: {
-            launchId: firstSubmission.launchId,
-            clientUserMessageId: firstSubmission.clientUserMessageId,
+        const result = await input.codexControl.startThreadForSession(
+          {
+            firstSubmission: {
+              launchId: firstSubmission.launchId,
+              clientUserMessageId: firstSubmission.clientUserMessageId,
+            },
+            projectId,
+            sessionId: targetSessionId,
+            prompt,
+            ...(projectlessWorkspace === undefined ? {} : { projectlessWorkspace }),
+            promptInput,
+            threadGoalDraft,
+            threadGoalMaterializedDraft,
+            runInTarget,
+            runInEnvironmentPath,
+            worktreeStartingState,
+            collaborationMode: input.selectedCollaborationMode,
+            ...(presentationOrigin ? { browserUsePresentationOrigin: presentationOrigin } : {}),
           },
-          projectId,
-          sessionId: targetSessionId,
-          prompt,
-          ...(projectlessWorkspace === undefined ? {} : { projectlessWorkspace }),
-          promptInput,
-          threadGoalDraft,
-          threadGoalMaterializedDraft,
-          runInTarget,
-          runInEnvironmentPath,
-          worktreeStartingState,
-          collaborationMode: input.selectedCollaborationMode,
-          ...(presentationOrigin ? { browserUsePresentationOrigin: presentationOrigin } : {}),
-        });
+          submittedPresentation,
+        );
         if (result.kind === "started") {
           sessionFirstSubmissionOwner.update(firstSubmission.launchId, {
             threadId: result.detail.threadId,
@@ -375,6 +381,7 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
       : {}),
     onStartSummaryGitAction: async ({ action }) => {
       const threadId = requireActiveThreadId(input.activeThreadId, "Starting a Git action");
+      const submittedPresentation = input.codexControl.captureSubmissionPresentation();
       await captureTurnOrigin(input.currentSessionId, threadId, input.projectId);
       await input.codexControl.startTurn(
         threadId,
@@ -385,6 +392,7 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
           ...(input.projectId === null ? {} : { projectId: input.projectId }),
           collaborationMode: input.selectedCollaborationMode,
         },
+        submittedPresentation,
       );
     },
     ...(input.onOpenProcessManager ? { onOpenProcessManager: input.onOpenProcessManager } : {}),
@@ -399,15 +407,22 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
     ...(input.onToggleThreadPin ? { onToggleThreadPin: input.onToggleThreadPin } : {}),
     onSendPrompt: async (prompt, opts) => {
       const threadId = requireActiveThreadId(input.activeThreadId, "Sending a prompt");
+      const submittedPresentation =
+        opts?.submittedPresentation ?? input.codexControl.captureSubmissionPresentation();
       await captureTurnOrigin(input.currentSessionId, threadId, input.projectId);
-      await input.codexControl.startTurn(threadId, prompt, {
-        ...(input.projectId === null ? {} : { projectId: input.projectId }),
-        collaborationMode: opts?.collaborationMode,
-        promptInput: opts?.promptInput,
-        model: opts?.model,
-        reasoningEffort: opts?.reasoningEffort,
-        serviceTier: opts?.serviceTier,
-      });
+      await input.codexControl.startTurn(
+        threadId,
+        prompt,
+        {
+          ...(input.projectId === null ? {} : { projectId: input.projectId }),
+          collaborationMode: opts?.collaborationMode,
+          promptInput: opts?.promptInput,
+          model: opts?.model,
+          reasoningEffort: opts?.reasoningEffort,
+          serviceTier: opts?.serviceTier,
+        },
+        submittedPresentation,
+      );
     },
     onSteerPrompt: async (steerInput) => {
       const threadId = requireActiveThreadId(input.activeThreadId, "Steering a prompt");
@@ -422,10 +437,15 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
     },
     onResumeInterruptedTurn: async () => {
       const threadId = requireActiveThreadId(input.activeThreadId, "Resuming Nodex");
+      const submittedPresentation = input.codexControl.captureSubmissionPresentation();
       await captureTurnOrigin(input.currentSessionId, threadId, input.projectId);
-      await input.codexControl.resumeInterruptedTurn(threadId, {
-        ...(input.projectId === null ? {} : { projectId: input.projectId }),
-      });
+      await input.codexControl.resumeInterruptedTurn(
+        threadId,
+        {
+          ...(input.projectId === null ? {} : { projectId: input.projectId }),
+        },
+        submittedPresentation,
+      );
     },
     onRespondApproval: async (requestId, response, context) => {
       await input.codexControl.respondApproval(

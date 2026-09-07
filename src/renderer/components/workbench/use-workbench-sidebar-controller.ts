@@ -126,14 +126,12 @@ function listSessionDbViewTargets(
   const targets = new Map<string, { projectId: string; databaseViewId: string }>();
   for (const tab of session.tabs) {
     if (tab.kind !== "db_view") continue;
-    if (!("projectId" in tab.config)) continue;
-    if (tab.config.projectId === null) continue;
-    if (!("databaseViewId" in tab.config)) continue;
-    if (typeof tab.config.databaseViewId !== "string") continue;
-    const databaseViewId = tab.config.databaseViewId.trim();
+    if (tab.config.accessContext.kind !== "project" || tab.config.target.kind !== "database-view")
+      continue;
+    const databaseViewId = tab.config.target.databaseViewId.trim();
     if (!databaseViewId) continue;
     targets.set(databaseViewId, {
-      projectId: tab.config.projectId,
+      projectId: tab.config.accessContext.projectId,
       databaseViewId,
     });
   }

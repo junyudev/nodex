@@ -127,8 +127,8 @@
     "stage:codex-runtime:mac:arm64": "vp run materialize:browser-runtime:mac:arm64 && tsx scripts/stage-codex-runtime.ts --target-platform darwin --target-arch arm64 --out .generated/codex-runtime --browser-runtime-source .generated/browser-runtime-source/arm64",
     "stage:codex-runtime:mac:x64": "vp run materialize:browser-runtime:mac:x64 && tsx scripts/stage-codex-runtime.ts --target-platform darwin --target-arch x64 --out .generated/codex-runtime --browser-runtime-source .generated/browser-runtime-source/x64",
     "stage:native-runtime:mac": "vp run stage:native-runtime:mac:$(node -p \"process.arch\")",
-    "stage:native-runtime:mac:arm64": "vp run clipboard-bridge:build arm64 && vp run stage:codex-runtime:mac:arm64 && MACOSX_DEPLOYMENT_TARGET=15.0 cargo build --release --target aarch64-apple-darwin -p nodex-core-server -p nodex-cli -p nodex-browser-profile-helper && tsx scripts/stage-rust-core.ts --target-arch arm64 --out .generated/codex-runtime && vp run stage:sparkle-runtime:mac:arm64",
-    "stage:native-runtime:mac:x64": "vp run clipboard-bridge:build x64 && vp run stage:codex-runtime:mac:x64 && MACOSX_DEPLOYMENT_TARGET=15.0 cargo build --release --target x86_64-apple-darwin -p nodex-core-server -p nodex-cli -p nodex-browser-profile-helper && tsx scripts/stage-rust-core.ts --target-arch x64 --out .generated/codex-runtime && vp run stage:sparkle-runtime:mac:x64",
+    "stage:native-runtime:mac:arm64": "vp run clipboard-bridge:build arm64 && vp run stage:codex-runtime:mac:arm64 && MACOSX_DEPLOYMENT_TARGET=15.0 cargo build --release --target aarch64-apple-darwin -p nodex-core-server -p nodex-cli -p nodex-browser-profile-helper && tsx scripts/stage-rust-core.ts --target-arch arm64 --out .generated/codex-runtime && vp run stage:sparkle-runtime:mac:arm64 && vp run materialize:workspace-runtime:mac:arm64",
+    "stage:native-runtime:mac:x64": "vp run clipboard-bridge:build x64 && vp run stage:codex-runtime:mac:x64 && MACOSX_DEPLOYMENT_TARGET=15.0 cargo build --release --target x86_64-apple-darwin -p nodex-core-server -p nodex-cli -p nodex-browser-profile-helper && tsx scripts/stage-rust-core.ts --target-arch x64 --out .generated/codex-runtime && vp run stage:sparkle-runtime:mac:x64 && vp run materialize:workspace-runtime:mac:x64",
     "dev:landing": "vp run --filter @nodex/landing dev",
     "build:landing": "vp run --filter @nodex/landing build",
     "preview:landing": "vp run --filter @nodex/landing preview",
@@ -185,7 +185,10 @@
     "prepare": "effect-tsgo patch --oxlint",
     "test:effect-codex:related": "tsx scripts/testing/run-tests.ts effect-codex --related",
     "test:core-client:stress": "NODEX_TEST_TIER=stress tsx scripts/testing/run-tests.ts core-client",
-    "verify:test-inventory": "tsx scripts/ci/verify-test-inventory.ts"
+    "verify:test-inventory": "tsx scripts/ci/verify-test-inventory.ts",
+    "probe:app-tools-mcp": "tsx scripts/probes/nodex-app-mcp.ts",
+    "materialize:workspace-runtime:mac:arm64": "tsx scripts/materialize-workspace-runtime.ts --target-arch arm64",
+    "materialize:workspace-runtime:mac:x64": "tsx scripts/materialize-workspace-runtime.ts --target-arch x64"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.4.0",
@@ -223,7 +226,9 @@
     "@electron/osx-sign": "1.3.3",
     "@excalidraw/excalidraw": "0.18.1",
     "@floating-ui/react": "0.27.20",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "@noble/hashes": "2.2.0",
+    "@nodex/app-tools-mcp": "workspace:*",
     "@nodex/codex-app-server-protocol": "workspace:*",
     "@nodex/core-protocol": "workspace:*",
     "@nodex/effect-codex-app-server": "workspace:*",

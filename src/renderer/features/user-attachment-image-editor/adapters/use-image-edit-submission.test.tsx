@@ -13,6 +13,13 @@ vi.mock("@/components/ui/toast", () => ({
 
 vi.mock("@/features/local-conversation/local-conversation-store", () => ({
   useCodexAppServerControl: () => ({
+    captureSubmissionPresentation: () => ({
+      rendererGeneration: "renderer-a",
+      sceneOwner: { kind: "pages" },
+      presentationRevision: 1,
+      selectedTabs: [],
+      focusedTarget: null,
+    }),
     availableModels: [],
     executionProfile: null,
   }),

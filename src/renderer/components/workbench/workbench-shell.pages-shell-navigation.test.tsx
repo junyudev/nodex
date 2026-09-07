@@ -42,7 +42,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           id: "calendar-db",
           title: "Calendar",
           kind: "db_view",
-          config: { projectId: "alpha" },
+          config: { accessContext: { kind: "project", projectId: "alpha" } },
         }),
       ],
     });
@@ -571,7 +571,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "db_view",
           title: "DB View",
           panelId: "right",
-          config: { projectId: "alpha" },
+          config: { accessContext: { kind: "project", projectId: "alpha" } },
         },
         {
           id: "card-tab",
@@ -580,7 +580,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "page_stage",
           title: "Beta Card",
           panelId: "right",
-          config: { projectId: "beta", pageId: "card-beta", titleSnapshot: "Beta Card" },
+          config: {
+            accessContext: { kind: "project", projectId: "beta" },
+            pageId: "card-beta",
+            titleSnapshot: "Beta Card",
+          },
         },
       ],
     });
@@ -631,7 +635,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "page_stage",
           title: "Card One",
           panelId: "right",
-          config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+          config: {
+            accessContext: { kind: "project", projectId: "alpha" },
+            pageId: "card-1",
+            titleSnapshot: "Card One",
+          },
         },
       ],
       panels: makePanels({
@@ -717,7 +725,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "page_stage",
           title: "Card One",
           panelId: "right",
-          config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+          config: {
+            accessContext: { kind: "project", projectId: "alpha" },
+            pageId: "card-1",
+            titleSnapshot: "Card One",
+          },
         },
       ],
       panels: makePanels({ rightTabIds: ["card-tab"], rightActiveTabId: "card-tab" }),
@@ -786,7 +798,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "page_stage",
           title: "Card One",
           panelId: "right",
-          config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+          config: {
+            accessContext: { kind: "project", projectId: "alpha" },
+            pageId: "card-1",
+            titleSnapshot: "Card One",
+          },
         },
       ],
       panels: makePanels({ rightTabIds: ["card-tab"], rightActiveTabId: "card-tab" }),
@@ -828,6 +844,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
         "thread-section-target",
         "Run this section",
         { projectId: "alpha", promptInput: { text: "Run this section" } },
+        expect.objectContaining({ rendererGeneration: "test-generation" }),
       ],
     ]);
   });
@@ -844,7 +861,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "page_stage",
           title: "Card One",
           panelId: "right",
-          config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+          config: {
+            accessContext: { kind: "project", projectId: "alpha" },
+            pageId: "card-1",
+            titleSnapshot: "Card One",
+          },
         },
       ],
       panels: makePanels({
@@ -896,7 +917,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "db_view",
           title: "DB View",
           panelId: "right",
-          config: { projectId: "alpha" },
+          config: { accessContext: { kind: "project", projectId: "alpha" } },
         },
         {
           id: "card-tab",
@@ -905,7 +926,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "page_stage",
           title: "Stale Beta Card",
           panelId: "right",
-          config: { projectId: "beta", pageId: "card-beta", titleSnapshot: "Stale Beta Card" },
+          config: {
+            accessContext: { kind: "project", projectId: "beta" },
+            pageId: "card-beta",
+            titleSnapshot: "Stale Beta Card",
+          },
         },
       ],
       rightLayout: makePanelLayout(["db-tab", "card-tab"], "card-tab"),
@@ -1003,7 +1028,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Card One",
           panelId: "right",
           config: {
-            projectId: "alpha",
+            accessContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Card One",
           },
@@ -1016,7 +1041,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Stale duplicate",
           panelId: "right",
           config: {
-            projectId: "alpha",
+            accessContext: { kind: "project", projectId: "alpha" },
             pageId: "card-1",
             titleSnapshot: "Stale duplicate",
           },
@@ -1080,7 +1105,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "db_view",
           title: "DB View",
           panelId: "right",
-          config: { projectId: "alpha" },
+          config: { accessContext: { kind: "project", projectId: "alpha" } },
         },
         {
           id: "page-tab",
@@ -1089,7 +1114,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "page_stage",
           title: "Card One",
           panelId: "right",
-          config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+          config: {
+            accessContext: { kind: "project", projectId: "alpha" },
+            pageId: "card-1",
+            titleSnapshot: "Card One",
+          },
         },
       ],
       rightLayout: makePanelLayout(["db-tab", "page-tab"], "page-tab"),
@@ -1140,7 +1169,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "page_stage",
           title: "Card One",
           panelId: "right",
-          config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+          config: {
+            accessContext: { kind: "project", projectId: "alpha" },
+            pageId: "card-1",
+            titleSnapshot: "Card One",
+          },
         },
       ],
     });
@@ -1187,7 +1220,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "page_stage",
           title: "Beta Card",
           panelId: "right",
-          config: { projectId: "beta", pageId: "card-beta", titleSnapshot: "Beta Card" },
+          config: {
+            accessContext: { kind: "project", projectId: "beta" },
+            pageId: "card-beta",
+            titleSnapshot: "Beta Card",
+          },
         },
       ],
     });
@@ -1247,7 +1284,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "page_stage",
           title: "Card One",
           panelId: "right",
-          config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+          config: {
+            accessContext: { kind: "project", projectId: "alpha" },
+            pageId: "card-1",
+            titleSnapshot: "Card One",
+          },
         },
       ],
     });
@@ -1308,7 +1349,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Nested Card",
           panelId: "right",
           config: {
-            projectId: "alpha",
+            accessContext: { kind: "project", projectId: "alpha" },
             pageId: "nested-card",
             titleSnapshot: "Nested Card",
           },
@@ -1361,7 +1402,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Nested Page",
           panelId: "right",
           config: {
-            projectId: "alpha",
+            accessContext: { kind: "project", projectId: "alpha" },
             pageId: "nested-page",
             titleSnapshot: "Nested Page",
           },
@@ -1435,7 +1476,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Parent Card",
           panelId: "right",
           config: {
-            projectId: "alpha",
+            accessContext: { kind: "project", projectId: "alpha" },
             pageId: "parent-card",
             titleSnapshot: "Parent Card",
           },
@@ -1545,7 +1586,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           title: "Canvas",
           panelId: "right",
           config: {
-            projectId: "alpha",
+            accessContext: { kind: "project", projectId: "alpha" },
             canvasBlockId: "canvas-1",
             titleSnapshot: "Canvas",
           },
@@ -1600,7 +1641,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "page_stage",
           title: "Card One",
           panelId: "right",
-          config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+          config: {
+            accessContext: { kind: "project", projectId: "alpha" },
+            pageId: "card-1",
+            titleSnapshot: "Card One",
+          },
         },
       ],
     });
@@ -1631,7 +1676,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "page_stage",
           title: "Missing Beta Card",
           panelId: "right",
-          config: { projectId: "beta", pageId: "missing-card", titleSnapshot: "Missing Beta Card" },
+          config: {
+            accessContext: { kind: "project", projectId: "beta" },
+            pageId: "missing-card",
+            titleSnapshot: "Missing Beta Card",
+          },
         },
       ],
     });
@@ -1657,7 +1706,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "page_stage",
           title: "Beta Card",
           panelId: "right",
-          config: { projectId: "beta", pageId: "card-beta", titleSnapshot: "Beta Card" },
+          config: {
+            accessContext: { kind: "project", projectId: "beta" },
+            pageId: "card-beta",
+            titleSnapshot: "Beta Card",
+          },
         },
       ],
     });
@@ -1708,7 +1761,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 kind: "db_view",
                 title: "DB View",
                 panelId: "right",
-                config: { projectId: "alpha" },
+                config: { accessContext: { kind: "project", projectId: "alpha" } },
               },
               {
                 id: "card-tab",
@@ -1717,7 +1770,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 kind: "page_stage",
                 title: "Card One",
                 panelId: "right",
-                config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+                config: {
+                  accessContext: { kind: "project", projectId: "alpha" },
+                  pageId: "card-1",
+                  titleSnapshot: "Card One",
+                },
               },
             ],
           }),
@@ -1769,7 +1826,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 kind: "db_view",
                 title: "DB View",
                 panelId: "right",
-                config: { projectId: "alpha" },
+                config: { accessContext: { kind: "project", projectId: "alpha" } },
               },
               {
                 id: "browser-tab",
@@ -1831,7 +1888,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 kind: "db_view",
                 title: "DB View",
                 panelId: "right",
-                config: { projectId: "alpha" },
+                config: { accessContext: { kind: "project", projectId: "alpha" } },
               },
               {
                 id: "card-tab",
@@ -1840,7 +1897,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 kind: "page_stage",
                 title: "Card One",
                 panelId: "bottom",
-                config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+                config: {
+                  accessContext: { kind: "project", projectId: "alpha" },
+                  pageId: "card-1",
+                  titleSnapshot: "Card One",
+                },
               },
             ],
           }),
@@ -1869,7 +1930,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 kind: "db_view",
                 title: "DB View",
                 panelId: "right",
-                config: { projectId: "alpha" },
+                config: { accessContext: { kind: "project", projectId: "alpha" } },
               },
               {
                 id: "card-tab",
@@ -1878,7 +1939,11 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 kind: "page_stage",
                 title: "Card One",
                 panelId: "right",
-                config: { projectId: "alpha", pageId: "card-1", titleSnapshot: "Card One" },
+                config: {
+                  accessContext: { kind: "project", projectId: "alpha" },
+                  pageId: "card-1",
+                  titleSnapshot: "Card One",
+                },
               },
             ],
             rightLayout: makePanelLayout(
@@ -1959,7 +2024,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
                 kind: "db_view",
                 title: "DB View",
                 panelId: "right",
-                config: { projectId: "alpha" },
+                config: { accessContext: { kind: "project", projectId: "alpha" } },
               },
               {
                 id: "browser-tab",
@@ -2014,7 +2079,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "db_view",
           title: "DB View",
           order: 0,
-          config: { projectId: "alpha" },
+          config: { accessContext: { kind: "project", projectId: "alpha" } },
           createdAt: "2026-06-07T00:00:00.000Z",
           updatedAt: "2026-06-07T00:00:00.000Z",
         },
@@ -2068,7 +2133,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           kind: "db_view",
           title: "DB View",
           order: 0,
-          config: { projectId: "beta" },
+          config: { accessContext: { kind: "project", projectId: "beta" } },
           createdAt: "2026-06-07T00:00:00.000Z",
           updatedAt: "2026-06-07T00:00:00.000Z",
         },
@@ -2479,7 +2544,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           projectId: "alpha",
           kind: "db_view",
           title: "DB View",
-          config: { projectId: "alpha" },
+          config: { accessContext: { kind: "project", projectId: "alpha" } },
         },
       ],
       rightLayout: makePanelLayout(["session:alpha:work:db"], "session:alpha:work:db"),
@@ -2587,7 +2652,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
           projectId: "alpha",
           kind: "db_view",
           title: "DB View",
-          config: { projectId: "alpha" },
+          config: { accessContext: { kind: "project", projectId: "alpha" } },
         },
       ],
       rightLayout: makePanelLayout(["session:alpha:work:db"], "session:alpha:work:db"),

@@ -10,7 +10,7 @@ import type {
 } from "../../shared/nodex-agent-tools";
 import { CreatePagesV6OutputSchema } from "../../shared/nodex-agent-tools/v6-schemas";
 import { CreateInputSchema } from "../../shared/nodex-agent-tools/write-schemas";
-import type { NativeNodexAgentCore } from "./native-nodex-agent-core";
+import { nativeAgentClient, type NativeNodexAgentCore } from "./native-nodex-agent-core";
 import { toCoreAgentExecutionAuthorization } from "./core-agent-execution-authorization";
 import {
   hasExactNativeAgentDocumentHeads,
@@ -194,7 +194,7 @@ export const prepareNativeNodexAgentPageCreate = async (
       throw new Error("Native Agent Page creation requires frozen Turn authority");
     }
     const createRequest = coreRequest(request);
-    const snapshot = await runtime.clientForProject(request.projectId).libraryRead(
+    const snapshot = await nativeAgentClient(runtime, request.projectId).libraryRead(
       {
         kind: "prepare_agent_create_pages",
         operation_id: operationId,
@@ -315,7 +315,7 @@ export const executeNativeNodexAgentPageCreate = async (
     };
   }
   try {
-    const committed = await runtime.clientForProject(pending.request.projectId).libraryApply(
+    const committed = await nativeAgentClient(runtime, pending.request.projectId).libraryApply(
       {
         operationId: pending.operationId,
         intent: {

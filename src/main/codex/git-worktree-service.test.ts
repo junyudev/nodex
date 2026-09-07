@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
   chmod,
@@ -202,6 +202,97 @@ describe("createManagedWorktree starting state", () => {
       "feature branch\n",
     );
   });
+
+  test("creates an explicitly requested missing branch from the default branch", async () => {
+    const { repositoryPath, root } = await createRepository();
+    const base = (await runCommand("git", ["rev-parse", "main"], repositoryPath)).stdout.trim();
+    await runCommand("git", ["checkout", "-b", "unrelated"], repositoryPath);
+    await writeFile(path.join(repositoryPath, "unrelated.txt"), "other work");
+    await runCommand("git", ["add", "."], repositoryPath);
+    await runCommand("git", ["commit", "-m", "other work"], repositoryPath);
+    const input = {
+      repositoryPath,
+      nodexHome: path.join(root, "server"),
+      projectId: "project-new-branch",
+      targetId: "target-new-branch",
+      mode: "detachedHead" as const,
+      startingState: { type: "branch" as const, branchName: "feature/requested" },
+    };
+    await expect(createManagedWorktree(input)).rejects.toThrow();
+    const result = await createManagedWorktree({
+      ...input,
+      startingState: { ...input.startingState, onMissing: "create-branch" },
+    });
+    expect(
+      (await runCommand("git", ["rev-parse", "feature/requested"], repositoryPath)).stdout.trim(),
+    ).toBe(base);
+    expect(
+      (await runCommand("git", ["rev-parse", "HEAD"], result.worktreeGitRoot)).stdout.trim(),
+    ).toBe(base);
+    expect(
+      (await runCommand("git", ["branch", "--show-current"], repositoryPath)).stdout.trim(),
+    ).toBe("unrelated");
+    const unrelated = (
+      await runCommand("git", ["rev-parse", "unrelated"], repositoryPath)
+    ).stdout.trim();
+    await runCommand(
+      "git",
+      ["update-ref", "refs/heads/feature/requested", unrelated],
+      repositoryPath,
+    );
+    const existing = await createManagedWorktree({
+      ...input,
+      startingState: { ...input.startingState, onMissing: "create-branch" },
+    });
+    expect(
+      (await runCommand("git", ["rev-parse", "HEAD"], existing.worktreeGitRoot)).stdout.trim(),
+    ).toBe(unrelated);
+  });
+
+  test.each([false, true])(
+    "cleans up a failed requested branch unless advanced: %s",
+    async (advanced) => {
+      const { repositoryPath, root } = await createRepository();
+      await runCommand("git", ["checkout", "-b", "concurrent"], repositoryPath);
+      await runCommand("git", ["commit", "--allow-empty", "-m", "concurrent work"], repositoryPath);
+      const concurrent = (
+        await runCommand("git", ["rev-parse", "HEAD"], repositoryPath)
+      ).stdout.trim();
+      await expect(
+        createManagedWorktree({
+          repositoryPath,
+          nodexHome: path.join(root, "server"),
+          projectId: "project-rollback",
+          targetId: "target-rollback",
+          mode: "detachedHead",
+          startingState: {
+            type: "branch",
+            branchName: "feature/rollback",
+            onMissing: "create-branch",
+          },
+          onLog: ({ data }) => {
+            if (!data.startsWith("Worktree created at")) return;
+            if (advanced) {
+              execFileSync("git", ["update-ref", "refs/heads/feature/rollback", concurrent], {
+                cwd: repositoryPath,
+              });
+            }
+            throw new Error("Completion failed");
+          },
+        }),
+      ).rejects.toThrow("Completion failed");
+      const ref = runCommand(
+        "git",
+        ["rev-parse", "--verify", "refs/heads/feature/rollback"],
+        repositoryPath,
+      );
+      if (advanced) {
+        expect((await ref).stdout.trim()).toBe(concurrent);
+        return;
+      }
+      await expect(ref).rejects.toThrow();
+    },
+  );
 
   test("allocates future worktrees beneath the configured managed root", async () => {
     const { repositoryPath, root } = await createRepository();

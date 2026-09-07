@@ -54,7 +54,7 @@ pub(crate) struct OwnerCommandExecution {
 
 #[derive(Clone, Copy)]
 struct OwnerCommandScope<'a> {
-    actor_project_id: &'a str,
+    actor_project_id: Option<&'a str>,
     library_id: &'a str,
 }
 
@@ -69,14 +69,12 @@ pub(crate) fn execute_owner_command(
     let actor_project_id = context
         .project_id
         .as_ref()
-        .ok_or_else(|| unauthorized("Document owner command requires a bound Project"))?;
-    crate::library::require_project_in_library(
-        connection,
-        &actor_project_id.0,
-        &context.library_id.0,
-    )?;
+        .map(|project| project.0.as_str());
+    if let Some(project_id) = actor_project_id {
+        crate::library::require_project_in_library(connection, project_id, &context.library_id.0)?;
+    }
     let scope = OwnerCommandScope {
-        actor_project_id: &actor_project_id.0,
+        actor_project_id,
         library_id: &context.library_id.0,
     };
     if read_store_epoch(connection)? != store_epoch {
@@ -737,8 +735,7 @@ fn persist_prepared_update(
                 .context
                 .project_id
                 .as_ref()
-                .map(|project_id| project_id.0.as_str())
-                .ok_or_else(|| unauthorized("Document owner command requires a bound Project"))?,
+                .map(|project| project.0.as_str()),
             base_materialization: &loaded.materialization,
             materialization: &prepared.materialization,
             update_id: operation_id,
@@ -1432,7 +1429,7 @@ fn value_references_target(value: &Value, targets: &BTreeSet<&String>) -> bool {
 
 struct PersistInvalidationInput<'a> {
     connection: &'a Connection,
-    project_id: &'a str,
+    project_id: Option<&'a str>,
     store_epoch: &'a str,
     operation_id: &'a str,
     head: &'a DocumentHeadRevision,
@@ -1567,10 +1564,6 @@ fn sqlite_now(connection: &Connection) -> Result<String, StoreError> {
 
 fn invalid(message: impl Into<String>) -> StoreError {
     StoreError::new(StoreErrorCode::InvalidInput, message, false)
-}
-
-fn unauthorized(message: &str) -> StoreError {
-    StoreError::new(StoreErrorCode::Unauthorized, message, false)
 }
 
 fn not_found(message: &str) -> StoreError {

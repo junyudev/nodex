@@ -1,11 +1,10 @@
+import { isNodexAgentTurnReadOnly } from "../codex/nodex-agent-access";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { buildNodexCliBootstrap } from "../platform/node/NodexCliBootstrap";
-import { isDevelopmentFeatureEnabled } from "../../shared/development-features";
 import { randomUUID } from "node:crypto";
 import { open as openFile } from "node:fs/promises";
 import * as path from "node:path";
 import type { CollaborationMode as CodexAppServerCollaborationMode } from "@nodex/codex-app-server-protocol";
-import type { DynamicToolSpec } from "@nodex/codex-app-server-protocol/v2/DynamicToolSpec";
 import type { ThreadStartResponse } from "@nodex/codex-app-server-protocol/v2/ThreadStartResponse";
 import type {
   ClientRequestParamsByMethod,
@@ -35,18 +34,12 @@ import type {
   CodexScheduledAutomationUpdateInput,
 } from "../../shared/types";
 import { MainConfig } from "../app/MainConfig";
-import {
-  buildCodexAppMetaThreadToolSpecs,
-  CODEX_APP_LOCAL_HOST_ID,
-} from "../codex/codex-app-meta-thread-tools";
+import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
 import { buildCodexDesktopDeveloperInstructions } from "../codex/codex-developer-instructions";
-import { resolveDynamicToolCatalogBindings } from "../codex/codex-dynamic-tool-catalog-bindings";
 import { rewriteExecutionWorkspaceRoots } from "../codex/codex-execution-workspace-roots";
-import { evaluateCodexThreadHandoffCapability } from "../codex/codex-thread-handoff-capability";
 import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
-import { buildCodexThreadConfigOverrides } from "../codex/codex-thread-capabilities";
+import { buildCodexThreadConfig } from "../codex/codex-thread-config";
 import { persistCodexWorktreeShellEnvironmentAtGitPath } from "../codex/codex-worktree-shell-environment";
-import type { CodexWorktreeWorkerOperation } from "../codex/codex-worktree-worker-protocol";
 import {
   CODEX_AUTOMATION_DEVELOPER_INSTRUCTIONS,
   buildCodexProjectlessThreadInstructions,
@@ -75,7 +68,6 @@ import {
   type CodexScheduledAutomationRunContext,
 } from "../host-runtime/ScheduledAutomationPolicy";
 import { getLogger } from "../logging/logger";
-import { selectNodexAgentDynamicToolSpecs } from "../nodex-agent-application/NodexAgentDynamicTools";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
@@ -85,7 +77,6 @@ import { CodexPermissions } from "../codex-application/CodexPermissions";
 import { CodexRendererConversationRegistry } from "../codex-application/CodexRendererConversationRegistry";
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
 import { ThreadCreationRuntime } from "../codex-application/ThreadCreationRuntime";
-import { CodexThreadSettingsRuntime } from "../codex-application/CodexThreadSettingsRuntime";
 import { CodexThreadTitlePersistence } from "../codex-application/CodexThreadTitlePersistence";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
@@ -158,7 +149,6 @@ export class AutomationExecution extends Context.Service<
 
 export interface AutomationExecutionOptions {
   readonly runtimeStateHome: string;
-  readonly runtimeVersion: string | null;
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -249,7 +239,6 @@ export const live = (
   | CodexRendererConversationRegistry
   | CodexThreadDirectory
   | ThreadCreationRuntime
-  | CodexThreadSettingsRuntime
   | CodexThreadTitlePersistence
   | CodexTurnAuthority
   | CodexTurnCommands
@@ -277,7 +266,6 @@ export const live = (
       const rendererConversations = yield* CodexRendererConversationRegistry;
       const directory = yield* CodexThreadDirectory;
       const threadStarts = yield* ThreadCreationRuntime;
-      const threadSettings = yield* CodexThreadSettingsRuntime;
       const titles = yield* CodexThreadTitlePersistence;
       const authority = yield* CodexTurnAuthority;
       const turns = yield* CodexTurnCommands;
@@ -307,6 +295,14 @@ export const live = (
           try: () => requireCodexAutomationBackendBinding(binding),
           catch: (cause) => error(operation, cause),
         });
+      const heartbeatSessionThread = Effect.fn("AutomationExecution.heartbeatSessionThread")(
+        function* (sessionId: string) {
+          const session = yield* workspace
+            .getProjectSession(sessionId)
+            .pipe(Effect.mapError((cause) => error("resolve-heartbeat-session", cause)));
+          return session?.archived ? null : (session?.thread?.threadId ?? null);
+        },
+      );
       const requireCodexHeartbeatTarget = Effect.fn(
         "AutomationExecution.requireCodexHeartbeatTarget",
       )(function* (operation: string, targetThreadId: string | null | undefined) {
@@ -367,7 +363,12 @@ export const live = (
             if (input.kind === "heartbeat") {
               yield* requireCodexHeartbeatTarget(
                 "prepare-definition",
-                input.targetThreadId ?? current?.targetThreadId,
+                input.targetSessionId
+                  ? yield* heartbeatSessionThread(input.targetSessionId)
+                  : (input.targetThreadId ??
+                      (current?.targetSessionId
+                        ? yield* heartbeatSessionThread(current.targetSessionId)
+                        : null)),
               );
             }
             const requestedModelId = input.model?.trim();
@@ -397,59 +398,6 @@ export const live = (
             };
           }),
         );
-
-      const dynamicToolSpecs = Effect.fn("AutomationExecution.dynamicToolSpecs")(function* () {
-        const hosts = yield* executionHosts.hosts();
-        const byId = new Map(hosts.map((host) => [host.hostId, host]));
-        const local = byId.get(CODEX_APP_LOCAL_HOST_ID);
-        const localTransactionEffects = [
-          "prepare-handoff",
-          "rollback-handoff",
-          "cleanup-handoff",
-        ].every(
-          (operation) =>
-            local?.capabilities.includes(operation as CodexWorktreeWorkerOperation) ?? false,
-        );
-        const availableHandoffHosts = hosts
-          .filter((host) => host.supportsFileTransfer)
-          .filter((host) => host.capabilities.includes("cleanup-transfer-handoff"))
-          .filter(
-            (host) =>
-              host.capabilities.includes("export-handoff") ||
-              host.capabilities.includes("import-handoff"),
-          )
-          .map((host) => ({ id: host.hostId, displayName: host.displayName }));
-        const localHandoff = evaluateCodexThreadHandoffCapability({
-          runtimeVersion: options.runtimeVersion,
-          appServer: {
-            threadSettingsUpdate: threadSettings.remoteUpdateSupport() !== "unsupported",
-            threadResumeLocation: true,
-            rolloutPathConsistency: true,
-          },
-          coreAtomicExecutionLocation: true,
-          sourceHost: {
-            available: local?.capabilities.includes("create") ?? false,
-            transactionEffects: localTransactionEffects,
-          },
-          destinationHost: {
-            available: local?.capabilities.includes("create") ?? false,
-            transactionEffects: localTransactionEffects,
-          },
-          crossHost: false,
-          crossHostTransfer: false,
-        });
-        return [
-          ...buildCodexAppMetaThreadToolSpecs({
-            availableHandoffHosts,
-            crossHostHandoffEnabled: availableHandoffHosts.length >= 2,
-            handoffEnabled:
-              localHandoff.status === "available" || availableHandoffHosts.length >= 2,
-          }),
-          ...selectNodexAgentDynamicToolSpecs(
-            isDevelopmentFeatureEnabled("nodex-dynamic-tools", config.environment),
-          ),
-        ] satisfies DynamicToolSpec[];
-      });
 
       const heartbeatThread = Effect.fn("AutomationExecution.heartbeatThread")(function* (
         threadId: string,
@@ -529,12 +477,16 @@ export const live = (
       ) {
         const now = context.now ?? (yield* Clock.currentTimeMillis);
         const reason = context.reason ?? "scheduled";
-        const targetThreadId = definition.targetThreadId?.trim() ?? "";
+        const targetThreadId = definition.targetSessionId
+          ? yield* heartbeatSessionThread(definition.targetSessionId)
+          : null;
         if (!targetThreadId) {
           if (reason === "run-now")
             return yield* fail("run-heartbeat", "Heartbeat thread not found.");
           return yield* deferHeartbeat(definition, context, "heartbeat_thread_missing");
         }
+        yield* requireCodexHeartbeatTarget("execute", targetThreadId);
+        yield* gateway.awaitReady(gateway.localHostId);
         if (reason === "scheduled" && context.heartbeat?.automationsEnabled !== true) {
           if (context.leaseId !== undefined) {
             return yield* Effect.fail(
@@ -642,7 +594,10 @@ export const live = (
                 sandbox: null,
                 config: {
                   ...(browserConfig ?? {}),
-                  ...buildCodexThreadConfigOverrides(),
+                  ...buildCodexThreadConfig({
+                    nativeMcp: target.hostGeneration.hostId === gateway.localHostId,
+                    purpose: "automation",
+                  }),
                   ...(target.entry.durable.executionProfile?.reasoningEffort
                     ? {
                         model_reasoning_effort:
@@ -714,20 +669,18 @@ export const live = (
         const launch = yield* authority.begin(
           targetThreadId,
           actorPermission?.verifiedBuiltinFullAccess ?? false,
+          isNodexAgentTurnReadOnly({
+            planMode: mode?.mode === "plan",
+            sandboxPolicy: request.sandboxPolicy ?? resume.sandbox,
+          }),
         );
-        const startTurn =
-          reason === "scheduled"
-            ? heartbeatCompletion
-                .startAndWait(bootstrappedRequest)
-                .pipe(Effect.mapError((cause) => error("start-heartbeat-turn", cause)))
-            : gateway
-                .requestForThread(
-                  targetThreadId,
-                  "turn/start",
-                  bootstrappedRequest,
-                  codexGatewayGenerationFence(target.hostGeneration),
-                )
-                .pipe(Effect.mapError((cause) => error("start-heartbeat-turn", cause)));
+        const startTurn = (
+          reason === "scheduled" ? heartbeatCompletion.startAndWait : heartbeatCompletion.start
+        )(
+          bootstrappedRequest,
+          definition.notificationPolicy,
+          codexGatewayGenerationFence(target.hostGeneration),
+        ).pipe(Effect.mapError((cause) => error("start-heartbeat-turn", cause)));
         yield* Effect.gen(function* () {
           const result = yield* startTurn;
           yield* authority.bind(targetThreadId, launch, result.turn.id);
@@ -752,10 +705,10 @@ export const live = (
 
       const runLocation = Effect.fn("AutomationExecution.runLocation")(function* (
         definition: CodexScheduledAutomation,
-        sourceCwd: string,
+        sourceCwd: string | null,
         now: number,
       ) {
-        if (sourceCwd === "~") {
+        if (definition.projectId === null) {
           const projectless = yield* Effect.tryPromise(() =>
             createCodexProjectlessWorkspace({
               createSplitDirectories: true,
@@ -772,6 +725,7 @@ export const live = (
             projectlessWorkspaceBrowserRoot: projectless.workspaceRoot,
           };
         }
+        if (!sourceCwd) return yield* fail("run-location", "Project folder is unavailable");
         if (definition.executionEnvironment !== "worktree") {
           return {
             cwd: sourceCwd,
@@ -795,7 +749,7 @@ export const live = (
                 repositoryPath: sourceCwd,
                 nodexHome: config.nodexHome,
                 managedRoot: host.descriptor.managedRoot,
-                projectId: definition.id,
+                projectId: definition.projectId,
                 targetId: definition.id,
                 threadTitle: definition.name,
                 startingState: branchName ? { type: "branch", branchName } : null,
@@ -883,10 +837,11 @@ export const live = (
 
       const turnWorkspaceRoots = Effect.fn("AutomationExecution.turnWorkspaceRoots")(function* (
         definitionId: string,
-        sourceCwd: string,
+        sourceCwd: string | null,
         location: RunLocation,
       ) {
         if (location.projectlessOutputDirectory) return [];
+        if (!sourceCwd) return yield* fail("workspace-roots", "Project folder is unavailable");
         const roots = [
           location.cwd,
           path.join(runtimeStateHome, "automations", definitionId),
@@ -907,7 +862,7 @@ export const live = (
 
       const startCronRun = Effect.fn("AutomationExecution.startCronRun")(function* (input: {
         readonly definition: CodexScheduledAutomation;
-        readonly cwd: string;
+        readonly cwd: string | null;
         readonly prompt: string;
         readonly model: string | null;
         readonly reasoningEffort: string | null;
@@ -966,7 +921,6 @@ export const live = (
           ]
             .filter((line): line is string => line !== null)
             .join("\n\n");
-          const tools = yield* dynamicToolSpecs();
           const browserConfig = yield* desktopTools.threadConfig;
           const params = {
             cwd: location.cwd,
@@ -976,14 +930,14 @@ export const live = (
               ...(executionProfile?.reasoningEffort
                 ? { model_reasoning_effort: executionProfile.reasoningEffort }
                 : {}),
-              ...buildCodexThreadConfigOverrides(),
+              ...buildCodexThreadConfig({ nativeMcp: true, purpose: "automation" }),
             },
             developerInstructions,
             personality: null,
             ephemeral: null,
             threadSource: "automation",
             historyMode: "paginated",
-            dynamicTools: tools,
+            dynamicTools: [],
             experimentalRawEvents: THREAD_START_EXPERIMENTAL_RAW_EVENTS,
             mockExperimentalField: null,
             serviceTier: executionProfile?.serviceTier ?? null,
@@ -1027,7 +981,7 @@ export const live = (
           const accepted = yield* directory.acceptStandaloneStart({
             response: { ...response, cwd: effectiveCwd },
             capability,
-            projectId: null,
+            projectId: input.definition.projectId,
             executionProfile,
             runtimeWorkspaceRoots: writableRoots,
             fallbackCwd: effectiveCwd,
@@ -1036,10 +990,6 @@ export const live = (
             projectlessWorkspaceBrowserRoot: location.projectlessWorkspaceBrowserRoot,
           });
           threadId = accepted.durable.threadId;
-          yield* workspace.replaceThreadDynamicToolCatalogs(
-            threadId,
-            resolveDynamicToolCatalogBindings(tools),
-          );
           if (managedWorktreePath) {
             yield* managedWorktrees
               .setOwner({
@@ -1146,11 +1096,15 @@ export const live = (
       });
 
       const startCron = Effect.fn("AutomationExecution.startCron")(function* (
-        definition: CodexScheduledAutomation,
+        candidate: CodexScheduledAutomation,
         context: AutomationRunContext,
       ) {
-        const cwds = definition.cwds.map((cwd) => cwd.trim()).filter(Boolean);
-        if (cwds.length === 0) return;
+        const definition = yield* automation.definitions.getForExecution(candidate.id);
+        if (!definition || definition.definitionRevision !== candidate.definitionRevision) {
+          return yield* fail("run-cron", "Automation changed before execution");
+        }
+        const cwds: Array<string | null> = definition.projectId === null ? [null] : definition.cwds;
+
         if (context.reason === "run-now") {
           if (!(yield* automation.definitions.dispatchNow(definition.id))) {
             return yield* fail("dispatch-cron", "Automation not found.");
@@ -1202,10 +1156,7 @@ export const live = (
           requireCodexAutomationBackend("execute", definition.backendBinding).pipe(
             Effect.andThen(
               definition.kind === "heartbeat"
-                ? requireCodexHeartbeatTarget("execute", definition.targetThreadId).pipe(
-                    Effect.andThen(gateway.awaitReady(gateway.localHostId)),
-                    Effect.andThen(startHeartbeat(definition, context)),
-                  )
+                ? startHeartbeat(definition, context)
                 : gateway
                     .awaitReady(gateway.localHostId)
                     .pipe(Effect.andThen(startCron(definition, context))),

@@ -33,6 +33,7 @@ export type ReviewSourceIntent =
 export interface ReviewOpenIntent {
   readonly source: ReviewSourceIntent;
   readonly targetPath?: CanonicalReviewPath;
+  readonly operationId?: string;
 }
 
 export interface PendingReviewReveal {
@@ -50,6 +51,7 @@ export interface ReviewDiffPreferences {
 }
 
 export interface ReviewRouteState extends ReviewDiffExpansionState {
+  readonly externalOpenOperationId?: string;
   readonly initialized: boolean;
   readonly source: ReviewSource;
   readonly transcriptThreadId: string | null;
@@ -147,11 +149,14 @@ export const prepareReviewOpenAtom = scopedWritableAtom<
   (get) => get(reviewRouteStateAtom),
   (get, set, intent) => {
     const current = get(reviewRouteStateAtom);
+    if (intent.operationId && current.externalOpenOperationId === intent.operationId)
+      return current.nextRevealRequestId;
     const requestId = current.nextRevealRequestId + 1;
     const sourceState = resolveReviewSourceIntent(intent.source);
     set(reviewRouteStateAtom, {
       ...current,
       ...sourceState,
+      ...(intent.operationId ? { externalOpenOperationId: intent.operationId } : {}),
       initialized: true,
       nextRevealRequestId: requestId,
       selectedPath: intent.targetPath ?? current.selectedPath,

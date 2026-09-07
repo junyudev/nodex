@@ -135,7 +135,7 @@ fn record_page_parent_prepare(
 
 #[derive(Clone, Debug, Serialize)]
 pub(super) struct AgentPageMoveTransferAuthority {
-    pub(super) actor_project_id: String,
+    pub(super) actor_project_id: Option<String>,
 }
 
 #[derive(Clone, Copy)]
@@ -149,17 +149,17 @@ enum PageOwnershipHistory {
     None,
     RecordRelocation,
     UndoRelocation {
-        recipe: PageRelocationUndoRecipeV3,
+        recipe: Box<PageRelocationUndoRecipeV3>,
         token: LibraryBlockTransferUndoToken,
     },
 }
 
 impl PageOwnershipTransferAuthority<'_> {
-    fn actor_project_id(&self) -> &str {
+    fn actor_project_id(&self) -> Option<&str> {
         match self {
-            Self::ProjectBound { project_id } => project_id,
-            Self::Agent(authority) => &authority.actor_project_id,
-            Self::TrustedLibrary(authority) => &authority.actor_project_id,
+            Self::ProjectBound { project_id } => Some(project_id),
+            Self::Agent(authority) => authority.actor_project_id.as_deref(),
+            Self::TrustedLibrary(authority) => authority.actor_project_id.as_deref(),
         }
     }
 
@@ -272,7 +272,7 @@ struct BlockTransferUndoSchemaRestoreV1 {
 #[serde(deny_unknown_fields)]
 struct PageRelocationUndoRecipeV3 {
     version: u32,
-    project_id: String,
+    project_id: Option<String>,
     library_id: String,
     store_epoch: String,
     page_id: String,
@@ -690,13 +690,12 @@ fn merge_agent_page_document(
 pub(super) fn apply_agent_page_document_batch(
     connection: &Connection,
     scope: &DurableMutationScope<'_>,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     operation_id: &str,
     store_epoch: &str,
     batch: PreparedAgentPageDocumentBatch,
 ) -> Result<AppliedAgentPageDocumentBatch, StoreError> {
     batch.revalidate(connection)?;
-    pre_detach_agent_page_moves(connection, &batch)?;
     let mut commits = Vec::with_capacity(batch.documents.len());
     for (index, entry) in batch.documents.into_values().enumerate() {
         check_request_interruption()?;
@@ -726,45 +725,22 @@ pub(super) fn apply_agent_page_document_batch(
     Ok(AppliedAgentPageDocumentBatch { commits })
 }
 
-/// Removes only Page-shell index rows explicitly transferred between batch
-/// Documents. Target-first persistence is then safe without erasing unrelated
-/// source evidence or projections.
-fn pre_detach_agent_page_moves(
+/// Detaches prepared Page shells before typed-parent transfers, so a new
+/// Library/Data Source root never retains an old Document index. Canonical
+/// Documents are persisted once by the shared batch in the same transaction.
+pub(super) fn detach_agent_page_move_sources(
     connection: &Connection,
     batch: &PreparedAgentPageDocumentBatch,
 ) -> Result<(), StoreError> {
-    let insertions = batch
-        .documents
-        .iter()
-        .flat_map(|(document_id, entry)| {
-            entry
-                .operations
-                .iter()
-                .filter_map(move |operation| match operation {
-                    DocumentBlockOperation::InsertBlock { block, .. } => {
-                        Some((block.id.as_str(), document_id.as_str()))
-                    }
-                    _ => None,
-                })
-        })
-        .collect::<BTreeSet<_>>();
+    batch.revalidate(connection)?;
     for (source_document_id, entry) in &batch.documents {
-        for block_id in entry
-            .operations
-            .iter()
-            .filter_map(|operation| match operation {
-                DocumentBlockOperation::DeleteBlock { block_id } => Some(block_id.as_str()),
-                _ => None,
-            })
-        {
-            let crosses_document = insertions.iter().any(|(inserted_id, target_document_id)| {
-                inserted_id == &block_id && target_document_id != &source_document_id.as_str()
-            });
-            if !crosses_document {
+        for operation in &entry.operations {
+            let DocumentBlockOperation::DeleteBlock { block_id } = operation else {
                 continue;
-            }
+            };
             let changed = connection.execute(
-                "DELETE FROM document_block_index WHERE document_id = ?1 AND block_id = ?2",
+                "DELETE FROM document_block_index WHERE document_id = ?1 AND block_id = ?2 \
+                 AND EXISTS (SELECT 1 FROM pages WHERE block_id = ?2 AND parent_kind = 'page')",
                 params![source_document_id, block_id],
             )?;
             if changed != 1 {
@@ -1132,7 +1108,9 @@ fn apply_with_authority(
             revalidate_command_authority(connection, context, library_id, intent)?;
         }
         PageOwnershipTransferAuthority::TrustedLibrary(authority) => {
-            require_project_in_library(connection, &authority.actor_project_id, library_id)?;
+            if let Some(project_id) = authority.actor_project_id.as_deref() {
+                require_project_in_library(connection, project_id, library_id)?;
+            }
         }
         PageOwnershipTransferAuthority::Agent(_) => {}
     }
@@ -1223,7 +1201,7 @@ fn apply_with_authority(
                 let update_id = format!("relocation:{request_hash}:source");
                 let commit = persist_prepared_update(
                     connection,
-                    bound_project_id(context)?,
+                    Some(bound_project_id(context)?),
                     &prepared.source_authority,
                     &prepared.source_materialization,
                     &mut prepared.source_engine,
@@ -1247,7 +1225,7 @@ fn apply_with_authority(
             };
             let target_commit = persist_prepared_update(
                 connection,
-                bound_project_id(context)?,
+                Some(bound_project_id(context)?),
                 &prepared.target_authority,
                 &prepared.target_materialization,
                 &mut prepared.target_engine,
@@ -1338,7 +1316,7 @@ fn apply_with_authority(
                     page_file_entries: Vec::new(),
                     file_revisions: BTreeMap::new(),
                     file_mutation: Default::default(),
-                    project_id: bound_project_id(context)?.to_owned(),
+                    project_id: Some(bound_project_id(context)?.to_owned()),
                     operation_kind: "transfer_blocks",
                     change_kind,
                     did_mutate: true,
@@ -1388,7 +1366,7 @@ fn apply_with_authority(
                         persist_mutation_ledger(
                             connection,
                             operation_id,
-                            bound_project_id(context)?,
+                            Some(bound_project_id(context)?),
                             store_epoch,
                             request_hash,
                             intent,
@@ -1828,7 +1806,9 @@ fn prepare_page_ownership_transfer(
 ) -> Result<PreparedPageOwnershipTransfer, StoreError> {
     check_request_interruption()?;
     let requesting_project_id = authority.actor_project_id();
-    require_project_in_library(connection, requesting_project_id, library_id)?;
+    if let Some(project_id) = requesting_project_id {
+        require_project_in_library(connection, project_id, library_id)?;
+    }
     let mut source_document_base = None;
     let source = match &intent.source {
         LibraryBlockTransferSource::Library {
@@ -1842,11 +1822,13 @@ fn prepare_page_ownership_transfer(
             PreparedPageOwnershipSource::Library
         }
         LibraryBlockTransferSource::DataSource { data_source_id } => {
-            if intent.mode == LibraryBlockTransferMode::Copy {
+            if intent.mode == LibraryBlockTransferMode::Copy && !authority.is_prevalidated() {
                 validate_page_copy_data_source_source(
                     connection,
                     library_id,
-                    requesting_project_id,
+                    requesting_project_id.ok_or_else(|| {
+                        unauthorized("Project transfer requires an actor Project")
+                    })?,
                     data_source_id,
                 )?
             } else if authority.is_prevalidated() {
@@ -1860,7 +1842,9 @@ fn prepare_page_ownership_transfer(
                 validate_page_transfer_data_source_source(
                     connection,
                     library_id,
-                    requesting_project_id,
+                    requesting_project_id.ok_or_else(|| {
+                        unauthorized("Project transfer requires an actor Project")
+                    })?,
                     data_source_id,
                 )?
             };
@@ -1990,7 +1974,9 @@ fn prepare_page_ownership_transfer(
                 resolve_data_source_placement(
                     connection,
                     library_id,
-                    requesting_project_id,
+                    requesting_project_id.ok_or_else(|| {
+                        unauthorized("Project transfer requires an actor Project")
+                    })?,
                     data_source_id,
                     placement,
                 )?
@@ -2134,6 +2120,8 @@ fn prepare_page_ownership_transfer(
         // Agent Page movement has already authorized each exact source Page
         // against its call-scoped overlay at the operation boundary.
         if !authority.is_prevalidated() {
+            let requesting_project_id = requesting_project_id
+                .ok_or_else(|| unauthorized("Project transfer requires an actor Project"))?;
             if intent.mode == LibraryBlockTransferMode::Copy {
                 super::require_page_read_access(
                     connection,
@@ -2543,7 +2531,9 @@ fn apply_page_ownership_transfer(
                     transfer_existing_page_for_block_transfer(
                         connection,
                         library_id,
-                        requesting_project_id,
+                        requesting_project_id.ok_or_else(|| {
+                            unauthorized("Project transfer requires an actor Project")
+                        })?,
                         &root.page_id,
                         root.parent_revision,
                         expected_membership_revision,
@@ -2669,8 +2659,9 @@ fn apply_page_ownership_transfer(
             committed_revisions.extend(restored_revisions);
             history::consume(
                 connection,
+                library_id,
                 token,
-                &recipe.project_id,
+                recipe.project_id.as_deref(),
                 &now,
                 scope.evidence(),
             )?;
@@ -2744,7 +2735,9 @@ fn apply_page_ownership_transfer(
                         crate::database::mint_page_move_etag(
                             connection,
                             library_id,
-                            requesting_project_id,
+                            requesting_project_id.ok_or_else(|| {
+                                unauthorized("Project transfer requires an actor Project")
+                            })?,
                             store_epoch,
                             page_id,
                             target_view_id,
@@ -2885,7 +2878,7 @@ fn apply_page_ownership_transfer(
                 page_file_entries: Vec::new(),
                 file_revisions: BTreeMap::new(),
                 file_mutation: Default::default(),
-                project_id: requesting_project_id.to_owned(),
+                project_id: requesting_project_id.map(str::to_owned),
                 operation_kind: if relocation_undo_result.is_some() {
                     "undo_page_relocation"
                 } else {
@@ -3050,7 +3043,7 @@ fn apply_page_ownership_copy(
         let update = document.update;
         let commit = persist_prepared_update(
             connection,
-            bound_project_id(context)?,
+            Some(bound_project_id(context)?),
             &document.authority,
             &document.base_materialization,
             &mut document.engine,
@@ -3138,7 +3131,7 @@ fn apply_page_ownership_copy(
             persist_mutation_ledger(
                 connection,
                 operation_id,
-                &actor_project_id,
+                actor_project_id.as_deref(),
                 store_epoch,
                 request_hash,
                 intent,
@@ -3387,7 +3380,7 @@ fn prepare_page_parent_transfer(
             Some(plan_page_task_shorthand(
                 connection,
                 library_id,
-                project_id,
+                Some(project_id),
                 operation_id,
                 destination,
                 &candidates,
@@ -3948,7 +3941,7 @@ fn seal_page_relocation_undo_recipe(
     operation_id: &str,
     store_epoch: &str,
     library_id: &str,
-    project_id: &str,
+    project_id: Option<&str>,
     target: &PreparedPageOwnershipTarget,
     result_location_revision: i64,
     prepared: PreparedPageRelocationUndoV3,
@@ -3968,7 +3961,7 @@ fn seal_page_relocation_undo_recipe(
     };
     let recipe = PageRelocationUndoRecipeV3 {
         version: PAGE_RELOCATION_UNDO_RECIPE_VERSION,
-        project_id: project_id.to_owned(),
+        project_id: project_id.map(str::to_owned),
         library_id: library_id.to_owned(),
         store_epoch: store_epoch.to_owned(),
         page_id: prepared.page_id,
@@ -4142,7 +4135,7 @@ fn apply_page_parent_transfer(
                 let schema = apply_page_task_shorthand_schema(
                     connection,
                     library_id,
-                    bound_project_id(context)?,
+                    Some(bound_project_id(context)?),
                     &destination.data_source_id,
                     &plan.new_tag_options,
                     plan.expected_tags_property_revision,
@@ -4189,7 +4182,7 @@ fn apply_page_parent_transfer(
                 );
                 document_commits.push(persist_prepared_update(
                     connection,
-                    bound_project_id(context)?,
+                    Some(bound_project_id(context)?),
                     &prepared.source_authority,
                     &prepared.source_materialization,
                     &mut prepared.source_engine,
@@ -4375,7 +4368,7 @@ fn apply_page_parent_transfer(
                     page_file_entries: Vec::new(),
                     file_revisions: BTreeMap::new(),
                     file_mutation: Default::default(),
-                    project_id: prepared.actor_project_id.clone(),
+                    project_id: Some(prepared.actor_project_id.clone()),
                     operation_kind: "transfer_blocks",
                     change_kind: "block_mutation",
                     did_mutate: true,
@@ -4409,7 +4402,7 @@ fn apply_page_parent_transfer(
                     persist_mutation_ledger(
                         connection,
                         operation_id,
-                        &prepared.actor_project_id,
+                        Some(&prepared.actor_project_id),
                         store_epoch,
                         request_hash,
                         intent,
@@ -4514,7 +4507,7 @@ pub(super) fn stage_fresh_page_in_library(
     connection: &Connection,
     commit_context: &local_commit::CommitContext,
     library_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     operation_id: &str,
     store_epoch: &str,
     page_id: &str,
@@ -4552,7 +4545,7 @@ pub(super) fn stage_prepared_fresh_page_in_library(
     connection: &Connection,
     commit_context: &local_commit::CommitContext,
     library_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     operation_id: &str,
     store_epoch: &str,
     page_id: &str,
@@ -4757,7 +4750,7 @@ fn stage_page_parent_root(
     if matches!(&prepared.target, PreparedPageParentTarget::Library { .. }) {
         super::mutation::insert_creator_resource_grant(
             connection,
-            &prepared.actor_project_id,
+            Some(&prepared.actor_project_id),
             library_id,
             "page",
             &root.page_id,
@@ -4825,7 +4818,7 @@ fn persist_page_parent_genesis(
         connection,
         PersistYjsGenesis {
             authority: &authority,
-            actor_project_id,
+            actor_project_id: Some(actor_project_id),
             materialization: &stage.prepared.materialization,
             update_id: &update_id,
             client_session_id: TRANSFER_CLIENT_SESSION_ID,
@@ -5075,7 +5068,7 @@ fn removed_document_block_ids(
 #[allow(clippy::too_many_arguments)]
 fn persist_prepared_update(
     connection: &Connection,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     authority: &DocumentAuthorityRow,
     base_materialization: &DocumentMaterialization,
     engine: &mut YrsDocumentEngine,
@@ -5987,7 +5980,7 @@ fn persist_relocation_ledger(
 fn persist_mutation_ledger(
     connection: &Connection,
     operation_id: &str,
-    project_id: &str,
+    project_id: Option<&str>,
     store_epoch: &str,
     request_hash: &str,
     intent: &LibraryBlockTransferLogicalIntent,
@@ -6046,12 +6039,6 @@ fn persist_operation_checkpoints(
     change_log_seq: i64,
     now: &str,
 ) -> Result<(), StoreError> {
-    let mut checkpoint_context = context.clone();
-    if checkpoint_context.project_id.is_none() {
-        checkpoint_context.project_id = Some(nodex_core_contracts::ProjectId(
-            super::mutation::resolve_library_actor_project_id(connection, &context.library_id.0)?,
-        ));
-    }
     for commit in commits {
         let authority = read_document_authority(connection, &commit.public.document_id)?
             .ok_or_else(|| corrupt("Committed transfer Document disappeared"))?;
@@ -6067,7 +6054,7 @@ fn persist_operation_checkpoints(
                 source_mutation_id: Some(operation_id),
                 source_change_seq: Some(change_log_seq),
                 actor: Some(actor),
-                context: &checkpoint_context,
+                context,
                 now,
             },
         )?;
@@ -6082,7 +6069,7 @@ fn read_block_transfer_undo_recipe(
     token: &LibraryBlockTransferUndoToken,
 ) -> Result<BlockTransferUndoRecipeV4, StoreError> {
     let (json, project_id) = history::read(connection, context, library_id, token)?;
-    if context.project_id.as_ref().map(|id| id.0.as_str()) != Some(project_id.as_str()) {
+    if context.project_id.as_ref().map(|id| id.0.as_str()) != project_id.as_deref() {
         return Err(unauthorized(
             "Block transfer Undo token is outside this scope",
         ));
@@ -6094,7 +6081,7 @@ fn read_block_transfer_undo_recipe(
             "Promotion history uses an unavailable View position format",
         ));
     }
-    if recipe.project_id != project_id
+    if Some(&recipe.project_id) != project_id.as_ref()
         || recipe.library_id != library_id
         || recipe.store_epoch != token.store_epoch
     {
@@ -6174,7 +6161,7 @@ fn read_page_relocation_undo_recipe(
     let project_scope_matches = authority
         .requesting_project_id
         .as_deref()
-        .is_none_or(|requesting| requesting == project_id);
+        .is_none_or(|requesting| Some(requesting) == project_id.as_deref());
     if !project_scope_matches || context.library_id.0 != library_id {
         return Err(unauthorized(
             "Page relocation Undo token is outside this scope",
@@ -6196,7 +6183,9 @@ fn read_page_relocation_undo_recipe(
             "Stored Page relocation Undo recipe identity changed",
         ));
     }
-    require_project_in_library(connection, &recipe.project_id, library_id)?;
+    if let Some(project_id) = recipe.project_id.as_deref() {
+        require_project_in_library(connection, project_id, library_id)?;
+    }
     Ok(recipe)
 }
 
@@ -6665,7 +6654,7 @@ pub(super) fn undo_page_relocation(
         assets_root,
         transfer_authority,
         PageOwnershipHistory::UndoRelocation {
-            recipe,
+            recipe: Box::new(recipe),
             token: token.clone(),
         },
         None,
@@ -6682,11 +6671,11 @@ pub(super) fn reverse_history_payload(
     store_epoch: &str,
     request_hash: &str,
     token: &nodex_core_contracts::library::LibraryStructuralHistoryToken,
-    project_id: &str,
+    project_id: Option<&str>,
     json: &str,
 ) -> Result<Option<LibraryApplyOutcome>, StoreError> {
     if let Ok(state) = serde_json::from_str::<promotion_history::PromotionRestore>(json) {
-        if state.undo.project_id != project_id {
+        if Some(state.undo.project_id.as_str()) != project_id {
             return Err(corrupt("Promotion history Project changed"));
         }
         if state.undo.version != BLOCK_TRANSFER_UNDO_RECIPE_VERSION {
@@ -6714,7 +6703,7 @@ pub(super) fn reverse_history_payload(
             "Promotion history uses an unavailable View position format",
         ));
     }
-    if recipe.project_id != project_id
+    if Some(recipe.project_id.as_str()) != project_id
         || recipe.library_id != library_id
         || recipe.store_epoch != store_epoch
     {
@@ -6891,7 +6880,7 @@ fn undo_promotion(
                     .collect::<Vec<_>>();
                 document_commits.push(persist_prepared_update(
                     connection,
-                    &recipe.project_id,
+                    Some(&recipe.project_id),
                     authority,
                     base,
                     engine,
@@ -6923,8 +6912,9 @@ fn undo_promotion(
             }
             history::consume(
                 connection,
+                library_id,
                 token,
-                &recipe.project_id,
+                Some(&recipe.project_id),
                 &now,
                 scope.evidence(),
             )?;
@@ -6989,7 +6979,7 @@ fn undo_promotion(
                     page_file_entries: Vec::new(),
                     file_revisions: BTreeMap::new(),
                     file_mutation: Default::default(),
-                    project_id: recipe.project_id.clone(),
+                    project_id: Some(recipe.project_id.clone()),
                     operation_kind: if structural_delivery {
                         "reverse_structural_edit"
                     } else {

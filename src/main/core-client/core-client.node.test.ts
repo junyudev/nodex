@@ -670,6 +670,7 @@ describe("CoreClient over a Unix socket", () => {
         operationId: "node-workspace-turn-authority-1",
         intent: {
           kind: "freeze_turn_authority",
+          read_only: false,
           thread_id: "thread:node-integration",
           turn_id: "turn:node-integration",
           root_thread_id: "thread:node-integration",
@@ -793,8 +794,8 @@ describe("CoreClient over a Unix socket", () => {
             name: "Node daily report",
             prompt: "Prepare the report",
             rrule: "FREQ=MINUTELY;INTERVAL=5",
-            cwds: [path.join(nodexHome, "workspace")],
-            execution_environment: "worktree" as const,
+            cwds: [],
+            execution_environment: "local" as const,
           },
         },
       };

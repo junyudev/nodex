@@ -32,7 +32,7 @@ export type CoreAuthorityState =
   | { readonly kind: "stopped" };
 
 export interface CoreSessionOperationOptions {
-  readonly projectId?: string;
+  readonly projectId?: string | null;
   readonly replayAfterRecovery?: boolean;
 }
 

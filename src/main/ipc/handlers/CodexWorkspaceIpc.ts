@@ -32,6 +32,9 @@ import { CodexThreadReadState } from "../../codex-application/CodexThreadReadSta
 import { CodexThreadSettingsRuntime } from "../../codex-application/CodexThreadSettingsRuntime";
 import { CodexThreadTitlePersistence } from "../../codex-application/CodexThreadTitlePersistence";
 import { CodexTurnCommands } from "../../codex-application/CodexTurnCommands";
+import { CodexTurnPresentation } from "../../codex-application/CodexTurnPresentation";
+import { createUuidV7 } from "../../../shared/uuid-v7";
+import type { CodexTurnPresentationTicket } from "../../../shared/nodex-app-tools/turn-presentation";
 import { ConversationCommands } from "../../codex-application/ConversationCommands";
 import { ManagedWorktreeCatalog } from "../../codex-application/ManagedWorktreeCatalog";
 import { parseCodexApprovalResponse } from "../../../shared/codex-approval-response";
@@ -141,6 +144,7 @@ export const live = Layer.effectDiscard(
     const subagentDirectory = yield* CodexSubagentDirectory;
     const serverRequestResponses = yield* CodexServerRequestResponses;
     const turnCommands = yield* CodexTurnCommands;
+    const turnPresentation = yield* CodexTurnPresentation;
     const sideChatCommands = yield* CodexSideChatCommands;
     const sessionThreadLaunch = yield* CodexSessionThreadLaunch;
     const rendererOwnerCommands = yield* CodexRendererOwnerCommands;
@@ -489,29 +493,80 @@ export const live = Layer.effectDiscard(
       (event, input: CodexThreadStartForSessionInput) =>
         interruptWhenRendererIsDestroyed(
           event,
-          sessionThreadLaunch
-            .start(input, {
-              browserViewScopeId:
-                windows.resolveSessionId(event.sender.id) ?? `headless:${input.sessionId}`,
-              ownerClientId: resolveRendererClientId(event),
-            })
-            .pipe(
-              Effect.mapError(
-                (cause) =>
-                  new CodexIpcError({ operation: "codex:thread:start-for-session", cause }),
-              ),
-            ),
+          Effect.gen(function* () {
+            const presentationClaim = input.presentationTicket
+              ? yield* turnPresentation
+                  .claim(
+                    input.presentationTicket,
+                    {
+                      kind: "session",
+                      sessionId: input.sessionId,
+                      launchId: input.firstSubmission.launchId,
+                    },
+                    input.firstSubmission.clientUserMessageId,
+                  )
+                  .pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new CodexIpcError({ operation: "codex:thread:start-for-session", cause }),
+                    ),
+                  )
+              : undefined;
+            return yield* sessionThreadLaunch
+              .start(input, {
+                presentationClaim,
+                browserViewScopeId:
+                  windows.resolveSessionId(event.sender.id) ?? `headless:${input.sessionId}`,
+                ownerClientId: resolveRendererClientId(event),
+              })
+              .pipe(
+                Effect.onExit((exit) =>
+                  exit._tag === "Failure"
+                    ? Effect.sync(() => turnPresentation.releaseClaim(presentationClaim))
+                    : Effect.void,
+                ),
+                Effect.mapError(
+                  (cause) =>
+                    new CodexIpcError({ operation: "codex:thread:start-for-session", cause }),
+                ),
+              );
+          }),
         ),
     );
 
     registerEffectPlainCommand(
       "codex:thread:side-chat:start",
       (_, input: CodexSideChatStartInput) =>
-        sideChatCommands
-          .start(input)
-          .pipe(
-            Effect.mapError((cause) => new CodexIpcError({ operation: "side-chat:start", cause })),
-          ),
+        Effect.gen(function* () {
+          const clientUserMessageId = input.clientUserMessageId ?? createUuidV7();
+          const presentationClaim = input.presentationTicket
+            ? yield* turnPresentation
+                .claim(
+                  input.presentationTicket,
+                  {
+                    kind: "side_chat",
+                    parentThreadId: input.parentThreadId,
+                    clientUserMessageId,
+                  },
+                  clientUserMessageId,
+                )
+                .pipe(
+                  Effect.mapError(
+                    (cause) => new CodexIpcError({ operation: "side-chat:start", cause }),
+                  ),
+                )
+            : undefined;
+          return yield* sideChatCommands
+            .start(input, { presentationClaim, clientUserMessageId })
+            .pipe(
+              Effect.onExit(() =>
+                Effect.sync(() => turnPresentation.releaseClaim(presentationClaim)),
+              ),
+              Effect.mapError(
+                (cause) => new CodexIpcError({ operation: "side-chat:start", cause }),
+              ),
+            );
+        }),
     );
 
     registerEffectPlainCommand("codex:thread:side-chat:discard", (_, threadId: string) =>
@@ -833,19 +888,55 @@ export const live = Layer.effectDiscard(
 
     registerEffectPlainCommand(
       "codex:turn:start",
-      (_, threadId: string, prompt: string, opts?: CodexTurnStartOptions) =>
-        turnCommands
-          .start(threadId, prompt, opts)
-          .pipe(
-            Effect.mapError((cause) => new CodexIpcError({ operation: "codex:turn:start", cause })),
-          ),
+      (
+        _,
+        threadId: string,
+        prompt: string,
+        opts?: CodexTurnStartOptions,
+        presentationTicket?: CodexTurnPresentationTicket,
+      ) =>
+        Effect.gen(function* () {
+          const clientUserMessageId = createUuidV7();
+          const presentationClaim = presentationTicket
+            ? yield* turnPresentation
+                .claim(presentationTicket, { kind: "thread", threadId }, clientUserMessageId)
+                .pipe(
+                  Effect.mapError(
+                    (cause) => new CodexIpcError({ operation: "codex:turn:start", cause }),
+                  ),
+                )
+            : undefined;
+          return yield* turnCommands
+            .start(threadId, prompt, {
+              ...opts,
+              presentationClaim,
+              clientUserMessageId,
+            })
+            .pipe(
+              Effect.onExit((exit) =>
+                exit._tag === "Failure"
+                  ? Effect.sync(() => turnPresentation.releaseClaim(presentationClaim))
+                  : Effect.void,
+              ),
+              Effect.mapError(
+                (cause) => new CodexIpcError({ operation: "codex:turn:start", cause }),
+              ),
+            );
+        }),
     );
 
     registerEffectPlainCommand(
       "codex:thread:follow-up:enqueue",
-      (_, threadId: string, prompt: string, opts?: CodexTurnStartOptions) =>
+      (
+        _,
+        threadId: string,
+        prompt: string,
+        opts?: CodexTurnStartOptions,
+        presentationTicket?: CodexTurnPresentationTicket,
+      ) =>
         queuedFollowUps
           .enqueue({
+            presentationTicket,
             threadId,
             prompt,
             collaborationMode: opts?.collaborationMode,
@@ -965,9 +1056,11 @@ export const live = Layer.effectDiscard(
         expectedLedgerRevision: number,
         prompt: string,
         opts?: CodexTurnStartOptions,
+        presentationTicket?: CodexTurnPresentationTicket,
       ) =>
         queuedFollowUps
           .replace(threadId, followUpId, expectedLedgerRevision, {
+            presentationTicket,
             prompt,
             collaborationMode: opts?.collaborationMode,
             serviceTier: opts?.serviceTier,

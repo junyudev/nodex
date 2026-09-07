@@ -17,6 +17,25 @@ Scheduled tasks currently execute only with the Codex Agent Backend. Creation,
 editing, loading, and execution reject every other backend binding; Nodex never
 routes an unsupported scheduled task through Codex as an implicit fallback.
 
+Core Agent definition access carries exact persisted Turn provenance. A
+Project-scoped Turn can read and manage Cron tasks in that Project and Heartbeats
+whose target Session currently belongs to it. Library-scoped Turns may also
+manage other Projects and projectless targets. Updating a task checks both its
+current target and its proposed target; moving a Heartbeat Session changes access
+immediately. Read-only Turns can read authorized definitions but cannot mutate
+them. Core revalidates authority and target access before replaying a mutation
+receipt. Agent commands cannot claim due work or change run and lease state;
+those transitions remain Host-owned.
+
+Agent list/search windows filter task identity, name and prompt within the current
+authorized target scope before applying the result limit. Continuation cursors are
+bound to that scope and query. Definition commands keep a stable operation identity;
+the same caller Thread can reconcile unchanged arguments in a later Turn or after
+restart. Updates and deletes retain the observed definition revision. Explicit
+updates replace the complete definition, so omitted optional fields reset to their
+defaults. Every retry revalidates the current Turn before returning its original
+committed result.
+
 ## Entry points and route state
 
 Sidebar `Scheduled`, command palette `Manage automations`, and Thread Summary
@@ -73,8 +92,20 @@ The detail rail edits one coherent draft with these fields:
 - Codex model, reasoning effort, and service tier;
 - Previous runs for cron tasks.
 
-Cron tasks require title, prompt, Project, schedule, and model. Heartbeat tasks
-require title, prompt, local Chat, and schedule.
+Cron tasks require title, prompt, schedule, and model. They target either one
+Project with one or more of its folders, or `No project`. Project identity remains
+explicit even when Projects share a folder. Switching Project clears the previous
+folder selection and Environment. `No project` uses local execution and creates
+an independent projectless workspace for each run. Project runs create Sessions
+in the selected Project; execution revalidates its active state and selected
+folders before starting. Heartbeat tasks require title, prompt, local Chat, and
+schedule.
+
+A Heartbeat targets the Chat’s stable Session. Its displayed Thread and execution
+target follow that Session’s current backend attachment. Detaching a Thread does
+not retarget or delete the definition; a run without an active, attached Session
+waits for an available target. Reattaching a Thread does not require recreating
+the Heartbeat. Only one active Heartbeat may target a given Session.
 
 The Environment field appears only for a cron worktree task with exactly one
 selected Project source. It offers `No environment`, identifies the preferred
@@ -86,6 +117,20 @@ control uses the runtime-owned Codex model catalog and preserves its exact model
 reasoning, and service-tier tuple. ACP-backed scheduled tasks are rejected at
 creation and execution boundaries until the automation runtime has a real ACP
 execution path; they are never redirected to Codex.
+
+## Notification preferences
+
+A scheduled task can store `notificationPolicy: "failed_runs_only"` to suppress
+successful and interrupted completion notifications while allowing failed-run
+notifications. `null` restores the normal notification policy. Editing another
+field preserves an omitted notification preference; clearing it is explicit.
+The preference never overrides the Profile's global notification settings.
+
+Heartbeat launches bind the preference to their exact Turn, including Run now.
+Other messages in the same Chat use normal notification behavior. Cron runs use
+their definition's preference until accepted into an ordinary conversation;
+manual follow-ups after acceptance use normal notification behavior. Notification
+preferences are stored separately from prompts and model-authored output.
 
 ## Previous runs
 
@@ -117,5 +162,9 @@ returns a selected detail route to the list.
 
 The `automation_update` tool may list/search definitions, read one, create,
 update, or delete directly, or return a suggested change for user review.
-Suggested cards are presentation-only until accepted. Direct heartbeat targets
-must resolve to a known local Chat.
+Suggested cards open the existing review editor and remain unsaved until the user
+explicitly selects Create or Save. Native MCP proposals retain the resolved Session
+target, notification-policy presence, and observed definition revision through review,
+including from projectless Sessions. A definition changed since the proposal was made
+cannot be overwritten by saving that proposal. Direct heartbeat targets must resolve
+to a known local Chat.

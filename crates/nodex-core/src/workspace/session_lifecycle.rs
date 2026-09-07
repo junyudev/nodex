@@ -8,7 +8,6 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 use super::ProjectWorkspaceApplyOutcome;
 use super::mutation::{
     WorkspaceMutationEffects, finish_mutation, finish_no_op, project_session_scope,
-    workspace_event_anchor,
 };
 use super::session_mutation::{
     SessionInvalidationKind, finish_session_mutation, require_session, sqlite_now, validate_id,
@@ -195,6 +194,9 @@ pub(super) fn delete_session(
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("session_id", session_id)?;
     let authority = require_session(connection, library_id, session_id)?;
+    if let Some(thread_id) = &authority.thread_id {
+        super::sidebar_pins::clear_thread_projection(connection, thread_id)?;
+    }
     let changed = connection.execute("DELETE FROM project_sessions WHERE id = ?1", [session_id])?;
     if changed != 1 {
         return Err(corrupt("Project Session disappeared during deletion"));
@@ -266,16 +268,9 @@ pub(super) fn move_session(
         }
     }
     let next_pinned_order = if authority.pinned {
-        Some(
-            connection
-                .query_row(
-                    "SELECT MAX(pinned_order) FROM project_sessions \
-                     WHERE project_id IS ?1 AND pinned = 1 AND archived = 0",
-                    [project_id],
-                    |row| row.get::<_, Option<i64>>(0),
-                )?
-                .map_or(0, |order| order + 1),
-        )
+        authority
+            .pinned_order
+            .or(Some(super::sidebar_pins::next_order(connection)?))
     } else {
         None
     };
@@ -366,42 +361,35 @@ pub(super) fn reorder_sessions(
     );
     let now = sqlite_now(connection)?;
     if pinned_only {
-        for (order, session_id) in final_order.iter().enumerate() {
-            let changed = connection.execute(
-                "UPDATE project_sessions SET pinned_order = ?1, updated_at = ?2 \
-                 WHERE id = ?3 AND project_id IS ?4 AND pinned = 1 AND archived = 0",
-                params![to_order(order)?, now, session_id, project_id],
-            )?;
-            if changed != 1 {
-                return Err(corrupt(
-                    "Pinned Project Session order changed during mutation",
-                ));
-            }
-        }
+        super::sidebar_pins::reorder_subset(connection, library_id, &final_order, &now)?;
     } else {
-        let mut pinned_order = 0_i64;
         for (order, session_id) in final_order.iter().enumerate() {
             let changed = connection.execute(
-                "UPDATE project_sessions SET \"order\" = ?1, \
-                   pinned_order = CASE WHEN pinned = 1 THEN ?2 ELSE pinned_order END, \
-                   updated_at = ?3 \
-                 WHERE id = ?4 AND project_id IS ?5 AND archived = 0",
-                params![to_order(order)?, pinned_order, now, session_id, project_id],
+                "UPDATE project_sessions SET \"order\" = ?1, updated_at = ?2 WHERE id = ?3 AND project_id IS ?4 AND archived = 0",
+                params![to_order(order)?, now, session_id, project_id],
             )?;
             if changed != 1 {
                 return Err(corrupt("Project Session order changed during mutation"));
             }
-            let pinned = connection.query_row(
-                "SELECT pinned FROM project_sessions WHERE id = ?1",
-                [session_id],
-                |row| row.get::<_, i64>(0),
-            )?;
-            if pinned == 1 {
-                pinned_order += 1;
-            }
         }
         super::sidebar::replace_lane_with_session_order(connection, project_id, &now)?;
     }
+    let (session_ids, thread_ids, summary_scopes) = if pinned_only {
+        let pins = super::sidebar_pins::read_order(connection, library_id)?;
+        (
+            pins.iter().map(|row| row.id.clone()).collect(),
+            pins.iter()
+                .filter_map(|row| row.thread_id.clone())
+                .collect(),
+            vec![nodex_core_contracts::workspace::ProjectSessionInvalidationScope::All],
+        )
+    } else {
+        (
+            final_order,
+            Vec::new(),
+            vec![project_session_scope(project_id)],
+        )
+    };
     finish_lifecycle_mutation(
         connection,
         library_id,
@@ -415,9 +403,9 @@ pub(super) fn reorder_sessions(
             "reorder_sessions"
         },
         project_id.into_iter().map(str::to_owned).collect(),
-        final_order,
-        Vec::new(),
-        vec![project_session_scope(project_id)],
+        session_ids,
+        thread_ids,
+        summary_scopes,
         project_id,
         now,
     )
@@ -446,7 +434,7 @@ fn read_ordered_session_ids(
 #[allow(clippy::too_many_arguments)]
 fn finish_lifecycle_mutation(
     connection: &Connection,
-    library_id: &str,
+    _library_id: &str,
     context: &BoundModuleContext,
     store_epoch: &str,
     operation_id: &str,
@@ -459,9 +447,7 @@ fn finish_lifecycle_mutation(
     change_project_id: Option<&str>,
     committed_at: String,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    let change_project_id = change_project_id
-        .map(str::to_owned)
-        .map_or_else(|| workspace_event_anchor(connection, library_id), Ok)?;
+    let change_project_id = change_project_id.map(str::to_owned);
     finish_mutation(
         connection,
         context,

@@ -674,6 +674,34 @@ export const databaseListScrollTopForOccurrence = (input: {
   return viewportTop;
 };
 
+/** Mounted overscan and boundary padding are distinct from the scroll viewport. */
+export function databaseListViewportOccurrenceKeys(input: {
+  readonly rows: readonly DatabaseListProjectionRow[];
+  readonly scrollTop: number;
+  readonly viewportHeight: number;
+  readonly mountedStartIndex: number;
+  readonly mountedEndIndex: number;
+}): ReadonlySet<string> {
+  const visible = new Set<string>();
+  if (input.viewportHeight <= 0) return visible;
+  const viewportTop = Math.max(0, input.scrollTop);
+  const viewportBottom = viewportTop + input.viewportHeight;
+  let top = 0;
+  for (const [index, row] of input.rows.entries()) {
+    const bottom = top + row.height;
+    if (
+      row.kind === "page" &&
+      index >= input.mountedStartIndex &&
+      index < input.mountedEndIndex &&
+      bottom > viewportTop &&
+      top < viewportBottom
+    )
+      visible.add(row.key);
+    top = bottom;
+  }
+  return visible;
+}
+
 const lowerBound = (offsets: readonly number[], value: number): number => {
   let low = 0;
   let high = offsets.length;

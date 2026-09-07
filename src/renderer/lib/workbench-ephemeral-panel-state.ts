@@ -32,6 +32,8 @@ export interface WorkbenchEphemeralPanelState {
   readonly pendingProcessOutputOpen: ProcessOutputPanelTarget | null;
   readonly activePlanKeyBySession: Record<string, string>;
   readonly panelCollapsedOverrides: Record<string, boolean>;
+  /** Mixed durable/preview/auxiliary order; only durable membership belongs in the saved Scene. */
+  readonly tabOrderByPanelGroup: Record<string, readonly string[]>;
 }
 
 export type WorkbenchEphemeralPanelStateField = keyof WorkbenchEphemeralPanelState;
@@ -117,6 +119,7 @@ export function createWorkbenchEphemeralPanelState(): WorkbenchEphemeralPanelSta
     pendingProcessOutputOpen: null,
     activePlanKeyBySession: {},
     panelCollapsedOverrides: {},
+    tabOrderByPanelGroup: {},
   };
 }
 
@@ -150,6 +153,7 @@ function pruneOwner(
     ...state,
     previewSurfacesByPanel: removeOwnerSlotKeys(state.previewSurfacesByPanel, ownerKey),
     panelCollapsedOverrides: removeOwnerSlotKeys(state.panelCollapsedOverrides, ownerKey),
+    tabOrderByPanelGroup: removeOwnerSlotKeys(state.tabOrderByPanelGroup, ownerKey),
   };
 }
 
@@ -229,6 +233,19 @@ function selectSlot(
       [action.sessionId]: action.planKey,
     };
   }
+  const sameRecord = (
+    left: Readonly<Record<string, unknown>>,
+    right: Readonly<Record<string, unknown>>,
+  ) =>
+    left === right ||
+    (Object.keys(left).length === Object.keys(right).length &&
+      Object.keys(left).every((key) => left[key] === right[key]));
+  if (
+    next.previewTabsByPanel === state.previewTabsByPanel &&
+    ACTIVE_SELECTION_FIELDS.every((field) => sameRecord(next[field], state[field])) &&
+    sameRecord(next.activePlanKeyBySession, state.activePlanKeyBySession)
+  )
+    return state;
   return next;
 }
 

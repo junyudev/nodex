@@ -15,6 +15,12 @@ import {
 import { createCodexQueuedFollowUp } from "../../../shared/codex-queued-follow-up-state";
 import type { CodexConversationHistoryItemWindowSnapshot } from "../../../shared/codex-conversation-history-page";
 import { makeConversationEntityStateRegistry } from "./ConversationEntityState";
+import { projectCodexConversationSnapshot } from "../CodexConversationSnapshotProjection";
+import {
+  advanceRendererDeliveryAssembler,
+  createRendererDeliveryAssemblerState,
+  encodeRendererDelivery,
+} from "../../../shared/renderer-delivery-transport";
 import {
   CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES,
   CODEX_LIVE_TURN_OVERFLOW_ITEM_ID,
@@ -141,6 +147,65 @@ const snapshotWithCanonicalTurns = (
       items: [],
     })),
   }) as unknown as CodexConversationSnapshot;
+
+it("relays a completed canonical Turn to a new follower without undefined projection fields", () => {
+  const state = hydratedState([
+    {
+      ...completedTurn("turn-boot"),
+      items: [
+        {
+          type: "agentMessage",
+          id: "answer-boot",
+          text: "BOOT_OK",
+          phase: "final_answer",
+          memoryCitation: null,
+          delivery: null,
+          questions: null,
+        },
+      ],
+    },
+  ]);
+  const aggregate = makeConversationEntityStateRegistry().acquire(threadId);
+  aggregate.acceptCanonicalState(state);
+  const replica = aggregate.acceptReplica({
+    conversation: projectCodexConversationSnapshot({
+      conversation: snapshot(),
+      before: null,
+      after: state,
+      observedAtMs: 10,
+    }),
+    revision: 1,
+    ownerEpoch: 1,
+  });
+  const message = {
+    type: "threadStreamStateChanged",
+    conversationId: threadId,
+    change: { type: "snapshot", revision: 1, conversationState: replica.conversation },
+    checkpoint: replica.checkpoint,
+    baseCheckpoint: null,
+    sourceClientId: "renderer-owner",
+    hostId: "default",
+    version: 1,
+  };
+  const dispatch = encodeRendererDelivery({
+    target: { targetId: "renderer-follower", generation: 1 },
+    transferId: "follower-boot",
+    payload: { channel: "codex:host-message", args: [message] },
+  });
+  assert.strictEqual(dispatch.kind, "inline");
+  const received = advanceRendererDeliveryAssembler(
+    createRendererDeliveryAssemblerState(),
+    dispatch.envelopes[0]!,
+  );
+  assert.strictEqual(received.kind, "complete");
+  if (received.kind !== "complete") return;
+  assert.deepEqual(received.delivery.payload as unknown, {
+    channel: "codex:host-message",
+    args: [message],
+  });
+  assert.strictEqual(replica.conversation.turns[0]?.items[0]?.markdownText, "BOOT_OK");
+  assert.notProperty(replica.conversation.turns[0], "errorMessage");
+});
 
 it("projects semantic canonical mutations into both the snapshot and dormant replica", () => {
   const aggregate = makeConversationEntityStateRegistry().acquire(threadId);

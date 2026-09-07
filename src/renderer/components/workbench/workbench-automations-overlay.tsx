@@ -134,7 +134,7 @@ import {
   buildWorkbenchAutomationProjectOptions,
   formatWorkbenchAutomationProjectTriggerLabel,
   resolveWorkbenchAutomationProjectForRoot,
-  toggleWorkbenchAutomationProjectRoot,
+  selectWorkbenchAutomationProjectRoot,
 } from "./workbench-automation-project-options";
 import {
   WORKBENCH_AUTOMATION_CREATE_WITH_CHAT_PROMPT,
@@ -237,6 +237,7 @@ function applyOptimisticAutomationUpdate(
       id: update.id,
       kind: update.kind,
       status: update.status,
+      projectId: isCron ? (update.projectId ?? null) : null,
       targetThreadId: isCron ? null : (update.targetThreadId ?? null),
       name: update.name,
       prompt: update.prompt ?? "",
@@ -267,6 +268,7 @@ function buildAutomationStatusUpdateInput(
   return {
     id: automation.id,
     kind: automation.kind,
+    projectId: automation.projectId,
     status,
     targetThreadId: automation.targetThreadId,
     name: automation.name,
@@ -655,21 +657,27 @@ function AutomationSchedulePopover({
 function AutomationProjectDropdown({
   projects,
   selectedRoots,
+  selectedProjectId,
   disabled,
-  onSelectedRootsChange,
+  onSelectionChange,
 }: {
   projects: readonly Project[];
   selectedRoots: readonly string[];
+  selectedProjectId: string | null;
   disabled: boolean;
-  onSelectedRootsChange: (roots: string[]) => void;
+  onSelectionChange: (selection: { projectId: string | null; cwds: string[] }) => void;
 }) {
   const options = useMemo(
-    () => buildWorkbenchAutomationProjectOptions({ projects, selectedRoots }),
-    [projects, selectedRoots],
+    () => buildWorkbenchAutomationProjectOptions({ projects, selectedRoots, selectedProjectId }),
+    [projects, selectedRoots, selectedProjectId],
   );
   const selectedRootSet = useMemo(() => new Set(selectedRoots), [selectedRoots]);
-  const triggerLabel = formatWorkbenchAutomationProjectTriggerLabel({ selectedRoots, options });
-  const hasSelection = selectedRoots.length > 0;
+  const triggerLabel = formatWorkbenchAutomationProjectTriggerLabel({
+    selectedRoots,
+    selectedProjectId,
+    options,
+  });
+  const hasSelection = selectedRoots.length > 0 || selectedProjectId === null;
 
   return (
     <NodexDropdownMenu
@@ -695,14 +703,26 @@ function AutomationProjectDropdown({
       }
     >
       <NodexDropdownTitle>Project</NodexDropdownTitle>
+      <NodexDropdownItem
+        rightSlot={
+          selectedProjectId === null && selectedRoots.length === 0 ? (
+            <NodexDropdownSelectedIcon />
+          ) : null
+        }
+        onSelect={() => onSelectionChange({ projectId: null, cwds: [] })}
+      >
+        No project
+      </NodexDropdownItem>
       {options.length === 0 ? (
         <NodexDropdownMessage compact>No project folders available</NodexDropdownMessage>
       ) : (
         options.map((option) => {
-          const selected = selectedRootSet.has(option.value);
+          const selected =
+            selectedProjectId === option.projectId && selectedRootSet.has(option.value);
           return (
             <NodexDropdownItem
-              key={option.value}
+              key={JSON.stringify([option.projectId, option.value])}
+              disabled={option.isFallback || option.projectId === null}
               subText={option.description}
               rightSlot={selected ? <NodexDropdownSelectedIcon /> : null}
               tooltipText={
@@ -712,9 +732,12 @@ function AutomationProjectDropdown({
               }
               onSelect={(event) => {
                 event.preventDefault();
-                onSelectedRootsChange(
-                  toggleWorkbenchAutomationProjectRoot({
+                if (!option.projectId) return;
+                onSelectionChange(
+                  selectWorkbenchAutomationProjectRoot({
+                    selectedProjectId,
                     selectedRoots,
+                    projectId: option.projectId,
                     root: option.value,
                   }),
                 );
@@ -775,7 +798,12 @@ function AutomationEnvironmentDropdown({
   onOpenSettings?: (input: { projectId: string | null; configPath: string | null }) => void;
 }) {
   const project = useMemo(
-    () => resolveWorkbenchAutomationProjectForRoot({ projects, root: selectedRoot }),
+    () =>
+      resolveWorkbenchAutomationProjectForRoot({
+        projects,
+        root: selectedRoot,
+        projectId: projects[0]?.id ?? null,
+      }),
     [projects, selectedRoot],
   );
   const projectId = project?.id ?? "";
@@ -2554,6 +2582,7 @@ function AutomationDraftEditor({
         return {
           ...current,
           kind: "heartbeat",
+          projectId: null,
           targetThreadId: current.targetThreadId,
           cwds: [],
           model: "",
@@ -2567,6 +2596,7 @@ function AutomationDraftEditor({
         ...current,
         kind: "cron",
         targetThreadId: "",
+        targetSessionId: undefined,
         executionEnvironment: target,
         localEnvironmentConfigPath: target === "worktree" ? current.localEnvironmentConfigPath : "",
         model: current.model,
@@ -2713,11 +2743,17 @@ function AutomationDraftEditor({
             <AutomationDetailRow label="Chat">
               <Input
                 aria-label="Chat"
-                value={draft.targetThreadId}
+                value={draft.targetSessionId ?? draft.targetThreadId}
                 disabled={isMutating}
                 placeholder="Select chat"
                 className={AUTOMATION_FIELD_INPUT_CLASS}
-                onInput={(event) => updateDraft({ targetThreadId: event.currentTarget.value })}
+                onInput={(event) =>
+                  updateDraft(
+                    draft.targetSessionId !== undefined && draft.targetSessionId !== null
+                      ? { targetSessionId: event.currentTarget.value, targetThreadId: "" }
+                      : { targetThreadId: event.currentTarget.value },
+                  )
+                }
               />
             </AutomationDetailRow>
           ) : (
@@ -2725,7 +2761,7 @@ function AutomationDraftEditor({
               {draft.executionEnvironment === "worktree" && draft.cwds.length === 1 ? (
                 <AutomationDetailRow label="Environment">
                   <AutomationEnvironmentDropdown
-                    projects={projects}
+                    projects={projects.filter((project) => project.id === draft.projectId)}
                     selectedRoot={draft.cwds[0] ?? ""}
                     selectedConfigPath={draft.localEnvironmentConfigPath}
                     disabled={isMutating}
@@ -2740,8 +2776,15 @@ function AutomationDraftEditor({
                 <AutomationProjectDropdown
                   projects={projects}
                   selectedRoots={draft.cwds}
+                  selectedProjectId={draft.projectId}
                   disabled={isMutating}
-                  onSelectedRootsChange={(cwds) => updateDraft({ cwds })}
+                  onSelectionChange={(selection) =>
+                    updateDraft({
+                      ...selection,
+                      localEnvironmentConfigPath: "",
+                      ...(selection.projectId === null ? { executionEnvironment: "local" } : {}),
+                    })
+                  }
                 />
               </AutomationDetailRow>
             </>

@@ -181,6 +181,13 @@ CI` push run. The privileged release `workflow_run` additionally validates the
 
 ### Application and runtime controls
 
+- Document dependency discovery exposes only the verified bundled Node and Python closure.
+  Pinned archives and wheels are hash-checked before atomic staging; packaged Python and
+  native extensions are signed and their manifest is resealed before the outer app signature.
+  Main rejects mismatched platforms, altered artifacts and symlinked runtime paths. It never
+  installs packages or substitutes system runtimes during discovery. Python import isolation
+  is not a sandbox; subsequent execution remains subject to the task's execution permissions.
+
 - ACP Agent definitions are compatibility allowlists, not supply-chain attestations. The current
   Claude Agent integration launches only an explicitly enabled, user-managed absolute package root
   and Node executable after canonical path, entry containment, package/version, executable-version,
@@ -559,6 +566,7 @@ CI` push run. The privileged release `workflow_run` additionally validates the
   Presence is memory-only, sender-excluded, TTL-bounded, and never reaches Core,
   SQLite, diagnostics bodies, history, receipts, or the durable outbox.
 - Nodex resource consent exists only in main and is independent of Codex filesystem/command approval modes. One-call consent binds the exact call and prepared footprint. Task consent binds app session, verified root task, Project, Library, store epoch, and canonical resource roots; it is not owned by the renderer that presented it. Project consent is the only choice that persists `project_resource_grants`, and exact-Turn authority is revalidated before that write. Canonical conversation-state ownership and renderer fields cannot grant or elevate Nodex authority. Denial, timeout, task archive, Project/store change, shutdown, restart, or a headless first prompt withholds or invalidates transient authority without mutation.
+- Each accepted Agent Turn also freezes an immutable execution policy in Core. Plan Mode and read-only or unverified sandbox permissions forbid writes even when the resource is granted or the Turn has Full access Library scope. Derived Turns cannot elevate a read-only parent. Historical Turns without proven execution policy remain read-only. Resource planning and execution check this constraint in their Core transaction.
 - Full-access Library authority is an ephemeral overlay and never creates or expands `project_resource_grants`. Cross-compatibility-owner structure writes validate actor/source/target in one Library, move the complete ownership closure in one deferred-FK transaction, rebuild derived projections, require a clean `foreign_key_check`, and publish immutable source/final owner members. Store restore changes the epoch and invalidates prior Turn authority and the Main-scoped authorization Module's transient grants.
 - Authorization responses travel through the targeted active-view renderer route and use random occurrence identities, preventing another renderer or an equal app-server call ID from satisfying the request. The renderer validates the bound Project/task, presents the request as a local overlay, and cannot publish it into or elevate canonical owner/follower state. Exact durable call replay bypasses authorization only after its request fingerprint and prior compact result are verified; same-call/different-input collisions fail closed.
 - Native Module receipt replay follows the same ordering: current store epoch

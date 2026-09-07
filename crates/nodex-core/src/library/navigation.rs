@@ -267,6 +267,7 @@ pub(super) fn read(
                 library_id,
                 store_epoch,
                 &page_id,
+                requesting_project_id,
                 scope,
                 requested_cursor,
                 limit,
@@ -412,6 +413,20 @@ pub(super) fn read(
             )?;
             Ok(LibraryReadValue::AgentBlockTarget { value })
         }
+        LibraryRead::AgentSurfaceDescription {
+            authorization,
+            displayed_access_context,
+            target,
+        } => Ok(LibraryReadValue::AgentSurfaceDescription {
+            value: super::agent_surface::describe(
+                connection,
+                library_id,
+                context,
+                &authorization,
+                displayed_access_context,
+                target,
+            )?,
+        }),
         LibraryRead::AgentSearch {
             authorization,
             query,
@@ -2777,11 +2792,14 @@ struct PageRelocationSource {
     validator_view_id: Option<String>,
 }
 
+// Keep authorization and pagination coordinates explicit at this read boundary.
+#[allow(clippy::too_many_arguments)]
 fn page_relocation_destinations(
     connection: &Connection,
     library_id: &str,
     store_epoch: &str,
     page_id: &str,
+    actor_project_id: Option<&str>,
     scope: LibraryPageRelocationDestinationScope,
     requested_cursor: Option<String>,
     limit: Option<u32>,
@@ -2817,8 +2835,6 @@ fn page_relocation_destinations(
         )?,
         ..source
     };
-    let actor_project_id =
-        super::mutation::resolve_library_actor_project_id(connection, library_id)?;
     match scope {
         LibraryPageRelocationDestinationScope::Databases { query } => {
             page_relocation_database_destinations(
@@ -2826,7 +2842,7 @@ fn page_relocation_destinations(
                 library_id,
                 store_epoch,
                 page_id,
-                &actor_project_id,
+                actor_project_id,
                 &source,
                 query,
                 requested_cursor,
@@ -2838,7 +2854,7 @@ fn page_relocation_destinations(
             library_id,
             store_epoch,
             page_id,
-            &actor_project_id,
+            actor_project_id,
             &source,
             PageRelocationPageScope::Suggested,
             requested_cursor,
@@ -2850,7 +2866,7 @@ fn page_relocation_destinations(
                 library_id,
                 store_epoch,
                 page_id,
-                &actor_project_id,
+                actor_project_id,
                 &source,
                 PageRelocationPageScope::Children(parent),
                 requested_cursor,
@@ -2863,7 +2879,7 @@ fn page_relocation_destinations(
                 library_id,
                 store_epoch,
                 page_id,
-                &actor_project_id,
+                actor_project_id,
                 &source,
                 PageRelocationPageScope::Search(query),
                 requested_cursor,
@@ -2879,7 +2895,7 @@ fn page_relocation_database_destinations(
     library_id: &str,
     store_epoch: &str,
     page_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     source: &PageRelocationSource,
     query: Option<String>,
     requested_cursor: Option<String>,
@@ -2984,7 +3000,7 @@ fn page_relocation_page_destinations(
     library_id: &str,
     store_epoch: &str,
     page_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     source: &PageRelocationSource,
     requested_scope: PageRelocationPageScope,
     requested_cursor: Option<String>,

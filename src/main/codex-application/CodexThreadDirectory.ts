@@ -1,3 +1,4 @@
+import { buildCodexThreadConfig } from "../codex/codex-thread-config";
 import type { Thread, ThreadForkResponse, Turn } from "@nodex/codex-app-server-protocol/v2";
 import type { ThreadResumeResponse } from "@nodex/codex-app-server-protocol/v2/ThreadResumeResponse";
 import type { ThreadStartResponse } from "@nodex/codex-app-server-protocol/v2/ThreadStartResponse";
@@ -145,6 +146,7 @@ export class CodexThreadDirectory extends Context.Service<
     /** Accepts an exact persistent fork and inherits its durable execution authority. */
     readonly acceptForkResult: (input: {
       readonly sourceThreadId: string;
+      readonly destinationSessionId?: string;
       readonly response: ThreadForkResponse;
       readonly target?: {
         readonly projectId: string | null;
@@ -758,6 +760,7 @@ export const make: Effect.Effect<
           "thread/resume",
           {
             threadId,
+            config: buildCodexThreadConfig({ nativeMcp: hostId === gateway.localHostId }),
             excludeTurns: true,
             ...(!capability.flags.paginatedHistory
               ? {
@@ -962,6 +965,7 @@ export const make: Effect.Effect<
 
   const acceptForkResult = Effect.fn("CodexThreadDirectory.acceptForkResult")(function* (input: {
     readonly sourceThreadId: string;
+    readonly destinationSessionId?: string;
     readonly response: ThreadForkResponse;
     readonly target?: {
       readonly projectId: string | null;
@@ -1039,6 +1043,23 @@ export const make: Effect.Effect<
       fallbackCwd: input.target?.cwd ?? source.thread.cwd,
       hasUnreadTurn: false,
     });
+    if (input.destinationSessionId) {
+      yield* core.workspace
+        .apply({
+          operationId: createOperationId("thread-directory.fork-session"),
+          intent: {
+            kind: "mutate_session",
+            session_id: input.destinationSessionId,
+            intent: {
+              kind: "link_thread",
+              thread_id: childThreadId,
+              expected_project_id: input.target ? input.target.projectId : source.thread.projectId,
+              thread_patch: {},
+            },
+          },
+        })
+        .pipe(Effect.mapError((cause) => error("materialize", childThreadId, cause)));
+    }
     yield* core.workspace
       .apply({
         operationId: createOperationId("thread-directory.fork-catalogs"),

@@ -3,11 +3,11 @@ import { it, assert } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { CodexConversationContext } from "../codex-application/CodexConversationContext";
+import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { CodexConversations } from "../codex-application/CodexConversations";
 import { CodexRendererConversationRegistry } from "../codex-application/CodexRendererConversationRegistry";
-import { NodexAgentAuthorizationRuntime } from "../codex-application/NodexAgentAuthorizationRuntime";
+import { NodexAppToolAuthority } from "../app-tools/NodexAppToolAuthority";
 import { CoreModules } from "../core-runtime/CoreModules";
-import { NodexAgentResourceAccess } from "./NodexAgentResourceAccess";
 import { NodexAgentDynamicTools } from "./NodexAgentDynamicTools";
 import { live, NodexAgentProtocolTools } from "./NodexAgentProtocolTools";
 
@@ -25,10 +25,10 @@ it.effect(
     const dependencies = Layer.mergeAll(
       Layer.succeed(CodexConversationContext, untouched as never),
       Layer.succeed(CodexConversations, untouched as never),
+      Layer.succeed(CodexTurnAuthority, untouched as never),
       Layer.succeed(CodexRendererConversationRegistry, untouched as never),
-      Layer.succeed(NodexAgentAuthorizationRuntime, untouched as never),
+      Layer.succeed(NodexAppToolAuthority, untouched as never),
       Layer.succeed(CoreModules, untouched as never),
-      Layer.succeed(NodexAgentResourceAccess, untouched as never),
       Layer.succeed(NodexAgentDynamicTools, {
         enabled: false,
         execute: () => Effect.die("Protocol gate must precede execution"),

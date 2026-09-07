@@ -313,11 +313,11 @@ const withDatabaseModule = <A, E, R>(
   client: FakeCoreClient,
   run: (
     database: DatabaseModule["Service"],
-    projectScopes: Array<string | undefined>,
+    projectScopes: Array<string | null | undefined>,
   ) => Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> =>
   Effect.gen(function* () {
-    const projectScopes: Array<string | undefined> = [];
+    const projectScopes: Array<string | null | undefined> = [];
     const handshake = createFakeCoreHandshake(identity);
     const generationClient = Object.assign(client, {
       handshake,

@@ -100,7 +100,7 @@ const hashParts = (parts: readonly string[]): string => {
 };
 
 const callOverlay = (
-  authority: FrozenNodexAgentTurnAuthority,
+  authority: Extract<FrozenNodexAgentTurnAuthority, { readonly scope: "project" }>,
   callId: string,
   grants: readonly NodexAgentResourceGrantSpec[],
   persistResultingPageGrants = false,
@@ -119,7 +119,7 @@ const callOverlay = (
 });
 
 const taskOverlay = (
-  authority: FrozenNodexAgentTurnAuthority,
+  authority: Extract<FrozenNodexAgentTurnAuthority, { readonly scope: "project" }>,
   grants: readonly NodexAgentResourceGrantSpec[],
 ): NodexAgentResourceAccessOverlay => ({
   kind: "consent",

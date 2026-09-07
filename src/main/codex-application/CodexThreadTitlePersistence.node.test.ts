@@ -3,11 +3,13 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
+import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
+import { encodeRendererDelivery } from "../../shared/renderer-delivery-transport";
 import type { CodexConversationSnapshot } from "../../shared/types";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
-import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
+import { CodexApplicationEventHub, type CodexApplicationEvent } from "./CodexApplicationEventHub";
 import {
   CodexConversationProjection,
   type CodexConversationProjectionService,
@@ -94,6 +96,8 @@ const harness = (input: {
   readonly onProject?: (threadId: string, name: string) => void;
   readonly onCoreApply?: (threadId: string, name: string) => void;
   readonly backendKind?: "codex" | "acp";
+  readonly committedTitle?: string;
+  readonly publish?: (event: CodexApplicationEvent) => void;
 }) => {
   const names = new Map<string, string>();
   const projection = CodexConversationProjection.of({
@@ -109,6 +113,7 @@ const harness = (input: {
           threadId,
           threadName: names.get(threadId) ?? null,
           ephemeral: false,
+          canonicalState: { turns: [{ sidecar: { params: undefined } }] },
         } as unknown as CodexConversationSnapshot,
       }),
   } as unknown as CodexConversationProjectionService);
@@ -126,7 +131,7 @@ const harness = (input: {
       return Effect.succeed({
         value: {
           kind: "thread",
-          thread: coreThread(id, names.get(id) ?? "", input.backendKind),
+          thread: coreThread(id, input.committedTitle ?? names.get(id) ?? "", input.backendKind),
         },
       } as ProjectWorkspaceReadSnapshot);
     },
@@ -134,7 +139,10 @@ const harness = (input: {
   return make.pipe(
     Effect.provideService(
       CodexApplicationEventHub,
-      CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
+      CodexApplicationEventHub.of({
+        events: Stream.empty,
+        publish: input.publish ?? (() => undefined),
+      }),
     ),
     Effect.provideService(CodexConversationProjection, projection),
     Effect.provideService(CodexGateway, gateway(input.request)),
@@ -181,6 +189,24 @@ it.effect("normalizes locally before best-effort remote and durable persistence"
     assert.isFalse(
       yield* persistence.set({ threadId: "thread-1", name: "   ", normalization: "trim" }),
     );
+  }),
+);
+
+it.effect("synchronizes the committed title without a second Core mutation", () =>
+  Effect.gen(function* () {
+    const calls: string[] = [];
+    const persistence = yield* harness({
+      committedTitle: "Accepted title",
+      onProject: (_threadId, name) => calls.push(`project:${name}`),
+      onCoreApply: () => calls.push("workspace"),
+      request: ((_threadId, _method, params) =>
+        Effect.sync(() => {
+          calls.push(`remote:${(params as { name: string }).name}`);
+          return {};
+        })) as CodexGateway["Service"]["requestForThread"],
+    });
+    yield* persistence.syncCommittedTitle("thread-1");
+    assert.deepEqual(calls, ["project:Accepted title", "remote:Accepted title"]);
   }),
 );
 
@@ -268,5 +294,43 @@ it.effect("surfaces required failure and releases the Thread lane", () =>
       name: "second",
       normalization: "trim",
     });
+  }),
+);
+
+it.effect("delivers titles and durable summaries without exporting conversation internals", () =>
+  Effect.gen(function* () {
+    const delivered: CodexApplicationEvent[] = [];
+    const persistence = yield* harness({
+      request: (() => Effect.succeed({})) as CodexGateway["Service"]["requestForThread"],
+      publish: (event) => {
+        encodeRendererDelivery({
+          target: { targetId: "renderer", generation: 1 },
+          transferId: `title-${delivered.length}`,
+          payload: event,
+        });
+        delivered.push(event);
+      },
+    });
+    yield* persistence.setRequired({
+      threadId: "fork-child",
+      name: "Research (2)",
+      normalization: "manual",
+    });
+    assert.deepInclude(delivered, {
+      kind: "hostMessage",
+      value: {
+        type: "threadTitleUpdated",
+        hostId: DEFAULT_CODEX_HOST_ID,
+        conversationId: "fork-child",
+        title: "Research (2)",
+      },
+    });
+    const summary = delivered.find(
+      (event) => event.kind === "codex" && event.value.type === "threadSummary",
+    );
+    assert.isDefined(summary);
+    if (summary?.kind !== "codex" || summary.value.type !== "threadSummary") return;
+    assert.strictEqual(summary.value.thread.threadName, "Research (2)");
+    assert.notProperty(summary.value.thread, "canonicalState");
   }),
 );

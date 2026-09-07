@@ -21,7 +21,6 @@ struct ThreadOwner {
     project_id: Option<String>,
     session_id: String,
     session_project_id: Option<String>,
-    session_pinned: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -299,7 +298,7 @@ fn require_thread_owner(
 ) -> Result<ThreadOwner, StoreError> {
     let row = connection
         .query_row(
-            "SELECT thread.project_id, link.session_id, session.project_id, session.pinned,
+            "SELECT thread.project_id, link.session_id, session.project_id,
                project.library_id
              FROM codex_threads thread
              LEFT JOIN project_session_threads link ON link.thread_id = thread.thread_id
@@ -312,14 +311,13 @@ fn require_thread_owner(
                     row.get::<_, Option<String>>(0)?,
                     row.get::<_, Option<String>>(1)?,
                     row.get::<_, Option<String>>(2)?,
-                    row.get::<_, Option<i64>>(3)?,
-                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(3)?,
                 ))
             },
         )
         .optional()?
         .ok_or_else(|| not_found("Codex Thread is unavailable"))?;
-    if row.0.is_some() && row.4.as_deref() != Some(library_id) {
+    if row.0.is_some() && row.3.as_deref() != Some(library_id) {
         return Err(not_found("Codex Thread is unavailable in this Library"));
     }
     let session_id = row
@@ -329,7 +327,6 @@ fn require_thread_owner(
         project_id: row.0,
         session_id,
         session_project_id: row.2,
-        session_pinned: row.3 == Some(1),
     })
 }
 
@@ -370,17 +367,6 @@ fn move_thread_membership(
     metadata: &ProjectWorkspaceThreadMoveMetadataPatch,
 ) -> Result<(), StoreError> {
     let now = sqlite_now(connection)?;
-    let next_pinned_order = if owner.session_pinned {
-        Some(connection.query_row(
-            "SELECT COALESCE(max(pinned_order), -1) + 1
-             FROM project_sessions
-             WHERE project_id IS ?1 AND pinned = 1 AND archived = 0",
-            [target_project_id],
-            |row| row.get::<_, i64>(0),
-        )?)
-    } else {
-        None
-    };
     connection.execute(
         "UPDATE project_sessions
          SET \"order\" = \"order\" + 1, updated_at = ?1
@@ -389,15 +375,9 @@ fn move_thread_membership(
     )?;
     let moved = connection.execute(
         "UPDATE project_sessions
-         SET project_id = ?1, \"order\" = 0, pinned_order = ?2, updated_at = ?3
-         WHERE id = ?4 AND project_id IS ?5",
-        params![
-            target_project_id,
-            next_pinned_order,
-            now,
-            owner.session_id,
-            source_project_id
-        ],
+         SET project_id = ?1, \"order\" = 0, updated_at = ?2
+         WHERE id = ?3 AND project_id IS ?4",
+        params![target_project_id, now, owner.session_id, source_project_id],
     )?;
     if moved != 1 {
         return Err(conflict("Project Session changed during Thread move"));

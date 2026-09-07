@@ -20,6 +20,7 @@ import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
 import { CodexThreadSettingsRuntime } from "./CodexThreadSettingsRuntime";
 import { CodexThreadRollbackCommands } from "./CodexThreadRollbackCommands";
 import { CodexTurnCommands } from "./CodexTurnCommands";
+import { CodexTurnPresentation } from "./CodexTurnPresentation";
 
 export class CodexRendererOwnerCommandError extends Schema.TaggedError<CodexRendererOwnerCommandError>()(
   "CodexRendererOwnerCommandError",
@@ -159,6 +160,7 @@ export const make: Effect.Effect<
   | CodexThreadSettingsRuntime
   | CodexThreadRollbackCommands
   | CodexTurnCommands
+  | CodexTurnPresentation
   | ConversationCommands
 > = Effect.gen(function* () {
   const conversationFork = yield* CodexConversationFork;
@@ -169,6 +171,7 @@ export const make: Effect.Effect<
   const threadSettings = yield* CodexThreadSettingsRuntime;
   const threadRollback = yield* CodexThreadRollbackCommands;
   const turnCommands = yield* CodexTurnCommands;
+  const presentation = yield* CodexTurnPresentation;
   const conversations = yield* ConversationCommands;
   const forkError = (threadId: string, cause: unknown) =>
     new CodexRendererOwnerCommandError({ method: "thread/fork", threadId, cause });
@@ -225,10 +228,28 @@ export const make: Effect.Effect<
               catch: (cause) => new CodexRendererOwnerCommandError({ method, threadId, cause }),
             }).pipe(
               Effect.flatMap((preparedPrompt) =>
-                turnCommands.startRendererOwned(threadId, request.params.prompt, {
-                  ...(request.params.opts ?? {}),
-                  clientUserMessageId: request.params.clientUserMessageId,
-                  preparedPrompt,
+                Effect.gen(function* () {
+                  const presentationClaim = request.params.presentationTicket
+                    ? yield* presentation.claim(
+                        request.params.presentationTicket,
+                        { kind: "thread", threadId },
+                        request.params.clientUserMessageId,
+                      )
+                    : undefined;
+                  return yield* turnCommands
+                    .startRendererOwned(threadId, request.params.prompt, {
+                      ...(request.params.opts ?? {}),
+                      presentationClaim,
+                      clientUserMessageId: request.params.clientUserMessageId,
+                      preparedPrompt,
+                    })
+                    .pipe(
+                      Effect.onExit((exit) =>
+                        exit._tag === "Failure"
+                          ? Effect.sync(() => presentation.releaseClaim(presentationClaim))
+                          : Effect.void,
+                      ),
+                    );
                 }),
               ),
             );
@@ -242,10 +263,28 @@ export const make: Effect.Effect<
                 }),
               );
             }
-            return turnCommands.startRendererOwned(threadId, "", {
-              ...(request.params.opts ?? {}),
-              clientUserMessageId: request.params.clientUserMessageId,
-              preparedPrompt: createEmptyCodexPreparedPrompt(),
+            return Effect.gen(function* () {
+              const presentationClaim = request.params.presentationTicket
+                ? yield* presentation.claim(
+                    request.params.presentationTicket,
+                    { kind: "thread", threadId },
+                    request.params.clientUserMessageId,
+                  )
+                : undefined;
+              return yield* turnCommands
+                .startRendererOwned(threadId, "", {
+                  ...(request.params.opts ?? {}),
+                  presentationClaim,
+                  clientUserMessageId: request.params.clientUserMessageId,
+                  preparedPrompt: createEmptyCodexPreparedPrompt(),
+                })
+                .pipe(
+                  Effect.onExit((exit) =>
+                    exit._tag === "Failure"
+                      ? Effect.sync(() => presentation.releaseClaim(presentationClaim))
+                      : Effect.void,
+                  ),
+                );
             });
           case "thread/session-first-turn/start":
             return freshThreadLaunch.start({

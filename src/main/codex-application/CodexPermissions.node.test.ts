@@ -20,6 +20,8 @@ const makeHarness = (
     readonly explicitPermissionChoice?: boolean;
     readonly failFirstConfigRead?: boolean;
     readonly rejectConfigWrite?: boolean;
+    readonly fullAccessUnavailable?: boolean;
+    readonly failSelectionRead?: boolean;
   } = {},
 ) => {
   const config: Record<string, unknown> = {
@@ -57,7 +59,12 @@ const makeHarness = (
       }
       return Effect.succeed({ config, origins });
     }
-    if (method === "configRequirements/read") return Effect.succeed({ requirements: null });
+    if (method === "configRequirements/read")
+      return Effect.succeed({
+        requirements: options.fullAccessUnavailable
+          ? { allowedSandboxModes: ["workspace-write", "read-only"] }
+          : null,
+      });
     if (method === "config/batchWrite") {
       if (options.rejectConfigWrite === true) {
         return Effect.fail(
@@ -104,6 +111,13 @@ const makeHarness = (
         },
       });
     }
+    if (options.failSelectionRead)
+      return Effect.fail(
+        new CodexPermissionsError({
+          operation: "selection",
+          cause: new Error("selection unavailable"),
+        }),
+      );
     const projectId =
       read.kind === "projectless_permission_mode" ? null : (read.project_id ?? null);
     return Effect.succeed({
@@ -130,6 +144,7 @@ const makeHarness = (
     return Effect.succeed({});
   }) as unknown as CoreModules["Service"]["workspace"]["apply"];
   const core = CoreModules.of({
+    query: { read: unsupported },
     localMutation: { resolve: unsupported },
     library: {
       read: unsupported,
@@ -317,5 +332,63 @@ it.effect("does not cache a transient fallback as permission authority", () =>
     assert.strictEqual((yield* permissions.snapshot("project:one")).mode, "auto");
     assert.strictEqual((yield* permissions.snapshot("project:one")).mode, "guardian-approvals");
     yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("verifies projectless Full Access only from an available persisted selection", () =>
+  Effect.gen(function* () {
+    const cases = [
+      { selection: undefined, options: {}, verified: false },
+      { selection: "auto" as const, options: {}, verified: false },
+      { selection: "custom" as const, options: {}, verified: false },
+      { selection: "full-access" as const, options: {}, verified: true },
+      {
+        selection: "full-access" as const,
+        options: { fullAccessUnavailable: true },
+        verified: false,
+      },
+      { selection: "full-access" as const, options: { failSelectionRead: true }, verified: false },
+      {
+        selection: "full-access" as const,
+        options: { failFirstConfigRead: true },
+        verified: false,
+      },
+    ];
+    for (const entry of cases) {
+      const harness = makeHarness(entry.options);
+      harness.config.sandbox_mode = "danger-full-access";
+      harness.config.approval_policy = "never";
+      if (entry.selection) harness.selections.set(null, entry.selection);
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        codexPermissionsLive({ runtimeStateHome: "/profile/agent" }).pipe(
+          Layer.provide(
+            Layer.merge(
+              Layer.succeed(CodexGateway, harness.gateway),
+              Layer.succeed(CoreModules, harness.core),
+            ),
+          ),
+        ),
+        scope,
+      );
+      const permissions = Context.get(context, CodexPermissions);
+      const decision = yield* permissions.resolve({
+        projectId: null,
+        requestedMode: "full-access",
+        workspaceRoots: [],
+      });
+      assert.strictEqual(decision.verifiedBuiltinFullAccess, entry.verified);
+      if (entry.verified) {
+        yield* permissions.setMode(null, "auto");
+        const revoked = yield* permissions.resolve({
+          projectId: null,
+          requestedMode: "full-access",
+          workspaceRoots: [],
+        });
+        assert.isFalse(revoked.verifiedBuiltinFullAccess);
+        assert.strictEqual(harness.selections.get(null), "auto");
+      }
+      yield* Scope.close(scope, Exit.void);
+    }
   }),
 );

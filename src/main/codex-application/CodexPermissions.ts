@@ -187,7 +187,7 @@ export const live = (options: {
       const stateByScope = yield* Ref.make<ReadonlyMap<string | null, CodexPermissionState>>(
         new Map(),
       );
-      const verifiedModeByProject = yield* Ref.make<ReadonlyMap<string, CodexPermissionMode>>(
+      const verifiedModeByScope = yield* Ref.make<ReadonlyMap<string | null, CodexPermissionMode>>(
         new Map(),
       );
       const runtimeStateHome = path.resolve(options.runtimeStateHome);
@@ -282,13 +282,11 @@ export const live = (options: {
               next.delete(projectId);
               return next;
             }),
-            projectId === null
-              ? Effect.void
-              : Ref.update(verifiedModeByProject, (current) => {
-                  const next = new Map(current);
-                  next.delete(projectId);
-                  return next;
-                }),
+            Ref.update(verifiedModeByScope, (current) => {
+              const next = new Map(current);
+              next.delete(projectId);
+              return next;
+            }),
           ],
           { discard: true },
         ),
@@ -301,43 +299,21 @@ export const live = (options: {
           workspaceRoots: readonly string[],
         ) {
           const selection = yield* readPersistedMode(projectId);
-          if (selection === null) {
-            if (projectId !== null) {
-              yield* Ref.update(verifiedModeByProject, (current) => {
-                const next = new Map(current);
-                next.delete(projectId);
-                return next;
-              });
-            }
-            return state;
-          }
-          if (projectId !== null && selection !== "full-access") {
-            yield* Ref.update(verifiedModeByProject, (current) => {
-              const next = new Map(current);
-              next.delete(projectId);
-              return next;
-            });
-          }
+          const available =
+            selection !== null &&
+            selection !== "custom" &&
+            permissionModeIsAvailable(state, selection);
+          yield* Ref.update(verifiedModeByScope, (current) => {
+            const next = new Map(current);
+            if (selection === "full-access" && available) next.set(projectId, selection);
+            else next.delete(projectId);
+            return next;
+          });
+          if (selection === null) return state;
           if (selection === "custom") {
             return fallbackState(runtimeStateHome, selection, workspaceRoots, state);
           }
-          if (!permissionModeIsAvailable(state, selection)) {
-            if (projectId !== null) {
-              yield* Ref.update(verifiedModeByProject, (current) => {
-                const next = new Map(current);
-                next.delete(projectId);
-                return next;
-              });
-            }
-            return state;
-          }
-          if (projectId !== null && selection === "full-access") {
-            yield* Ref.update(verifiedModeByProject, (current) => {
-              const next = new Map(current);
-              next.set(projectId, selection);
-              return next;
-            });
-          }
+          if (!available) return state;
           return fallbackState(runtimeStateHome, selection, workspaceRoots, state);
         },
       );
@@ -448,9 +424,8 @@ export const live = (options: {
             input.workspaceRoots,
           );
           const verified =
-            input.projectId !== null &&
             resolved.mode === "full-access" &&
-            (yield* Ref.get(verifiedModeByProject)).get(input.projectId) === "full-access";
+            (yield* Ref.get(verifiedModeByScope)).get(input.projectId) === "full-access";
           return { state: resolved, verifiedBuiltinFullAccess: verified };
         }),
         resolveAutomation: (workspaceRoots) =>

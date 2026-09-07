@@ -44,6 +44,7 @@ const ignoreLibraryPageClose = (): void => undefined;
 export function WorkbenchLibraryPageSurface({
   pageId,
   surfaceId = pageId,
+  editorSessionKey = `library-page:${surfaceId}`,
   isActivePanelTab = true,
   onClose = ignoreLibraryPageClose,
   onOpenDatabase,
@@ -52,6 +53,7 @@ export function WorkbenchLibraryPageSurface({
 }: {
   readonly pageId: string;
   readonly surfaceId?: string;
+  readonly editorSessionKey?: string;
   readonly isActivePanelTab?: boolean;
   readonly onClose?: () => void;
   readonly onOpenDatabase: (databaseId: DatabaseId) => void;
@@ -166,7 +168,7 @@ export function WorkbenchLibraryPageSurface({
   return (
     <PageStage
       contentAccessContext={libraryContentAccess}
-      editorSessionKey={`library-page:${surfaceId}`}
+      editorSessionKey={editorSessionKey}
       pageTitleIdentity={{ libraryId: detail.data.libraryId, pageId }}
       retainEditorSession
       page={stagePage}

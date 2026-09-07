@@ -1,3 +1,4 @@
+mod agent_command;
 mod mutation;
 mod occurrence;
 mod occurrence_mutation;

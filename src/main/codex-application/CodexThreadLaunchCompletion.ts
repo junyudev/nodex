@@ -111,7 +111,7 @@ export const make: Effect.Effect<
             name: seed.name,
             prompt: seed.prompt,
             rrule: seed.rrule,
-            target_thread_id: outcome.threadId,
+            target_session_id: outcome.sessionId,
             model: null,
             reasoning_effort: null,
           },

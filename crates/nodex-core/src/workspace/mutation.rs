@@ -46,6 +46,17 @@ use super::{
 };
 
 const MODULE_NAME: &str = "project_workspace";
+
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+enum MutationFingerprintIntent<'a> {
+    Exact(&'a ProjectWorkspaceIntent),
+    SessionDispatch {
+        caller_thread_id: &'a str,
+        intent: &'a ProjectWorkspaceIntent,
+    },
+}
+
 const MAX_ID_LENGTH: usize = 512;
 const MAX_PROJECT_NAME_CHARS: usize = 256;
 const MAX_PROJECT_RESOURCE_NAME_CHARS: usize = 256;
@@ -78,7 +89,7 @@ struct StarterPageGenesisRequest<'a> {
 pub(super) struct WorkspaceMutationEffects {
     pub(super) operation_kind: &'static str,
     pub(super) project_catalog_change: Option<ProjectCatalogChangeKind>,
-    pub(super) change_project_id: String,
+    pub(super) change_project_id: Option<String>,
     pub(super) project_ids: Vec<String>,
     pub(super) session_ids: Vec<String>,
     pub(super) thread_ids: Vec<String>,
@@ -159,7 +170,7 @@ pub(super) fn seed_rootless_default_project_for_test(
             let event_sequence = append_change_log(
                 transaction,
                 NewChangeLogEntry {
-                    project_id: "project:default",
+                    project_id: Some("project:default"),
                     store_epoch: commit.store_epoch(),
                     kind: "project_workspace.changed",
                     operation_id: Some(operation_id),
@@ -223,6 +234,31 @@ pub(super) fn apply(
                 ));
             }
             validate_id("operation_id", &request.operation_id)?;
+            let admitted_intent = super::agent_command::admit(
+                transaction,
+                &library_id,
+                &context,
+                &request.intent,
+            )?;
+            // A dispatch retry belongs to its caller Thread across Turns. Admission above
+            // still checks the current Turn's persisted authority before receipt replay.
+            let fingerprint_intent = match &request.intent {
+                ProjectWorkspaceIntent::AgentCommand { provenance, intent }
+                    if matches!(
+                        intent.as_ref(),
+                        ProjectWorkspaceIntent::AdmitSessionLaunch { .. }
+                            | ProjectWorkspaceIntent::AdmitSessionMessage { .. }
+                            | ProjectWorkspaceIntent::AdmitSessionHandoff { .. }
+                            | ProjectWorkspaceIntent::AdmitSessionFork { .. }
+                    ) =>
+                {
+                    MutationFingerprintIntent::SessionDispatch {
+                        caller_thread_id: &provenance.authority.thread_id,
+                        intent,
+                    }
+                }
+                intent => MutationFingerprintIntent::Exact(intent),
+            };
             let fingerprint = serde_json::to_vec(&(
                 &context.profile_id,
                 &context.library_id,
@@ -230,7 +266,7 @@ pub(super) fn apply(
                 &context.adapter,
                 request.contract_version,
                 &request.store_epoch,
-                &request.intent,
+                &fingerprint_intent,
             ))
             .map_err(|_| internal("Project Workspace mutation cannot be fingerprinted"))?;
             let request_hash = sha256(&fingerprint);
@@ -266,7 +302,24 @@ pub(super) fn apply(
                 ));
             }
 
-            match &request.intent {
+            match admitted_intent {
+                ProjectWorkspaceIntent::ReorderBuiltinSidebarItems { lane, expected_order_revision, item_ids } => {
+                    super::sidebar_builtin::reorder(
+                        transaction, &library_id, &context, &store_epoch,
+                        &request.operation_id, &request_hash, *lane,
+                        expected_order_revision, super::sidebar_builtin::OrderSelection::Complete(item_ids),
+                    )
+                }
+                ProjectWorkspaceIntent::PrioritizeBuiltinSidebarProjects { lane, expected_order_revision, project_ids } => {
+                    super::sidebar_builtin::reorder(
+                        transaction, &library_id, &context, &store_epoch,
+                        &request.operation_id, &request_hash, *lane,
+                        expected_order_revision, super::sidebar_builtin::OrderSelection::ProjectPrefix(project_ids),
+                    )
+                }
+                ProjectWorkspaceIntent::AgentCommand { .. } => {
+                    Err(internal("Nested Agent Workspace command was not rejected"))
+                }
                 ProjectWorkspaceIntent::CreateInitialProject {
                     project_id,
                     name,
@@ -455,6 +508,12 @@ pub(super) fn apply(
                     section_id.as_deref(),
                     placement,
                 ),
+                ProjectWorkspaceIntent::ReorderSidebarSectionItems { section_id, items } => {
+                    sidebar_section::reorder_section_items(
+                        transaction, &library_id, &context, &store_epoch,
+                        &request.operation_id, &request_hash, section_id, items,
+                    )
+                }
                 ProjectWorkspaceIntent::ReorderSidebarSectionSessions {
                     section_id,
                     session_ids,
@@ -518,6 +577,104 @@ pub(super) fn apply(
                     section_id,
                     host_id,
                 ),
+                ProjectWorkspaceIntent::AdmitSessionFork {
+                    source_session_id,
+                    source_thread_id,
+                    session_id,
+                    fork_request_hash,
+                } => {
+                    validate_id("source_session_id", source_session_id)?;
+                    validate_id("source_thread_id", source_thread_id)?;
+                    if fork_request_hash.len() != 64
+                        || !fork_request_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    {
+                        return Err(invalid("Session fork requires a SHA-256 request hash"));
+                    }
+                    let source = session_mutation::require_session(
+                        transaction, &library_id, source_session_id,
+                    )?;
+                    if source.archived || source.thread_id.as_deref() != Some(source_thread_id.as_str()) {
+                        return Err(invalid("Session fork requires the current active Thread binding"));
+                    }
+                    session_lifecycle::create_session(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        session_id,
+                        source.project_id.as_deref(),
+                        "New chat",
+                        &[],
+                        None,
+                    )
+                }
+                ProjectWorkspaceIntent::AdmitSessionMessage {
+                    session_id,
+                    thread_id,
+                    message_request_hash: dispatch_request_hash,
+                }
+                | ProjectWorkspaceIntent::AdmitSessionHandoff {
+                    session_id,
+                    thread_id,
+                    handoff_request_hash: dispatch_request_hash,
+                } => {
+                    validate_id("session_id", session_id)?;
+                    validate_id("thread_id", thread_id)?;
+                    if dispatch_request_hash.len() != 64
+                        || !dispatch_request_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    {
+                        return Err(invalid("Session dispatch requires a SHA-256 request hash"));
+                    }
+                    let target = session_mutation::require_session(
+                        transaction, &library_id, session_id,
+                    )?;
+                    if target.archived || target.thread_id.as_deref() != Some(thread_id.as_str()) {
+                        return Err(invalid("Session dispatch requires the current active Thread binding"));
+                    }
+                    let operation = if matches!(admitted_intent, ProjectWorkspaceIntent::AdmitSessionHandoff { .. }) {
+                        "admit_session_handoff"
+                    } else {
+                        "admit_session_message"
+                    };
+                    finish_no_op(
+                        transaction,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        operation,
+                        target.project_id.into_iter().collect(),
+                        vec![session_id.clone()],
+                        &sqlite_now(transaction)?,
+                    )
+                }
+                ProjectWorkspaceIntent::AdmitSessionLaunch {
+                    session_id,
+                    project_id,
+                    title,
+                    launch_request_hash,
+                } => {
+                    if launch_request_hash.len() != 64
+                        || !launch_request_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    {
+                        return Err(invalid("Session launch requires a SHA-256 request hash"));
+                    }
+                    session_lifecycle::create_session(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        session_id,
+                        project_id.as_deref(),
+                        title,
+                        &[],
+                        None,
+                    )
+                }
                 ProjectWorkspaceIntent::CreateSession {
                     session_id,
                     project_id,
@@ -967,6 +1124,7 @@ pub(super) fn apply(
                     root_thread_id,
                     actor_project_id,
                     source,
+                    read_only,
                     inherited_from,
                 } => execution::freeze_turn_authority(
                     transaction,
@@ -978,8 +1136,9 @@ pub(super) fn apply(
                     thread_id,
                     turn_id,
                     root_thread_id,
-                    actor_project_id,
+                    actor_project_id.as_deref(),
                     *source,
+                    *read_only,
                     inherited_from.as_ref().map(|coordinate| {
                         (coordinate.thread_id.as_str(), coordinate.turn_id.as_str())
                     }),
@@ -1154,7 +1313,7 @@ fn create_project(
                 WorkspaceMutationEffects {
                     operation_kind: "create_project",
                     project_catalog_change: Some(ProjectCatalogChangeKind::Created),
-                    change_project_id: project_id.to_owned(),
+                    change_project_id: Some(project_id.to_owned()),
                     project_ids: vec![project_id.to_owned()],
                     session_ids: Vec::new(),
                     thread_ids: Vec::new(),
@@ -1394,7 +1553,7 @@ fn seal_mutation(
     let event_sequence = append_change_log(
         connection,
         NewChangeLogEntry {
-            project_id: &effects.change_project_id,
+            project_id: effects.change_project_id.as_deref(),
             store_epoch,
             kind: "project_workspace.changed",
             operation_id: Some(operation_id),
@@ -1675,10 +1834,7 @@ fn reorder_projects(
             ],
         )?;
     }
-    let change_project_id = project_ids
-        .first()
-        .cloned()
-        .map_or_else(|| workspace_event_anchor(connection, library_id), Ok)?;
+    let change_project_id = project_ids.first().cloned();
     finish_mutation(
         connection,
         context,
@@ -1812,10 +1968,7 @@ fn reorder_pinned_projects(
             return Err(corrupt("Pinned Project order changed during mutation"));
         }
     }
-    let change_project_id = project_ids
-        .first()
-        .cloned()
-        .map_or_else(|| workspace_event_anchor(connection, library_id), Ok)?;
+    let change_project_id = project_ids.first().cloned();
     finish_mutation(
         connection,
         context,
@@ -1886,7 +2039,7 @@ fn project_mutation_effects(
     WorkspaceMutationEffects {
         operation_kind,
         project_catalog_change: Some(project_catalog_change),
-        change_project_id: project_id.to_owned(),
+        change_project_id: Some(project_id.to_owned()),
         project_ids: vec![project_id.to_owned()],
         session_ids: Vec::new(),
         thread_ids: Vec::new(),
@@ -2010,20 +2163,6 @@ pub(super) fn grant_project_sources_for_thread_move(
     insert_project_sources(connection, target_project_id, &next_sources, &now)
 }
 
-pub(super) fn workspace_event_anchor(
-    connection: &Connection,
-    library_id: &str,
-) -> Result<String, StoreError> {
-    connection
-        .query_row(
-            "SELECT id FROM projects WHERE library_id = ?1 ORDER BY created, id LIMIT 1",
-            [library_id],
-            |row| row.get(0),
-        )
-        .optional()?
-        .ok_or_else(|| corrupt("Project Workspace has no event anchor Project"))
-}
-
 fn lifecycle_literal(lifecycle: ProjectLifecycle) -> &'static str {
     match lifecycle {
         ProjectLifecycle::Active => "active",
@@ -2144,7 +2283,7 @@ fn create_project_records(
             let destination = resolve_page_transfer_data_source_destination_prevalidated(
                 connection,
                 library_id,
-                project_id,
+                Some(project_id),
                 &identities.data_source_id,
                 &identities.view_id,
                 Some("triage"),
@@ -2155,7 +2294,7 @@ fn create_project_records(
                 crate::library::page_genesis::PageGenesisInput {
                     commit_context,
                     library_id,
-                    actor_project_id: project_id,
+                    actor_project_id: Some(project_id),
                     placement_access_project_id: None,
                     operation_id: identity_namespace,
                     store_epoch: request.store_epoch,
@@ -2179,7 +2318,7 @@ fn create_project_records(
     )?;
     crate::library::insert_creator_resource_grant(
         connection,
-        project_id,
+        Some(project_id),
         library_id,
         "canvas",
         &canvas.block_id,
@@ -3777,7 +3916,7 @@ mod tests {
                         thread_id: "thread-archived-owner".to_owned(),
                         turn_id: "turn-archived-owner".to_owned(),
                         root_thread_id: "thread-archived-owner".to_owned(),
-                        actor_project_id: "project-native".to_owned(),
+                        actor_project_id: Some("project-native".to_owned()),
                     },
                 },
             )
@@ -3792,10 +3931,11 @@ mod tests {
                 request(
                     "workspace-freeze-authority-archived-owner",
                     ProjectWorkspaceIntent::FreezeTurnAuthority {
+                        read_only: false,
                         thread_id: "thread-archived-owner".to_owned(),
                         turn_id: "turn-archived-owner".to_owned(),
                         root_thread_id: "thread-archived-owner".to_owned(),
-                        actor_project_id: "project-native".to_owned(),
+                        actor_project_id: Some("project-native".to_owned()),
                         source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
                         inherited_from: None,
                     },

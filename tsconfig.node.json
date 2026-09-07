@@ -26,7 +26,8 @@
     "vite.config.ts",
     "packages/codex-app-server-protocol/**/*.ts",
     "packages/effect-codex-app-server/**/*.ts",
-    "packages/core-protocol/**/*.ts"
+    "packages/core-protocol/**/*.ts",
+    "packages/nodex-app-tools-mcp/**/*.ts"
   ],
   "exclude": ["scripts/**/*.test.ts", "scripts/fixtures/**"]
 }

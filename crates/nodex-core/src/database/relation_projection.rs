@@ -85,6 +85,7 @@ target_facts AS MATERIALIZED (
         AND membership.removed_at IS NULL
     ) AS active_membership,
     CASE
+      WHEN ?6 IS NOT NULL THEN EXISTS(SELECT 1 FROM json_each(?6) allowed WHERE allowed.value = candidate.page_id)
       WHEN ?3 IS NULL THEN 1
       ELSE EXISTS(
         SELECT 1
@@ -264,6 +265,24 @@ fn previews_for_memberships(
     data_source_id: &str,
     membership_ids: &[&str],
 ) -> Result<ProjectionBatch, StoreError> {
+    previews_with_visibility(
+        connection,
+        library_id,
+        project_id,
+        data_source_id,
+        membership_ids,
+        None,
+    )
+}
+
+fn previews_with_visibility(
+    connection: &Connection,
+    library_id: &str,
+    project_id: Option<&str>,
+    data_source_id: &str,
+    membership_ids: &[&str],
+    authorized_page_ids_json: Option<&str>,
+) -> Result<ProjectionBatch, StoreError> {
     if membership_ids.is_empty() {
         return Ok(ProjectionBatch {
             previews: BTreeMap::new(),
@@ -286,6 +305,7 @@ fn previews_for_memberships(
                 project_id,
                 library_id,
                 preview_limit,
+                authorized_page_ids_json,
             ],
             |row| {
                 Ok((
@@ -381,7 +401,7 @@ pub(crate) fn hydrate_row_previews(
         .iter()
         .map(|row| row.membership_id.as_str())
         .collect::<Vec<_>>();
-    let mut previews = previews_for_memberships(
+    let previews = previews_for_memberships(
         connection,
         library_id,
         project_id,
@@ -389,6 +409,70 @@ pub(crate) fn hydrate_row_previews(
         &memberships,
     )?
     .previews;
+    hydrate_rows(rows, previews)
+}
+
+/// Reuses the bounded preview query with exact Turn/task visibility instead of a renderer scope.
+pub(crate) fn hydrate_agent_row_previews(
+    connection: &Connection,
+    context: &nodex_core_contracts::BoundModuleContext,
+    library_id: &str,
+    authorization: &nodex_core_contracts::agent::AgentExecutionAuthorization,
+    data_source_id: &str,
+    rows: &mut [DatabaseRowSummary],
+) -> Result<usize, StoreError> {
+    if rows.is_empty() {
+        return Ok(0);
+    }
+    let memberships = rows
+        .iter()
+        .map(|row| row.membership_id.as_str())
+        .collect::<Vec<_>>();
+    let memberships_json = serde_json::to_string(&memberships)
+        .map_err(|_| internal("Relation memberships cannot encode"))?;
+    let targets = connection
+        .prepare(
+            "SELECT DISTINCT edge.target_page_block_id FROM data_source_relation_edges edge \
+         JOIN json_each(?2) selected ON selected.value = edge.source_membership_id \
+         WHERE edge.source_data_source_id = ?1 LIMIT 100001",
+        )?
+        .query_map(params![data_source_id, memberships_json], |row| {
+            row.get::<_, String>(0)
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if targets.len() > 100_000 {
+        return Err(StoreError::new(
+            StoreErrorCode::ResourceExhausted,
+            "Displayed View relation input budget exceeded; no partial result returned",
+            false,
+        ));
+    }
+    let authorized = crate::library::agent_authorization::authorized_page_ids(
+        connection,
+        context,
+        library_id,
+        authorization,
+        &targets,
+    )?;
+    let authorized_json = serde_json::to_string(&authorized)
+        .map_err(|_| internal("Relation visibility cannot encode"))?;
+    let previews = previews_with_visibility(
+        connection,
+        library_id,
+        None,
+        data_source_id,
+        &memberships,
+        Some(&authorized_json),
+    )?
+    .previews;
+    hydrate_rows(rows, previews)?;
+    Ok(targets.len())
+}
+
+fn hydrate_rows(
+    rows: &mut [DatabaseRowSummary],
+    mut previews: BTreeMap<(String, String), DatabaseRelationValuePreview>,
+) -> Result<(), StoreError> {
     for row in rows {
         let membership_id = row.membership_id.clone();
         let property_ids = previews
@@ -402,6 +486,8 @@ pub(crate) fn hydrate_row_previews(
             let preview = previews
                 .remove(&(membership_id.clone(), property_id.clone()))
                 .ok_or_else(|| internal("Relation preview disappeared during hydration"))?;
+            row.database_value_revisions
+                .insert(property_id.clone(), preview.value_revision);
             row.database_values
                 .insert(property_id, json!({ "kind": "relation", "value": preview }));
         }
@@ -643,6 +729,7 @@ mod tests {
                     "project:reader",
                     "library:relation",
                     i64::try_from(RELATION_PREVIEW_TARGETS).unwrap(),
+                    Option::<&str>::None,
                 ],
                 |row| row.get::<_, String>(3),
             )

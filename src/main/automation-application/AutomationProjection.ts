@@ -71,7 +71,10 @@ export const projectAutomationDefinition = (
     definitionRevision: definition.definition_revision,
     kind: definition.kind,
     status: definition.status,
+    projectId: definition.project_id ?? null,
+    targetSessionId: definition.target_session_id ?? null,
     targetThreadId: definition.target_thread_id ?? null,
+    notificationPolicy: definition.notification_policy ?? null,
     name: definition.name,
     prompt: definition.prompt,
     rrule: definition.rrule || null,
@@ -218,7 +221,12 @@ export const toCoreAutomationDefinitionInput = (input: CodexScheduledAutomationC
   );
   return {
     kind: input.kind,
-    target_thread_id: input.targetThreadId ?? null,
+    project_id: input.projectId ?? null,
+    target_session_id: input.targetSessionId ?? null,
+    notification_policy:
+      input.notificationPolicy === undefined
+        ? { kind: "preserve" as const }
+        : { kind: "set" as const, value: input.notificationPolicy },
     name: input.name,
     prompt: input.prompt ?? null,
     rrule: input.rrule ?? null,

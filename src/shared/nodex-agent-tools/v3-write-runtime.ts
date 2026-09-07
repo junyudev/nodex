@@ -1,5 +1,6 @@
 import type {
-  DocumentMutationRequest,
+  DocumentOperationBatch,
+  DocumentOperationCommandResult,
   DocumentOperationResult,
   DocumentCommitRef,
 } from "../block-documents";
@@ -30,10 +31,29 @@ import type {
 import type { z } from "zod";
 import type { NodexAgentResourceAccessOverlay } from "../nodex-agent-resource-access";
 
+export interface NodexAgentPreparedPageUpdate extends Pick<
+  DocumentOperationBatch,
+  "mutationId" | "storeEpoch" | "clientSessionId" | "documentId" | "generation" | "expectedHeadSeq"
+> {
+  readonly projectId: string | null;
+  readonly threadId: string;
+  readonly callId: string;
+}
+
+export type NodexAgentPageUpdateCommit = Omit<DocumentOperationResult, "projectId"> & {
+  readonly projectId: string | null;
+};
+
+export type NodexAgentPageUpdateCommandResult =
+  | Extract<DocumentOperationCommandResult, { readonly ok: false }>
+  | (Omit<Extract<DocumentOperationCommandResult, { readonly ok: true }>, "value"> & {
+      readonly value: NodexAgentPageUpdateCommit;
+    });
+
 export type NodexAgentPageUpdateTool = "update_page" | "advanced_update_page";
 
 export type PrepareNodexAgentPageUpdateRequest = NodexAgentCallIdentity & {
-  readonly projectId: string;
+  readonly projectId: string | null;
 } & (
     | {
         readonly tool: "update_page";
@@ -56,7 +76,7 @@ export type PrepareNodexAgentPageUpdateResult =
         | { readonly kind: "completed"; readonly output: NodexAgentPageUpdateOutput }
         | {
             readonly kind: "prepared";
-            readonly mutation: DocumentMutationRequest;
+            readonly mutation: NodexAgentPreparedPageUpdate;
             readonly effects: AgentDocumentEditEffects;
             readonly targetMarkdown: string;
             readonly resourceAccess?: NodexAgentResourceAccessOverlay;
@@ -65,10 +85,10 @@ export type PrepareNodexAgentPageUpdateResult =
   | { readonly ok: false; readonly error: ToolFailure["error"] };
 
 export interface CompleteNodexAgentPageUpdateRequest extends NodexAgentCallIdentity {
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly tool: NodexAgentPageUpdateTool;
   readonly pageId: string;
-  readonly result: DocumentOperationResult;
+  readonly result: NodexAgentPageUpdateCommit;
 }
 
 export type CompleteNodexAgentPageUpdateResult =
@@ -84,7 +104,7 @@ export interface PreparedNodexAgentCreatePageV3 {
 }
 
 export interface NodexAgentCreatePagesCommand extends NodexAgentCallIdentity {
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly requestHash: string;
   readonly mutationId: string;
   readonly storeEpoch: string;
@@ -94,7 +114,7 @@ export interface NodexAgentCreatePagesCommand extends NodexAgentCallIdentity {
 }
 
 export interface PrepareNodexAgentCreatePagesRequest extends NodexAgentCallIdentity {
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly input: z.infer<typeof CreatePagesV3InputSchema>;
 }
 
@@ -135,8 +155,9 @@ export type ExecuteNodexAgentCreatePagesResult =
 
 export interface NodexAgentDuplicatePageCommand extends Omit<
   NodexAgentTransferCommand,
-  "input" | "transfer"
+  "input" | "transfer" | "projectId"
 > {
+  readonly projectId: string | null;
   readonly input: z.infer<typeof DuplicatePageV3InputSchema>;
   readonly normalizedInput: NodexAgentTransferCommand["input"];
   readonly transfer?: NodexAgentTransferCommand["transfer"];
@@ -147,7 +168,7 @@ export interface NodexAgentDuplicatePageCommand extends Omit<
 }
 
 export interface PrepareNodexAgentDuplicatePageRequest extends NodexAgentCallIdentity {
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly input: z.infer<typeof DuplicatePageV3InputSchema>;
 }
 
@@ -192,7 +213,7 @@ export interface NodexAgentMovePageTransferStep {
 }
 
 export interface NodexAgentMovePagesCommand extends NodexAgentCallIdentity {
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly requestHash: string;
   readonly mutationId: string;
   readonly storeEpoch: string;
@@ -203,7 +224,7 @@ export interface NodexAgentMovePagesCommand extends NodexAgentCallIdentity {
 }
 
 export interface PrepareNodexAgentMovePagesRequest extends NodexAgentCallIdentity {
-  readonly projectId: string;
+  readonly projectId: string | null;
   readonly input: z.infer<typeof MovePagesV3InputSchema>;
 }
 

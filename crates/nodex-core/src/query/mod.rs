@@ -8,7 +8,7 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode, core_error};
 use crate::infrastructure::store::SqliteStoreKernel;
 use crate::infrastructure::writer::{StoreReadSnapshot, StoreReaders};
 use crate::library::query::PageSearchIndexRegistry;
-use nodex_core_contracts::query::{QueryRead, QueryReadValue};
+use nodex_core_contracts::query::{DatabaseDisplayedViewQueryResult, QueryRead, QueryReadValue};
 use nodex_core_contracts::{
     AdapterKind, BoundModuleContext, CoreError, ModuleReadRequest, ModuleReadSnapshot,
     QUERY_CONTRACT_VERSION, StoreEpoch,
@@ -61,13 +61,29 @@ impl QueryModule {
         if request.contract_version != QUERY_CONTRACT_VERSION {
             return Err(invalid("Unsupported public Query contract version"));
         }
-        if context.profile_id.0 != self.profile_id
-            || context.library_id.0 != self.library_id
-            || context.project_id.is_none()
-            || !matches!(
+        let provenance = match &request.read {
+            QueryRead::AgentSchema { provenance, .. }
+            | QueryRead::AgentQuery { provenance, .. } => Some(provenance.as_ref()),
+            QueryRead::AgentDisplayedViewQuery { authorization, .. } => {
+                Some(&authorization.provenance)
+            }
+            _ => None,
+        };
+        let adapter_allowed = match provenance {
+            Some(_) => matches!(
+                context.adapter,
+                AdapterKind::Agent | AdapterKind::ElectronHost | AdapterKind::Test
+            ),
+            None => matches!(
                 context.adapter,
                 AdapterKind::NativeCli | AdapterKind::ElectronHost | AdapterKind::Test
-            )
+            ),
+        };
+        if context.profile_id.0 != self.profile_id
+            || context.library_id.0 != self.library_id
+            || (context.project_id.is_none()
+                && !matches!(&request.read, QueryRead::AgentDisplayedViewQuery { .. }))
+            || !adapter_allowed
         {
             return Err(StoreError::new(
                 StoreErrorCode::Unauthorized,
@@ -75,11 +91,28 @@ impl QueryModule {
                 false,
             ));
         }
-        if let QueryRead::Query { query } = &request.read {
+        if let QueryRead::Query { query } | QueryRead::AgentQuery { query, .. } = &request.read {
             engine::validate(query)?;
         }
         let store = self.readers.snapshot()?;
         let (store_epoch, commit_head) = store.read(|connection| {
+            if let Some(provenance) = provenance {
+                if provenance.profile_id != context.profile_id.0
+                    || context.project_id.as_ref().map(|id| id.0.as_str())
+                        != provenance.authority.actor_project_id.as_deref()
+                {
+                    return Err(StoreError::new(
+                        StoreErrorCode::Unauthorized,
+                        "Agent query Project does not match its Turn",
+                        false,
+                    ));
+                }
+                crate::workspace::validate_persisted_turn_authority(
+                    connection,
+                    &self.library_id,
+                    provenance,
+                )?;
+            }
             let present = connection
                 .query_row(
                     "SELECT 1 FROM libraries WHERE id = ?1 AND profile_id = ?2",
@@ -95,11 +128,13 @@ impl QueryModule {
                     false,
                 ));
             }
-            crate::database::authorization::project_primary_database(
-                connection,
-                &self.library_id,
-                &context.project_id.as_ref().expect("validated Project").0,
-            )?;
+            if let Some(project_id) = &context.project_id {
+                crate::database::authorization::project_primary_database(
+                    connection,
+                    &self.library_id,
+                    &project_id.0,
+                )?;
+            }
             Ok((
                 crate::document::read_store_epoch(connection)?,
                 crate::infrastructure::local_commit::head(connection)?,
@@ -117,12 +152,59 @@ impl QueryModule {
             error: Mutex::new(None),
         });
         let value = match request.read {
-            QueryRead::Schema { scope, relation } => QueryReadValue::Schema {
+            QueryRead::Schema { scope, relation }
+            | QueryRead::AgentSchema {
+                scope, relation, ..
+            } => QueryReadValue::Schema {
                 value: provider::describe(&snapshot, scope, relation.as_deref())?,
             },
-            QueryRead::Query { query } => QueryReadValue::Query {
-                value: engine::execute(snapshot, query)?,
-            },
+            QueryRead::Query { query } | QueryRead::AgentQuery { query, .. } => {
+                QueryReadValue::Query {
+                    value: engine::execute(snapshot, query)?,
+                }
+            }
+            QueryRead::AgentDisplayedViewQuery {
+                authorization,
+                coordinate,
+                projection_property_ids,
+                selection,
+            } => {
+                let projection = snapshot.read(|connection| {
+                    crate::database::query::project_effective_view(
+                        connection,
+                        context,
+                        &self.library_id,
+                        commit_head,
+                        crate::database::query::EffectiveViewRequest {
+                            authorization: &authorization,
+                            coordinate: &coordinate,
+                            projection_property_ids: projection_property_ids.as_deref(),
+                            selection: &selection,
+                        },
+                        &|rows, bytes| snapshot.charge(rows, bytes),
+                    )
+                })?;
+                let limit = match selection {
+                    nodex_core_contracts::database::DatabaseDisplayedViewSelection::Effective {
+                        limit,
+                    } => limit,
+                    nodex_core_contracts::database::DatabaseDisplayedViewSelection::Observed {
+                        ..
+                    } => None,
+                };
+                let result = engine::execute_projection(snapshot, &projection.rows, limit)?;
+                QueryReadValue::DisplayedViewQuery {
+                    value: DatabaseDisplayedViewQueryResult {
+                        result,
+                        rules_fingerprint: projection.rules_fingerprint,
+                        view_revision: coordinate.expected_view_revision,
+                        schema_revision: coordinate.expected_schema_revision,
+                        preferences_revision: coordinate.expected_preferences_revision,
+                        coverage: projection.coverage,
+                        total_effective_occurrences: projection.total_occurrences,
+                    },
+                }
+            }
         };
         Ok(ModuleReadSnapshot {
             contract_version: QUERY_CONTRACT_VERSION,

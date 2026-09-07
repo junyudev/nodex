@@ -131,6 +131,7 @@ describe("dynamic tool registry", () => {
         name: "Review release notes",
         prompt: "Review release notes and summarize risks.",
         rrule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0",
+        projectId: "project:nodex",
         cwds: "/repo/nodex",
         executionEnvironment: "worktree",
         localEnvironmentConfigPath: null,
@@ -147,6 +148,7 @@ describe("dynamic tool registry", () => {
     expect(state?.title ?? "").toBe("Review release notes");
     expect(state?.subtitle ?? "").toBe("Daily");
     expect(state?.canAccept ?? false).toBe(true);
+    expect(state?.createInput?.projectId).toBe("project:nodex");
     expect(state?.createInput?.cwds?.join(",") ?? "").toBe("/repo/nodex");
     expect(state?.createInput?.executionEnvironment ?? "").toBe("worktree");
   });

@@ -1,4 +1,11 @@
 import { createAsyncQuestionRuntime } from "./async-question-runtime";
+import type { CodexTurnPresentationTicket } from "../../../shared/nodex-app-tools/turn-presentation";
+import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
+import {
+  captureCodexTurnPresentation,
+  readCodexSubmissionPresentation,
+} from "../../lib/codex-turn-presentation";
+import { useWorkbenchWindowOwner } from "../../lib/use-workbench-window-state";
 import {
   createContext,
   createElement,
@@ -182,6 +189,7 @@ import {
   applyCodexConversationStateUpdates,
   buildCodexConversationStateUpdates,
 } from "../../../shared/codex-conversation-patches";
+import { projectCodexConversationDocument as toSharedConversationDocument } from "../../../shared/codex-conversation-document";
 import {
   applyCodexConversationHistoryMutation,
   codexConversationHistoryPageRequestKey,
@@ -754,6 +762,7 @@ interface RendererOwnerAppServerRequestClient {
   startTurn(
     conversationId: string,
     params: {
+      presentationTicket?: CodexTurnPresentationTicket;
       threadId: string;
       prompt: string;
       opts?: CodexTurnStartOptions;
@@ -764,6 +773,7 @@ interface RendererOwnerAppServerRequestClient {
   resumeInterruptedTurn(
     conversationId: string,
     params: {
+      presentationTicket?: CodexTurnPresentationTicket;
       threadId: string;
       opts?: CodexTurnStartOptions;
       clientUserMessageId: string;
@@ -835,6 +845,7 @@ class IpcRendererOwnerAppServerRequestClient implements RendererOwnerAppServerRe
   async startTurn(
     conversationId: string,
     params: {
+      presentationTicket?: CodexTurnPresentationTicket;
       threadId: string;
       prompt: string;
       opts?: CodexTurnStartOptions;
@@ -851,6 +862,7 @@ class IpcRendererOwnerAppServerRequestClient implements RendererOwnerAppServerRe
   async resumeInterruptedTurn(
     conversationId: string,
     params: {
+      presentationTicket?: CodexTurnPresentationTicket;
       threadId: string;
       opts?: CodexTurnStartOptions;
       clientUserMessageId: string;
@@ -2037,17 +2049,6 @@ function projectOwnerCanonicalTurnMetadataResult(
         ? projection.conversation.updatedAt
         : Math.max(projection.conversation.updatedAt, touchedAtMs),
   };
-}
-
-function toSharedConversationDocument(
-  conversation: CodexConversationSnapshot,
-): CodexConversationSnapshot {
-  const requests = conversation.requests.filter(
-    (request) => request.type !== "nodexAgentAuthorization",
-  );
-  return requests.length === conversation.requests.length
-    ? conversation
-    : { ...conversation, requests };
 }
 
 function resolveAcceptedConversationReplica(input: {
@@ -5615,10 +5616,19 @@ export class CodexAppServerManager {
     switch (action.type) {
       case "startTurn":
         this.assertOwnerForConversation(action.threadId);
-        return await this.startTurnAsOwner(action.threadId, action.prompt, action.opts);
+        return await this.startTurnAsOwner(
+          action.threadId,
+          action.prompt,
+          action.opts,
+          action.presentationTicket,
+        );
       case "resumeInterruptedTurn":
         this.assertOwnerForConversation(action.threadId);
-        return await this.resumeInterruptedTurnAsOwner(action.threadId, action.opts);
+        return await this.resumeInterruptedTurnAsOwner(
+          action.threadId,
+          action.opts,
+          action.presentationTicket,
+        );
       case "steerTurn":
         this.assertOwnerForConversation(action.input.threadId);
         return await this.steerTurnAsOwner(action.input);
@@ -5655,6 +5665,7 @@ export class CodexAppServerManager {
           action.turnId,
           action.message,
           action.opts,
+          action.presentationTicket,
         );
       case "forkConversationFromTurn":
         this.assertOwnerForConversation(action.threadId);
@@ -5676,7 +5687,12 @@ export class CodexAppServerManager {
         return await this.hydratePersistedHistoryOccurrenceAsOwner(action.input);
       case "enqueueQueuedFollowUp":
         this.assertOwnerForConversation(action.threadId);
-        return await this.enqueueQueuedFollowUpAsOwner(action.threadId, action.prompt, action.opts);
+        return await this.enqueueQueuedFollowUpAsOwner(
+          action.threadId,
+          action.prompt,
+          action.opts,
+          action.presentationTicket,
+        );
       case "removeQueuedFollowUp":
         this.assertOwnerForConversation(action.threadId);
         return await this.removeQueuedFollowUpAsOwner(action.threadId, action.followUpId);
@@ -5688,6 +5704,7 @@ export class CodexAppServerManager {
           action.expectedLedgerRevision,
           action.prompt,
           action.opts,
+          action.presentationTicket,
         );
       case "reorderQueuedFollowUps":
         this.assertOwnerForConversation(action.threadId);
@@ -5769,6 +5786,7 @@ export class CodexAppServerManager {
     threadId: string,
     prompt: string,
     opts?: CodexTurnStartOptions,
+    presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<unknown> {
     return await this.executeConversationAction({
       conversationId: threadId,
@@ -5778,13 +5796,18 @@ export class CodexAppServerManager {
         threadId,
         prompt,
         opts,
+        presentationTicket,
       },
-      executeAsOwner: () => this.startTurnAsOwner(threadId, prompt, opts),
+      executeAsOwner: () => this.startTurnAsOwner(threadId, prompt, opts, presentationTicket),
       waitForStreamRevision: true,
     });
   }
 
-  async resumeInterruptedTurn(threadId: string, opts?: CodexTurnStartOptions): Promise<unknown> {
+  async resumeInterruptedTurn(
+    threadId: string,
+    opts?: CodexTurnStartOptions,
+    presentationTicket?: CodexTurnPresentationTicket,
+  ): Promise<unknown> {
     const existing = this.interruptedTurnResumesInFlightByThreadId.get(threadId);
     if (existing) return await existing;
 
@@ -5795,8 +5818,9 @@ export class CodexAppServerManager {
         type: "resumeInterruptedTurn",
         threadId,
         opts,
+        presentationTicket,
       },
-      executeAsOwner: () => this.resumeInterruptedTurnAsOwner(threadId, opts),
+      executeAsOwner: () => this.resumeInterruptedTurnAsOwner(threadId, opts, presentationTicket),
       waitForStreamRevision: true,
     });
     this.interruptedTurnResumesInFlightByThreadId.set(threadId, operation);
@@ -5812,6 +5836,7 @@ export class CodexAppServerManager {
   private async resumeInterruptedTurnAsOwner(
     threadId: string,
     opts?: CodexTurnStartOptions,
+    presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<unknown> {
     await this.ensureOwnerForConversationAction(threadId, "resume interrupted turn");
     const conversation = this.conversationsById.get(threadId);
@@ -5859,6 +5884,7 @@ export class CodexAppServerManager {
       failureMode: "remove",
       request: () =>
         this.ownerAppServerRequestClient.resumeInterruptedTurn(threadId, {
+          presentationTicket,
           threadId,
           opts,
           clientUserMessageId,
@@ -5870,15 +5896,17 @@ export class CodexAppServerManager {
     threadId: string,
     prompt: string,
     opts?: CodexTurnStartOptions,
+    presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<unknown> {
     await this.ensureOwnerForConversationAction(threadId, "start turn");
-    return await this.startTurnAsOwnerLocalTransaction(threadId, prompt, opts);
+    return await this.startTurnAsOwnerLocalTransaction(threadId, prompt, opts, presentationTicket);
   }
 
   private async startTurnAsOwnerLocalTransaction(
     threadId: string,
     prompt: string,
     opts?: CodexTurnStartOptions,
+    presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<unknown> {
     const promptInput = opts?.promptInput;
     const preparedPrompt = await prepareCodexPrompt(prompt, promptInput, {
@@ -5905,6 +5933,7 @@ export class CodexAppServerManager {
       canonicalParams,
       request: () =>
         this.ownerAppServerRequestClient.startTurn(threadId, {
+          presentationTicket,
           threadId,
           prompt,
           opts,
@@ -6065,6 +6094,7 @@ export class CodexAppServerManager {
     threadId: string,
     prompt: string,
     opts?: CodexTurnStartOptions,
+    presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<void> {
     await this.executeConversationAction({
       conversationId: threadId,
@@ -6074,8 +6104,10 @@ export class CodexAppServerManager {
         threadId,
         prompt,
         opts,
+        presentationTicket,
       },
-      executeAsOwner: () => this.enqueueQueuedFollowUpAsOwner(threadId, prompt, opts),
+      executeAsOwner: () =>
+        this.enqueueQueuedFollowUpAsOwner(threadId, prompt, opts, presentationTicket),
       waitForStreamRevision: true,
     });
   }
@@ -6084,9 +6116,16 @@ export class CodexAppServerManager {
     threadId: string,
     prompt: string,
     opts?: CodexTurnStartOptions,
+    presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<OwnerStreamRevisionResult | void> {
     await this.ensureOwnerForConversationAction(threadId, "enqueue follow-up");
-    await runConversationOperation("codex:thread:follow-up:enqueue", threadId, prompt, opts);
+    await runConversationOperation(
+      "codex:thread:follow-up:enqueue",
+      threadId,
+      prompt,
+      opts,
+      presentationTicket,
+    );
   }
 
   async removeQueuedFollowUp(threadId: string, followUpId: string): Promise<void> {
@@ -6117,6 +6156,7 @@ export class CodexAppServerManager {
     expectedLedgerRevision: number,
     prompt: string,
     opts?: CodexTurnStartOptions,
+    presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<boolean> {
     return await this.executeConversationAction({
       conversationId: threadId,
@@ -6128,6 +6168,7 @@ export class CodexAppServerManager {
         expectedLedgerRevision,
         prompt,
         opts,
+        presentationTicket,
       },
       executeAsOwner: () =>
         this.replaceQueuedFollowUpAsOwner(
@@ -6136,6 +6177,7 @@ export class CodexAppServerManager {
           expectedLedgerRevision,
           prompt,
           opts,
+          presentationTicket,
         ),
       waitForStreamRevision: true,
     });
@@ -6147,6 +6189,7 @@ export class CodexAppServerManager {
     expectedLedgerRevision: number,
     prompt: string,
     opts?: CodexTurnStartOptions,
+    presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<boolean> {
     await this.ensureOwnerForConversationAction(threadId, "replace queued follow-up");
     return await runConversationOperation(
@@ -6156,6 +6199,7 @@ export class CodexAppServerManager {
       expectedLedgerRevision,
       prompt,
       opts,
+      presentationTicket,
     );
   }
 
@@ -6264,18 +6308,21 @@ export class CodexAppServerManager {
     turnId: string,
     message: string,
     opts?: { serviceTier?: CodexServiceTier },
+    presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<CodexThreadActionResult> {
     return await this.executeConversationAction({
       conversationId: threadId,
       label: "edit last user turn",
       action: {
         type: "editLastUserTurn",
+        presentationTicket,
         threadId,
         turnId,
         message,
         opts,
       },
-      executeAsOwner: () => this.editLastUserTurnAsOwner(threadId, turnId, message, opts),
+      executeAsOwner: () =>
+        this.editLastUserTurnAsOwner(threadId, turnId, message, opts, presentationTicket),
       waitForStreamRevision: true,
     });
   }
@@ -6285,6 +6332,7 @@ export class CodexAppServerManager {
     turnId: string,
     message: string,
     opts?: { serviceTier?: CodexServiceTier },
+    presentationTicket?: CodexTurnPresentationTicket,
   ): Promise<CodexThreadActionResult> {
     const role = this.streamState.getRole(threadId);
     if (role?.role !== "owner") {
@@ -6327,10 +6375,15 @@ export class CodexAppServerManager {
       { notifyMode: "sync" },
     );
 
-    const startResult = await this.startTurnAsOwnerLocalTransaction(threadId, message, {
-      ...opts,
-      promptInput: replacementPromptInput,
-    });
+    const startResult = await this.startTurnAsOwnerLocalTransaction(
+      threadId,
+      message,
+      {
+        ...opts,
+        promptInput: replacementPromptInput,
+      },
+      presentationTicket,
+    );
     const startRevision = asRecord(startResult)?.streamRevision;
 
     return {
@@ -11889,6 +11942,7 @@ export function useCodexThreadStartProgress(
 
 export function useCodexAppServerControl(activeProjectId: string | null) {
   const manager = useDefaultCodexAppServerManager();
+  const workbenchOwner = useWorkbenchWindowOwner();
   const availableModels = useCodexAvailableModels();
   const permissionState = useCodexPermissionState(activeProjectId);
   const permissionMode = permissionState.mode;
@@ -11972,12 +12026,27 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     [manager],
   );
 
+  const captureSubmissionPresentation = useCallback(
+    () => readCodexSubmissionPresentation(workbenchOwner),
+    [workbenchOwner],
+  );
+
   const startThreadForSession = useCallback(
     async (
       input: CodexThreadStartForSessionInput & {
         collaborationMode?: CodexCollaborationModeKind;
       },
+      submittedPresentation?: WorkbenchSubmitPresentation,
     ) => {
+      const presentationTicket = await captureCodexTurnPresentation(
+        workbenchOwner,
+        {
+          kind: "session",
+          sessionId: input.sessionId,
+          launchId: input.firstSubmission.launchId,
+        },
+        submittedPresentation,
+      );
       const resolvedSettings = resolveCodexThreadSettings(storedThreadSettings, availableModels);
       const requestSettings = resolveCodexDraftRequestSettings(input, resolvedSettings);
       const effectiveServiceTier = resolveCodexRequestServiceTier(
@@ -11986,6 +12055,7 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
       );
       const result = await manager.startThreadForSession({
         ...input,
+        presentationTicket,
         ...requestSettings,
         ...buildCodexServiceTierRequestOverride(effectiveServiceTier),
         executionProfile: input.executionProfile ?? executionProfile ?? undefined,
@@ -12001,11 +12071,22 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
       manager,
       serviceTierSettings.serviceTier,
       storedThreadSettings,
+      workbenchOwner,
     ],
   );
 
   const startSideChat = useCallback(
-    async (input: CodexSideChatStartInput) => {
+    async (input: CodexSideChatStartInput, submittedPresentation?: WorkbenchSubmitPresentation) => {
+      const clientUserMessageId = createOwnerClientUserMessageId();
+      const presentationTicket = await captureCodexTurnPresentation(
+        workbenchOwner,
+        {
+          kind: "side_chat",
+          parentThreadId: input.parentThreadId,
+          clientUserMessageId,
+        },
+        submittedPresentation,
+      );
       const resolvedSettings = resolveCodexThreadSettings(storedThreadSettings, availableModels);
       const requestSettings = resolveCodexDraftRequestSettings(input, resolvedSettings);
       const effectiveServiceTier = resolveCodexRequestServiceTier(
@@ -12014,11 +12095,19 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
       );
       return manager.startSideChat({
         ...input,
+        presentationTicket,
+        clientUserMessageId,
         ...requestSettings,
         ...buildCodexServiceTierRequestOverride(effectiveServiceTier),
       });
     },
-    [availableModels, manager, serviceTierSettings.serviceTier, storedThreadSettings],
+    [
+      availableModels,
+      manager,
+      serviceTierSettings.serviceTier,
+      storedThreadSettings,
+      workbenchOwner,
+    ],
   );
 
   const discardSideChat = useCallback(
@@ -12054,7 +12143,16 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         serviceTier?: CodexServiceTier;
         promptInput?: CodexTurnStartOptions["promptInput"];
       },
+      submittedPresentation?: WorkbenchSubmitPresentation,
     ) => {
+      const presentationTicket = await captureCodexTurnPresentation(
+        workbenchOwner,
+        {
+          kind: "thread",
+          threadId,
+        },
+        submittedPresentation,
+      );
       const resolvedProjectId = opts?.projectId ?? activeProjectId;
       await manager.loadPermissionState(resolvedProjectId);
       const turnOpts: CodexTurnStartOptions = {
@@ -12065,20 +12163,36 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         ...(opts?.promptInput ? { promptInput: opts.promptInput } : {}),
         ...buildCodexServiceTierRequestOverride(opts?.serviceTier ?? null),
       };
-      return manager.startTurn(threadId, prompt, turnOpts);
+      return manager.startTurn(threadId, prompt, turnOpts, presentationTicket);
     },
-    [activeProjectId, manager],
+    [activeProjectId, manager, workbenchOwner],
   );
 
   const resumeInterruptedTurn = useCallback(
-    async (threadId: string, opts?: { projectId?: string }) => {
+    async (
+      threadId: string,
+      opts?: { projectId?: string },
+      submittedPresentation?: WorkbenchSubmitPresentation,
+    ) => {
+      const presentationTicket = await captureCodexTurnPresentation(
+        workbenchOwner,
+        {
+          kind: "thread",
+          threadId,
+        },
+        submittedPresentation,
+      );
       const resolvedProjectId = opts?.projectId ?? activeProjectId;
       await manager.loadPermissionState(resolvedProjectId);
-      return await manager.resumeInterruptedTurn(threadId, {
-        permissionMode: manager.readPermissionMode(resolvedProjectId),
-      });
+      return await manager.resumeInterruptedTurn(
+        threadId,
+        {
+          permissionMode: manager.readPermissionMode(resolvedProjectId),
+        },
+        presentationTicket,
+      );
     },
-    [activeProjectId, manager],
+    [activeProjectId, manager, workbenchOwner],
   );
 
   const enqueueQueuedFollowUp = useCallback(
@@ -12091,7 +12205,16 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         serviceTier?: CodexServiceTier;
         promptInput?: CodexTurnStartOptions["promptInput"];
       },
+      submittedPresentation?: WorkbenchSubmitPresentation,
     ) => {
+      const presentationTicket = await captureCodexTurnPresentation(
+        workbenchOwner,
+        {
+          kind: "thread",
+          threadId,
+        },
+        submittedPresentation,
+      );
       const resolvedProjectId = opts?.projectId ?? activeProjectId;
       await manager.loadPermissionState(resolvedProjectId);
       const turnOpts: CodexTurnStartOptions = {
@@ -12100,9 +12223,9 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
         ...(opts?.promptInput ? { promptInput: opts.promptInput } : {}),
         ...buildCodexServiceTierRequestOverride(opts?.serviceTier ?? null),
       };
-      await manager.enqueueQueuedFollowUp(threadId, prompt, turnOpts);
+      await manager.enqueueQueuedFollowUp(threadId, prompt, turnOpts, presentationTicket);
     },
-    [activeProjectId, manager],
+    [activeProjectId, manager, workbenchOwner],
   );
 
   const removeQueuedFollowUp = useCallback(
@@ -12117,8 +12240,26 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
       expectedLedgerRevision: number,
       prompt: string,
       opts?: CodexTurnStartOptions,
-    ) => manager.replaceQueuedFollowUp(threadId, followUpId, expectedLedgerRevision, prompt, opts),
-    [manager],
+      submittedPresentation?: WorkbenchSubmitPresentation,
+    ) => {
+      const presentationTicket = await captureCodexTurnPresentation(
+        workbenchOwner,
+        {
+          kind: "thread",
+          threadId,
+        },
+        submittedPresentation,
+      );
+      return manager.replaceQueuedFollowUp(
+        threadId,
+        followUpId,
+        expectedLedgerRevision,
+        prompt,
+        opts,
+        presentationTicket,
+      );
+    },
+    [manager, workbenchOwner],
   );
   const reorderQueuedFollowUps = useCallback(
     async (threadId: string, orderedFollowUpIds: string[]) =>
@@ -12145,15 +12286,25 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
       turnId: string,
       message: string,
       opts?: { serviceTier?: CodexServiceTier },
+      submittedPresentation?: WorkbenchSubmitPresentation,
     ) => {
+      const presentationTicket = await captureCodexTurnPresentation(
+        workbenchOwner,
+        {
+          kind: "thread",
+          threadId,
+        },
+        submittedPresentation,
+      );
       return manager.editLastUserTurn(
         threadId,
         turnId,
         message,
         buildCodexServiceTierRequestOverride(opts?.serviceTier ?? null),
+        presentationTicket,
       );
     },
-    [manager],
+    [manager, workbenchOwner],
   );
   const forkConversationFromTurn = useCallback(
     async (threadId: string, turnId: string, message: string) =>
@@ -12269,8 +12420,18 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
   );
 
   const steerTurn = useCallback(
-    async (input: CodexSteerTurnInput) => manager.steerTurn(input),
-    [manager],
+    async (input: CodexSteerTurnInput, submittedPresentation?: WorkbenchSubmitPresentation) => {
+      const presentationTicket = await captureCodexTurnPresentation(
+        workbenchOwner,
+        {
+          kind: "thread",
+          threadId: input.threadId,
+        },
+        submittedPresentation,
+      );
+      return manager.steerTurn({ ...input, presentationTicket });
+    },
+    [manager, workbenchOwner],
   );
   const interruptTurn = useCallback(
     async (threadId: string, turnId?: string) => manager.interruptTurn(threadId, turnId),
@@ -12378,6 +12539,7 @@ export function useCodexAppServerControl(activeProjectId: string | null) {
     readSubagentOverview,
     hydrateSelectedSubagent,
     refreshSelectedSubagentAuthority,
+    captureSubmissionPresentation,
     startThreadForSession,
     startSideChat,
     discardSideChat,

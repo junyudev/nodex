@@ -21,6 +21,7 @@ const authority = {
   libraryId: identity.libraryId,
   storeEpoch: identity.storeEpoch,
   frozenAtMs: 1_785_491_085_000,
+  readOnly: false,
   scope: "project" as const,
   source: "project_turn" as const,
 };

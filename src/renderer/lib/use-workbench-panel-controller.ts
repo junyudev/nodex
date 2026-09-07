@@ -1,11 +1,10 @@
-import { useCallback, useMemo, useReducer, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
-  createWorkbenchEphemeralPanelState,
-  reduceWorkbenchEphemeralPanelState,
   type WorkbenchEphemeralPanelState,
   type WorkbenchEphemeralPanelStateField,
   type WorkbenchEphemeralPanelStateUpdate,
 } from "./workbench-ephemeral-panel-state";
+import { useWorkbenchEphemeralPanels } from "./use-workbench-window-state";
 import type { PanelId, ProjectSession } from "../../shared/types";
 import {
   activateWorkbenchSceneSurface,
@@ -322,11 +321,7 @@ export function useWorkbenchPanelController({
   mutateScene,
 }: WorkbenchPanelControllerInput): WorkbenchPanelController {
   const [tabOpenerStore] = useState(createWorkbenchPanelTabOpenerStore);
-  const [state, dispatch] = useReducer(
-    reduceWorkbenchEphemeralPanelState,
-    undefined,
-    createWorkbenchEphemeralPanelState,
-  );
+  const { state, dispatch, owner } = useWorkbenchEphemeralPanels();
   const update = useCallback(
     <Field extends WorkbenchEphemeralPanelStateField>(
       field: Field,
@@ -338,21 +333,21 @@ export function useWorkbenchPanelController({
         update: value,
       } as Parameters<typeof dispatch>[0]);
     },
-    [],
+    [dispatch],
   );
   const pruneSession = useCallback(
     (sessionId: string) => {
       dispatch({ type: "prune-session", sessionId });
       tabOpenerStore.pruneOwner(makeWorkbenchSessionPanelOwnerKey(sessionId));
     },
-    [tabOpenerStore],
+    [dispatch, tabOpenerStore],
   );
   const pruneOwner = useCallback(
     (ownerKey: string) => {
       dispatch({ type: "prune-owner", ownerKey });
       tabOpenerStore.pruneOwner(ownerKey);
     },
-    [tabOpenerStore],
+    [dispatch, tabOpenerStore],
   );
   const commands = useMemo(
     () =>
@@ -739,6 +734,7 @@ export function useWorkbenchPanelController({
       tabId,
       durableTabIds,
     }: WorkbenchRenderableTabSelectionInput): boolean => {
+      const state = owner.read().ephemeralPanels;
       const slotKeys = [
         makeWorkbenchSessionPanelSlotKey(sessionId, panelId, leafId),
         makeWorkbenchSessionPanelSlotKey(sessionId, panelId),
@@ -810,7 +806,7 @@ export function useWorkbenchPanelController({
       tabOpenerStore.recordActivated(openerScopeKey, tabId, visibleTabIds);
       return true;
     },
-    [state, tabOpenerStore],
+    [dispatch, owner, tabOpenerStore],
   );
   const removeEphemeralTab = useCallback(
     ({
@@ -819,6 +815,7 @@ export function useWorkbenchPanelController({
       leafId,
       tabId,
     }: WorkbenchEphemeralTabRemovalInput): WorkbenchEphemeralTab | null => {
+      const state = owner.read().ephemeralPanels;
       const candidates = [
         {
           tabsField: "sideChatTabsBySession" as const,
@@ -881,7 +878,7 @@ export function useWorkbenchPanelController({
       }
       return null;
     },
-    [state, tabOpenerStore],
+    [dispatch, owner, tabOpenerStore],
   );
   const upsertEphemeralTab = useCallback(
     (tab: WorkbenchEphemeralTab) => {
@@ -996,7 +993,7 @@ export function useWorkbenchPanelController({
         );
       }
     },
-    [tabOpenerStore],
+    [dispatch, tabOpenerStore],
   );
 
   return useMemo(

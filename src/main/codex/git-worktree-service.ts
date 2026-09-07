@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { WorktreeStartMode } from "../../shared/types";
+import type { CodexPendingWorktreeStartingState } from "../../shared/codex-pending-worktree";
 import {
   buildWorktreeThreadSlug,
   normalizeWorktreeAutoBranchPrefix,
@@ -235,6 +236,7 @@ interface ResolvedDetachedStartingState {
   startingRef: string;
   syncedBranch: string | null;
   untrackedPaths: string[];
+  branchToCreate?: string;
 }
 
 const REMOTE_TRACKING_REF_PREFIX = "refs/remotes/";
@@ -458,12 +460,54 @@ async function resolveSyncedBranchName(
   return startingState.branchName;
 }
 
+/** Resolve an explicitly requested new branch without mutating the source repository. */
+async function resolveRequestedMissingBranch(input: {
+  repositoryPath: string;
+  startingState: ManagedWorktreeStartingState;
+  signal?: AbortSignal;
+}): Promise<ResolvedDetachedStartingState | null> {
+  if (input.startingState.type !== "branch") return null;
+  const { branchName, onMissing, remoteRef } = input.startingState;
+  if (onMissing !== "create-branch" || remoteRef != null) return null;
+  const existing = await runGitCommand(
+    ["rev-parse", "--verify", "--end-of-options", `${branchName}^{commit}`],
+    input.repositoryPath,
+    { signal: input.signal },
+  ).catch(() => {
+    throwIfRequestAborted(input.signal);
+    return null;
+  });
+  if (existing) return null;
+  const validated = await runGitCommand(
+    ["check-ref-format", "--branch", branchName],
+    input.repositoryPath,
+    { signal: input.signal },
+  );
+  if (validated.stdout.trim() !== branchName)
+    throw new Error("A new branch requires an exact branch name");
+  const defaultBranch = await resolvePendingDefaultBranch(input.repositoryPath, input.signal);
+  const base = await runGitCommand(
+    ["rev-parse", "--verify", "--end-of-options", `${defaultBranch}^{commit}`],
+    input.repositoryPath,
+    { signal: input.signal },
+  );
+  return {
+    startingDiff: null,
+    startingRef: base.stdout.trim(),
+    syncedBranch: branchName,
+    untrackedPaths: [],
+    branchToCreate: branchName,
+  };
+}
+
 async function resolveDetachedStartingState(input: {
   repositoryPath: string;
   startingState: ManagedWorktreeStartingState;
   signal?: AbortSignal;
 }): Promise<ResolvedDetachedStartingState> {
   if (input.startingState.type === "branch") {
+    const missingBranch = await resolveRequestedMissingBranch(input);
+    if (missingBranch) return missingBranch;
     const startingRef =
       input.startingState.remoteRef ??
       (await resolveSpecifiedBranchRef(
@@ -964,15 +1008,7 @@ async function cleanupEmptyWorktreeTokenDir(worktreePath: string): Promise<void>
   await rm(tokenDir, { recursive: true, force: true }).catch(() => undefined);
 }
 
-export type ManagedWorktreeStartingState =
-  | {
-      type: "branch";
-      branchName: string;
-      remoteRef?: string;
-    }
-  | {
-      type: "working-tree";
-    };
+export type ManagedWorktreeStartingState = CodexPendingWorktreeStartingState;
 
 export interface CreateManagedWorktreeInput {
   repositoryPath: string;
@@ -1154,6 +1190,7 @@ export async function createManagedWorktree(
     await runAbortChecked(signal, () => mkdir(path.dirname(worktreeGitRoot), { recursive: true }));
 
     let createdTrackingBranch: string | null = null;
+    let createdRequestedBranch: string | null = null;
     try {
       input.onPathAllocated?.({ worktreeGitRoot, worktreeWorkspaceRoot });
       throwIfRequestAborted(signal);
@@ -1193,6 +1230,12 @@ export async function createManagedWorktree(
         { onOutput: input.onLog, signal },
       );
       throwIfRequestAborted(signal);
+      if (detachedStartingState?.branchToCreate) {
+        const ref = `refs/heads/${detachedStartingState.branchToCreate}`;
+        await runGitCommand(["update-ref", ref, baseRef, ""], sourceGitRoot);
+        createdRequestedBranch = ref;
+        throwIfRequestAborted(signal);
+      }
       if (detachedStartingState?.startingDiff) {
         await applyWorkingTreeDiff({
           worktreePath: worktreeGitRoot,
@@ -1240,6 +1283,13 @@ export async function createManagedWorktree(
       };
     } catch (error) {
       await removeManagedWorktree(worktreeGitRoot).catch(() => undefined);
+      if (createdRequestedBranch) {
+        // Compare the original commit so cleanup cannot erase subsequent user work.
+        await runGitCommand(
+          ["update-ref", "--no-deref", "-d", createdRequestedBranch, baseRef],
+          sourceGitRoot,
+        ).catch(() => undefined);
+      }
       if (createdTrackingBranch) {
         await removeLocalTrackingBranch(sourceGitRoot, createdTrackingBranch);
       }

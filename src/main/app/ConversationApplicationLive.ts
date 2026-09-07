@@ -246,6 +246,7 @@ import { makePersistedAtomStore } from "../local-store/persisted-atoms";
 import { resolveCodexThreadHandoffJournalPath } from "../codex/codex-thread-handoff-journal";
 import { makeCodexThreadHandoffJournalStorage } from "../platform/CodexThreadHandoffJournalStorage";
 import { CodexPlatform } from "./CodexApplicationLive";
+import { live as appToolAuthorityLive } from "../app-tools/NodexAppToolAuthority";
 import { MainConfig } from "./MainConfig";
 import { CODEX_INTEGRATION_CAPABILITIES } from "../../shared/codex-integration-capabilities";
 
@@ -316,8 +317,8 @@ const heartbeatTurnCompletion = Layer.unwrap(
                 }),
             ),
           ),
-        request: (hostId, params) =>
-          gateway.requestOnHost(hostId, "turn/start", params).pipe(
+        request: (hostId, params, fence) =>
+          gateway.requestOnHost(hostId, "turn/start", params, fence).pipe(
             Effect.mapError(
               (cause) =>
                 new CodexHeartbeatTurnCompletionError({
@@ -617,8 +618,9 @@ const durableProjection = codexThreadDurableProjectionLive.pipe(
 const notificationEffects = codexProtocolNotificationEffectsLive.pipe(
   Layer.provideMerge(durableProjection),
 );
+const appToolAuthority = appToolAuthorityLive.pipe(Layer.provideMerge(notificationEffects));
 const nodexAgentProtocolTools = nodexAgentProtocolToolsLive.pipe(
-  Layer.provideMerge(notificationEffects),
+  Layer.provideMerge(appToolAuthority),
 );
 const applicationProtocol = codexApplicationProtocolLive.pipe(
   Layer.provideMerge(nodexAgentProtocolTools),

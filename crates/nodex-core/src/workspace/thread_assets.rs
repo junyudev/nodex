@@ -1,6 +1,6 @@
 //! Thread-owned input bytes survive queue removal and conversation hydration.
 //! A thread root retains bytes without creating a user-visible Library File.
-use super::mutation::{WorkspaceMutationEffects, run_mutation, workspace_event_anchor};
+use super::mutation::{WorkspaceMutationEffects, run_mutation};
 use crate::infrastructure::{
     prepared_blobs,
     sqlite::{StoreError, StoreErrorCode},
@@ -62,10 +62,7 @@ pub(super) fn retain(
     let actor = context
         .project_id
         .as_ref()
-        .map(|project| Ok(project.0.clone()))
-        .unwrap_or_else(|| {
-            crate::library::resolve_library_actor_project_id(connection, &context.library_id.0)
-        })?;
+        .map(|project| project.0.as_str());
     let mut seen = BTreeSet::new();
     let mut total = 0u64;
     let prepared = receipt_ids
@@ -81,7 +78,7 @@ pub(super) fn retain(
                 connection,
                 store_epoch,
                 &context.library_id.0,
-                &actor,
+                actor,
                 operation_id,
                 id,
             )?;
@@ -124,7 +121,7 @@ pub(super) fn retain(
             Ok(WorkspaceMutationEffects {
                 operation_kind: "retain_thread_assets",
                 project_catalog_change: None,
-                change_project_id: workspace_event_anchor(connection, &context.library_id.0)?,
+                change_project_id: None,
                 project_ids: Vec::new(),
                 session_ids: Vec::new(),
                 thread_ids: vec![thread_id.to_owned()],

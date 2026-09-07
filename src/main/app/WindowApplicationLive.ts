@@ -1,6 +1,14 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import {
+  CodexTurnPresentation,
+  make as makeTurnPresentation,
+} from "../codex-application/CodexTurnPresentation";
+import {
+  WorkbenchAgentBridge,
+  live as workbenchAgentBridgeLive,
+} from "../app-tools/WorkbenchAgentBridge";
+import {
   AvatarOverlayRuntime,
   live as avatarOverlayRuntimeLive,
 } from "../avatar/AvatarOverlayRuntime";
@@ -103,6 +111,9 @@ import { ApplicationSettings } from "../settings/ApplicationSettings";
 const appUpdates = appUpdateRuntimeLive;
 const desktopNotifications = desktopNotificationRuntimeLive;
 const rendererClients = rendererClientRuntimeLive();
+const turnPresentation = Layer.effect(CodexTurnPresentation, makeTurnPresentation).pipe(
+  Layer.provideMerge(workbenchAgentBridgeLive),
+);
 const nodexAgentAuthorization = nodexAgentAuthorizationRuntimeLive.pipe(
   Layer.provideMerge(rendererClients),
 );
@@ -257,6 +268,8 @@ export const live: Layer.Layer<
   | NodexAgentAuthorizationRuntime
   | RemoteHostedPipRuntime
   | RendererClientRuntime
+  | WorkbenchAgentBridge
+  | CodexTurnPresentation
   | StructuralClipboardRuntime
   | EditorHistoryRuntime
   | WindowSessionCatalog.WindowSessionCatalog
@@ -307,4 +320,5 @@ export const live: Layer.Layer<
   structuralClipboard,
   editorHistoryRuntimeLive,
   windowSessions,
+  turnPresentation,
 );

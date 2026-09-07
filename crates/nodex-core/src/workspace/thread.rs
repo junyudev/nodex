@@ -5,7 +5,7 @@ use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::agent::AgentBackendBinding;
 use nodex_core_contracts::workspace::{
     CodexPermissionMode, CodexThreadActiveFlag, CodexThreadStatusType,
-    ProjectWorkspaceDynamicToolCatalog, ProjectWorkspaceThread,
+    ProjectSessionInvalidationScope, ProjectWorkspaceDynamicToolCatalog, ProjectWorkspaceThread,
     ProjectWorkspaceThreadBackendSession, ProjectWorkspaceThreadExecutionLocation,
     ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadPlacement, ProjectWorkspaceThreadStatus,
 };
@@ -18,7 +18,6 @@ use super::ProjectWorkspaceApplyOutcome;
 use super::execution::read_writable_roots;
 use super::mutation::{
     WorkspaceMutationEffects, finish_mutation, project_session_scope, run_mutation,
-    workspace_event_anchor,
 };
 use super::session_mutation::sqlite_now;
 
@@ -1217,6 +1216,9 @@ pub(super) fn set_thread_pinned(
         thread_id,
         thread.project_id.as_deref(),
     )?;
+    if pinned && session_ids.is_empty() {
+        return Err(invalid("A Sidebar pin requires an owning Session"));
+    }
     let now = sqlite_now(connection)?;
     if pinned {
         for session_id in &session_ids {
@@ -1225,37 +1227,33 @@ pub(super) fn set_thread_pinned(
                 [session_id],
             )?;
         }
-        let next_order = connection.query_row(
-            "SELECT COALESCE(max(pinned_order), -1) + 1 FROM codex_pinned_threads",
-            [],
-            |row| row.get::<_, i64>(0),
-        )?;
-        connection.execute(
-            "INSERT OR IGNORE INTO codex_pinned_threads(\
-               thread_id, pinned_order, created_at, updated_at\
-             ) VALUES (?1, ?2, ?3, ?3)",
-            params![thread_id, next_order, now],
-        )?;
-        if let Some(placement) = placement {
-            place_pinned_thread(connection, library_id, thread_id, placement, &now)?;
-        }
     } else {
         connection.execute(
             "DELETE FROM codex_pinned_threads WHERE thread_id = ?1",
             [thread_id],
         )?;
     }
-    sync_linked_session_pin_mirrors(
-        connection,
-        &session_ids,
-        thread.project_id.as_deref(),
-        pinned,
-        &now,
-    )?;
-    let summary_scopes = if session_ids.is_empty() {
+    sync_linked_session_pin_mirrors(connection, &session_ids, pinned, &now)?;
+    if pinned && let Some(placement) = placement {
+        place_pinned_thread(connection, library_id, thread_id, placement, &now)?;
+    }
+    let affected_pins = if pinned && placement.is_some() {
+        super::sidebar_pins::read_order(connection, library_id)?
+    } else {
+        Vec::new()
+    };
+    let mut affected_session_ids = session_ids;
+    affected_session_ids.extend(affected_pins.iter().map(|row| row.id.clone()));
+    affected_session_ids.sort();
+    affected_session_ids.dedup();
+    let mut affected_thread_ids = vec![thread_id.to_owned()];
+    affected_thread_ids.extend(affected_pins.iter().filter_map(|row| row.thread_id.clone()));
+    affected_thread_ids.sort();
+    affected_thread_ids.dedup();
+    let summary_scopes = if affected_session_ids.is_empty() {
         Vec::new()
     } else {
-        vec![project_session_scope(thread.project_id.as_deref())]
+        vec![ProjectSessionInvalidationScope::All]
     };
     finish_thread_mutation(
         connection,
@@ -1267,8 +1265,8 @@ pub(super) fn set_thread_pinned(
         "set_thread_pinned",
         summary_scopes,
         thread.project_id.into_iter().collect(),
-        session_ids,
-        vec![thread_id.to_owned()],
+        affected_session_ids,
+        affected_thread_ids,
     )
 }
 
@@ -1313,13 +1311,12 @@ fn place_pinned_thread(
         }
     };
     ordered.insert(insertion_index, thread_id.to_owned());
-    write_pinned_thread_order(connection, &ordered, now)
+    write_pinned_thread_order(connection, library_id, &ordered, now)
 }
 
 fn sync_linked_session_pin_mirrors(
     connection: &Connection,
     session_ids: &[String],
-    project_id: Option<&str>,
     pinned: bool,
     now: &str,
 ) -> Result<(), StoreError> {
@@ -1333,13 +1330,7 @@ fn sync_linked_session_pin_mirrors(
             if was_pinned && existing_order.is_some() {
                 existing_order
             } else {
-                Some(connection.query_row(
-                    "SELECT COALESCE(max(pinned_order), -1) + 1 \
-                             FROM project_sessions \
-                             WHERE project_id IS ?1 AND pinned = 1 AND archived = 0",
-                    [project_id],
-                    |row| row.get::<_, i64>(0),
-                )?)
+                Some(super::sidebar_pins::next_order(connection)?)
             }
         } else {
             None
@@ -1354,27 +1345,25 @@ fn sync_linked_session_pin_mirrors(
                 "Linked Project Session disappeared during Thread pin update",
             ));
         }
+        super::sidebar_pins::sync_thread_projection(connection, session_id, now)?;
     }
     Ok(())
 }
 
 fn write_pinned_thread_order(
     connection: &Connection,
+    library_id: &str,
     ordered: &[String],
     now: &str,
 ) -> Result<(), StoreError> {
-    let mut update = connection.prepare(
-        "UPDATE codex_pinned_threads SET pinned_order = ?1, updated_at = ?2 \
-         WHERE thread_id = ?3",
-    )?;
-    for (index, thread_id) in ordered.iter().enumerate() {
-        update.execute(params![
-            i64::try_from(index).expect("pinned Thread order fits i64"),
-            now,
-            thread_id,
-        ])?;
+    let mut session_ids = Vec::new();
+    for thread_id in ordered {
+        if let Some(session_id) = connection.query_row(
+            "SELECT session.id FROM project_session_threads link JOIN project_sessions session ON session.id = link.session_id WHERE link.thread_id = ?1 AND session.pinned = 1 AND session.archived = 0",
+            [thread_id], |row| row.get::<_, String>(0),
+        ).optional()? { session_ids.push(session_id); }
     }
-    Ok(())
+    super::sidebar_pins::reorder_subset(connection, library_id, &session_ids, now)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1411,7 +1400,8 @@ pub(super) fn reorder_pinned_threads(
             .cloned(),
     );
     let now = sqlite_now(connection)?;
-    write_pinned_thread_order(connection, &ordered, &now)?;
+    write_pinned_thread_order(connection, library_id, &ordered, &now)?;
+    let pinned_sessions = super::sidebar_pins::read_order(connection, library_id)?;
     let project_ids = current
         .iter()
         .filter_map(|thread| thread.project_id.clone())
@@ -1426,9 +1416,9 @@ pub(super) fn reorder_pinned_threads(
         operation_id,
         request_hash,
         "reorder_pinned_threads",
-        Vec::new(),
+        vec![ProjectSessionInvalidationScope::All],
         project_ids,
-        Vec::new(),
+        pinned_sessions.into_iter().map(|row| row.id).collect(),
         ordered,
     )
 }
@@ -1743,6 +1733,9 @@ fn pinned_threads(
          FROM codex_threads thread \
          JOIN codex_pinned_threads pinned ON pinned.thread_id = thread.thread_id \
          LEFT JOIN codex_unread_threads unread ON unread.thread_id = thread.thread_id \
+         JOIN project_session_threads link ON link.thread_id = thread.thread_id \
+         JOIN project_sessions session ON session.id = link.session_id \
+           AND session.pinned = 1 AND session.archived = 0 \
          WHERE thread.archived = 0 AND thread.parent_thread_id IS NULL \
            AND (thread.project_id IS NULL OR EXISTS (\
              SELECT 1 FROM projects project \
@@ -2403,8 +2396,8 @@ fn finish_thread_mutation_with_optional_project_catalog_change(
 
 #[allow(clippy::too_many_arguments)]
 fn thread_mutation_effects(
-    connection: &Connection,
-    library_id: &str,
+    _connection: &Connection,
+    _library_id: &str,
     operation_kind: &'static str,
     project_catalog_change: Option<nodex_core_contracts::workspace::ProjectCatalogChangeKind>,
     session_summary_scopes: Vec<nodex_core_contracts::workspace::ProjectSessionInvalidationScope>,
@@ -2418,10 +2411,7 @@ fn thread_mutation_effects(
     } else {
         session_ids.clone()
     };
-    let change_project_id = project_ids
-        .first()
-        .cloned()
-        .map_or_else(|| workspace_event_anchor(connection, library_id), Ok)?;
+    let change_project_id = project_ids.first().cloned();
     Ok(WorkspaceMutationEffects {
         operation_kind,
         project_catalog_change,
@@ -2812,6 +2802,24 @@ mod tests {
                 ),
             )
             .expect("archive consumer");
+        create_session(&module, "create-pin-consumer", "session:consumer");
+        module
+            .apply(
+                &context(),
+                request(
+                    "link-pin-consumer",
+                    ProjectWorkspaceIntent::MutateSession {
+                        session_id: "session:consumer".to_owned(),
+                        intent: ProjectSessionIntent::LinkThread {
+                            thread_id: "thread:3".to_owned(),
+                            expected_project_id: Some("project:default".to_owned()),
+                            thread_patch: None,
+                            execution_location: None,
+                        },
+                    },
+                ),
+            )
+            .unwrap();
         module
             .apply(
                 &context(),
@@ -3244,6 +3252,25 @@ mod tests {
             projectless_execution_context.permission_mode,
             Some(CodexPermissionMode::GuardianApprovals)
         );
+        let session_id = "session:thread-root".to_owned();
+        create_session(&module, "thread-create-session-root", &session_id);
+        module
+            .apply(
+                &context(),
+                request(
+                    "thread-link-root",
+                    ProjectWorkspaceIntent::MutateSession {
+                        session_id,
+                        intent: ProjectSessionIntent::LinkThread {
+                            thread_id: "thread-root".to_owned(),
+                            expected_project_id: Some("project:default".to_owned()),
+                            thread_patch: None,
+                            execution_location: None,
+                        },
+                    },
+                ),
+            )
+            .expect("link Thread to Session");
         module
             .apply(
                 &context(),
@@ -3351,25 +3378,6 @@ mod tests {
             .expect_err("duplicate dynamic namespace must fail");
         assert_eq!(duplicate_catalog.code, CoreErrorCode::InvalidInput);
 
-        let session_id = "session:thread-root".to_owned();
-        create_session(&module, "thread-create-session-root", &session_id);
-        module
-            .apply(
-                &context(),
-                request(
-                    "thread-link-root",
-                    ProjectWorkspaceIntent::MutateSession {
-                        session_id,
-                        intent: ProjectSessionIntent::LinkThread {
-                            thread_id: "thread-root".to_owned(),
-                            expected_project_id: Some("project:default".to_owned()),
-                            thread_patch: None,
-                            execution_location: None,
-                        },
-                    },
-                ),
-            )
-            .expect("link Thread to Session");
         let mismatched_move = module
             .apply(
                 &context(),
@@ -3610,6 +3618,27 @@ mod tests {
             )
             .expect("link Thread to Session");
 
+        for thread_id in ["thread-a", "thread-c"] {
+            let id = format!("session:{thread_id}");
+            create_session(&module, &format!("create-{id}"), &id);
+            module
+                .apply(
+                    &context(),
+                    request(
+                        &format!("link-{id}"),
+                        ProjectWorkspaceIntent::MutateSession {
+                            session_id: id,
+                            intent: ProjectSessionIntent::LinkThread {
+                                thread_id: thread_id.to_owned(),
+                                expected_project_id: Some("project:default".to_owned()),
+                                thread_patch: None,
+                                execution_location: None,
+                            },
+                        },
+                    ),
+                )
+                .unwrap();
+        }
         for thread_id in ["thread-a", "thread-b", "thread-c"] {
             module
                 .apply(
@@ -4030,7 +4059,7 @@ mod tests {
                 thread_id: "thread-root".to_owned(),
                 turn_id: "turn-unrecorded".to_owned(),
                 root_thread_id: "thread-root".to_owned(),
-                actor_project_id: "project:default".to_owned(),
+                actor_project_id: Some("project:default".to_owned()),
             },
         ) else {
             panic!("unrecorded Turn authority read");
@@ -4050,10 +4079,11 @@ mod tests {
                 request(
                     "execution-authority-untrusted",
                     ProjectWorkspaceIntent::FreezeTurnAuthority {
+                        read_only: false,
                         thread_id: "thread-root".to_owned(),
                         turn_id: "turn-untrusted".to_owned(),
                         root_thread_id: "thread-root".to_owned(),
-                        actor_project_id: "project:default".to_owned(),
+                        actor_project_id: Some("project:default".to_owned()),
                         source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
                         inherited_from: None,
                     },
@@ -4080,10 +4110,11 @@ mod tests {
                     request(
                         operation_id,
                         ProjectWorkspaceIntent::FreezeTurnAuthority {
+                            read_only: false,
                             thread_id: "thread-root".to_owned(),
                             turn_id: turn_id.to_owned(),
                             root_thread_id: "thread-root".to_owned(),
-                            actor_project_id: "project:default".to_owned(),
+                            actor_project_id: Some("project:default".to_owned()),
                             source,
                             inherited_from: None,
                         },
@@ -4097,10 +4128,11 @@ mod tests {
                 request(
                     "execution-authority-inherited",
                     ProjectWorkspaceIntent::FreezeTurnAuthority {
+                        read_only: false,
                         thread_id: "thread-child".to_owned(),
                         turn_id: "turn-child".to_owned(),
                         root_thread_id: "thread-root".to_owned(),
-                        actor_project_id: "project:default".to_owned(),
+                        actor_project_id: Some("project:default".to_owned()),
                         source: ProjectWorkspaceTurnAuthoritySource::InheritedBuiltinFullAccess,
                         inherited_from: Some(ProjectWorkspaceTurnCoordinate {
                             thread_id: "thread-root".to_owned(),
@@ -4117,7 +4149,7 @@ mod tests {
                 thread_id: "thread-child".to_owned(),
                 turn_id: "turn-child".to_owned(),
                 root_thread_id: "thread-root".to_owned(),
-                actor_project_id: "project:default".to_owned(),
+                actor_project_id: Some("project:default".to_owned()),
             },
         ) else {
             panic!("Turn authority read");
@@ -4128,6 +4160,72 @@ mod tests {
             resolution.authority.expect("current authority").scope,
             ProjectWorkspaceTurnAuthorityScope::Library
         );
+        for (thread_id, turn_id, source, inherited_from) in [
+            (
+                "thread-root",
+                "turn-read-only",
+                ProjectWorkspaceTurnAuthoritySource::BuiltinFullAccess,
+                None,
+            ),
+            (
+                "thread-child",
+                "turn-inherited-read-only",
+                ProjectWorkspaceTurnAuthoritySource::InheritedBuiltinFullAccess,
+                Some(ProjectWorkspaceTurnCoordinate {
+                    thread_id: "thread-root".to_owned(),
+                    turn_id: "turn-read-only".to_owned(),
+                }),
+            ),
+        ] {
+            module
+                .apply(
+                    &context(),
+                    request(
+                        turn_id,
+                        ProjectWorkspaceIntent::FreezeTurnAuthority {
+                            thread_id: thread_id.to_owned(),
+                            turn_id: turn_id.to_owned(),
+                            root_thread_id: "thread-root".to_owned(),
+                            actor_project_id: Some("project:default".to_owned()),
+                            source,
+                            read_only: thread_id == "thread-root",
+                            inherited_from,
+                        },
+                    ),
+                )
+                .expect("freeze read-only lineage");
+            let ProjectWorkspaceReadValue::TurnAuthority { resolution } = read(
+                &module,
+                ProjectWorkspaceRead::TurnAuthority {
+                    thread_id: thread_id.to_owned(),
+                    turn_id: turn_id.to_owned(),
+                    root_thread_id: "thread-root".to_owned(),
+                    actor_project_id: Some("project:default".to_owned()),
+                },
+            ) else {
+                panic!("read-only authority")
+            };
+            assert!(resolution.read_only);
+        }
+        let rejected = module
+            .apply(
+                &context(),
+                request(
+                    "read-only-escalation",
+                    ProjectWorkspaceIntent::FreezeTurnAuthority {
+                        thread_id: "thread-root".to_owned(),
+                        turn_id: "turn-read-only".to_owned(),
+                        root_thread_id: "thread-root".to_owned(),
+                        actor_project_id: Some("project:default".to_owned()),
+                        source: ProjectWorkspaceTurnAuthoritySource::BuiltinFullAccess,
+                        read_only: false,
+                        inherited_from: None,
+                    },
+                ),
+            )
+            .expect_err("immutable Turn policy");
+        assert_eq!(rejected.code, CoreErrorCode::Conflict);
+
         let fingerprint = kernel
             .readers()
             .read_default(|connection| {
@@ -4282,7 +4380,7 @@ mod tests {
                 thread_id: "thread-root".to_owned(),
                 turn_id: "turn-builtin".to_owned(),
                 root_thread_id: "thread-root".to_owned(),
-                actor_project_id: "project:default".to_owned(),
+                actor_project_id: Some("project:default".to_owned()),
             },
         ) else {
             panic!("stale Turn authority read");

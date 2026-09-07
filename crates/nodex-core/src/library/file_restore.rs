@@ -124,7 +124,7 @@ pub(crate) fn apply(
     let write = FileWriteContext {
         connection,
         library_id,
-        actor_id: &authority.actor_project_id,
+        actor_id: authority.actor_project_id.as_deref(),
         turn_id: None,
         operation_id: scope.evidence().operation_id(),
         now: scope.committed_at(),
