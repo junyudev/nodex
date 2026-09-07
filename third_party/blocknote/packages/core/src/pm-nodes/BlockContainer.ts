@@ -1,4 +1,7 @@
 import { Node } from "@tiptap/core";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import { Plugin } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 import type { BlockNoteEditor } from "../editor/BlockNoteEditor.js";
 import { BlockNoteDOMAttributes } from "../schema/index.js";
@@ -12,6 +15,26 @@ const BlockAttributes: Record<string, string> = {
   id: "data-id",
   depth: "data-depth",
   depthChange: "data-depth-change",
+};
+
+/**
+ * Identity is view metadata, not a persisted content attribute. Including it
+ * in decoration equality also prevents ProseMirror's recreateWrapper fast path
+ * from transplanting identical child NodeViews into a different Block.
+ */
+const collectBlockIdentityDecorations = (
+  doc: PMNode,
+  from = 0,
+  to = doc.content.size,
+) => {
+  const decorations: Decoration[] = [];
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (node.type.name !== "blockContainer") return;
+    decorations.push(
+      Decoration.node(pos, pos + node.nodeSize, {}, { blockId: node.attrs.id }),
+    );
+  });
+  return decorations;
 };
 
 const applySemanticAttributes = (
@@ -72,6 +95,50 @@ export const BlockContainer = Node.create<{
   defining: true,
   marks() {
     return suggestionMarks(this.editor);
+  },
+  addProseMirrorPlugins() {
+    return [
+      new Plugin<DecorationSet>({
+        state: {
+          init: (_, state) =>
+            DecorationSet.create(
+              state.doc,
+              collectBlockIdentityDecorations(state.doc),
+            ),
+          apply: (transaction, previous) => {
+            if (!transaction.docChanged) return previous;
+            const doc = transaction.doc;
+            const range = transaction.changedRange();
+            if (!range) {
+              return DecorationSet.create(
+                doc,
+                collectBlockIdentityDecorations(doc),
+              );
+            }
+
+            // Keep typing local: map unaffected identities, then refresh the
+            // changed range and its ancestor containers (nodesBetween includes
+            // those ancestors). Do not rescan the whole Page on each keystroke.
+            const mapped = previous.map(transaction.mapping, doc);
+            const next = collectBlockIdentityDecorations(
+              doc,
+              range.from,
+              range.to,
+            );
+            const positions = new Set(next.map((decoration) => decoration.from));
+            const replaced = mapped
+              .find(range.from, range.to)
+              .filter((decoration) => positions.has(decoration.from));
+            return mapped.remove(replaced).add(doc, next);
+          },
+        },
+        props: {
+          decorations(state) {
+            return this.getState(state);
+          },
+        },
+      }),
+    ];
   },
   parseHTML() {
     return [
@@ -158,7 +225,12 @@ export const BlockContainer = Node.create<{
         dom: blockOuter,
         contentDOM: block,
         update: (nextNode) => {
-          if (nextNode.type !== node.type) return false;
+          // Child NodeViews bind controls and subscriptions to this Block ID.
+          // Reusing the container for a different Block would retain those
+          // bindings while ProseMirror updates only the visible inline content.
+          if (nextNode.type !== node.type || nextNode.attrs.id !== node.attrs.id) {
+            return false;
+          }
           node = nextNode;
           syncBlockAttributes(blockOuter, block, nextNode, this.options.editor);
           return true;

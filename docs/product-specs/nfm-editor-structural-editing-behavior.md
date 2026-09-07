@@ -1,7 +1,7 @@
 # NFM Editor Structural Editing Behavior
 
 Status: Active
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 Structural preparation has one absolute 10-second deadline, including native
 drag/IME cleanup and durable fencing. After 700 ms the document status offers
@@ -118,6 +118,10 @@ operation is pending always wins over that default resume target.
 ## Undo and redo
 
 Page bodies, Page titles, and Database Board/List actions share one chronological content history within a window's Library, access context, and Store epoch. Local Yjs StackItems and opaque Core structural history tokens appear in the order the user acted, regardless of which participating content surface receives Undo. Remote collaborative changes do not create local entries.
+
+A local collaborative edit retains its originating editor surface through any
+selection-only transactions appended to that edit. Restoring a Block selection
+must not remove the edit from local history or attribute it to another surface.
 
 Project-bound and trusted Library editor surfaces use the same structural and
 text-history operations. Project surfaces still require their Project's current
