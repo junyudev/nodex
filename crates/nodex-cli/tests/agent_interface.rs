@@ -57,7 +57,7 @@ fn every_leaf_exposes_machine_readable_help_without_core() {
 
     assert!(output.status.success());
     let document: Value = serde_json::from_slice(&output.stdout).expect("machine help JSON");
-    assert_eq!(document["schemaVersion"], 3);
+    assert_eq!(document["schemaVersion"], 4);
     assert_eq!(document["command"], "nodex page move");
     assert_eq!(document["capability"], "pageWrite");
     assert_eq!(document["effect"], "write");

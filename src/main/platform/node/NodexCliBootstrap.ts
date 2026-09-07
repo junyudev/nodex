@@ -9,6 +9,7 @@ import type { AdditionalContextEntry } from "@nodex/codex-app-server-protocol/v2
 import type { CoreAuthorityIdentity } from "../../core-runtime/CoreAuthority";
 import type { MainConfigValue } from "../../app/MainConfig";
 import { resolveCoreExecutable } from "../../core-client/core-launcher";
+import { nodexCliBootstrapPrompt } from "./NodexCliBootstrapPrompt";
 import { bindNodexCliShell, shellQuote as quote, unbindNodexCliShell } from "./NodexCliShell";
 
 export interface NodexCliTaskContext {
@@ -86,7 +87,11 @@ export const buildNodexCliBootstrap = (
       });
       return {
         kind: "application" as const,
-        value: `Nodex CLI connection for this Turn: local Full access; Project ${quote(projectId)}.\nUse nodex directly: the host-managed shell command selects this build, Profile and Project, including after changing directories. Do not reuse command prefixes from earlier Turns.\nRead the bundled official Skill at ${quote(paths.skill)} when working with Nodex content. Discover once with nodex capabilities and nodex context; consult command --help and docs nested-markdown as needed. Use direct stdout/stdin for ordinary work. These are Native CLI operations under Project access, not Turn-scoped dynamic-tool authorization. Core checks access on every call. This connection applies only to this Turn; later task context supersedes it.`,
+        value: nodexCliBootstrapPrompt
+          .replace(/\{\{(project|skill)\}\}/g, (_, field: string) =>
+            field === "project" ? quote(projectId) : quote(paths.skill),
+          )
+          .trim(),
       };
     },
     catch: (cause) => new BootstrapUnavailable({ cause }),

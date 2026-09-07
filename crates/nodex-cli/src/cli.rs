@@ -10,27 +10,58 @@ use crate::skills::SkillAgent;
 #[command(
     name = "nodex",
     version = option_env!("NODEX_RELEASE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")),
-    about = "Read and change Nodex through the native Core",
+    about = "Read, query and edit Nodex Pages, Properties, Views and Files",
     arg_required_else_help = true
 )]
 pub struct Cli {
     /// Require the connected Core Profile identity; does not select a home.
-    #[arg(long, global = true, value_name = "ID")]
+    #[arg(
+        long,
+        global = true,
+        help_heading = "Global options",
+        value_name = "ID"
+    )]
     pub expect_profile: Option<String>,
-    #[arg(long, global = true, value_name = "UUID_OR_UNIQUE_NAME")]
+    /// Select the access Project by ID or unique name; otherwise use the host or working-directory context.
+    #[arg(
+        long,
+        global = true,
+        help_heading = "Global options",
+        value_name = "UUID_OR_UNIQUE_NAME"
+    )]
     pub project: Option<String>,
-    #[arg(long, global = true, value_name = "UUID_OR_UNIQUE_NAME")]
+    /// Select a Database by ID or unique name for commands that use a Database scope.
+    #[arg(
+        long,
+        global = true,
+        help_heading = "Global options",
+        value_name = "UUID_OR_UNIQUE_NAME"
+    )]
     pub database: Option<String>,
-    #[arg(long, global = true, value_name = "ID_OR_TITLE_PATH")]
+    /// Select a Page context for commands that use a default Page scope.
+    #[arg(
+        long,
+        global = true,
+        help_heading = "Global options",
+        value_name = "ID_OR_TITLE_PATH"
+    )]
     pub page: Option<String>,
-    #[arg(long, global = true, conflicts_with = "output_format")]
+    /// Print structured JSON; equivalent to --output-format json.
+    #[arg(
+        long,
+        global = true,
+        help_heading = "Global options",
+        conflicts_with = "output_format"
+    )]
     pub json: bool,
-    #[arg(long, global = true, value_enum)]
+    /// Choose structured output: auto uses text on a terminal and JSON when piped.
+    #[arg(long, global = true, help_heading = "Global options", value_enum)]
     pub output_format: Option<OutputFormat>,
-    #[arg(long, global = true)]
+    /// Disable terminal colors.
+    #[arg(long, global = true, help_heading = "Global options")]
     pub no_color: bool,
     /// Print an offline input, result, error, or complete schema guide as JSON.
-    #[arg(long, global = true, value_enum)]
+    #[arg(long, global = true, help_heading = "Global options", value_enum)]
     pub help_schema: Option<HelpSchema>,
     #[command(subcommand)]
     pub command: Command,
@@ -55,38 +86,57 @@ pub enum HelpSchema {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum Command {
+    /// Filter, join and summarize Pages, bodies, Properties and View results with read-only SQL.
+    Sql(crate::sql::SqlArgs),
+    /// Read one known Page body; --json includes reusable edit validators.
+    Read(ReadArgs),
+    /// Find ranked Page candidates; use SQL for combined filters and joins.
+    Search(crate::search::SearchArgs),
+    /// Report supported API versions and packaged Skill identity; optional diagnostics.
     Capabilities,
     /// Read the bundled content format documentation without connecting to Core.
     Docs(DocsArgs),
+    /// Install the bundled Nodex Skill for selected Agents.
     Setup(SkillMutationArgs),
+    /// Inspect, install or remove the bundled Agent Skill.
     Skills(SkillsArgs),
     /// Show the resolved Profile, Project, and default Database/View.
     Context,
-    /// Find authorized Pages by title and body evidence.
-    Search(crate::search::SearchArgs),
+    /// List direct child Pages of a Page or Database.
     Ls(crate::browse::BrowseArgs),
+    /// Configure Property definitions and saved Views.
     DataSource(crate::data_source::DataSourceArgs),
-    /// Query the authorized public data model with read-only SQL.
-    Sql(crate::sql::SqlArgs),
+    /// Show the Page hierarchy in a selected scope.
     Tree {
+        /// Page or Database scope; omitted uses the selected context.
         #[arg(value_name = "SCOPE_SELECTOR")]
         scope: Option<String>,
     },
-    /// Read a Page body; use --json for content and reusable edit validators.
-    Read(ReadArgs),
+    /// Read a numbered line range from a Page body.
     Sed(SedArgs),
+    /// Search Page text with ripgrep patterns and flags.
     Rg(RgArgs),
+    /// Apply exact text edits to Page bodies from a Nodex patch.
     Patch(PatchArgs),
+    /// Open a Page or saved View in the desktop app.
     Open(OpenArgs),
-    /// Prepare and perform semantic Page operations.
+    /// Create, edit and organize Pages, Property values and Page attachments.
     Page(PageArgs),
+    /// Manage shared Library Files and their content versions.
     File(FileArgs),
+    /// Insert, update, move or delete individual Blocks in a Page.
     Block(BlockArgs),
+    /// List a Page’s retained document history.
     History(HistoryArgs),
+    /// Create or list Profile backups.
     Backup(BackupArgs),
+    /// Create an independent local Profile from a published backup.
     Profile(ProfileArgs),
+    /// Inspect Core health; optionally run database integrity checks.
     Doctor(DoctorArgs),
+    /// Edit a Page through a local draft directory.
     Draft(DraftArgs),
+    /// Inspect or manage the background Core service.
     Service(ServiceArgs),
 }
 
@@ -116,10 +166,13 @@ pub enum ProfileCommand {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct ProfileCloneArgs {
+    /// Source Profile home containing published backups.
     #[arg(long = "from", value_name = "PROFILE_HOME")]
     pub source: PathBuf,
+    /// New Profile home to create; it must not already exist.
     #[arg(long = "to", value_name = "PROFILE_HOME")]
     pub target: PathBuf,
+    /// Published backup ID to copy, or latest.
     #[arg(long, default_value = "latest", value_name = "BACKUP_ID_OR_LATEST")]
     pub backup: String,
 }
@@ -132,14 +185,19 @@ pub struct SkillsArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum SkillsCommand {
+    /// Show Skill installation state for selected Agents.
     Status(SkillTargetArgs),
+    /// Install the bundled Skill into selected Agent locations.
     Install(SkillMutationArgs),
+    /// Remove managed Skill installations from selected Agents.
     Remove(SkillMutationArgs),
+    /// Diagnose the bundled Skill and its installations.
     Doctor(SkillTargetArgs),
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct SkillTargetArgs {
+    /// Target Agent; repeat to select multiple Agents.
     #[arg(long = "agent", value_enum, action = clap::ArgAction::Append)]
     pub agents: Vec<SkillAgent>,
 }
@@ -148,8 +206,10 @@ pub struct SkillTargetArgs {
 pub struct SkillMutationArgs {
     #[command(flatten)]
     pub targets: SkillTargetArgs,
+    /// Preview installation changes without writing them.
     #[arg(long)]
     pub dry_run: bool,
+    /// Confirm the requested Skill installation or removal.
     #[arg(long)]
     pub yes: bool,
 }
@@ -162,32 +222,41 @@ pub struct OpenArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum OpenCommand {
+    /// Open a Page by its selector, or print its deep link.
     Page(OpenResourceArgs),
+    /// Open a saved View by its ID, or print its deep link.
     View(OpenResourceArgs),
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct OpenResourceArgs {
+    /// Page selector or saved View ID, according to the command.
     #[arg(value_name = "RESOURCE_SELECTOR")]
     pub resource: String,
+    /// Print the deep link without opening the desktop app.
     #[arg(long = "print")]
     pub print_only: bool,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct ReadArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     #[arg(value_name = "PAGE_SELECTOR")]
     pub page: String,
+    /// Read Page metadata as YAML instead of the Nested Markdown body.
     #[arg(long)]
     pub meta: bool,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PagePrepareArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     #[arg(value_name = "PAGE_SELECTOR")]
     pub page: String,
+    /// Operation whose concurrency conditions should be prepared.
     #[arg(long, value_enum)]
     pub operation: PrepareOperation,
+    /// Saved View ID for a move within that View; valid only with move.
     #[arg(long, value_name = "VIEW_ID")]
     pub view: Option<String>,
 }
@@ -200,10 +269,13 @@ pub enum PrepareOperation {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct SedArgs {
+    /// Print only the requested lines; required for the supported sed form.
     #[arg(short = 'n', action = clap::ArgAction::SetTrue, required = true)]
     pub quiet: bool,
+    /// Positive line range such as 3p or 3,12p (one-based, inclusive).
     #[arg(value_name = "PROGRAM")]
     pub program: String,
+    /// Page ID, Page key, or uniquely resolvable title path.
     #[arg(value_name = "PAGE_SELECTOR")]
     pub page: String,
 }
@@ -211,16 +283,20 @@ pub struct SedArgs {
 #[derive(Clone, Debug, Args, PartialEq)]
 #[command(trailing_var_arg = true)]
 pub struct RgArgs {
+    /// Pattern, optional Nodex scope, and supported ripgrep flags; use -- before a pattern starting with -.
     #[arg(value_name = "RG_ARGUMENT", num_args = 1.., allow_hyphen_values = true)]
     pub arguments: Vec<OsString>,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PatchArgs {
+    /// Read a Nodex patch from a UTF-8 file; omitted or - reads redirected stdin.
     #[arg(long, value_name = "PATCH_FILE")]
     pub file: Option<PathBuf>,
+    /// Stable key for this write; reuse it with identical input after an uncertain result.
     #[arg(long)]
     pub idempotency_key: Option<String>,
+    /// Include optional receipt fields; supported field: commit.
     #[arg(long, value_delimiter = ',')]
     pub r#return: Vec<String>,
 }
@@ -235,15 +311,25 @@ pub struct PageArgs {
 pub enum PageCommand {
     /// Prepare operation-specific conditions for a move or deletion.
     Prepare(PagePrepareArgs),
+    /// Create one Page with a title, body and explicit parent.
     Create(PageCreateArgs),
+    /// Create 1–16 Pages atomically from one JSON document.
     CreateBatch(crate::page_batch::PageCreateBatchArgs),
+    /// Insert Nested Markdown without replacing existing Page content.
     Insert(PageInsertArgs),
+    /// Replace the complete Page body using its current body ETag.
     Replace(PageReplaceArgs),
+    /// Change only the Page title using its current title ETag.
     Rename(PageRenameArgs),
+    /// Set Page Property values; use data-source configure for definitions.
     Properties(crate::page_properties::PagePropertiesArgs),
+    /// Move a Page to a new parent or position.
     Move(PageMoveArgs),
+    /// Copy a Page to an explicit destination.
     Duplicate(PageDuplicateArgs),
+    /// Delete a Page using a prepared deletion ETag.
     Delete(PageDeleteArgs),
+    /// Read and manage this Page’s File entries and logical paths.
     File(PageFileArgs),
 }
 
@@ -269,6 +355,7 @@ pub enum FileCommand {
     Restore(FileRestoreArgs),
     /// Trash an unused File, retaining its versions.
     Trash(FileWriteArgs),
+    /// Restore a trashed File to active use.
     Untrash(FileWriteArgs),
     /// Permanently remove a trashed File with no retention roots.
     Purge(FileWriteArgs),
@@ -276,12 +363,16 @@ pub enum FileCommand {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct FileImportArgs {
+    /// Local file to import, or - for redirected stdin.
     #[arg(long = "from", value_name = "PATH_OR_DASH")]
     pub source: PathBuf,
+    /// Default File name; inferred from the source path, required for stdin.
     #[arg(long)]
     pub name: Option<String>,
+    /// MIME type; inferred from the File name when omitted.
     #[arg(long)]
     pub mime: Option<String>,
+    /// Optional originating Turn ID recorded with the File change.
     #[arg(long)]
     pub turn_id: Option<String>,
     #[command(flatten)]
@@ -290,18 +381,24 @@ pub struct FileImportArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct FileReadArgs {
+    /// Library File ID; requires direct File access in this Project.
     pub file_id: String,
+    /// Retained content version to read; omitted reads the current head.
     #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
     pub version: Option<i64>,
+    /// Destination file (overwrites an existing regular file), or - for exact bytes on stdout.
     #[arg(long, default_value = "-", value_name = "PATH_OR_DASH")]
     pub output: PathBuf,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct FileWriteArgs {
+    /// Library File ID to change.
     pub file_id: String,
+    /// Observed File revision from the files SQL relation.
     #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
     pub if_revision: i64,
+    /// Optional originating Turn ID recorded with the File change.
     #[arg(long)]
     pub turn_id: Option<String>,
     #[command(flatten)]
@@ -312,6 +409,7 @@ pub struct FileWriteArgs {
 pub struct FileRenameArgs {
     #[command(flatten)]
     pub write: FileWriteArgs,
+    /// New default File name; Page entry paths remain unchanged.
     #[arg(long)]
     pub name: String,
 }
@@ -320,8 +418,10 @@ pub struct FileRenameArgs {
 pub struct FileReplaceArgs {
     #[command(flatten)]
     pub write: FileWriteArgs,
+    /// Observed current content version; protects against replacing a newer head.
     #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
     pub if_head: i64,
+    /// Replacement bytes from a local file, or - for redirected stdin.
     #[arg(long = "from", value_name = "PATH_OR_DASH")]
     pub source: PathBuf,
     /// Required for stdin; inferred from the source filename otherwise.
@@ -331,11 +431,15 @@ pub struct FileReplaceArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct FileForkArgs {
+    /// Library File ID whose content should be copied.
     pub file_id: String,
+    /// Exact retained content version to copy into the new File.
     #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
     pub version: i64,
+    /// Default name for the new independent File.
     #[arg(long)]
     pub name: String,
+    /// Optional originating Turn ID recorded with the File change.
     #[arg(long)]
     pub turn_id: Option<String>,
     #[command(flatten)]
@@ -346,8 +450,10 @@ pub struct FileForkArgs {
 pub struct FileRestoreArgs {
     #[command(flatten)]
     pub write: FileWriteArgs,
+    /// Observed current content version.
     #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
     pub if_head: i64,
+    /// Retained version to publish as the new content head.
     #[arg(long, value_parser = clap::value_parser!(i64).range(1..))]
     pub version: i64,
 }
@@ -374,34 +480,46 @@ pub enum PageFileCommand {
     ReplaceEntry(PageFileReplaceArgs),
     /// Move a Page relation without changing File ownership or content.
     Move(PageFileTransferArgs),
+    /// Copy a Page relation while retaining the shared File identity.
     Copy(PageFileTransferArgs),
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 #[command(group(clap::ArgGroup::new("file_selector").required(true).multiple(false).args(["file_id", "path"])))]
 pub struct PageFileReadArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// File ID related to this Page; mutually exclusive with --path.
     #[arg(long, conflicts_with = "path")]
     pub file_id: Option<String>,
+    /// Logical entry path on this Page, not an operating-system path.
     #[arg(long, conflicts_with = "file_id")]
     pub path: Option<String>,
+    /// Destination file (overwrites an existing regular file), or - for exact bytes on stdout.
     #[arg(long, default_value = "-", value_name = "PATH_OR_DASH")]
     pub output: PathBuf,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageFilePutArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// Logical path for the new File entry on this Page.
     #[arg(long)]
     pub path: String,
+    /// Local file to import, or - for redirected stdin.
     #[arg(long = "from", value_name = "PATH_OR_DASH")]
     pub source: PathBuf,
+    /// MIME type; required for stdin, otherwise inferred from the source filename.
     #[arg(long)]
     pub mime: Option<String>,
+    /// Replace an existing entry at this path with a new independent File.
     #[arg(long)]
     pub replace_entry: bool,
+    /// Observed pages.file_manifest_revision, including zero for an empty manifest.
     #[arg(long, value_parser = clap::value_parser!(i64).range(0..))]
     pub if_manifest: i64,
+    /// Optional originating Turn ID recorded with the File change.
     #[arg(long)]
     pub turn_id: Option<String>,
     #[command(flatten)]
@@ -410,11 +528,15 @@ pub struct PageFilePutArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageFileWriteArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// File ID of the entry on this Page.
     #[arg(long)]
     pub file_id: String,
+    /// Observed pages.file_manifest_revision.
     #[arg(long, value_parser = clap::value_parser!(i64).range(0..))]
     pub if_manifest: i64,
+    /// Optional originating Turn ID recorded with the File change.
     #[arg(long)]
     pub turn_id: Option<String>,
     #[command(flatten)]
@@ -425,6 +547,7 @@ pub struct PageFileWriteArgs {
 pub struct PageFilePathArgs {
     #[command(flatten)]
     pub write: PageFileWriteArgs,
+    /// Logical entry path on this Page.
     #[arg(long)]
     pub path: String,
 }
@@ -433,23 +556,31 @@ pub struct PageFilePathArgs {
 pub struct PageFileReplaceArgs {
     #[command(flatten)]
     pub write: PageFileWriteArgs,
+    /// Replacement bytes from a local file, or - for redirected stdin.
     #[arg(long = "from", value_name = "PATH_OR_DASH")]
     pub source: PathBuf,
+    /// MIME type; required for stdin, otherwise inferred from the source filename.
     #[arg(long)]
     pub mime: Option<String>,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageFileTransferArgs {
+    /// Source Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// File ID of the source Page entry.
     #[arg(long)]
     pub file_id: String,
+    /// Destination Page selector.
     #[arg(long)]
     pub to: String,
+    /// Logical entry path on the destination Page.
     #[arg(long)]
     pub path: String,
+    /// Observed source pages.file_manifest_revision.
     #[arg(long, value_parser = clap::value_parser!(i64).range(0..))]
     pub if_source_manifest: i64,
+    /// Observed destination pages.file_manifest_revision.
     #[arg(long, value_parser = clap::value_parser!(i64).range(0..))]
     pub if_target_manifest: i64,
     #[command(flatten)]
@@ -458,8 +589,10 @@ pub struct PageFileTransferArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageCreateArgs {
+    /// Parent destination: library, page:PAGE_ID or data_source:SOURCE_ID.
     #[arg(long)]
     pub parent: String,
+    /// Initial Page title as inline Nested Markdown.
     #[arg(long)]
     pub title: String,
     #[command(flatten)]
@@ -472,9 +605,12 @@ pub struct PageCreateArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageInsertArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// Block anchor: start, end, before:ID, after:ID, inside-start:ID or inside-end:ID.
     #[arg(long, default_value = "end")]
     pub at: String,
+    /// Read Nested Markdown from a UTF-8 file; omitted or - reads redirected stdin.
     #[arg(long)]
     pub file: Option<PathBuf>,
     #[command(flatten)]
@@ -483,9 +619,12 @@ pub struct PageInsertArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageReplaceArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// Current validators.body_etag from read --json, or body_etag from page_documents SQL.
     #[arg(long = "if-match")]
     pub if_match: String,
+    /// Read Nested Markdown from a UTF-8 file; omitted or - reads redirected stdin.
     #[arg(long)]
     pub file: Option<PathBuf>,
     #[command(flatten)]
@@ -495,11 +634,15 @@ pub struct PageReplaceArgs {
 #[derive(Clone, Debug, Args, PartialEq)]
 #[command(group(clap::ArgGroup::new("title_input").required(true).multiple(false).args(["title", "file"])))]
 pub struct PageRenameArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// Current validators.title_etag from read --json, or title_etag from pages SQL.
     #[arg(long = "if-match")]
     pub if_match: String,
+    /// New inline Nested Markdown title; mutually exclusive with --file.
     #[arg(conflicts_with = "file")]
     pub title: Option<String>,
+    /// Read the new title from a UTF-8 file or stdin (-); mutually exclusive with TITLE.
     #[arg(long, conflicts_with = "title")]
     pub file: Option<PathBuf>,
     #[command(flatten)]
@@ -508,12 +651,16 @@ pub struct PageRenameArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageDestinationArgs {
+    /// Destination: library, page:PAGE_ID or data_source:SOURCE_ID.
     #[arg(long)]
     pub to: String,
+    /// Place at the start or end; mutually exclusive with --before and --after.
     #[arg(long, conflicts_with_all = ["before", "after"])]
     pub at: Option<BoundaryPlacement>,
+    /// Place immediately before this sibling Page ID.
     #[arg(long, conflicts_with_all = ["at", "after"])]
     pub before: Option<String>,
+    /// Place immediately after this sibling Page ID.
     #[arg(long, conflicts_with_all = ["at", "before"])]
     pub after: Option<String>,
     #[command(flatten)]
@@ -522,19 +669,24 @@ pub struct PageDestinationArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct DataSourcePlacementArgs {
+    /// Saved View ID used to interpret grouping and placement.
     #[arg(long, value_name = "VIEW_ID")]
     pub view: Option<String>,
+    /// Stable group key from View results; not a group display label.
     #[arg(long, value_name = "STABLE_GROUP_KEY", conflicts_with = "unassigned")]
     pub group: Option<String>,
+    /// Place in the unassigned group instead of specifying --group.
     #[arg(long, conflicts_with = "group")]
     pub unassigned: bool,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageMoveArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
     #[command(flatten)]
     pub destination: PageDestinationArgs,
+    /// validators.move_etag from page prepare --operation move using the same View.
     #[arg(long = "if-match")]
     pub if_match: String,
     #[command(flatten)]
@@ -543,6 +695,7 @@ pub struct PageMoveArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageDuplicateArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
     #[command(flatten)]
     pub destination: PageDestinationArgs,
@@ -558,7 +711,9 @@ pub enum BoundaryPlacement {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct PageDeleteArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// validators.page_etag from page prepare --operation delete.
     #[arg(long = "if-match")]
     pub if_match: String,
     #[command(flatten)]
@@ -568,16 +723,20 @@ pub struct PageDeleteArgs {
 #[derive(Clone, Debug, Args, PartialEq)]
 #[group(multiple = false)]
 pub struct BodyInputArgs {
+    /// Read Nested Markdown from a UTF-8 file; omitted or - reads redirected stdin.
     #[arg(long)]
     pub file: Option<PathBuf>,
+    /// Create an empty body without reading stdin.
     #[arg(long)]
     pub empty: bool,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct MutationArgs {
+    /// Stable key for this write; reuse it with identical input after an uncertain result.
     #[arg(long)]
     pub idempotency_key: Option<String>,
+    /// Include optional receipt fields (commit for Page/Block writes; unsupported by File commands).
     #[arg(long, value_delimiter = ',')]
     pub r#return: Vec<String>,
 }
@@ -590,17 +749,24 @@ pub struct BlockArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum BlockCommand {
+    /// Insert a typed Block draft at a Page anchor.
     Insert(BlockInsertArgs),
+    /// Update one Block with a typed JSON patch and its ETag.
     Update(BlockUpdateArgs),
+    /// Move an existing Block to another anchor in the same Page.
     Move(BlockMoveArgs),
+    /// Delete one Block using its current ETag.
     Delete(BlockDeleteArgs),
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct BlockInsertArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// Block anchor: start, end, before:ID, after:ID, inside-start:ID or inside-end:ID.
     #[arg(long)]
     pub at: String,
+    /// Typed Block draft JSON file, or - for stdin; see --help-schema input.
     #[arg(long)]
     pub block_json: PathBuf,
     #[arg(skip)]
@@ -611,11 +777,15 @@ pub struct BlockInsertArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct BlockUpdateArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// Stable Block ID within the Page.
     #[arg(long)]
     pub block: String,
+    /// Observed ETag for the target Block.
     #[arg(long = "if-match")]
     pub if_match: String,
+    /// Typed Block update JSON file, or - for stdin; see --help-schema input.
     #[arg(long)]
     pub patch_json: PathBuf,
     #[arg(skip)]
@@ -626,9 +796,12 @@ pub struct BlockUpdateArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct BlockMoveArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// Stable Block ID within the Page.
     #[arg(long)]
     pub block: String,
+    /// Block anchor: start, end, before:ID, after:ID, inside-start:ID or inside-end:ID.
     #[arg(long)]
     pub at: String,
     #[command(flatten)]
@@ -637,9 +810,12 @@ pub struct BlockMoveArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct BlockDeleteArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// Stable Block ID within the Page.
     #[arg(long)]
     pub block: String,
+    /// Observed ETag for the target Block.
     #[arg(long = "if-match")]
     pub if_match: String,
     #[command(flatten)]
@@ -648,9 +824,12 @@ pub struct BlockDeleteArgs {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct HistoryArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// Opaque continuation cursor from a preceding history result.
     #[arg(long)]
     pub before: Option<String>,
+    /// Maximum history entries to return.
     #[arg(long)]
     pub limit: Option<u32>,
 }
@@ -663,17 +842,21 @@ pub struct BackupArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum BackupCommand {
+    /// Publish an assets-inclusive backup of this Profile.
     Create {
         #[arg(long)]
+        /// Optional human-readable label for the backup.
         label: Option<String>,
         #[command(flatten)]
         mutation: MutationArgs,
     },
+    /// List published backups of this Profile.
     List,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct DoctorArgs {
+    /// Also run database integrity and foreign-key checks.
     #[arg(long)]
     pub full: bool,
     #[command(flatten)]
@@ -688,18 +871,27 @@ pub struct DraftArgs {
 
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum DraftCommand {
+    /// Materialize a Page body and edit conditions in a new local directory.
     Create {
+        /// Page ID, Page key, or uniquely resolvable title path.
         page: String,
         #[arg(long)]
+        /// New directory in which to create the editable draft.
         output: PathBuf,
     },
+    /// Show local draft changes against the saved baseline.
     Diff {
+        /// Draft directory produced by nodex draft create.
         directory: PathBuf,
     },
+    /// Commit draft changes using the saved edit conditions.
     Apply {
+        /// Draft directory produced by nodex draft create.
         directory: PathBuf,
     },
+    /// Remove a local draft directory without applying it.
     Discard {
+        /// Draft directory produced by nodex draft create.
         directory: PathBuf,
     },
 }
@@ -712,8 +904,11 @@ pub struct ServiceArgs {
 
 #[derive(Clone, Copy, Debug, PartialEq, Subcommand)]
 pub enum ServiceCommand {
+    /// Show the background Core service state.
     Status,
+    /// Enable the background Core service for this Profile.
     Enable,
+    /// Disable the background Core service for this Profile.
     Disable,
 }
 

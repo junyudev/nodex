@@ -10,8 +10,10 @@ use crate::runtime::{CommandOutput, selected_project, unwrap_database};
 
 #[derive(Clone, Debug, PartialEq, Args)]
 pub struct WindowArgs {
+    /// Opaque continuation cursor from the preceding collection result.
     #[arg(long)]
     pub after: Option<String>,
+    /// Maximum entries in this collection window.
     #[arg(long)]
     pub limit: Option<u32>,
 }
@@ -22,7 +24,7 @@ pub struct DataSourceArgs {
 }
 #[derive(Clone, Debug, PartialEq, Subcommand)]
 pub enum DataSourceCommand {
-    /// Apply one atomic Data Source configuration script.
+    /// Add or change Property definitions and saved Views in one atomic script.
     Configure(crate::config_script::ConfigureArgs),
 }
 pub(crate) fn prepare(args: &mut DataSourceArgs) -> Result<(), CliError> {

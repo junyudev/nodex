@@ -29,6 +29,10 @@ across login shells and snapshots, including when user startup files prepend
 another installed CLI to PATH. The adapters load the original startup files
 and then restore the managed command; they do not edit global shell files. The host
 supplies the bundled official Skill without requiring a workspace-local copy.
+The connection prompt is maintained in
+[`NodexCliBootstrapPrompt.ts`](../../src/main/platform/node/NodexCliBootstrapPrompt.ts)
+and filled with the selected Project and Skill path. It is imported as source text
+without runtime file reads or separate packaged resources.
 
 Automatic connection is limited to local, Project-bound, non-Plan tasks using
 the verified built-in Full access mode and an available CLI/Skill build. Missing
@@ -136,6 +140,13 @@ ownership, or content validation.
 
 Compact discovery, public read-only SQL and atomic configuration follow
 [Agent CLI queries and configuration](agent-cli-queries.md).
+
+When the public commands and input schemas cannot express a content operation,
+the bundled Skill directs the Agent to report the precise missing capability and
+any completed work, without leaving a misleading partial result. Implementation
+inspection and private interfaces are not fallback content routes. Another
+interface requires explicit user direction; computer-use additionally requires
+authorization for the current task and target instance.
 
 The native CLI selects one Profile and, where required, one Project before
 calling Core. It provides bounded context/tree/history reads, canonical Page

@@ -37,6 +37,7 @@
     "agent:smoke:scripted": "vp run stage:codex-runtime:mac:cached && vp run test:e2e tests/e2e/scripted-agent-runtime.spec.ts",
     "agent:smoke:acp": "tsx scripts/probe-acp-agent.ts",
     "agent:smoke:paid": "tsx scripts/run-paid-agent-smoke.ts",
+    "agent:eval:review": "tsx scripts/agent-eval/review.ts",
     "agent:eval:compare": "tsx scripts/agent-eval/compare.ts",
     "agent:eval:paid": "tsx scripts/agent-eval/launch.ts",
     "test:performance": "vp run core:benchmark:rust && vp run core:test:scale",

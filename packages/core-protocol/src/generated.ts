@@ -2020,6 +2020,7 @@ export interface components {
             readonly option: string;
             readonly property: string;
         } | {
+            readonly filter?: null | components["schemas"]["DatabaseViewFilter"];
             readonly group_by?: string | null;
             /** @enum {string} */
             readonly kind: "create_view";
@@ -2027,6 +2028,7 @@ export interface components {
             readonly name: string;
             readonly sorts?: readonly components["schemas"]["ConfigurationSort"][];
         } | {
+            readonly filter?: null | components["schemas"]["DatabaseViewFilter"];
             readonly group_by?: string | null;
             /** Format: int64 */
             readonly if_revision: number;

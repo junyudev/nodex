@@ -995,3 +995,372 @@ fn exact_patch_receipt_retains_block_references_and_retries_without_recreating_c
     let hit = success(&home, &["search", "Release date: Monday"]);
     assert_eq!(hit["items"][0]["matches"][0]["block_id"], date_id);
 }
+
+/// Execute the published shell example itself, substituting only fixture observations.
+fn help_example(home: &Path, path: &[&str], index: usize, substitutions: &[(&str, &str)]) -> Value {
+    let args = std::iter::once("nodex")
+        .chain(path.iter().copied())
+        .chain(["--help"])
+        .map(std::ffi::OsString::from)
+        .collect::<Vec<_>>();
+    let nodex_cli::agent_interface::MachineHelpDocument::Command(help) =
+        nodex_cli::agent_interface::machine_help(&args).unwrap()
+    else {
+        panic!("expected command guide");
+    };
+    let mut script = help.examples[index].to_owned();
+    for (from, to) in substitutions {
+        script = script.replace(from, to);
+    }
+    let executable = env!("CARGO_BIN_EXE_nodex").replace('\'', "'\\''");
+    script = script.replace("nodex ", &format!("'{executable}' --project {PROJECT} "));
+    let output = Command::new("/bin/sh")
+        .args(["-eu", "-c", &script])
+        .env("NODEX_HOME", home)
+        .current_dir(home)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{script}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["ok"], true, "{value}");
+    value["result"].clone()
+}
+
+#[test]
+fn published_write_examples_preserve_existing_content_and_definitions() {
+    let directory = tempfile::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    let client = connect_or_launch(&home, "help-examples", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+    let before_page = success(&home, &["read", PAGE_A]);
+    let source = property_state(&home, PAGE_A)["data_source_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let definitions = sql_rows(
+        &home,
+        "SELECT * FROM properties WHERE data_source_id=:id ORDER BY property_id",
+        &[("id", &source)],
+        &[],
+    );
+    let views = sql_rows(
+        &home,
+        "SELECT * FROM views WHERE data_source_id=:id ORDER BY view_id",
+        &[("id", &source)],
+        &[],
+    );
+    let revision = source_description(&home, &source)["schema_revision"].to_string();
+    let observed_revision = format!("\"if_schema_revision\":{revision}");
+    let bindings = [
+        ("source-id", source.as_str()),
+        ("\"if_schema_revision\":1", observed_revision.as_str()),
+    ];
+    help_example(&home, &["data-source", "configure"], 1, &bindings);
+    let after_definitions = sql_rows(
+        &home,
+        "SELECT * FROM properties WHERE data_source_id=:id ORDER BY property_id",
+        &[("id", &source)],
+        &[],
+    );
+    assert_eq!(after_definitions.len(), definitions.len() + 1);
+    for definition in &definitions {
+        assert!(after_definitions.contains(definition));
+    }
+    let risk = after_definitions
+        .iter()
+        .find(|row| row["name"] == "Risk note")
+        .unwrap();
+    let property = risk["property_id"].as_str().unwrap();
+    assert_eq!(
+        sql_rows(
+            &home,
+            "SELECT * FROM views WHERE data_source_id=:id ORDER BY view_id",
+            &[("id", &source)],
+            &[]
+        ),
+        views
+    );
+    assert_eq!(
+        success(&home, &["read", PAGE_A])["content"],
+        before_page["content"]
+    );
+    help_example(
+        &home,
+        &["page", "properties", "apply"],
+        1,
+        &[
+            ("source-id", &source),
+            ("page-id", PAGE_A),
+            ("property-id", property),
+        ],
+    );
+    assert_eq!(
+        property_state(&home, PAGE_A)["values"][property],
+        "Needs review"
+    );
+
+    let member = success(
+        &home,
+        &[
+            "page",
+            "create",
+            "--parent",
+            &format!("data_source:{source}"),
+            "--title",
+            "Release plan",
+            "--empty",
+        ],
+    );
+    let member_id = member["page_id"].as_str().unwrap();
+    help_example(
+        &home,
+        &["page", "properties", "prepare-batch"],
+        1,
+        &[("source-id", &source)],
+    );
+    assert_eq!(
+        property_state(&home, member_id)["values"][property],
+        "Needs review"
+    );
+    assert_eq!(
+        property_state(&home, PAGE_A)["values"][property],
+        "Needs review"
+    );
+
+    let revision = source_description(&home, &source)["schema_revision"].to_string();
+    let observed_revision = format!("\"if_schema_revision\":{revision}");
+    help_example(
+        &home,
+        &["data-source", "configure"],
+        2,
+        &[
+            ("source-id", &source),
+            ("\"if_schema_revision\":1", &observed_revision),
+        ],
+    );
+    let after_views = sql_rows(
+        &home,
+        "SELECT * FROM views WHERE data_source_id=:id ORDER BY view_id",
+        &[("id", &source)],
+        &[],
+    );
+    assert_eq!(after_views.len(), views.len() + 1);
+    for view in views {
+        assert!(after_views.contains(&view));
+    }
+    assert!(
+        after_views
+            .iter()
+            .any(|view| view["name"] == "Task list" && view["layout"] == "list")
+    );
+
+    let batch = help_example(&home, &["page", "create-batch"], 1, &[]);
+    let pages = batch["pages"].as_array().unwrap();
+    assert_eq!(pages.len(), 2);
+    let page = pages[0]["page_id"].as_str().unwrap();
+    assert_eq!(
+        success(&home, &["read", page])["content"],
+        "Release date: Friday.\n"
+    );
+    help_example(&home, &["patch"], 1, &[("page-id", page)]);
+    assert_eq!(
+        success(&home, &["read", page])["content"],
+        "Release date: Monday.\n"
+    );
+    help_example(&home, &["page", "insert"], 1, &[("page-id", page)]);
+    let after_insert = success(&home, &["read", page]);
+    assert_eq!(
+        after_insert["content"],
+        "Release date: Monday.\n## Next steps\nFinish the release checks.\n"
+    );
+    let block = help_example(&home, &["block", "insert"], 1, &[("page-id", page)]);
+    let block_id = block["affected"]["created_block_ids"][0].as_str().unwrap();
+    let etag = block["etags"]["blocks"][block_id]["update"]
+        .as_str()
+        .unwrap();
+    help_example(
+        &home,
+        &["block", "update"],
+        1,
+        &[
+            ("page-id", page),
+            ("block-id", block_id),
+            ("block-etag", etag),
+        ],
+    );
+    assert_eq!(
+        success(&home, &["read", page])["content"],
+        "Release date: Monday.\n## Next steps\nFinish the release checks.\nReview complete.\n"
+    );
+    assert_eq!(
+        success(&home, &["read", PAGE_A])["content"],
+        before_page["content"]
+    );
+}
+
+#[test]
+fn saved_filter_example_and_updates_return_exact_rows_and_preserve_unrelated_state() {
+    use serde_json::json;
+    let directory = tempfile::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    let client = connect_or_launch(&home, "cli-view-filter", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+    let properties = property_state(&home, PAGE_A);
+    let source = properties["data_source_id"].as_str().unwrap();
+    success(
+        &home,
+        &[
+            "page",
+            "properties",
+            "set",
+            PAGE_A,
+            "--property",
+            "status",
+            "--option",
+            "review",
+            "--if-revision",
+            &properties["value_revisions"]["status"].to_string(),
+        ],
+    );
+    let control = success(
+        &home,
+        &[
+            "page",
+            "create",
+            "--parent",
+            &format!("data_source:{source}"),
+            "--title",
+            "Not in review",
+            "--empty",
+        ],
+    );
+    let control_id = control["page_id"].as_str().unwrap();
+    let before_values = property_state(&home, PAGE_A);
+    let before_body = success(&home, &["read", PAGE_A]);
+    let original_views = sql_rows(&home, "SELECT * FROM views ORDER BY view_id", &[], &[]);
+    let revision = source_description(&home, source)["schema_revision"].to_string();
+    help_example(
+        &home,
+        &["data-source", "configure"],
+        3,
+        &[
+            ("source-id", source),
+            (
+                "\"if_schema_revision\":1",
+                &format!("\"if_schema_revision\":{revision}"),
+            ),
+        ],
+    );
+    let get_view = || {
+        sql_rows(
+            &home,
+            "SELECT * FROM views WHERE name='Review queue'",
+            &[],
+            &[],
+        )
+        .remove(0)
+    };
+    let view = get_view();
+    let view_id = view["view_id"].as_str().unwrap();
+    let rows = || {
+        sql_rows(
+            &home,
+            "SELECT DISTINCT page_id FROM view_rows(:view) ORDER BY page_id",
+            &[("view", view_id)],
+            &[],
+        )
+    };
+    assert_eq!(rows(), vec![json!({"page_id":PAGE_A})]);
+    let configure = |operations: Value, schema_revision: Value| {
+        input(
+            &home,
+            &["data-source", "configure", source],
+            &json!({"if_schema_revision":schema_revision,"operations":operations}),
+        )
+    };
+    let revision = || source_description(&home, source)["schema_revision"].clone();
+    // An omitted filter retains both its definition and results while changing another field.
+    let update = configure(
+        json!([{"kind":"update_view","view":view_id,"if_revision":view["revision"],"sorts":[{"property":"title","direction":"desc"}]}]),
+        revision(),
+    );
+    assert_eq!(update["ok"], true, "{update}");
+    let sorted = get_view();
+    let old_config: Value = serde_json::from_str(view["config_json"].as_str().unwrap()).unwrap();
+    let sorted_config: Value =
+        serde_json::from_str(sorted["config_json"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        old_config["rules"]["advancedFilter"],
+        sorted_config["rules"]["advancedFilter"]
+    );
+    assert_eq!(rows(), vec![json!({"page_id":PAGE_A})]);
+    // Boolean groups use the same saved View query execution as the desktop.
+    let alternatives = configure(
+        json!([{"kind":"update_view","view":view_id,"if_revision":sorted["revision"],"filter":{
+            "kind":"group","operator":"or","children":[
+                {"kind":"group","operator":"and","children":[
+                    {"kind":"clause","propertyId":"status","operator":"select_is","value":"review"},
+                    {"kind":"clause","propertyId":"Status","operator":"select_is_not","value":"ship"}
+                ]},
+                {"kind":"clause","propertyId":"status","operator":"select_is","value":"triage"}
+            ]
+        }}]),
+        revision(),
+    );
+    assert_eq!(alternatives["ok"], true, "{alternatives}");
+    let mut expected = vec![json!({"page_id":PAGE_A}), json!({"page_id":control_id})];
+    expected.sort_by_key(|row| row["page_id"].as_str().unwrap().to_owned());
+    assert_eq!(rows(), expected);
+    let before_conflicts = get_view();
+    for (case, schema_revision, view_revision) in [
+        ("view", revision(), view["revision"].clone()),
+        (
+            "schema",
+            json!(revision().as_i64().unwrap() + 1),
+            before_conflicts["revision"].clone(),
+        ),
+    ] {
+        let rejected = configure(
+            json!([{"kind":"update_view","view":view_id,"if_revision":view_revision,"filter":null}]),
+            schema_revision,
+        );
+        assert_eq!(rejected["ok"], false, "{case}: {rejected}");
+        assert_eq!(get_view(), before_conflicts);
+    }
+    let cleared = configure(
+        json!([{"kind":"update_view","view":view_id,"if_revision":before_conflicts["revision"],"filter":null}]),
+        revision(),
+    );
+    assert_eq!(cleared["ok"], true, "{cleared}");
+    let after = get_view();
+    let config: Value = serde_json::from_str(after["config_json"].as_str().unwrap()).unwrap();
+    assert!(config["rules"]["advancedFilter"].is_null());
+    assert_eq!(config["rules"]["propertyFilters"], json!([]));
+    assert_eq!(config["rules"]["sorts"], sorted_config["rules"]["sorts"]);
+    assert_eq!(rows(), expected);
+    let final_views = sql_rows(&home, "SELECT * FROM views ORDER BY view_id", &[], &[]);
+    assert_eq!(final_views.len(), original_views.len() + 1);
+    assert!(original_views.iter().all(|view| final_views.contains(view)));
+    assert_eq!(property_state(&home, PAGE_A), before_values);
+    let after_body = success(&home, &["read", PAGE_A]);
+    for field in [
+        "content",
+        "validators",
+        "document_id",
+        "document_head_seq",
+        "document_generation",
+        "metadata_revision",
+    ] {
+        assert_eq!(after_body[field], before_body[field], "{field}");
+    }
+}

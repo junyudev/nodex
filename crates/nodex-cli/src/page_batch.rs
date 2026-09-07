@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq, Args)]
 pub struct PageCreateBatchArgs {
+    /// Page batch JSON with destination and 1–16 pages; - reads stdin.
     #[arg(long, default_value = "-")]
     pub input: PathBuf,
     #[arg(skip)]

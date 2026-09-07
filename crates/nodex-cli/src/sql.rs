@@ -32,6 +32,7 @@ pub enum SqlCommand {
     },
     /// Execute one read-only SQLite SELECT over complete authorized inputs.
     Query {
+        /// One read-only SELECT statement over public Nodex relations.
         #[arg(required_unless_present = "file", conflicts_with = "file")]
         sql: Option<String>,
         /// Read SQL from a UTF-8 file or redirected stdin (-).

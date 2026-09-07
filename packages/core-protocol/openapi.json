@@ -8169,6 +8169,17 @@
               "kind"
             ],
             "properties": {
+              "filter": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DatabaseViewFilter",
+                    "description": "Complete saved filter. propertyId and select option values accept exact IDs or unique names.\nUses the shared View expression grammar; omitted or null means no filter."
+                  }
+                ]
+              },
               "group_by": {
                 "type": [
                   "string",
@@ -8203,6 +8214,17 @@
               "kind"
             ],
             "properties": {
+              "filter": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DatabaseViewFilter",
+                    "description": "Replace all saved filters; omitted preserves them and null clears them.\npropertyId and select option values accept exact IDs or unique names."
+                  }
+                ]
+              },
               "group_by": {
                 "type": [
                   "string",

@@ -12,7 +12,9 @@ use utoipa::ToSchema;
 
 #[derive(Clone, Debug, PartialEq, Args)]
 pub struct SearchArgs {
+    /// Search text matched against authorized Page titles, keys, Properties and bodies.
     pub query: String,
+    /// Maximum ranked Page hits to return.
     #[arg(long)]
     pub limit: Option<u32>,
 }

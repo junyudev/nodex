@@ -2,7 +2,8 @@
 
 ## Read with SQL
 
-Use SQL by default for discovery, Page bodies, filtering, joins and aggregation.
+Prefer SQL for filtering, joins, aggregation and reading multiple Page bodies.
+Use `read` for one known Page body and `search` for ranked candidates.
 If the public model is unfamiliar, start with `nodex sql schema`, then describe
 only the relation you need. `pages` means all authorized active Pages, including
 standalone Pages. `--database` hints schema discovery; it never filters `pages`.
@@ -67,9 +68,29 @@ JSON
 
 Replace the revision with the one observed. `update_view` takes `view`,
 `if_revision`, and changed fields: omissions retain settings, `sorts:[]` clears
-sorts, and `group_by:null` clears grouping. Names resolve within the Source;
+sorts, `group_by:null` clears grouping, and `filter:null` clears all saved filters.
+`filter` replaces the saved quick filters and advanced tree together; omission
+preserves both. It changes shared View rules, never personal preferences.
+Names resolve within the Source;
 use returned IDs to disambiguate. Retry the same script and key after an uncertain
 response, including when the script renamed a resource.
+
+For a saved filtered View, use the shared clause/group grammar. `propertyId`
+accepts a Property ID or unique name. Select values accept option IDs or unique
+names; multi-select operators take arrays. Other values follow the Property's
+typed operator. Empty groups, incomplete values, unknown or ambiguous selectors,
+and invalid operators fail the entire script.
+
+```sh
+nodex data-source configure SOURCE_ID --idempotency-key review-queue-1 --input - <<'JSON'
+{"if_schema_revision":1,"operations":[{"kind":"create_view","name":"Review queue","layout":"list","filter":{"kind":"clause","propertyId":"Status","operator":"select_is","value":"Review"}}]}
+JSON
+```
+
+Combine conditions with `{"kind":"group","operator":"and","children":[...]}`
+or `"or"`; each child is a clause or another group. Read the created View ID from
+`views` and verify the actual saved results with
+`SELECT DISTINCT page_id FROM view_rows(:view)` using `--param 'view="VIEW_ID"'`.
 
 ## Preserve query observations for batch edits
 

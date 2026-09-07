@@ -183,23 +183,7 @@ fn resolve(
         } => {
             let property_id = property_id(connection, source_id, property)?;
             let current = active_property(connection, source_id, &property_id)?;
-            let options = option_config(&current)?.options;
-            let exact = options.iter().find(|candidate| candidate.id == *option);
-            let matching = options
-                .iter()
-                .filter(|candidate| candidate.name == *option)
-                .collect::<Vec<_>>();
-            let target = exact
-                .or_else(|| {
-                    if matching.len() == 1 {
-                        Some(matching[0])
-                    } else {
-                        None
-                    }
-                })
-                .ok_or_else(|| {
-                    invalid("Option selector is missing or ambiguous; use its stable ID")
-                })?;
+            let target = resolve_option(&current, option)?;
             intents.push(DatabaseIntent::PutOption {
                 data_source_id: source_id.into(),
                 property_id,
@@ -212,6 +196,7 @@ fn resolve(
         Operation::CreateView {
             name,
             layout,
+            filter,
             group_by,
             sorts,
         } => {
@@ -224,6 +209,7 @@ fn resolve(
             )?;
             let definition = DatabaseViewDefinition {
                 rules: DatabaseViewRules {
+                    advanced_filter: resolve_saved_filter(connection, source_id, filter.as_ref())?,
                     sorts: resolve_sorts(connection, source_id, sorts)?,
                     ..Default::default()
                 },
@@ -264,6 +250,7 @@ fn resolve(
             view,
             if_revision,
             name,
+            filter,
             sorts,
             group_by,
         } => {
@@ -277,6 +264,11 @@ fn resolve(
             let (current_name, layout, config, is_default) = connection.query_row("SELECT v.name, v.layout, v.config_json, v.id = c.default_view_id FROM database_views v JOIN database_containers c ON c.block_id = v.database_block_id WHERE v.id = ?1", [&view_id], |row| Ok((row.get::<_,String>(0)?, row.get::<_,String>(1)?, row.get::<_,String>(2)?, row.get::<_,bool>(3)?)))?;
             let mut definition =
                 super::super::view_contract::decode_definition_json(&config).map_err(invalid)?;
+            if let Some(filter) = filter {
+                definition.rules.advanced_filter =
+                    resolve_saved_filter(connection, source_id, filter.as_ref())?;
+                definition.rules.property_filters.clear();
+            }
             if let Some(sorts) = sorts {
                 definition.rules.sorts = resolve_sorts(connection, source_id, sorts)?;
             }
@@ -303,6 +295,135 @@ fn resolve(
         }
     }
     Ok(intents)
+}
+
+/// Configuration commits complete filters, while the desktop can retain inactive drafts.
+/// Both use the same expression, typed operators and final PutView validation.
+fn resolve_saved_filter(
+    connection: &Connection,
+    source_id: &str,
+    filter: Option<&DatabaseViewFilter>,
+) -> Result<Option<DatabaseViewFilter>, StoreError> {
+    let Some(filter) = filter else {
+        return Ok(None);
+    };
+    // Bound traversal before resolving selectors, using the canonical structural guard.
+    validate_view_filter(filter, 0, &mut 0)?;
+    let resolved = resolve_filter(connection, source_id, filter)?;
+    let group = match resolved {
+        DatabaseViewFilter::Group { .. } => resolved,
+        clause => DatabaseViewFilter::Group {
+            operator: DatabaseViewFilterGroupOperator::And,
+            children: vec![clause],
+        },
+    };
+    Ok(Some(group))
+}
+
+fn resolve_filter(
+    connection: &Connection,
+    source_id: &str,
+    filter: &DatabaseViewFilter,
+) -> Result<DatabaseViewFilter, StoreError> {
+    match filter {
+        DatabaseViewFilter::Group { operator, children } => {
+            if children.is_empty() {
+                return Err(invalid(
+                    "Saved filter groups require conditions; use filter:null to clear filters",
+                ));
+            }
+            Ok(DatabaseViewFilter::Group {
+                operator: *operator,
+                children: children
+                    .iter()
+                    .map(|child| resolve_filter(connection, source_id, child))
+                    .collect::<Result<_, _>>()?,
+            })
+        }
+        DatabaseViewFilter::Clause {
+            property_id: selector,
+            operator,
+            value,
+        } => {
+            let operand = value.as_ref().and_then(Option::as_ref);
+            if super::super::view_contract::filter_value_is_empty(*operator, operand)
+                || !filter_value_matches_operator(*operator, operand)
+            {
+                return Err(invalid(
+                    "Saved filter requires a complete value matching its typed operator",
+                ));
+            }
+            let property_id = property_id(connection, source_id, selector)?;
+            let property = active_property(connection, source_id, &property_id)?;
+            let schema = super::super::property_semantics::schema_from_storage(
+                connection,
+                source_id,
+                &property_id,
+                &property.value_type,
+            )?;
+            if !super::super::property_semantics::capabilities(&schema)
+                .filter_operators
+                .contains(operator)
+            {
+                return Err(invalid("Property filter operator is unsupported"));
+            }
+            let value = resolve_filter_value(&property, *operator, value)?;
+            Ok(DatabaseViewFilter::Clause {
+                property_id,
+                operator: *operator,
+                value,
+            })
+        }
+    }
+}
+
+fn resolve_filter_value(
+    property: &PropertyRow,
+    operator: DatabaseViewFilterOperator,
+    value: &Option<Option<Value>>,
+) -> Result<Option<Option<Value>>, StoreError> {
+    use DatabaseViewFilterOperator as Operator;
+    let Some(Some(value)) = value else {
+        return Ok(value.clone());
+    };
+    let option_id = |value: &Value| {
+        let selector = value
+            .as_str()
+            .ok_or_else(|| invalid("Option selector must be a string"))?;
+        resolve_option(property, selector).map(|option| Value::String(option.id))
+    };
+    let resolved = match operator {
+        Operator::SelectIs | Operator::SelectIsNot => option_id(value)?,
+        Operator::MultiSelectContains
+        | Operator::MultiSelectDoesNotContain
+        | Operator::MultiSelectContainsAll => {
+            let values = value
+                .as_array()
+                .ok_or_else(|| invalid("Option selectors must be an array"))?;
+            Value::Array(values.iter().map(option_id).collect::<Result<_, _>>()?)
+        }
+        _ => value.clone(),
+    };
+    Ok(Some(Some(resolved)))
+}
+
+fn resolve_option(
+    property: &PropertyRow,
+    selector: &str,
+) -> Result<super::super::property_semantics::PropertyOption, StoreError> {
+    let options = option_config(property)?.options;
+    if let Some(exact) = options.iter().find(|candidate| candidate.id == selector) {
+        return Ok(exact.clone());
+    }
+    let mut matches = options
+        .into_iter()
+        .filter(|candidate| candidate.name == selector);
+    match (matches.next(), matches.next()) {
+        (Some(option), None) => Ok(option),
+        _ => Err(invalid(
+            "Option selector is missing or ambiguous; use its stable ID",
+        )),
+    }
 }
 
 fn resolve_sorts(

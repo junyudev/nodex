@@ -42,11 +42,13 @@ menu's `Install Command Line Tool…` action manages its user-local command link
 package-manager installation may link the same bundled binary. Neither path
 copies a separately updatable executable or edits shell startup files.
 
-`nodex capabilities` is a side-effect-free compatibility handshake. It
-runs before Profile/Project discovery and reports the Agent API, Nested Markdown
-revision, command capabilities, deep-link kinds, and packaged Skill identity.
-An unpackaged development binary reports an unavailable bundle rather than
-creating Profile state.
+`nodex capabilities` is an optional, side-effect-free compatibility report used
+by packaged Skill verification. It reports the Agent API, Nested Markdown
+revision, command capabilities, deep-link kinds, and packaged Skill identity
+without discovering or creating Profile/Project state. An unpackaged development
+binary reports an unavailable bundle. Ordinary Agent tasks use familiar commands
+directly, consult command help when needed, and read `nodex context` when their
+current context is unknown; a capabilities report is not a prerequisite.
 
 ## Direct input, output, and help
 
@@ -58,11 +60,30 @@ Errors go to stderr; captured errors are structured even for a raw success
 stream. Redirected input/output never enables prompts or pagers, including with
 explicit text output. Skill installation still requires its explicit confirmation.
 
-`nodex --json <command> --help` returns a compact machine guide with arguments,
-defaults, constraints, and examples without connecting to Core. `--help-schema
-input|result|error|all` retrieves only the requested schemas as JSON. Ordinary
-help and machine help share command definitions and examples. `nodex docs nested-markdown` reads the same format reference
-bundled with the official Skill. Read only the help needed for the current task.
+`nodex --help` opens with task-specific default routes, then groups commands
+by task and describes each entry. SQL is the first read entry for filtering,
+joins and aggregation; `read` remains the direct route for one known Page.
+Related multi-Page or multi-field writes favor atomic operations, and SQL-selected
+Property edits use prepare/apply to retain observed targets and versions. These
+preferences guide task selection without requiring discovery before every call.
+Group help lists its direct operations and explains related entrypoints: `page properties`
+changes Page values, `data-source configure` changes Property definitions and
+saved Views, and `page file` manages Page attachment entries.
+
+`nodex --json <command> --help` returns the same purpose, parameter descriptions,
+examples and key behavior as a structured guide without connecting to Core.
+Root and group JSON directories list direct children with `purpose`, `category`
+and `hasSubcommands`; follow a child’s command path for the next level. Root
+JSON help also describes global arguments. Leaf entries include their effect
+and result schema revision.
+
+Command help explains scope, input/output, concurrency conditions and retry
+semantics where relevant. Complex writes include complete stdin examples;
+replace example resource IDs and revisions with actual observations. Ordinary
+help and machine help share command definitions, behavior and examples.
+`--help-schema input|result|error|all` retrieves only the requested schemas as
+JSON. `nodex docs nested-markdown` reads the same format reference bundled with
+the official Skill. Read only the help needed for the current task.
 
 Short Page content and patches accept stdin. Block JSON file flags accept `-`
 for stdin. New structured operations accept bounded `--input FILE|-`; unknown
@@ -140,7 +161,9 @@ Page hits before outer SQL filtering. Its count is not a total match count.
 
 Read `data_sources.schema_revision` and `views.revision` for configuration
 conditions. `data-source configure [SOURCE] --input FILE|-` atomically configures
-Properties, options and Views. Public catalogs and Source bindings replace the
+Properties, options and Views, including complete saved filters through the
+shared clause/group grammar. Updating `filter` replaces all saved filters;
+omission preserves them and `null` clears them. Public catalogs and Source bindings replace the
 separate Source/View read command families.
 
 `page properties set` performs a narrow select/text/number replacement with

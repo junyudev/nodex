@@ -134,6 +134,28 @@ clear sorting and null grouping clears grouping. A script is one atomic mutation
 Receipt replay precedes name resolution and revision validation, so identical
 retries retain their result after a referenced resource has been renamed.
 
+`create_view` and `update_view` accept `filter` using the Core-owned View
+clause/group expression and Property-typed operators. `propertyId` resolves an
+exact active Property ID or unique name in the target Source. Select operands
+resolve option IDs before unique names within that Property; multi-select
+operands are arrays. Other operands retain the shared View grammar, including
+stable Page IDs for relation membership. Missing or ambiguous selectors fail.
+
+The input is a complete saved filter: it replaces both quick Property filters
+and the advanced tree. An omitted update field preserves both; `filter:null`
+clears both. A single clause is stored in an AND group. The operation changes
+the durable shared View definition and preserves unrelated rules, presentation,
+identity, manual order and personal preferences. It does not publish or reset
+personal overrides.
+
+Configuration requires complete conditions. Empty groups, incomplete values,
+invalid operators or incompatible value types reject the whole script rather
+than storing inactive filter drafts. The existing Core expression limits,
+Property capabilities, authorization and revision checks apply. Creation and
+filtering commit together, and a failure leaves neither a partial View nor
+earlier script changes. `view_rows(VIEW_ID)` reads actual saved View results for
+verification; a transient SQL WHERE clause does not create a saved filter.
+
 ## Observed Property edits
 
 `page properties prepare-batch --selection FILE|- --set NAME=JSON` requires

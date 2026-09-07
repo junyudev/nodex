@@ -1,5 +1,7 @@
 //! Declarative Data Source configuration. Selectors are exact stable IDs or names.
-use crate::database::{DatabasePropertySchema, DatabaseViewLayout, DatabaseViewSortDirection};
+use crate::database::{
+    DatabasePropertySchema, DatabaseViewFilter, DatabaseViewLayout, DatabaseViewSortDirection,
+};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -41,6 +43,9 @@ pub enum DatabaseConfigurationOperation {
     CreateView {
         name: String,
         layout: DatabaseViewLayout,
+        /// Complete saved filter. propertyId and select option values accept exact IDs or unique names.
+        /// Uses the shared View expression grammar; omitted or null means no filter.
+        filter: Option<DatabaseViewFilter>,
         group_by: Option<String>,
         #[serde(default)]
         sorts: Vec<ConfigurationSort>,
@@ -49,6 +54,14 @@ pub enum DatabaseConfigurationOperation {
         view: String,
         if_revision: i64,
         name: Option<String>,
+        /// Replace all saved filters; omitted preserves them and null clears them.
+        /// propertyId and select option values accept exact IDs or unique names.
+        #[serde(
+            default,
+            deserialize_with = "crate::deserialize_present",
+            skip_serializing_if = "Option::is_none"
+        )]
+        filter: Option<Option<DatabaseViewFilter>>,
         sorts: Option<Vec<ConfigurationSort>>,
         #[serde(
             default,
