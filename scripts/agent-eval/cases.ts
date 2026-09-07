@@ -61,7 +61,16 @@ const result = (assertions: readonly CaseAssertion[]): CaseVerification => ({
   passed: assertions.every((item) => item.passed),
   assertions,
 });
-const check = (name: string, passed: boolean): CaseAssertion => ({ name, passed });
+const check = (name: string, passed: boolean): CaseAssertion => ({
+  category: "objective",
+  name,
+  passed,
+});
+const preserve = (name: string, passed: boolean): CaseAssertion => ({
+  category: "preservation",
+  name,
+  passed,
+});
 const canonical = createBlockDocumentNfmContentParitySignature;
 
 /** Complete authorized Page inventory, including standalone Pages and Source rows. */
@@ -182,7 +191,7 @@ async function unchanged(
 ) {
   return Promise.all(
     [...before].map(async ([id, value]) =>
-      check(`Page ${id} unchanged`, same(value, await observe(context, id))),
+      preserve(`Page ${id} unchanged`, same(value, await observe(context, id))),
     ),
   );
 }
@@ -225,7 +234,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
   );
   const initialPageIds = await projectPageIds(context);
   const samePages = async () =>
-    check(
+    preserve(
       "Project Page identities preserved",
       same(
         await projectPageIds(context),
@@ -243,8 +252,8 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
     return result([
       check("Requested body, including all unaffected content", state.nfm === canonical(nfm)),
       ...(verifyBlocks ? [verifyBlocks(state.blockTree)] : []),
-      check("Title preserved", state.title === title),
-      check("Properties preserved", same(state.values, before.get(target)?.values)),
+      preserve("Title preserved", state.title === title),
+      preserve("Properties preserved", same(state.values, before.get(target)?.values)),
       ...(await unchanged(context, unaffected)),
       await samePages(),
     ]);
@@ -265,7 +274,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
       prompt: `${promptPrefix}In “${title}”, change the release date from Friday to Monday. Preserve everything else.`,
       verify: () =>
         expectedBody(original.replace("Friday", "Monday"), (blocks) =>
-          check(
+          preserve(
             "Exact Block identities, topology, properties, and rich content preserved",
             same(blocks, mondayBlocks(before.get(target)!.blockTree)),
           ),
@@ -277,7 +286,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
       verify: () =>
         expectedBody(`${original}\n\nSign-off owner: Ravi.`, (blocks) => {
           const originalBlocks = before.get(target)!.blockTree;
-          return check(
+          return preserve(
             "Existing Block identities, topology, properties, and rich content preserved",
             blocks.length === originalBlocks.length + 1 &&
               same(blocks.slice(0, originalBlocks.length), originalBlocks),
@@ -291,8 +300,8 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
         const state = await observe(context, target);
         return result([
           check("New title", state.title === `${name} launch checklist`),
-          check("Body preserved", state.nfm === before.get(target)?.nfm),
-          check("Properties preserved", same(state.values, before.get(target)?.values)),
+          preserve("Body preserved", state.nfm === before.get(target)?.nfm),
+          preserve("Properties preserved", same(state.values, before.get(target)?.values)),
           ...(await unchanged(context, new Map([...before].filter(([key]) => key !== target)))),
           await samePages(),
         ]);
@@ -348,7 +357,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
       verify: async (answer) =>
         result([
           check("Concurrent writer ran after relevant observation", injected),
-          check(
+          preserve(
             "Concurrent value preserved",
             (await observe(context, target)).nfm === canonical(concurrent),
           ),
@@ -399,7 +408,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
             "Exact exported bytes",
             exported !== null && Buffer.from(exported).equals(Buffer.from(bytes)),
           ),
-          check(
+          preserve(
             "Attachment inventory preserved",
             same(
               inventory,
@@ -428,7 +437,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
               added[0]?.name === "Risk note" &&
               added[0]?.schema.kind === "text",
           ),
-          check(
+          preserve(
             "Existing definitions preserved",
             initial.properties.every((old) =>
               same(
@@ -437,7 +446,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
               ),
             ),
           ),
-          check("Views preserved", same(initialDatabase.views, (await database(context)).views)),
+          preserve("Views preserved", same(initialDatabase.views, (await database(context)).views)),
           ...(await noChanges()),
         ]);
       },
@@ -476,7 +485,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
             "View returns exactly Review tasks",
             rows?.is_complete === true && same([...new Set(pageIds)].sort(), [reviewId]),
           ),
-          check(
+          preserve(
             "Original Views preserved",
             initial.views.every((old) =>
               same(
@@ -526,7 +535,7 @@ async function prepare(context: Context, variant: number, id: string): Promise<P
           if (reviewIds.includes(pageId)) values.priority = "p1-high";
           assertions.push(
             check(`Exact values for ${pageId}`, same(state.values, values)),
-            check(
+            preserve(
               `Body and title for ${pageId}`,
               state.nfm === old.nfm && state.title === old.title,
             ),

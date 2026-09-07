@@ -11,6 +11,7 @@ import { CoreClientSeedAdapter } from "../scenarios/adapters/core-client-seed-ad
 import { ElectronScenarioHarness } from "../scenarios/harness/electron-e2e-harness";
 import { materializeScenario } from "../scenarios/seed/scenario-seed";
 import { CASES } from "./cases";
+import { assessEvaluation, inspectRoute, renderAssessment } from "./assessment";
 import { archiveConversation } from "./conversation";
 import { runDesktopAgent } from "./desktop-driver";
 import { prepareDesktopEnvironment } from "./desktop-environment";
@@ -107,7 +108,7 @@ async function run(signal: AbortSignal): Promise<void> {
       projectRootPath: repository,
     }).binaryPath;
     const manifest = {
-      schemaVersion: 2,
+      schemaVersion: 3,
       executionMode: "supervised-desktop-shell",
       startedAt: new Date().toISOString(),
       commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
@@ -125,6 +126,10 @@ async function run(signal: AbortSignal): Promise<void> {
       profileId: descriptor.profile_id,
       profileRoot: profile.runRoot,
       workspace: profile.initialProjectsDirectory,
+      repository,
+      workspaceInstructionsHash: await digestFile(
+        path.join(profile.initialProjectsDirectory, "AGENTS.md"),
+      ),
       coreStartNonce: descriptor.start_nonce,
     };
     await writeFile(path.join(output, "manifest.json"), JSON.stringify(manifest, null, 2), {
@@ -156,11 +161,27 @@ async function run(signal: AbortSignal): Promise<void> {
     const conversation = await archiveConversation(profile.codexHome, agent.threadId, output);
     conversationArchived = true;
     const verification = await fixture.verify(agent.finalText);
-    const passed = agent.status === "completed" && verification.passed;
+    const evidence = inspectRoute(await readFile(path.join(output, conversation.file), "utf8"), {
+      repository,
+      prompt: fixture.prompt,
+    });
+    const assessment = assessEvaluation({
+      status: agent.status,
+      verification,
+      evidence,
+      conversationSha256: conversation.sha256,
+    });
+    const { passed } = assessment;
+    await writeFile(path.join(output, "route-evidence.json"), JSON.stringify(evidence, null, 2), {
+      mode: 0o600,
+    });
+    await writeFile(path.join(output, "assessment.md"), renderAssessment(assessment, evidence), {
+      mode: 0o600,
+    });
     await writeFile(
       path.join(output, "result.json"),
       JSON.stringify(
-        { manifest, prompt: fixture.prompt, agent, conversation, verification, passed },
+        { manifest, prompt: fixture.prompt, agent, conversation, verification, assessment, passed },
         null,
         2,
       ),
@@ -169,7 +190,8 @@ async function run(signal: AbortSignal): Promise<void> {
     const report = [
       "# Supervised CLI Agent evaluation",
       "",
-      `Result: **${passed ? "PASS" : agent.status === "completed" ? "FAIL" : agent.status}**`,
+      "Current outcome and route review: [assessment](assessment.md).",
+      `Runtime: ${agent.status}; independent state checks: ${verification.passed ? "PASS" : "FAIL"}.`,
       "",
       `Case: ${definition.id}; variant ${variant}; Luna Max; ${(agent.durationMs / 1000).toFixed(1)} seconds.`,
       "",
@@ -193,7 +215,7 @@ async function run(signal: AbortSignal): Promise<void> {
     await writeFile(path.join(output, "report.md"), report, { mode: 0o600 });
     await page.screenshot({ path: path.join(output, "desktop.png") });
     process.stdout.write(
-      `${passed ? "PASS" : agent.status}: ${output}/report.md\nWindow retained for inspection. Close it or interrupt this runner to finish cleanup; no further task will start.\n`,
+      `${assessment.outcome}: ${output}/report.md\nWindow retained for inspection. Close it or interrupt this runner to finish cleanup; no further task will start.\n`,
     );
     if (!signal.aborted && !page.isClosed())
       await new Promise<void>((resolve) => {

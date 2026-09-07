@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Local Full access Agent tasks can now work with Nodex through the bundled CLI, with automatic task context, compact command discovery, direct text streams, bare resource IDs, SQL reads across Page bodies, properties, saved Views and Files, ranked Page search, atomic schema/View configuration, Property batches that preserve the original read versions, and atomic Page creation batches.
+- Local Full access Agent tasks can now work with Nodex through the bundled CLI, with automatic task context, command help organized by task, complete write examples, direct text streams, bare resource IDs, SQL reads across Page bodies, properties, saved Views and Files, ranked Page search, atomic schema/View configuration with saved filters, Property batches that preserve the original read versions, and atomic Page creation batches.
 
 - Page and Canvas unsaved edits can now be reviewed, restored or saved as a separate copy, with reversible discard, automatic confirmation of already saved drafts, and recovery across restarts and windows.
 - New tasks can run through enabled local ACP Agents with durable session recovery, negotiated controls, bounded transcripts, cancellation, and explicit local-code trust settings, while Codex remains the full-fidelity default backend.

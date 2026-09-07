@@ -6,6 +6,7 @@ export type EvaluationContext = Pick<
 >;
 
 export interface CaseAssertion {
+  readonly category: "objective" | "preservation";
   readonly name: string;
   readonly passed: boolean;
   readonly detail?: string;

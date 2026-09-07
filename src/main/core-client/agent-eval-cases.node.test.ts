@@ -102,6 +102,7 @@ test("exact-edit oracle rejects a body-equivalent wholesale replacement that rec
     expect(verification.passed).toBe(false);
     expect(verification.assertions.filter((assertion) => !assertion.passed)).toEqual([
       {
+        category: "preservation",
         name: "Exact Block identities, topology, properties, and rich content preserved",
         passed: false,
       },
@@ -130,6 +131,7 @@ test("append oracle accepts a new paragraph and rejects replacing the original B
     expect(verification.passed).toBe(false);
     expect(verification.assertions.filter((assertion) => !assertion.passed)).toEqual([
       {
+        category: "preservation",
         name: "Existing Block identities, topology, properties, and rich content preserved",
         passed: false,
       },

@@ -15,6 +15,7 @@ import {
   nodexCliShellPaths,
   prepareNodexCliShell,
   bindNodexCliShell,
+  shellQuote,
 } from "./NodexCliShell";
 
 const exec = promisify(execFile);
@@ -199,6 +200,8 @@ describe("Nodex per-Turn CLI connection", () => {
               ),
             );
             expect(entry.value).toContain("Use nodex directly");
+            expect(entry.value).toContain(shellQuote(projectId));
+            expect(entry.value).toContain(shellQuote(join(skillRoot, "SKILL.md")));
             const env = {
               PATH: nodexCliShellPaths(current.profile.nodexHome).bin,
               CODEX_THREAD_ID: task.threadId,

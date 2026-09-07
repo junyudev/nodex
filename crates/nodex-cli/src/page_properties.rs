@@ -28,6 +28,7 @@ pub enum PagePropertiesCommand {
     PrepareBatch(crate::selection_batch::PrepareBatchArgs),
     /// Atomically apply typed Property edits from JSON.
     Apply {
+        /// Typed Property edits JSON or a prepare-batch result; - reads stdin.
         #[arg(long, default_value = "-")]
         input: PathBuf,
         #[arg(skip)]
@@ -41,17 +42,24 @@ pub enum PagePropertiesCommand {
 #[derive(Clone, Debug, PartialEq, Args)]
 #[command(group(clap::ArgGroup::new("value").required(true).args(["option", "text", "number"])))]
 pub struct PropertySetArgs {
+    /// Page ID, Page key, or uniquely resolvable title path.
     pub page: String,
+    /// Source ID; omitted uses the Page’s current membership.
     #[arg(long)]
     pub data_source: Option<String>,
+    /// Stable Property ID within the Source (not its display name).
     #[arg(long)]
     pub property: String,
+    /// Select option ID; choose exactly one of --option, --text or --number.
     #[arg(long)]
     pub option: Option<String>,
+    /// Replacement text value, including an empty string.
     #[arg(long)]
     pub text: Option<String>,
+    /// Replacement numeric value.
     #[arg(long, allow_hyphen_values = true)]
     pub number: Option<f64>,
+    /// Observed value_revision from property_values; zero denotes no existing value.
     #[arg(long)]
     pub if_revision: i64,
     #[command(flatten)]

@@ -9,12 +9,11 @@ unavailable, explain that condition. A remote Agent cannot use a local Core
 unless its command really runs on that machine. Installation and configuration
 changes require the user's intent to make those changes.
 
-## Capability unavailable
+## Command unavailable
 
-Read `nodex capabilities` for the current binary and request leaf help only for
-supported commands. A supported Agent API revision does not imply every newer
-command exists. Use a compatible operation or explain the missing capability;
-do not guess parameters from a different release.
+Read the current binary’s parent-command `--help` to find supported operations,
+then the relevant command’s help for its parameters. Use a supported operation
+or explain the missing capability.
 
 ## Project missing or ambiguous
 

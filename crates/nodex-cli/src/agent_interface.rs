@@ -11,7 +11,7 @@ use crate::error::{CliError, CliErrorCode};
 
 pub const AGENT_API_MIN_REVISION: u32 = 1;
 pub const AGENT_API_MAX_REVISION: u32 = 1;
-const MACHINE_HELP_SCHEMA_VERSION: u32 = 3;
+const MACHINE_HELP_SCHEMA_VERSION: u32 = 4;
 const NESTED_MARKDOWN_REVISION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
@@ -1255,6 +1255,10 @@ pub struct MachineHelp {
 pub struct MachineHelpIndex {
     pub schema_version: u32,
     pub command: String,
+    pub purpose: String,
+    pub semantics: Vec<&'static str>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<arguments::ArgumentHelp>,
     pub commands: Vec<MachineHelpSummary>,
 }
 
@@ -1262,9 +1266,15 @@ pub struct MachineHelpIndex {
 #[serde(rename_all = "camelCase")]
 pub struct MachineHelpSummary {
     pub command: String,
-    pub capability: &'static str,
-    pub effect: CommandEffect,
-    pub result_schema_revision: u32,
+    pub purpose: String,
+    pub category: &'static str,
+    pub has_subcommands: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capability: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effect: Option<CommandEffect>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_schema_revision: Option<u32>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, utoipa::ToSchema)]
@@ -1379,7 +1389,7 @@ fn forwarded_arguments(path: &[&str]) -> Option<ForwardedArgumentHelp> {
 }
 
 fn command_semantics(path: &[&str]) -> Vec<&'static str> {
-    match path {
+    let mut semantics = match path {
         ["sql", "schema"] => vec![
             "Without RELATION, returns a compact catalog. Describe one relation or bound Source for full column and identity contracts.",
             "--database is a discovery hint; pages always means all authorized active Pages.",
@@ -1398,9 +1408,12 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
             "Prepare validators apply only to the declared move or delete operation and scope; --view is valid only for move.",
         ],
         ["search"] => {
-            vec!["Matches are ranked evidence snippets, never a complete Page editing baseline."]
+            vec![
+                "Use search for ranked candidates. For additional filters, joins or bodies, use SQL search_hits with the needed relations. Matches are evidence snippets, never a complete Page editing baseline.",
+            ]
         }
         ["read"] => vec![
+            "Use read for one known Page. Prefer sql query when selecting fields, filtering several Pages or joining bodies with Properties and validators.",
             "JSON returns the selected complete Page projection and reusable title/body validators; raw output contains only the selected file content.",
         ],
         ["sed"] => vec![
@@ -1409,15 +1422,57 @@ fn command_semantics(path: &[&str]) -> Vec<&'static str> {
         ["ls"] => vec![
             "List direct children only; continuation identifies additional children, not deeper descendants.",
         ],
-        ["patch"]
-        | ["page", "insert" | "replace" | "rename"]
-        | ["page", "properties", "apply" | "set"]
-        | ["page", "create-batch"] => vec![
-            "Output format never changes write authorization, concurrency conditions, or idempotency.",
-            "Without an idempotency key each call is a new operation. Reuse an explicit key and identical input when retrying an uncertain result.",
+        ["data-source", "configure"] => vec![
+            "Read data_sources.schema_revision before editing; put that value in if_schema_revision. The examples use revision 1 and placeholder IDs: replace them with your observations.",
+            "A script contains 1–100 operations and commits atomically. add_property extends the schema; create_view adds a saved View. Unmentioned definitions and Views remain unchanged.",
+            "create_view and update_view accept filter using the shared View clause/group grammar and typed operators. propertyId and select option values resolve exact IDs or unique names within the Source; missing or ambiguous selectors fail.",
+            "filter replaces all saved quick and advanced filters, never personal preferences. Conditions must be complete; invalid or incomplete conditions roll back the entire script. Read the resulting rows with SQL view_rows(VIEW_ID).",
+            "update_view requires the observed views.revision as if_revision. Omitted fields retain settings, filter:null clears all saved filters, sorts:[] clears sorts, and group_by:null clears grouping.",
+            "After a conflict, reread and reassess. After an uncertain response, retry identical input with the same idempotency key.",
+        ],
+        ["patch"] => vec![
+            "Read the exact old text first. Each hunk must match uniquely; missing or ambiguous text fails rather than replacing the whole Page.",
+            "Unchanged Blocks retain their identities. Use page insert for pure insertion and page replace only when supplying a complete replacement body.",
+        ],
+        ["page", "insert"] => vec![
+            "Insert Nested Markdown at an anchor; existing Blocks retain their identities. Omitted --file reads stdin.",
+        ],
+        ["page", "replace"] => vec![
+            "Read the complete body and its body_etag first. Input is the whole replacement body, not a partial fragment; use patch or insert for local edits.",
+        ],
+        ["page", "rename"] => vec![
+            "Changes only the title. Read title_etag from pages SQL or validators.title_etag from read --json; the body and Property values remain unchanged.",
+        ],
+        ["page", "properties", "set"] => vec![
+            "Read Property IDs and option IDs with sql schema tasks --bind tasks=SOURCE_ID; read value_revision from property_values before replacing a value.",
+            "Prefer apply for several Pages or fields instead of repeated set calls; use SQL -> prepare-batch -> apply for query-selected targets. apply also supports clearing values, multi-select and Relation edits. Use data-source configure for definitions.",
+        ],
+        ["page", "properties", "apply"] => vec![
+            "All edits commit atomically. Each address uses Page, Data Source and Property IDs; replacement edits carry expected_value_revision from property_values.",
+            "The text example assumes the Property has no value (revision 0); replace IDs and revisions with observed values. Use prepare-batch to preserve SQL-selected membership and value observations.",
+        ],
+        ["page", "create-batch"] => vec![
+            "Supply an explicit destination and 1–16 Page drafts. Each draft has title_markdown, nested_markdown and optional typed values. All Pages are created together or none are.",
+        ],
+        ["page", "move" | "delete"] => vec![
+            "Run page prepare for the same operation and View to obtain its ETag. If the condition conflicts, reread and prepare again before deciding to retry.",
+        ],
+        ["file", "read"] | ["page", "file", "read"] => vec![
+            "--output PATH overwrites an existing regular file. --output - writes exact bytes to stdout. Inspect the download receipt for byte count and content identity.",
+        ],
+        ["block", "insert" | "update"] => vec![
+            "JSON uses the typed Block draft or update shape, not a whole Page body. Inspect --help-schema input for the selected operation; stable Block IDs identify existing content.",
         ],
         _ => Vec::new(),
+    };
+    if path != ["data-source", "configure"]
+        && COMMANDS.iter().any(|metadata| {
+            metadata.path == path && metadata.validators.contains(&"idempotency_key")
+        })
+    {
+        semantics.push("Each call without an idempotency key is a new operation. Reuse an explicit key and identical input when retrying an uncertain result.");
     }
+    semantics
 }
 
 fn result_revision(path: &[&str]) -> u32 {
@@ -1499,20 +1554,110 @@ fn machine_help_for(
 }
 
 fn machine_help_index(prefix: &[&str]) -> MachineHelpIndex {
-    let commands = COMMANDS
-        .iter()
-        .filter(|metadata| metadata.path.starts_with(prefix))
-        .map(|metadata| MachineHelpSummary {
-            command: command_name(metadata.path),
-            capability: metadata.capability,
-            effect: metadata.effect,
-            result_schema_revision: result_revision(metadata.path),
+    use clap::CommandFactory;
+    let root = crate::cli::Cli::command();
+    let parent = prefix.iter().fold(&root, |command, segment| {
+        command
+            .find_subcommand(segment)
+            .expect("registered command group")
+    });
+    let commands = parent
+        .get_subcommands()
+        .filter(|child| !child.is_hide_set())
+        .map(|child| {
+            let mut path = prefix.to_vec();
+            path.push(child.get_name());
+            let metadata = COMMANDS.iter().find(|metadata| metadata.path == path);
+            MachineHelpSummary {
+                command: command_name(&path),
+                purpose: command_purpose(&path),
+                category: command_category(path[0]),
+                has_subcommands: child.has_subcommands(),
+                capability: metadata.map(|metadata| metadata.capability),
+                effect: metadata.map(|metadata| metadata.effect),
+                result_schema_revision: metadata.map(|metadata| result_revision(metadata.path)),
+            }
         })
         .collect();
     MachineHelpIndex {
         schema_version: MACHINE_HELP_SCHEMA_VERSION,
         command: command_name(prefix),
+        purpose: command_purpose(prefix),
+        semantics: group_semantics(prefix),
+        arguments: if prefix.is_empty() {
+            arguments::describe(prefix).0
+        } else {
+            vec![]
+        },
         commands,
+    }
+}
+
+/// Root categories describe task intent; both text and JSON directories use them.
+fn command_category(name: &str) -> &'static str {
+    match name {
+        "context" | "search" | "ls" | "tree" | "read" | "sed" | "rg" | "sql" | "history" => {
+            "Read and query"
+        }
+        "page" | "data-source" | "patch" | "block" | "draft" => "Edit and configure",
+        "file" | "open" => "Files and desktop",
+        _ => "Setup and maintenance",
+    }
+}
+
+/// Task defaults, shared by the root text help and structured guide.
+const RECOMMENDED_ROUTES: &[&str] = &[
+    "Filter, join or summarize Pages: prefer sql query; select the needed fields, bodies and validators together.",
+    "Read one known Page: read. Find ranked candidates: search; use SQL when combining search with other data.",
+    "Edit exact text: patch. Add content: page insert. Substantial rewrites or a local diff: draft.",
+    "Set one text, number or select value: page properties set. For other value types or several Pages/fields, prefer page properties apply.",
+    "Edit SQL-selected Pages: sql query -> page properties prepare-batch -> page properties apply; preserve observed targets and versions.",
+    "Change Property definitions or saved Views: data-source configure; combine related changes in one script.",
+    "Reuse known IDs and relevant validators. Send short inputs through stdin; use shell/Python for further computation.",
+];
+
+fn group_semantics(path: &[&str]) -> Vec<&'static str> {
+    match path {
+        [] => RECOMMENDED_ROUTES.iter().copied().chain([
+            "Read or attach a Page File: nodex page file --help. Manage shared Library Files: nodex file --help.",
+            "Use known commands directly. Read nodex context when the current Project is unknown; --project selects a different access context.",
+            "Read nodex COMMAND --help for usage and examples, --json COMMAND --help for a structured guide, and COMMAND --help-schema input for JSON payload shapes.",
+        ]).collect(),
+        ["page"] => vec![
+            "Prefer insert for additions and patch for exact text changes. Use draft for substantial rewrites or a local diff; replace accepts a complete replacement body. rename changes only the title.",
+            "properties changes values on Pages. data-source configure changes Property definitions and saved Views.",
+            "file manages Page attachment entries; Library File content and lifecycle are managed by nodex file.",
+        ],
+        ["data-source"] => vec![
+            "configure adds or changes Property definitions and saved Views. Use page properties to change values on individual Pages.",
+            "Discover Sources with nodex sql query 'SELECT data_source_id,name,schema_revision FROM data_sources'.",
+        ],
+        ["page", "properties"] => vec![
+            "Prefer set for one select, text or number value; use apply for several Pages or fields in one atomic change. For query-selected targets, use SQL -> prepare-batch -> apply to retain the original observations.",
+            "Read Property IDs and value revisions with SQL. Add or rename Property definitions through nodex data-source configure.",
+        ],
+        ["file"] => vec![
+            "These commands require direct Library File access. For a File related to a Page, use nodex page file read with that Page's selector.",
+            "replace changes shared bytes for all current uses; fork creates a separate File. restore publishes a retained version; untrash restores lifecycle state.",
+        ],
+        ["page", "file"] => vec![
+            "Logical paths belong to this Page. Discover entries with the page_files SQL relation and read pages.file_manifest_revision before changing entries.",
+            "put imports a File; add links an existing authorized File. remove detaches the entry while retaining its File and body uses. replace-entry changes only this Page relation.",
+        ],
+        ["sql"] => vec![
+            "Prefer query for filtering, joins, aggregation or reading several Pages. Select the needed bodies, metadata and validators together. Use read for a single known Page body.",
+            "Use schema only when the model is unfamiliar. Bind a Data Source with --bind tasks=SOURCE_ID; query view_rows(VIEW_ID) for a saved View's filtering and order.",
+        ],
+        ["block"] => vec![
+            "Use stable Block IDs and typed JSON for precise structural edits; read --help-schema input for the chosen operation.",
+        ],
+        ["draft"] => vec![
+            "create saves a baseline and editable Page files. Edit the local files, inspect diff, then apply using the stored edit conditions.",
+        ],
+        ["skills"] | ["setup"] => vec![
+            "Inspect status or use --dry-run before installation changes. Select Agents with --agent; --yes confirms the requested change.",
+        ],
+        _ => vec![],
     }
 }
 
@@ -1625,7 +1770,7 @@ fn command_purpose(path: &[&str]) -> String {
     command
         .get_about()
         .map(ToString::to_string)
-        .unwrap_or_else(|| format!("Run {}.", command_name(path)))
+        .expect("every command must describe its purpose")
 }
 
 fn command_examples(metadata: &CommandMetadata) -> Vec<&'static str> {
@@ -1636,9 +1781,56 @@ fn command_examples(metadata: &CommandMetadata) -> Vec<&'static str> {
         ["sql", "schema"] => Some("nodex sql schema tasks --bind tasks=source-id"),
         ["read"] => Some("nodex read page-id"),
         ["search"] => Some("nodex search 'release plan' --limit 5"),
+        ["data-source", "configure"] => Some(
+            r#"nodex data-source configure source-id --idempotency-key risk-note-1 <<'JSON'
+{"if_schema_revision":1,"operations":[{"kind":"add_property","name":"Risk note","schema":{"kind":"text"}}]}
+JSON"#,
+        ),
+        ["page", "create-batch"] => Some(
+            r#"nodex page create-batch --idempotency-key release-pages-1 <<'JSON'
+{"destination":{"kind":"library"},"pages":[{"title_markdown":"Release plan","nested_markdown":"Release date: Friday."},{"title_markdown":"Release checks","nested_markdown":"Verify the release artifacts."}]}
+JSON"#,
+        ),
+        ["page", "properties", "apply"] => Some(
+            r#"nodex page properties apply --idempotency-key risk-value-1 <<'JSON'
+{"edits":[{"address":{"page_id":"page-id","data_source_id":"source-id","property_id":"property-id"},"edit":{"kind":"replace","expected_value_revision":0,"value":{"kind":"text","value":"Needs review"}}}]}
+JSON"#,
+        ),
+        ["page", "properties", "prepare-batch"] => Some(
+            r#"nodex sql query 'SELECT page_id,data_source_id,membership_revision,value_revisions FROM tasks WHERE title=:title' --bind tasks=source-id --param 'title="Release plan"' |
+  nodex page properties prepare-batch --selection - --set 'Risk note={"kind":"text","value":"Needs review"}' |
+  nodex page properties apply --idempotency-key selected-risk-1"#,
+        ),
+        ["page", "insert"] => Some(
+            "nodex page insert page-id --at end --idempotency-key next-steps-1 <<'BODY'\n## Next steps\n\nFinish the release checks.\nBODY",
+        ),
+        ["patch"] => Some(
+            "nodex patch --idempotency-key release-date-1 <<'PATCH'\n*** Begin Patch\n*** Update Page: page-id\n@@\n-Release date: Friday.\n+Release date: Monday.\n*** End Patch\nPATCH",
+        ),
+        ["block", "insert"] => Some(
+            r#"nodex block insert page-id --at end --block-json - --idempotency-key note-block-1 <<'JSON'
+{"local_id":"note","block_type":"paragraph","props":{},"content":{"kind":"value","value":[{"type":"text","text":"Review pending.","styles":{}}]},"children":[]}
+JSON"#,
+        ),
+        ["block", "update"] => Some(
+            r#"nodex block update page-id --block block-id --if-match block-etag --patch-json - <<'JSON'
+{"content":{"kind":"value","value":[{"type":"text","text":"Review complete.","styles":{}}]},"unset_content":false}
+JSON"#,
+        ),
         _ => None,
     };
-    std::iter::once(metadata.example).chain(second).collect()
+    let mut examples = std::iter::once(metadata.example)
+        .chain(second)
+        .collect::<Vec<_>>();
+    if metadata.path == ["data-source", "configure"] {
+        examples.push(r#"nodex data-source configure source-id --idempotency-key task-list-1 <<'JSON'
+{"if_schema_revision":1,"operations":[{"kind":"create_view","name":"Task list","layout":"list","sorts":[{"property":"title","direction":"asc"}]}]}
+JSON"#);
+        examples.push(r#"nodex data-source configure source-id --idempotency-key review-queue-1 <<'JSON'
+{"if_schema_revision":1,"operations":[{"kind":"create_view","name":"Review queue","layout":"list","filter":{"kind":"clause","propertyId":"Status","operator":"select_is","value":"Review"}}]}
+JSON"#);
+    }
+    examples
 }
 
 /// Ordinary and machine help share command metadata and the Clap argument definitions.
@@ -1650,27 +1842,64 @@ pub(crate) fn command() -> clap::Command {
             child_path.push(child.get_name().to_owned());
             decorate(child, child_path)
         });
-        let Some(metadata) = COMMANDS.iter().find(|metadata| {
-            metadata
-                .path
-                .iter()
-                .copied()
-                .eq(path.iter().map(String::as_str))
-        }) else {
-            return command;
+        let tokens = path.iter().map(String::as_str).collect::<Vec<_>>();
+        if tokens.is_empty() {
+            return root_help(command);
+        }
+        let Some(metadata) = COMMANDS.iter().find(|metadata| metadata.path == tokens) else {
+            return command.after_help(group_semantics(&tokens).join("\n\n"));
         };
-        let examples = command_examples(metadata)
-            .iter()
-            .map(|example| format!("  {example}"))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let examples = command_examples(metadata).join("\n\n");
+        let semantics = command_semantics(metadata.path).join("\n\n");
+        let behavior = if semantics.is_empty() {
+            String::new()
+        } else {
+            format!("\n\nBehavior:\n{semantics}")
+        };
         command.after_help(format!(
-            "Scope: {}\n\nExamples:\n{examples}\n\nSchema: {} --help-schema input|result|error|all",
+            "Scope: {}{behavior}\n\nExamples:\n{examples}\n\nOutput: {}\n\nSchema: {} --help-schema input|result|error|all",
             default_scope(metadata.path),
+            output_help(metadata.path).stdout,
             command_name(metadata.path)
         ))
     }
     decorate(crate::cli::Cli::command(), Vec::new())
+}
+
+fn root_help(command: clap::Command) -> clap::Command {
+    let mut directory = String::new();
+    for category in [
+        "Read and query",
+        "Edit and configure",
+        "Files and desktop",
+        "Setup and maintenance",
+    ] {
+        directory.push_str(&format!("{category}:\n"));
+        for child in command
+            .get_subcommands()
+            .filter(|child| !child.is_hide_set() && command_category(child.get_name()) == category)
+        {
+            directory.push_str(&format!(
+                "  {:<13} {}\n",
+                child.get_name(),
+                child.get_about().expect("command purpose")
+            ));
+        }
+        directory.push('\n');
+    }
+    let routes = RECOMMENDED_ROUTES
+        .iter()
+        .map(|route| format!("  {route}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let footer = group_semantics(&[])
+        .into_iter()
+        .skip(RECOMMENDED_ROUTES.len())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    command.help_template(format!(
+        "{{about}}\n\n{{usage-heading}} {{usage}}\n\nRecommended routes:\n{routes}\n\n{directory}Options:\n{{options}}{{after-help}}\n"
+    )).after_help(footer)
 }
 
 fn discover_bundle_capability() -> Result<AgentBundleCapability, CliError> {
@@ -1718,6 +1947,59 @@ mod tests {
 
         assert_eq!(metadata_paths.len(), COMMANDS.len(), "duplicate metadata");
         assert_eq!(clap_paths, metadata_paths);
+    }
+
+    #[test]
+    fn every_help_directory_and_argument_explains_its_purpose() {
+        fn inspect(command: &clap::Command, path: &mut Vec<String>) {
+            if command.get_name() == "help" {
+                return;
+            }
+            assert!(
+                command
+                    .get_about()
+                    .is_some_and(|about| !about.to_string().trim().is_empty()),
+                "missing command purpose: {path:?}"
+            );
+            for argument in command.get_arguments().filter(|arg| !arg.is_hide_set()) {
+                assert!(
+                    argument
+                        .get_help()
+                        .is_some_and(|help| !help.to_string().trim().is_empty()),
+                    "missing argument description: {path:?} {}",
+                    argument.get_id()
+                );
+            }
+            if command.has_subcommands() {
+                let prefix = path.iter().map(String::as_str).collect::<Vec<_>>();
+                let directory = machine_help_index(&prefix);
+                let expected = command
+                    .get_subcommands()
+                    .filter(|child| !child.is_hide_set() && child.get_name() != "help")
+                    .count();
+                assert_eq!(
+                    directory.commands.len(),
+                    expected,
+                    "directory must list each direct child once"
+                );
+                for entry in directory.commands {
+                    assert!(!entry.purpose.is_empty());
+                    assert_eq!(entry.command.split_whitespace().count(), path.len() + 2);
+                    assert_eq!(entry.effect.is_none(), entry.has_subcommands);
+                }
+            }
+            for child in command
+                .get_subcommands()
+                .filter(|child| !child.is_hide_set())
+            {
+                path.push(child.get_name().to_owned());
+                inspect(child, path);
+                path.pop();
+            }
+        }
+        let mut root = Cli::command();
+        root.build();
+        inspect(&root, &mut Vec::new());
     }
 
     #[test]

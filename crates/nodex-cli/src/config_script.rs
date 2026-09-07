@@ -10,7 +10,9 @@ use std::path::PathBuf;
 
 #[derive(Clone, Debug, PartialEq, Args)]
 pub struct ConfigureArgs {
+    /// Data Source ID or unique name; omitted uses the unique active Source in the selected Database.
     pub data_source: Option<String>,
+    /// Configuration JSON with if_schema_revision and 1–100 operations; - reads stdin.
     #[arg(long, default_value = "-")]
     pub input: PathBuf,
     #[arg(skip)]

@@ -2,8 +2,9 @@
 
 A Database contains Data Sources; a Source owns Property schema and member Page
 values; a View saves presentation/query rules over one Source. These IDs are not
-interchangeable. For SQL syntax, complete-result semantics and configuration,
-read [queries-and-configuration.md](queries-and-configuration.md).
+interchangeable. For Property definitions and saved View configuration, use
+`nodex data-source configure --help`. For SQL syntax, complete-result semantics
+and configuration workflows, read [queries-and-configuration.md](queries-and-configuration.md).
 
 ## Discover Source and View semantics
 
