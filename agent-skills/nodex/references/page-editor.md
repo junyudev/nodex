@@ -83,9 +83,17 @@ nodex draft diff ./rewrite
 nodex draft apply ./rewrite
 ```
 
-Keep the immutable base and manifest intact. A conflicting apply retains the
-work directory for recovery. Wait before apply only when the user requested
-review or the active policy requires it. Drafts own their retry identity.
+Edit only the work files; keep the immutable base (including Block identity
+correspondence) and manifest intact. Apply preserves unaffected Block identities
+and safely corresponding edits. It never falls back to whole-body replacement.
+Conflicting, ambiguous or oversized changes fail atomically and retain work files;
+read current content and reassess, or use explicit Block operations for structure
+that Markdown cannot express safely. Use `page replace` only when complete body
+replacement is intended, never merely to get past a failed draft.
+
+`draft diff` compares local files, not current applicability. Retry unchanged
+pending work with the same draft; drafts own their retry identity. Wait before
+apply only when the user requested review or the active policy requires it.
 
 ## Page attachments and shared Files
 

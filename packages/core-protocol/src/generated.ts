@@ -4760,7 +4760,14 @@ export interface components {
             /** Format: int64 */
             readonly schema_version: number;
         };
+        /** @description Authoritative Block correspondence for a draft; descendants own separate spans. */
+        readonly LibraryPageDraftBlock: {
+            readonly block_id: string;
+            readonly parent_block_id?: string | null;
+            readonly spans: readonly components["schemas"]["LibraryPageDraftSpan"][];
+        };
         readonly LibraryPageDraftProjection: {
+            readonly body_blocks: readonly components["schemas"]["LibraryPageDraftBlock"][];
             readonly body_etag: string;
             readonly body_nested_markdown: string;
             /** Format: int64 */
@@ -4782,6 +4789,11 @@ export interface components {
             readonly title_etag: string;
             /** Format: int32 */
             readonly version: number;
+        };
+        /** @description UTF-8 byte interval in the draft's exact Nested Markdown body. */
+        readonly LibraryPageDraftSpan: {
+            readonly end: number;
+            readonly start: number;
         };
         /** @enum {string} */
         readonly LibraryPageFileCollisionPolicy: "reject" | "suffix";

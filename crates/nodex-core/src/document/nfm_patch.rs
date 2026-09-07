@@ -52,23 +52,7 @@ pub(super) fn compile(
     patches: &[ExactNfmPatch],
     allocate_block_id: &mut impl FnMut() -> String,
 ) -> Result<Vec<DocumentBlockOperation>, DocumentOperationError> {
-    let source_nfm = materialize_nfm(&source.block_tree).map_err(invalid)?;
-    let (mut text, mut locations) = serialize_nfm_located(&source_nfm.blocks);
-    if source.nfm.is_empty() {
-        text.clear();
-        locations = vec![NfmSourceBlock::default()];
-    }
-    if !text.ends_with('\n') {
-        let end = text.len();
-        text.push('\n');
-        if let Some(span) = locations
-            .iter_mut()
-            .flat_map(|item| &mut item.spans)
-            .find(|span| span.end == end)
-        {
-            span.end += 1;
-        }
-    }
+    let (text, mut locations) = located_body(&source.block_tree)?;
     let spans = resolve_exact_nfm_patches(&text, patches)?;
     let (target_text, changes) = patch_with_provenance(&text, &spans)?;
     let mut old = project(parse_nfm_located(&text).map_err(invalid)?)?;
@@ -112,6 +96,62 @@ pub(super) fn compile(
         ));
     }
     compile_operations(&source.block_tree, &tree)
+}
+
+/// Use the same canonical byte locations for draft observations and semantic patches.
+fn located_body(
+    tree: &[MaterializedBlockNode],
+) -> Result<(String, Vec<NfmSourceBlock>), DocumentOperationError> {
+    let source_nfm = materialize_nfm(tree).map_err(invalid)?;
+    let (mut text, mut locations) = serialize_nfm_located(&source_nfm.blocks);
+    if source_nfm.nfm.is_empty() {
+        text.clear();
+        locations = vec![NfmSourceBlock {
+            spans: std::iter::once(0..1).collect(),
+        }];
+    }
+    if !text.ends_with('\n') {
+        let end = text.len();
+        text.push('\n');
+        if let Some(span) = locations
+            .iter_mut()
+            .flat_map(|item| &mut item.spans)
+            .find(|span| span.end == end)
+        {
+            span.end += 1;
+        }
+    }
+    Ok((text, locations))
+}
+
+pub(crate) fn draft_body_blocks(
+    tree: &[MaterializedBlockNode],
+    expected_body: &str,
+) -> Result<Vec<nodex_core_contracts::library::LibraryPageDraftBlock>, DocumentOperationError> {
+    use nodex_core_contracts::library::{LibraryPageDraftBlock, LibraryPageDraftSpan};
+    let (text, locations) = located_body(tree)?;
+    let actual = flatten(tree);
+    if text != expected_body || actual.len() != locations.len() {
+        return Err(invalid(
+            "Draft body and Block locations must share one exact materialization",
+        ));
+    }
+    Ok(actual
+        .iter()
+        .zip(locations)
+        .map(|(block, location)| LibraryPageDraftBlock {
+            block_id: block.block.id.clone(),
+            parent_block_id: block.parent.map(|index| actual[index].block.id.clone()),
+            spans: location
+                .spans
+                .into_iter()
+                .map(|span| LibraryPageDraftSpan {
+                    start: span.start,
+                    end: span.end,
+                })
+                .collect(),
+        })
+        .collect())
 }
 
 fn invalid(message: impl std::fmt::Display) -> DocumentOperationError {

@@ -19308,6 +19308,31 @@
           }
         }
       },
+      "LibraryPageDraftBlock": {
+        "type": "object",
+        "description": "Authoritative Block correspondence for a draft; descendants own separate spans.",
+        "required": [
+          "block_id",
+          "spans"
+        ],
+        "properties": {
+          "block_id": {
+            "type": "string"
+          },
+          "parent_block_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryPageDraftSpan"
+            }
+          }
+        }
+      },
       "LibraryPageDraftProjection": {
         "type": "object",
         "required": [
@@ -19323,11 +19348,18 @@
           "document_head_seq",
           "meta_yaml",
           "body_nested_markdown",
+          "body_blocks",
           "page_files",
           "title_etag",
           "body_etag"
         ],
         "properties": {
+          "body_blocks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryPageDraftBlock"
+            }
+          },
           "body_etag": {
             "type": "string"
           },
@@ -19379,6 +19411,24 @@
           "version": {
             "type": "integer",
             "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "LibraryPageDraftSpan": {
+        "type": "object",
+        "description": "UTF-8 byte interval in the draft's exact Nested Markdown body.",
+        "required": [
+          "start",
+          "end"
+        ],
+        "properties": {
+          "end": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "start": {
+            "type": "integer",
             "minimum": 0
           }
         }

@@ -9,7 +9,9 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use nodex_core_contracts::document::{
     DocumentSemanticCommand, OwnedDocumentContract, OwnedDocumentIntent,
 };
-use nodex_core_contracts::library::{LibraryPageDraftProjection, LibraryRead, LibraryReadValue};
+use nodex_core_contracts::library::{
+    LibraryPageDraftBlock, LibraryPageDraftProjection, LibraryRead, LibraryReadValue,
+};
 use nodex_core_contracts::{ModuleApplyRequest, StoreEpoch, VersionedModuleContract};
 use nodex_core_protocol::client::CoreClient;
 use nodex_core_protocol::{OwnedDocumentApplyRequest, ResponseEnvelope};
@@ -24,7 +26,8 @@ use crate::runtime::{
     unwrap_library,
 };
 
-const DRAFT_SCHEMA_VERSION: u32 = 1;
+const DRAFT_SCHEMA_VERSION: u32 = 2;
+const MAX_IDENTITY_MAP_BYTES: usize = 16 * 1024 * 1024;
 const METADATA_PROJECTION_VERSION: u32 = 2;
 const MAX_MANIFEST_BYTES: usize = 128 * 1024;
 const MAX_APPLY_STATE_BYTES: usize =
@@ -41,6 +44,7 @@ const BASE_DIRECTORY: &str = "base";
 const WORK_DIRECTORY: &str = "work";
 const META_FILE: &str = "meta.yaml";
 const BODY_FILE: &str = "body.nested.md";
+const IDENTITY_FILE: &str = "identity.json";
 const APPLY_FILE: &str = "apply.json";
 const APPLY_TEMP_FILE: &str = ".apply.tmp";
 
@@ -108,6 +112,7 @@ pub(crate) struct DraftNoChangeResult {
 struct DraftPaths {
     base_meta: String,
     base_body: String,
+    base_identity: String,
     work_meta: String,
     work_body: String,
     apply_state: String,
@@ -118,6 +123,7 @@ impl Default for DraftPaths {
         Self {
             base_meta: format!("{BASE_DIRECTORY}/{META_FILE}"),
             base_body: format!("{BASE_DIRECTORY}/{BODY_FILE}"),
+            base_identity: format!("{BASE_DIRECTORY}/{IDENTITY_FILE}"),
             work_meta: format!("{WORK_DIRECTORY}/{META_FILE}"),
             work_body: format!("{WORK_DIRECTORY}/{BODY_FILE}"),
             apply_state: APPLY_FILE.to_owned(),
@@ -138,11 +144,57 @@ struct DraftManifest {
     created_at: String,
     base_meta_sha256: String,
     base_body_sha256: String,
+    base_identity_sha256: String,
     normalized_base_metadata_sha256: String,
     base_title_etag: String,
     base_body_etag: String,
     base_page_files: nodex_core_contracts::library::LibraryPageFileInventory,
     paths: DraftPaths,
+}
+
+/// Sealed correspondence, separate from the user-editable Markdown projection.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct DraftIdentity {
+    document_id: String,
+    generation: i64,
+    blocks: Vec<LibraryPageDraftBlock>,
+}
+
+/// Deliberately narrower than Core commands: ordinary drafts cannot encode replacement.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+enum DraftEdit {
+    SetTitle {
+        inline_markdown: String,
+        expected_etag: String,
+    },
+    PatchBody {
+        old_fragment: String,
+        new_fragment: String,
+    },
+}
+
+impl From<DraftEdit> for DocumentSemanticCommand {
+    fn from(edit: DraftEdit) -> Self {
+        match edit {
+            DraftEdit::SetTitle {
+                inline_markdown,
+                expected_etag,
+            } => Self::SetTitle {
+                inline_markdown,
+                expected_etag,
+            },
+            DraftEdit::PatchBody {
+                old_fragment,
+                new_fragment,
+            } => Self::PatchBody {
+                old_fragment,
+                new_fragment,
+                expected_matches: None,
+            },
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -163,7 +215,7 @@ struct DraftApplyState {
     document_id: String,
     generation: i64,
     expected_head_seq: i64,
-    commands: Vec<DocumentSemanticCommand>,
+    commands: Vec<DraftEdit>,
     result: Option<Value>,
 }
 
@@ -173,6 +225,7 @@ struct DraftLayout {
     manifest: DraftManifest,
     base_meta: Vec<u8>,
     base_body: Vec<u8>,
+    identity: DraftIdentity,
     apply_state: Option<DraftApplyState>,
 }
 
@@ -197,6 +250,7 @@ struct ChangedRange {
 struct CompiledPatch {
     old_fragment: String,
     new_fragment: String,
+    base_start: usize,
     current_start: usize,
     current_end: usize,
 }
@@ -211,7 +265,9 @@ pub(crate) fn create(
     let project = selected_project(client, explicit_project, cwd)?;
     let page_id = resolve_page_selector(client, &project.id, page_selector)?;
     let projection = read_projection(client, &project.id, &page_id)?;
-    if projection.metadata_projection_version != METADATA_PROJECTION_VERSION {
+    if projection.version != DRAFT_SCHEMA_VERSION
+        || projection.metadata_projection_version != METADATA_PROJECTION_VERSION
+    {
         return Err(unsafe_path(
             output,
             "Core returned an unsupported draft metadata projection",
@@ -232,6 +288,17 @@ pub(crate) fn create(
         &output.join(BODY_FILE),
     )?;
 
+    let identity_bytes = serde_json::to_vec(&DraftIdentity {
+        document_id: projection.document_id.clone(),
+        generation: projection.document_generation,
+        blocks: projection.body_blocks.clone(),
+    })
+    .map_err(internal)?;
+    if identity_bytes.len() > MAX_IDENTITY_MAP_BYTES {
+        return Err(draft_limit(
+            "draft Block correspondence exceeds the supported size",
+        ));
+    }
     let destination = draft_destination(output)?;
     let draft_id = random_uuid_v4()?;
     let staging = destination
@@ -255,6 +322,7 @@ pub(crate) fn create(
             created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
             base_meta_sha256: digest(projection.meta_yaml.as_bytes()),
             base_body_sha256: digest(projection.body_nested_markdown.as_bytes()),
+            base_identity_sha256: digest(&identity_bytes),
             normalized_base_metadata_sha256: normalized_metadata_hash(&base_metadata)?,
             base_title_etag: projection.title_etag.clone(),
             base_body_etag: projection.body_etag.clone(),
@@ -276,6 +344,11 @@ pub(crate) fn create(
         write_new_file(
             &base_root.join(BODY_FILE),
             projection.body_nested_markdown.as_bytes(),
+            READ_ONLY_FILE_MODE,
+        )?;
+        write_new_file(
+            &base_root.join(IDENTITY_FILE),
+            &identity_bytes,
             READ_ONLY_FILE_MODE,
         )?;
         write_new_file(
@@ -320,6 +393,7 @@ pub(crate) fn create(
             MANIFEST_FILE,
             "base/meta.yaml",
             "base/body.nested.md",
+            "base/identity.json",
             "work/meta.yaml",
             "work/body.nested.md",
         ],
@@ -407,6 +481,11 @@ pub(crate) fn apply(
         &loaded.layout.manifest.project_id,
         &loaded.layout.manifest.page_id,
     )?;
+    if current.document_id != loaded.layout.identity.document_id
+        || current.document_generation != loaded.layout.identity.generation
+    {
+        return Err(draft_conflict("the original draft Document was replaced"));
+    }
     let mut commands = Vec::new();
     if title_changed {
         if current.title_etag != loaded.layout.manifest.base_title_etag {
@@ -414,16 +493,28 @@ pub(crate) fn apply(
                 "Page title changed after the draft was created",
             ));
         }
-        commands.push(DocumentSemanticCommand::SetTitle {
+        commands.push(DraftEdit::SetTitle {
             inline_markdown: accepted_title.clone(),
             expected_etag: loaded.layout.manifest.base_title_etag.clone(),
         });
     }
     if body_changed {
         let remaining = MAX_SEMANTIC_COMMANDS.saturating_sub(commands.len());
-        commands.extend(compile_body_commands(&loaded, &current, remaining)?);
+        commands.extend(
+            compile_body_commands(&loaded, &current, remaining).map_err(|error| {
+                error.at_path(
+                    loaded
+                        .layout
+                        .root
+                        .join(WORK_DIRECTORY)
+                        .join(BODY_FILE)
+                        .display()
+                        .to_string(),
+                )
+            })?,
+        );
     }
-    let mut state = DraftApplyState {
+    let state = DraftApplyState {
         schema_version: DRAFT_SCHEMA_VERSION,
         status: DraftApplyStatus::Pending,
         operation_id,
@@ -438,21 +529,8 @@ pub(crate) fn apply(
     if document_apply_request_size(&loaded.layout.manifest, &state)?
         > nodex_core_protocol::MAX_DOCUMENT_JSON_REQUEST_BYTES
     {
-        state
-            .commands
-            .retain(|command| matches!(command, DocumentSemanticCommand::SetTitle { .. }));
-        if body_changed {
-            state
-                .commands
-                .extend(guarded_replacement(&loaded, &current)?);
-        }
-    }
-    if document_apply_request_size(&loaded.layout.manifest, &state)?
-        > nodex_core_protocol::MAX_DOCUMENT_JSON_REQUEST_BYTES
-    {
-        return Err(CliError::new(
-            CliErrorCode::InvalidInput,
-            "draft work cannot be encoded within the Document request bound",
+        return Err(draft_limit(
+            "draft edits exceed the atomic Document request size; reduce the edit or use explicit Block operations",
         ));
     }
     write_apply_state(&loaded.layout.root, &state)?;
@@ -470,6 +548,7 @@ pub(crate) fn discard(directory: &Path) -> Result<CommandOutput, CliError> {
     remove_known_file(&layout.root.join(WORK_DIRECTORY).join(BODY_FILE))?;
     remove_known_file(&layout.root.join(BASE_DIRECTORY).join(META_FILE))?;
     remove_known_file(&layout.root.join(BASE_DIRECTORY).join(BODY_FILE))?;
+    remove_known_file(&layout.root.join(BASE_DIRECTORY).join(IDENTITY_FILE))?;
     remove_known_file(&layout.root.join(MANIFEST_FILE))?;
     remove_known_directory(&layout.root.join(WORK_DIRECTORY))?;
     remove_known_directory(&layout.root.join(BASE_DIRECTORY))?;
@@ -594,41 +673,65 @@ fn compile_body_commands(
     loaded: &LoadedDraft,
     current: &LibraryPageDraftProjection,
     maximum_commands: usize,
-) -> Result<Vec<DocumentSemanticCommand>, CliError> {
-    if maximum_commands == 0 {
-        return guarded_replacement(loaded, current);
-    }
-    if let Some(patches) = compile_safe_patches(
+) -> Result<Vec<DraftEdit>, CliError> {
+    let patches = compile_safe_patches(
         &loaded.base_body,
         &loaded.work_body,
         &current.body_nested_markdown,
         maximum_commands,
-    ) {
-        return Ok(patches
-            .into_iter()
-            .map(|patch| DocumentSemanticCommand::PatchBody {
-                old_fragment: patch.old_fragment,
-                new_fragment: patch.new_fragment,
-                expected_matches: None,
-            })
-            .collect());
+    )?;
+    for patch in &patches {
+        let original = fragment_identity(
+            &loaded.layout.identity.blocks,
+            patch.base_start,
+            patch.old_fragment.len(),
+        );
+        let observed = fragment_identity(
+            &current.body_blocks,
+            patch.current_start,
+            patch.old_fragment.len(),
+        );
+        if original.is_empty() || original != observed {
+            return Err(draft_conflict(
+                "a draft target Block was removed, replaced or moved; read current content and reassess the edit",
+            ));
+        }
     }
-    guarded_replacement(loaded, current)
+    Ok(patches
+        .into_iter()
+        .map(|patch| DraftEdit::PatchBody {
+            old_fragment: patch.old_fragment,
+            new_fragment: patch.new_fragment,
+        })
+        .collect())
 }
 
-fn guarded_replacement(
-    loaded: &LoadedDraft,
-    current: &LibraryPageDraftProjection,
-) -> Result<Vec<DocumentSemanticCommand>, CliError> {
-    if current.body_etag != loaded.layout.manifest.base_body_etag {
-        return Err(draft_conflict(
-            "Page body changed and the draft cannot form safe non-overlapping exact patches",
-        ));
-    }
-    Ok(vec![DocumentSemanticCommand::ReplaceBody {
-        nested_markdown: loaded.work_body.clone(),
-        expected_etag: loaded.layout.manifest.base_body_etag.clone(),
-    }])
+/// Compare original identities and relative text ownership, never content alone.
+fn fragment_identity(
+    blocks: &[LibraryPageDraftBlock],
+    start: usize,
+    length: usize,
+) -> Vec<(&str, Option<&str>, usize, usize)> {
+    let end = start + length;
+    blocks
+        .iter()
+        .flat_map(|block| {
+            block.spans.iter().filter_map(move |span| {
+                let left = span.start.max(start);
+                let right = span.end.min(end);
+                (left < right).then_some((
+                    block.block_id.as_str(),
+                    block.parent_block_id.as_deref(),
+                    left.saturating_sub(start),
+                    right.saturating_sub(start),
+                ))
+            })
+        })
+        .collect()
+}
+
+fn draft_limit(message: impl Into<String>) -> CliError {
+    CliError::new(CliErrorCode::DraftEditLimit, message)
 }
 
 fn compile_safe_patches(
@@ -636,19 +739,24 @@ fn compile_safe_patches(
     work: &str,
     current: &str,
     maximum_commands: usize,
-) -> Option<Vec<CompiledPatch>> {
+) -> Result<Vec<CompiledPatch>, CliError> {
     let base_lines = base.split_inclusive('\n').collect::<Vec<_>>();
     let work_lines = work.split_inclusive('\n').collect::<Vec<_>>();
     if base_lines.len() > MAX_DRAFT_LINES || work_lines.len() > MAX_DRAFT_LINES {
-        return None;
+        return Err(draft_limit("draft exceeds the line alignment budget"));
     }
     let diff = TextDiff::configure()
         .algorithm(Algorithm::Histogram)
         .timeout(Duration::from_secs(2))
         .diff_lines(base, work);
     let ranges = changed_ranges(&diff);
-    if ranges.is_empty() || ranges.len() > maximum_commands {
-        return None;
+    if ranges.is_empty() {
+        return Ok(Vec::new());
+    }
+    if ranges.len() > maximum_commands {
+        return Err(draft_limit(
+            "draft exceeds the atomic edit count; reduce the edit",
+        ));
     }
     let mut patches = Vec::with_capacity(ranges.len());
     for (index, range) in ranges.iter().enumerate() {
@@ -662,14 +770,33 @@ fn compile_safe_patches(
         } else {
             midpoint(range.old_end, ranges[index + 1].old_start)
         };
-        patches.push(compile_one_patch(
+        let mut patch = compile_one_patch(
             &base_lines,
             &work_lines,
-            current,
+            base,
             range,
             left_limit,
             right_limit,
-        )?);
+        )
+        .ok_or_else(|| {
+            CliError::new(
+                CliErrorCode::DraftAmbiguousEdit,
+                "draft cannot identify a unique baseline fragment; use explicit Block operations",
+            )
+            .at_line(range.old_start + 1)
+        })?;
+        let mut matches = current.match_indices(&patch.old_fragment);
+        let Some((offset, _)) = matches.next() else {
+            return Err(draft_conflict("a draft fragment changed after observation"));
+        };
+        if matches.next().is_some() {
+            return Err(draft_conflict(
+                "a draft fragment is no longer unique in the current document",
+            ));
+        }
+        patch.current_start = offset;
+        patch.current_end = offset + patch.old_fragment.len();
+        patches.push(patch);
     }
     let mut spans = patches
         .iter()
@@ -677,9 +804,11 @@ fn compile_safe_patches(
         .collect::<Vec<_>>();
     spans.sort_unstable();
     if spans.windows(2).any(|window| window[0].1 > window[1].0) {
-        return None;
+        return Err(draft_conflict(
+            "draft fragments overlap in the current document",
+        ));
     }
-    Some(patches)
+    Ok(patches)
 }
 
 fn changed_ranges(diff: &TextDiff<'_, '_, str>) -> Vec<ChangedRange> {
@@ -730,6 +859,7 @@ fn compile_one_patch(
                 new_fragment.push_str(&work_lines[range.new_start..range.new_end].concat());
                 new_fragment.push_str(&base_lines[range.old_end..end].concat());
                 return Some(CompiledPatch {
+                    base_start: current_start,
                     current_end: current_start.checked_add(old_fragment.len())?,
                     current_start,
                     old_fragment,
@@ -831,10 +961,17 @@ fn load_layout(directory: &Path) -> Result<DraftLayout, CliError> {
     let work_root = root.join(WORK_DIRECTORY);
     validate_directory(&base_root, Some(READ_ONLY_DIRECTORY_MODE))?;
     validate_directory(&work_root, Some(PRIVATE_DIRECTORY_MODE))?;
-    validate_entries(&base_root, &[META_FILE, BODY_FILE], &[])?;
     validate_entries(&work_root, &[META_FILE, BODY_FILE], &[])?;
 
     let manifest_bytes = read_private_file(&root.join(MANIFEST_FILE), MAX_MANIFEST_BYTES, true)?;
+    let header: Value = serde_json::from_slice(&manifest_bytes)
+        .map_err(|error| unsafe_path(&root.join(MANIFEST_FILE), error.to_string()))?;
+    if header["schemaVersion"] != DRAFT_SCHEMA_VERSION {
+        return Err(unsafe_path(
+            &root,
+            "draft format cannot establish original Block identities; preserve work files and create a fresh draft before reapplying edits",
+        ));
+    }
     let manifest = serde_json::from_slice::<DraftManifest>(&manifest_bytes).map_err(|error| {
         unsafe_path(
             &root.join(MANIFEST_FILE),
@@ -842,16 +979,23 @@ fn load_layout(directory: &Path) -> Result<DraftLayout, CliError> {
         )
     })?;
     validate_manifest(&manifest, &root)?;
+    validate_entries(&base_root, &[META_FILE, BODY_FILE, IDENTITY_FILE], &[])?;
     let base_meta = read_private_file(
         &base_root.join(META_FILE),
         crate::meta_yaml::MAX_META_YAML_BYTES,
         true,
     )?;
     let base_body = read_private_file(&base_root.join(BODY_FILE), MAX_DRAFT_BODY_BYTES, true)?;
+    let identity_bytes =
+        read_private_file(&base_root.join(IDENTITY_FILE), MAX_IDENTITY_MAP_BYTES, true)?;
+    let identity: DraftIdentity = serde_json::from_slice(&identity_bytes)
+        .map_err(|error| unsafe_path(&base_root.join(IDENTITY_FILE), error.to_string()))?;
+    validate_identity_map(&identity, &base_body, &root)?;
     validate_private_file(&work_root.join(META_FILE), false)?;
     validate_private_file(&work_root.join(BODY_FILE), false)?;
     if digest(&base_meta) != manifest.base_meta_sha256
         || digest(&base_body) != manifest.base_body_sha256
+        || digest(&identity_bytes) != manifest.base_identity_sha256
     {
         return Err(unsafe_path(
             &root,
@@ -886,8 +1030,42 @@ fn load_layout(directory: &Path) -> Result<DraftLayout, CliError> {
         manifest,
         base_meta,
         base_body,
+        identity,
         apply_state,
     })
+}
+
+fn validate_identity_map(
+    identity: &DraftIdentity,
+    body: &[u8],
+    root: &Path,
+) -> Result<(), CliError> {
+    let text = std::str::from_utf8(body).map_err(internal)?;
+    let mut ids = BTreeSet::new();
+    if !valid_identity(&identity.document_id)
+        || identity.generation < 1
+        || identity.blocks.is_empty()
+    {
+        return Err(unsafe_path(root, "invalid draft Document identity"));
+    }
+    for block in &identity.blocks {
+        if !valid_identity(&block.block_id)
+            || block
+                .parent_block_id
+                .as_ref()
+                .is_some_and(|parent| !ids.contains(parent))
+            || !ids.insert(block.block_id.clone())
+            || block.spans.iter().any(|span| {
+                span.start >= span.end
+                    || span.end > body.len()
+                    || !text.is_char_boundary(span.start)
+                    || !text.is_char_boundary(span.end)
+            })
+        {
+            return Err(unsafe_path(root, "invalid draft Block correspondence"));
+        }
+    }
+    Ok(())
 }
 
 fn validate_manifest(manifest: &DraftManifest, root: &Path) -> Result<(), CliError> {
@@ -901,6 +1079,7 @@ fn validate_manifest(manifest: &DraftManifest, root: &Path) -> Result<(), CliErr
         || !valid_identity(&manifest.store_epoch)
         || !valid_hash(&manifest.base_meta_sha256)
         || !valid_hash(&manifest.base_body_sha256)
+        || !valid_hash(&manifest.base_identity_sha256)
         || !valid_hash(&manifest.normalized_base_metadata_sha256)
         || manifest.base_title_etag.is_empty()
         || manifest.base_title_etag.len() > 512
@@ -947,7 +1126,9 @@ fn validate_apply_state(
     operation_id: &str,
     accepted_title: &str,
 ) -> Result<(), CliError> {
-    if state.operation_id != operation_id
+    if state.document_id != loaded.layout.identity.document_id
+        || state.generation != loaded.layout.identity.generation
+        || state.operation_id != operation_id
         || state.accepted_title_sha256 != digest(accepted_title.as_bytes())
         || state.accepted_body_sha256 != digest(loaded.work_body.as_bytes())
     {
@@ -968,11 +1149,10 @@ fn validate_apply_commands(
     let title_changed = loaded.base_metadata.title_markdown != accepted_title;
     let body_changed = loaded.base_body != loaded.work_body;
     let mut title_commands = 0usize;
-    let mut replacement = None::<String>;
     let mut patches = Vec::<(usize, usize, String)>::new();
     for command in &state.commands {
         match command {
-            DocumentSemanticCommand::SetTitle {
+            DraftEdit::SetTitle {
                 inline_markdown,
                 expected_etag,
             } if title_changed
@@ -981,22 +1161,10 @@ fn validate_apply_commands(
             {
                 title_commands += 1;
             }
-            DocumentSemanticCommand::ReplaceBody {
-                nested_markdown,
-                expected_etag,
-            } if body_changed
-                && nested_markdown == &loaded.work_body
-                && expected_etag == &loaded.layout.manifest.base_body_etag
-                && replacement.is_none()
-                && patches.is_empty() =>
-            {
-                replacement = Some(nested_markdown.clone());
-            }
-            DocumentSemanticCommand::PatchBody {
+            DraftEdit::PatchBody {
                 old_fragment,
                 new_fragment,
-                expected_matches: None,
-            } if body_changed && replacement.is_none() && !old_fragment.is_empty() => {
+            } if body_changed && !old_fragment.is_empty() => {
                 let mut matches = loaded.base_body.match_indices(old_fragment);
                 let Some((start, _)) = matches.next() else {
                     return Err(invalid_apply_commands(&loaded.layout.root));
@@ -1018,13 +1186,10 @@ fn validate_apply_commands(
     if title_commands != usize::from(title_changed) {
         return Err(invalid_apply_commands(&loaded.layout.root));
     }
-    if !body_changed && (replacement.is_some() || !patches.is_empty()) {
+    if !body_changed && !patches.is_empty() {
         return Err(invalid_apply_commands(&loaded.layout.root));
     }
     if body_changed {
-        if replacement.as_deref() == Some(loaded.work_body.as_str()) {
-            return Ok(());
-        }
         if patches.is_empty() {
             return Err(invalid_apply_commands(&loaded.layout.root));
         }
@@ -1052,7 +1217,8 @@ fn invalid_apply_commands(root: &Path) -> CliError {
 
 fn draft_operation_id(loaded: &LoadedDraft, accepted_title: &str) -> Result<String, CliError> {
     let fingerprint = serde_json::to_vec(&json!({
-        "version": 1,
+        "version": DRAFT_SCHEMA_VERSION,
+        "base_identity_sha256": loaded.layout.manifest.base_identity_sha256,
         "draft_id": loaded.layout.manifest.draft_id,
         "base_meta_sha256": loaded.layout.manifest.base_meta_sha256,
         "base_body_sha256": loaded.layout.manifest.base_body_sha256,
@@ -1075,7 +1241,7 @@ fn document_apply_request(
             document_id: state.document_id.clone(),
             generation: state.generation,
             expected_head_seq: state.expected_head_seq,
-            commands: state.commands.clone(),
+            commands: state.commands.iter().cloned().map(Into::into).collect(),
         },
     }
 }
@@ -1423,6 +1589,7 @@ fn remove_generated_tree(root: &Path) -> Result<(), CliError> {
         work.join(BODY_FILE),
         base.join(META_FILE),
         base.join(BODY_FILE),
+        base.join(IDENTITY_FILE),
         root.join(MANIFEST_FILE),
     ] {
         if path.exists() {
@@ -1559,7 +1726,7 @@ mod tests {
             "one\ntwo\n".replacen(&inserted[0].old_fragment, &inserted[0].new_fragment, 1),
             "one\nNEW\ntwo\n"
         );
-        assert!(compile_safe_patches("one\ntwo\n", "one\nTWO\n", "one\nremote\n", 512).is_none());
+        assert!(compile_safe_patches("one\ntwo\n", "one\nTWO\n", "one\nremote\n", 512).is_err());
     }
 
     #[test]
@@ -1669,23 +1836,36 @@ mod tests {
     }
 
     #[test]
-    fn guarded_replacement_requires_the_original_body_etag() {
-        let directory = tempdir().expect("draft parent");
+    fn draft_rejects_recreated_targets_and_limits_without_replacement() {
+        let directory = tempdir().unwrap();
         let root = directory.path().join("draft");
         write_fixture(&root);
         fs::write(root.join(WORK_DIRECTORY).join(BODY_FILE), b"Replacement\n").unwrap();
-        let loaded = load_draft(&root).expect("changed body");
-        let current = draft_projection("body-etag", "Remote body\n");
-        assert!(matches!(
-            guarded_replacement(&loaded, &current).unwrap().as_slice(),
-            [DocumentSemanticCommand::ReplaceBody { nested_markdown, .. }]
-                if nested_markdown == "Replacement\n"
-        ));
-
-        let stale = draft_projection("remote-etag", "Remote body\n");
-        let error = guarded_replacement(&loaded, &stale)
-            .expect_err("stale body cannot be replaced wholesale");
-        assert_eq!(error.code, CliErrorCode::DraftConflict);
+        let loaded = load_draft(&root).unwrap();
+        let mut current = draft_projection("body-etag", "Body\n");
+        assert_eq!(
+            compile_body_commands(&loaded, &current, 512).unwrap().len(),
+            1
+        );
+        current.body_blocks[0].block_id = "new-identical-block".to_owned();
+        assert_eq!(
+            compile_body_commands(&loaded, &current, 512)
+                .unwrap_err()
+                .code,
+            CliErrorCode::DraftConflict
+        );
+        assert_eq!(
+            compile_body_commands(&loaded, &current, 0)
+                .unwrap_err()
+                .code,
+            CliErrorCode::DraftEditLimit
+        );
+        assert_eq!(
+            fs::read(root.join(WORK_DIRECTORY).join(BODY_FILE)).unwrap(),
+            b"Replacement\n"
+        );
+        let replacement = json!({"kind":"replace_body", "nested_markdown":"Replacement\n", "expected_etag":"body-etag"});
+        assert!(serde_json::from_value::<DraftEdit>(replacement).is_err());
     }
 
     #[test]
@@ -1714,7 +1894,7 @@ mod tests {
         let title = loaded.work_metadata.title_markdown.clone();
         let operation_id = draft_operation_id(&loaded, &title).unwrap();
         let valid = DraftApplyState {
-            schema_version: 1,
+            schema_version: DRAFT_SCHEMA_VERSION,
             status: DraftApplyStatus::Pending,
             operation_id: operation_id.clone(),
             accepted_title_sha256: digest(title.as_bytes()),
@@ -1723,13 +1903,13 @@ mod tests {
             generation: 1,
             expected_head_seq: 1,
             commands: vec![
-                DocumentSemanticCommand::SetTitle {
+                DraftEdit::SetTitle {
                     inline_markdown: title.clone(),
                     expected_etag: "title-etag".to_owned(),
                 },
-                DocumentSemanticCommand::ReplaceBody {
-                    nested_markdown: "New body\n".to_owned(),
-                    expected_etag: "body-etag".to_owned(),
+                DraftEdit::PatchBody {
+                    old_fragment: "Body\n".to_owned(),
+                    new_fragment: "New body\n".to_owned(),
                 },
             ],
             result: None,
@@ -1737,9 +1917,9 @@ mod tests {
         validate_apply_state(&loaded, &valid, &operation_id, &title).expect("exact apply marker");
 
         let mut tampered = valid;
-        tampered.commands[1] = DocumentSemanticCommand::ReplaceBody {
-            nested_markdown: "Different Page content\n".to_owned(),
-            expected_etag: "body-etag".to_owned(),
+        tampered.commands[1] = DraftEdit::PatchBody {
+            old_fragment: "Body\n".to_owned(),
+            new_fragment: "Different Page content\n".to_owned(),
         };
         let error = validate_apply_state(&loaded, &tampered, &operation_id, &title)
             .expect_err("marker cannot change accepted work");
@@ -1761,7 +1941,7 @@ mod tests {
 
     fn draft_projection(body_etag: &str, body: &str) -> LibraryPageDraftProjection {
         LibraryPageDraftProjection {
-            version: 1,
+            version: DRAFT_SCHEMA_VERSION,
             metadata_projection_version: 2,
             library_id: "library-1".to_owned(),
             store_epoch: "epoch-1".to_owned(),
@@ -1773,6 +1953,7 @@ mod tests {
             document_head_seq: 1,
             meta_yaml: String::new(),
             body_nested_markdown: body.to_owned(),
+            body_blocks: fixture_blocks(body.len()),
             page_files: nodex_core_contracts::library::LibraryPageFileInventory {
                 can_write: true,
                 page_id: "page-1".to_owned(),
@@ -1790,6 +1971,17 @@ mod tests {
         }
     }
 
+    fn fixture_blocks(length: usize) -> Vec<LibraryPageDraftBlock> {
+        vec![LibraryPageDraftBlock {
+            block_id: "block-1".to_owned(),
+            parent_block_id: None,
+            spans: vec![nodex_core_contracts::library::LibraryPageDraftSpan {
+                start: 0,
+                end: length,
+            }],
+        }]
+    }
+
     fn write_fixture(root: &Path) {
         create_private_directory(root).expect("draft root");
         let base = root.join(BASE_DIRECTORY);
@@ -1798,9 +1990,15 @@ mod tests {
         create_private_directory(&work).expect("work root");
         let metadata = b"id: \"page-1\"\ntitle: \"Title\"\nproperties: {}\nschedule: null\n";
         let body = b"Body\n";
+        let identity = serde_json::to_vec(&DraftIdentity {
+            document_id: "document-1".to_owned(),
+            generation: 1,
+            blocks: fixture_blocks(body.len()),
+        })
+        .unwrap();
         let parsed = crate::meta_yaml::parse(metadata).expect("fixture metadata");
         let manifest = DraftManifest {
-            schema_version: 1,
+            schema_version: DRAFT_SCHEMA_VERSION,
             metadata_projection_version: 2,
             draft_id: "11111111-1111-4111-8111-111111111111".to_owned(),
             profile_id: "profile-1".to_owned(),
@@ -1810,6 +2008,7 @@ mod tests {
             created_at: "2026-07-21T00:00:00.000Z".to_owned(),
             base_meta_sha256: digest(metadata),
             base_body_sha256: digest(body),
+            base_identity_sha256: digest(&identity),
             normalized_base_metadata_sha256: normalized_metadata_hash(&parsed).unwrap(),
             base_title_etag: "title-etag".to_owned(),
             base_body_etag: "body-etag".to_owned(),
@@ -1837,6 +2036,7 @@ mod tests {
         .unwrap();
         write_new_file(&base.join(META_FILE), metadata, READ_ONLY_FILE_MODE).unwrap();
         write_new_file(&base.join(BODY_FILE), body, READ_ONLY_FILE_MODE).unwrap();
+        write_new_file(&base.join(IDENTITY_FILE), &identity, READ_ONLY_FILE_MODE).unwrap();
         write_new_file(&work.join(META_FILE), metadata, PRIVATE_FILE_MODE).unwrap();
         write_new_file(&work.join(BODY_FILE), body, PRIVATE_FILE_MODE).unwrap();
         fs::set_permissions(&base, fs::Permissions::from_mode(READ_ONLY_DIRECTORY_MODE)).unwrap();

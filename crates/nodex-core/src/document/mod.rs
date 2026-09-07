@@ -23,6 +23,7 @@ mod materialization;
 mod module;
 mod nfm_input;
 mod nfm_patch;
+pub(crate) use nfm_patch::draft_body_blocks;
 mod operations;
 mod owners;
 mod persistence;

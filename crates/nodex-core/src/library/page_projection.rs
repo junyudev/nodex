@@ -20,7 +20,7 @@ use super::content::page_content;
 use super::mutation::{require_project_in_library, resolve_library_actor_project_id};
 
 const PAGE_FILE_VERSION: u32 = 2;
-const PAGE_DRAFT_VERSION: u32 = 1;
+const PAGE_DRAFT_VERSION: u32 = 2;
 const MAX_IDENTITY_BYTES: usize = 512;
 const MAX_NAME_BYTES: usize = 4_096;
 const MAX_TEXT_BYTES: usize = 64 * 1024;
@@ -261,6 +261,16 @@ pub(super) fn page_draft_projection(
             page_id,
         )?,
     )?;
+    let tree_json: String = connection.query_row(
+        "SELECT block_tree_json FROM document_materializations WHERE document_id = ?1 AND generation = ?2 AND projected_seq = ?3",
+        params![body.document_id, body.document_generation, body.document_head_seq],
+        |row| row.get(0),
+    )?;
+    let tree: Vec<crate::domain::block_materialization::MaterializedBlockNode> =
+        serde_json::from_str(&tree_json)
+            .map_err(|error| corrupt(format!("Invalid draft Block materialization: {error}")))?;
+    let body_blocks = crate::document::draft_body_blocks(&tree, &body.content)
+        .map_err(|error| corrupt(error.to_string()))?;
     Ok(LibraryPageDraftProjection {
         version: PAGE_DRAFT_VERSION,
         metadata_projection_version: PAGE_FILE_VERSION,
@@ -274,6 +284,7 @@ pub(super) fn page_draft_projection(
         document_head_seq: meta.document_head_seq,
         meta_yaml: meta.content,
         body_nested_markdown: body.content,
+        body_blocks,
         page_files,
         title_etag,
         body_etag,

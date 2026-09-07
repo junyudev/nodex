@@ -1364,3 +1364,136 @@ fn saved_filter_example_and_updates_return_exact_rows_and_preserve_unrelated_sta
         assert_eq!(after_body[field], before_body[field], "{field}");
     }
 }
+
+/// Exercise the file workflow with real Core authority, including the same-text ABA case.
+#[test]
+fn python_drafts_preserve_identity_merge_and_retry_but_reject_recreated_targets() {
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempfile::tempdir().unwrap();
+    let home = directory.path().join("profile");
+    fs::create_dir(&home).unwrap();
+    let core_binary = Path::new(env!("CARGO_BIN_EXE_nodex")).with_file_name("nodex-core");
+    let client =
+        connect_or_launch(&home, "draft-identity-integration", Some(&core_binary)).unwrap();
+    let _guard = CoreGuard(client.handshake.generation.pid);
+    seed(&client, &home);
+    let body = "# First\nRelease date: Friday.\n- Keep backups\n\t- Verify restore\n# Second\nRelease date: Friday.\nOwner: Mina\n";
+    assert_eq!(
+        input_text(&home, &["page", "insert", PAGE_A], body)["ok"],
+        true
+    );
+    let properties = property_state(&home, PAGE_A);
+    let draft = home.join("edit");
+    success(
+        &home,
+        &[
+            "draft",
+            "create",
+            PAGE_A,
+            "--output",
+            draft.to_str().unwrap(),
+        ],
+    );
+    let before: Value =
+        serde_json::from_slice(&fs::read(draft.join("base/identity.json")).unwrap()).unwrap();
+    let date_id = before["blocks"][1]["block_id"].clone();
+    let python = Command::new("python3").args(["-c",
+        "from pathlib import Path; import sys; p=Path(sys.argv[1]); s=p.read_text(); assert s.count('Release date: Friday.')==2; p.write_text(s.replace('Release date: Friday.', 'Release date: Monday.', 1))",
+        draft.join("work/body.nested.md").to_str().unwrap(),
+    ]).output().unwrap();
+    assert!(
+        python.status.success(),
+        "{}",
+        String::from_utf8_lossy(&python.stderr)
+    );
+    let remote = format!(
+        "*** Begin Patch\n*** Update Page: {PAGE_A}\n@@\n-Owner: Mina\n+Owner: Kai\n*** End Patch\n"
+    );
+    assert_eq!(input_text(&home, &["patch"], &remote)["ok"], true);
+    let applied = success(&home, &["draft", "apply", draft.to_str().unwrap()]);
+    assert_eq!(
+        applied["affected"],
+        serde_json::json!({
+            "created_block_ids":[], "deleted_block_ids":[], "moved_block_ids":[],
+            "updated_block_ids":[date_id], "title_changed":false,
+        })
+    );
+    assert_eq!(
+        success(&home, &["read", PAGE_A])["content"],
+        body.replacen("Friday", "Monday", 1).replace("Mina", "Kai")
+    );
+    assert_eq!(property_state(&home, PAGE_A), properties);
+    let observed = home.join("observed");
+    success(
+        &home,
+        &[
+            "draft",
+            "create",
+            PAGE_A,
+            "--output",
+            observed.to_str().unwrap(),
+        ],
+    );
+    let after: Value =
+        serde_json::from_slice(&fs::read(observed.join("base/identity.json")).unwrap()).unwrap();
+    let identities = |map: &Value| {
+        map["blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|block| (block["block_id"].clone(), block["parent_block_id"].clone()))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(identities(&after), identities(&before));
+
+    // Model a lost response: durable Core commit exists, local marker is still pending.
+    let marker = draft.join("apply.json");
+    let mut pending: Value = serde_json::from_slice(&fs::read(&marker).unwrap()).unwrap();
+    pending["status"] = "pending".into();
+    pending["result"] = Value::Null;
+    fs::set_permissions(&marker, fs::Permissions::from_mode(0o600)).unwrap();
+    fs::write(&marker, serde_json::to_vec(&pending).unwrap()).unwrap();
+    fs::set_permissions(&marker, fs::Permissions::from_mode(0o400)).unwrap();
+    let retried = success(&home, &["draft", "apply", draft.to_str().unwrap()]);
+    assert_eq!(retried["duplicate"], true);
+    assert_eq!(retried["head_seq"], applied["head_seq"]);
+    assert_eq!(retried["affected"], applied["affected"]);
+
+    // A same-text replacement changes Block identity without changing the text ETag.
+    let work_file = observed.join("work/body.nested.md");
+    let saved = fs::read_to_string(&work_file).unwrap();
+    fs::write(&work_file, saved.replace("Monday", "Tuesday")).unwrap();
+    let metadata = observed.join("work/meta.yaml");
+    let saved_meta = fs::read_to_string(&metadata).unwrap();
+    fs::write(&metadata, saved_meta.replace("Page A", "Draft title")).unwrap();
+    let read_before = success(&home, &["read", PAGE_A]);
+    let replacement = input_text(
+        &home,
+        &[
+            "page",
+            "replace",
+            PAGE_A,
+            "--if-match",
+            read_before["validators"]["body_etag"].as_str().unwrap(),
+        ],
+        &saved,
+    );
+    assert_eq!(replacement["ok"], true, "{replacement}");
+    let read_replaced = success(&home, &["read", PAGE_A]);
+    assert_eq!(
+        read_replaced["validators"]["body_etag"],
+        read_before["validators"]["body_etag"]
+    );
+    let rejected = run(&home, &["draft", "apply", observed.to_str().unwrap()]);
+    assert_eq!(rejected["error"]["code"], "DRAFT_CONFLICT", "{rejected}");
+    let read_after = success(&home, &["read", PAGE_A]);
+    assert_eq!(
+        read_after, read_replaced,
+        "failed draft cannot partially commit its title or body"
+    );
+    assert_eq!(
+        fs::read_to_string(&work_file).unwrap(),
+        saved.replace("Monday", "Tuesday")
+    );
+    assert!(!observed.join("apply.json").exists());
+}

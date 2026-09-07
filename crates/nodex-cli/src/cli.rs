@@ -884,7 +884,7 @@ pub enum DraftCommand {
         /// Draft directory produced by nodex draft create.
         directory: PathBuf,
     },
-    /// Commit draft changes using the saved edit conditions.
+    /// Apply identity-preserving draft edits atomically; conflicts keep the work files.
     Apply {
         /// Draft directory produced by nodex draft create.
         directory: PathBuf,
