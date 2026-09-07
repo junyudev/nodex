@@ -1,3 +1,5 @@
+import { compactCodexApplicationProtocolOccurrences } from "../CodexConversationEventProjection";
+import type { CodexApplicationNotificationOccurrence } from "../../codex-runtime/CodexApplicationRequestInbox";
 import type { Thread, ThreadGoal, ThreadItem, Turn } from "@nodex/codex-app-server-protocol/v2";
 import { assert, it } from "@effect/vitest";
 import type { CodexConversationSnapshot } from "../../../shared/types";
@@ -1148,4 +1150,70 @@ it("replaces stale client viewport pins before a new owner grows resident histor
     "turn-3",
   ]);
   assert.isAtMost(aggregate.readHistoryTopology().residency.turnCount, 2);
+});
+
+it("skips command bytes covered by the resume baseline but retains identical live occurrences", () => {
+  const aggregate = makeConversationEntityStateRegistry().acquire(threadId);
+  const line = "same\n";
+  const command = {
+    ...commandItem("exec-output"),
+    status: "inProgress" as const,
+    aggregatedOutput: line,
+  };
+  const turn = { ...completedTurn("turn-output"), status: "inProgress" as const, items: [command] };
+  aggregate.acceptCanonicalState(hydratedState([turn]));
+  const event: CodexApplicationNotificationOccurrence = {
+    kind: "notification",
+    protocol: "generated",
+    hostId: "default",
+    generation: 1,
+    occurrenceId: "output-occurrence",
+    occurrenceToken: 1,
+    method: "item/commandExecution/outputDelta",
+    params: { threadId, turnId: turn.id, itemId: command.id, delta: line },
+  };
+  const replay = compactCodexApplicationProtocolOccurrences({
+    threadId,
+    canonicalState: aggregate.readCanonicalState(),
+    events: [event],
+  });
+  assert.deepStrictEqual(replay, []);
+  const update = { conversationId: threadId, turnId: turn.id, itemId: command.id, delta: line };
+  aggregate.commitCommandOutputDeltas({
+    updates: [update],
+    observedAtMs: 10,
+    projectReplica: true,
+  });
+  {
+    const item = aggregate.readCanonicalState()?.turns[0]?.items[0];
+    assert.strictEqual(
+      item?.type === "commandExecution" ? item.aggregatedOutput : undefined,
+      line.repeat(2),
+    );
+  }
+
+  // The same overlap accounting applies to restored final output; ordinary live deltas
+  // remain separate occurrences and are never filtered by their text or command status.
+  aggregate.acceptCanonicalState(
+    hydratedState([
+      {
+        ...turn,
+        status: "completed",
+        items: [{ ...command, status: "completed", aggregatedOutput: line.repeat(2) }],
+      },
+    ]),
+  );
+  const covered = compactCodexApplicationProtocolOccurrences({
+    threadId,
+    canonicalState: aggregate.readCanonicalState(),
+    events: [event, { ...event, occurrenceId: "output-second", occurrenceToken: 2 }],
+  });
+  assert.deepStrictEqual(covered, []);
+  {
+    const item = aggregate.readCanonicalState()?.turns[0]?.items[0];
+    assert.strictEqual(
+      item?.type === "commandExecution" ? item.aggregatedOutput : undefined,
+      line.repeat(2),
+    );
+  }
 });

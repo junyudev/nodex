@@ -41,7 +41,7 @@ export class CodexConversationDeltaBufferRuntime extends Context.Service<
   {
     readonly enqueueFrameText: (update: CodexFrameTextDeltaUpdate) => void;
     readonly enqueueCommandOutput: (update: CodexCommandOutputUpdate) => void;
-    readonly drainFrameText: (conversationId: string, observedAtMs: number) => void;
+    readonly drainBeforeCompletion: (conversationId: string, observedAtMs: number) => void;
     readonly clear: (conversationId: string) => void;
   }
 >()("nodex/main/codex-application/CodexConversationDeltaBufferRuntime") {}
@@ -187,7 +187,9 @@ export const make = (
       enqueueCommandOutput: (update) => {
         outputQueue.enqueue(update);
       },
-      drainFrameText: (conversationId, observedAtMs) => {
+      drainBeforeCompletion: (conversationId, observedAtMs) => {
+        // Output is synchronous and manager-global; prose keeps its per-Thread terminal drain.
+        outputQueue.flushNow();
         terminalObservedAtMsByConversation.set(conversationId, observedAtMs);
         try {
           frameQueue.flushConversationNow(conversationId, { terminalDrainCommit: true });

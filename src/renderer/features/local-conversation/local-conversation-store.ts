@@ -311,7 +311,6 @@ import {
   subscribeCodexAppServerMessage,
   type CodexClientStatusChangedEvent,
   type CodexErrorEvent,
-  type CodexMcpNotificationEvent,
   type CodexSharedObjectUpdatedEvent,
   type CodexThreadDeletedEvent,
   type CodexThreadTitleUpdatedEvent,
@@ -4075,9 +4074,6 @@ export class CodexAppServerManager {
       }),
       subscribeCodexAppServerMessage("thread-owner-unavailable", (event) => {
         this.handleThreadOwnerUnavailable(event);
-      }),
-      subscribeCodexAppServerMessage("mcp-notification", (event) => {
-        this.handleMcpNotification(event);
       }),
       subscribeCodexAppServerMessage("error", (event) => {
         this.handleHostError(event);
@@ -8654,6 +8650,12 @@ export class CodexAppServerManager {
     }
   }
 
+  /** Commit earlier command bytes before prose drains or a lifecycle snapshot can replace them. */
+  private drainOwnerItemStreamsBefore(continuation: () => void, conversationId: string): boolean {
+    this.outputDeltaQueue.flushNow();
+    return this.ownerTextDeltaQueue.drainBefore(continuation, conversationId);
+  }
+
   private handleOwnerTurnLifecycleNotification(event: CodexThreadOwnerNotificationEvent): void {
     const method = event.notification.method;
     if (method !== "turn/started" && method !== "turn/completed") {
@@ -8662,7 +8664,7 @@ export class CodexAppServerManager {
 
     const deferredForTextDrain =
       method === "turn/completed" &&
-      this.ownerTextDeltaQueue.drainBefore(() => {
+      this.drainOwnerItemStreamsBefore(() => {
         this.handleThreadOwnerNotification(event);
       }, event.notification.params.threadId);
     if (deferredForTextDrain) {
@@ -8725,7 +8727,7 @@ export class CodexAppServerManager {
 
     const deferredForTextDrain =
       method === "item/completed" &&
-      this.ownerTextDeltaQueue.drainBefore(() => {
+      this.drainOwnerItemStreamsBefore(() => {
         this.handleThreadOwnerNotification(event);
       }, event.notification.params.threadId);
     if (deferredForTextDrain) {
@@ -9207,23 +9209,6 @@ export class CodexAppServerManager {
         resumeState: "needs_resume",
       });
     }
-  }
-
-  private handleMcpNotification(event: CodexMcpNotificationEvent): void {
-    if (event.hostId !== this.hostId) {
-      return;
-    }
-
-    if (event.notification.method !== "item/commandExecution/outputDelta") {
-      return;
-    }
-
-    this.outputDeltaQueue.enqueue({
-      conversationId: event.notification.params.threadId,
-      turnId: event.notification.params.turnId,
-      itemId: event.notification.params.itemId,
-      delta: event.notification.params.delta,
-    });
   }
 
   private discardOwnerNotificationState(conversationId: string): void {

@@ -47,7 +47,7 @@ it.effect("drains frame text before terminal turn consequences", () =>
       Effect.provideService(
         CodexConversationDeltaBufferRuntime,
         CodexConversationDeltaBufferRuntime.of({
-          drainFrameText: () => {
+          drainBeforeCompletion: () => {
             trace.push("drain");
           },
         } as unknown as CodexConversationDeltaBufferRuntime["Service"]),

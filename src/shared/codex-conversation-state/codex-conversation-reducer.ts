@@ -583,7 +583,9 @@ export function reduceCodexItemLifecycleMetadata(
 
   return {
     shouldUpsertItem:
-      item.type === "subAgentActivity" || findExactItemTypeIndex(state.items, item) >= 0,
+      item.type === "commandExecution" ||
+      item.type === "subAgentActivity" ||
+      findExactItemTypeIndex(state.items, item) >= 0,
     upsertIndex,
     firstTurnWorkItemStartedAtMs,
     finalAssistantStartedAtMs,

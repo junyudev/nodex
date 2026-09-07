@@ -406,8 +406,11 @@ describe("canonical item lifecycle reducer", () => {
     );
   });
 
-  test("ordinary orphan completion is dropped after its exact timing side effects", () => {
-    const completed = buildCommand("command-orphan", "completed", 40);
+  test("authoritative command completion survives a missing start with its output and timing", () => {
+    const completed = {
+      ...buildCommand("command-orphan", "completed", 40),
+      aggregatedOutput: "final output\n",
+    };
     const clock = buildClock(40_001);
     const next = reduceLifecycle(
       buildState(),
@@ -423,7 +426,7 @@ describe("canonical item lifecycle reducer", () => {
       clock.context,
     );
 
-    expect(next.turns[0]?.items.length).toBe(0);
+    expect(next.turns[0]?.items).toEqual([completed]);
     expect(next.turns[0]?.sidecar.commandExecutionStartedAtMsById?.["command-orphan"]).toBe(4_000);
     expect(next.turns[0]?.sidecar.firstTurnWorkItemStartedAtMs).toBe(40_001);
   });

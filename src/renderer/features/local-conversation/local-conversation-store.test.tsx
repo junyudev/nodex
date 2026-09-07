@@ -11243,6 +11243,187 @@ describe("local-conversation-store", () => {
     }
   });
 
+  test.each([
+    { copies: 1, flushBeforeCompletion: false, completion: "item" },
+    { copies: 1, flushBeforeCompletion: false, completion: "turn" },
+    { copies: 2, flushBeforeCompletion: false, completion: "item" },
+    { copies: 2, flushBeforeCompletion: true, completion: "item" },
+  ])(
+    "completed command output stays authoritative: %j",
+    async ({ copies, flushBeforeCompletion, completion }) => {
+      invokeCalls = [];
+      invokeRecords = [];
+      hostMessageListener = null;
+      threadListByProject = {};
+      resumeThreadResult = null;
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      const manager = new CodexAppServerManager("default");
+      try {
+        const command = buildCommandExecutionItem("thread-1", "turn-1", "cmd-1");
+        resumeThreadResult = {
+          ...buildConversation("thread-1", "project-1"),
+          turns: [
+            {
+              threadId: "thread-1",
+              turnId: "turn-1",
+              status: "inProgress",
+              itemIds: ["cmd-1"],
+              items: [command],
+            },
+          ],
+        };
+        await manager.requestThreadStreamResume("thread-1");
+        vi.useFakeTimers();
+        const line = '{"ok":true,"rows":[["Page"]],"snapshot":"query-fixture"}\n';
+        const output = line.repeat(copies);
+        await act(async () => {
+          for (let sequence = 1; sequence <= copies; sequence += 1) {
+            dispatchCodexAppServerMessage("thread-owner-notification", {
+              hostId: "default",
+              sequence,
+              notification: {
+                method: "item/commandExecution/outputDelta",
+                params: { threadId: "thread-1", turnId: "turn-1", itemId: "cmd-1", delta: line },
+              },
+            });
+          }
+          if (flushBeforeCompletion) {
+            await vi.advanceTimersByTimeAsync(70);
+            expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.aggregatedOutput).toBe(
+              output,
+            );
+          }
+          dispatchCodexAppServerMessage("thread-owner-notification", {
+            hostId: "default",
+            sequence: copies + 1,
+            notification:
+              completion === "turn"
+                ? {
+                    method: "turn/completed",
+                    params: {
+                      threadId: "thread-1",
+                      turn: buildProtocolTurn({ id: "turn-1", status: "completed" }),
+                    },
+                  }
+                : {
+                    method: "item/completed",
+                    params: {
+                      threadId: "thread-1",
+                      turnId: "turn-1",
+                      completedAtMs: Date.now(),
+                      item: {
+                        type: "commandExecution",
+                        id: "cmd-1",
+                        command: "query",
+                        cwd: "/workspace/project",
+                        processId: null,
+                        pluginId: null,
+                        scriptPath: null,
+                        source: "agent",
+                        status: "completed",
+                        commandActions: [],
+                        aggregatedOutput: output,
+                        exitCode: 0,
+                        durationMs: 1,
+                      },
+                    },
+                  },
+          });
+          await Promise.resolve();
+        });
+        expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.aggregatedOutput).toBe(
+          output,
+        );
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(70);
+        });
+        expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.aggregatedOutput).toBe(
+          output,
+        );
+        const acknowledgedSequences = invokeRecords.flatMap((record) => {
+          const input = record.args[0] as
+            | { sequence?: number; ownerNotificationSequence?: number }
+            | undefined;
+          if (record.channel === "codex:thread-owner:notification:ack")
+            return [input?.sequence ?? 0];
+          if (record.channel === "codex:thread-owner:stream-state:publish")
+            return [input?.ownerNotificationSequence ?? 0];
+          return [];
+        });
+        expect(Math.max(...acknowledgedSequences)).toBe(copies + 1);
+        const completed = manager.readConversation("thread-1");
+        const completedItem = completed?.canonicalState?.turns[0]?.items[0];
+        expect(
+          completedItem?.type === "commandExecution" ? completedItem.aggregatedOutput : undefined,
+        ).toBe(output);
+        manager.destroy();
+        vi.useRealTimers();
+        resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+        resumeThreadResult = completed;
+        const restored = new CodexAppServerManager("default");
+        try {
+          await restored.requestThreadStreamResume("thread-1");
+          expect(restored.readConversation("thread-1")?.turns[0]?.items[0]?.aggregatedOutput).toBe(
+            output,
+          );
+        } finally {
+          restored.destroy();
+        }
+      } finally {
+        resumeThreadResult = null;
+        manager.destroy();
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  test("an owner accepts only sequenced output even when a fallback delivery races adoption", async () => {
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    const manager = new CodexAppServerManager("default");
+    try {
+      resumeThreadResult = {
+        ...buildConversation("thread-1", "project-1"),
+        turns: [
+          {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            status: "inProgress",
+            itemIds: ["cmd-1"],
+            items: [buildCommandExecutionItem("thread-1", "turn-1", "cmd-1", "committed\n")],
+          },
+        ],
+      };
+      await manager.requestThreadStreamResume("thread-1");
+      vi.useFakeTimers();
+      await act(async () => {
+        const notification = {
+          method: "item/commandExecution/outputDelta" as const,
+          params: { threadId: "thread-1", turnId: "turn-1", itemId: "cmd-1", delta: "committed\n" },
+        };
+        dispatchCodexAppServerMessage("mcp-notification", { hostId: "default", notification });
+        dispatchCodexAppServerMessage("thread-owner-notification", {
+          hostId: "default",
+          sequence: 1,
+          notification: { ...notification, params: { ...notification.params, delta: "next\n" } },
+        });
+        await vi.advanceTimersByTimeAsync(70);
+      });
+      expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.aggregatedOutput).toBe(
+        "committed\nnext\n",
+      );
+    } finally {
+      resumeThreadResult = null;
+      manager.destroy();
+      vi.useRealTimers();
+    }
+  });
+
   test("owner command output notifications publish before their sequence is acknowledged", async () => {
     invokeCalls = [];
     invokeRecords = [];

@@ -210,7 +210,7 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
   commentary for that later slice. The fallback uses the latest readable,
   non-comment reasoning-summary line or generic `Thinking`. An active tool always
   keeps its concrete family label and never displays reasoning in that label.
-- Raw item lifecycle uses one shared decision contract in main fallback and renderer-owner flows. A started item replaces the first same-ID slot or appends; an authoritative completed item does the same only after an existing same-ID/same-protocol-type row is found, except that user messages, hook prompts, and subagent activity may complete without a start. Rejected orphan work completions can still establish turn timing, but never materialize a transcript row.
+- Raw item lifecycle uses one shared decision contract in main fallback and renderer-owner flows. A started item replaces the first same-ID slot or appends; an authoritative completed item does the same only after an existing same-ID/same-protocol-type row is found, except that commands, user messages, hook prompts, and subagent activity may complete without a start. Rejected orphan work completions can still establish turn timing, but never materialize a transcript row.
 - The first raw work item in a turn stamps `firstTurnWorkItemStartedAtMs`; only `userMessage` and `hookPrompt` are excluded, so an `agentMessage` start counts as work and independently stamps `finalAssistantStartedAtMs`. Later events do not overwrite the first-work stamp, while duplicate agent starts may refresh the final-assistant stamp.
 - Statusless reasoning, assistant-message, and plan items retain a lifecycle ledger
   in the canonical turn sidecar. One occurrence is identified by item ID plus
@@ -304,11 +304,22 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
   revision that observes item identity plus lifecycle/content fields, so reasoning
   deltas, patch snapshots, command output, MCP results, and terminal states refresh
   without rebuilding a second tool topology.
-- In no-owner fallback, main retains the frame-batched prose and raw command-output
-  path and flushes terminal prose synchronously because no renderer animation frame
-  owns ordering. Command output remains coalesced for 50 ms, targets the exact
-  command item, preserves the latest 20,000 characters with an explicit truncation
+- Command output is coalesced for 50 ms, targets the latest matching command
+  item, preserves the latest 20,000 UTF-16 code units with an explicit truncation
   marker, and drops missing conversation/turn/item targets.
+- Before applying item or turn completion, renderer owners and Main fallback
+  synchronously flush the entire pending command-output queue, then drain earlier
+  prose. An authoritative completed command replaces provisional output, including
+  null or empty output, and can materialize without a retained start. The queued
+  timer has no old bytes left to append after completion. Accepted owner sequences
+  retain their normal acknowledgement path through this ordering barrier.
+- Live command deltas append without content deduplication or terminal-status
+  filtering. Identical bytes can represent separate output occurrences. Start/resume
+  buffering separately accounts for a buffered suffix already covered by the
+  installed snapshot; that baseline accounting does not suppress later live output.
+- Only sequenced owner notifications mutate renderer command output. Main handles
+  no-owner fallback canonically; an unsequenced fallback broadcast cannot become a
+  second renderer writer when ownership changes.
 - Local file references in transcript markdown are semantic controls rather than ordinary filesystem anchors. A normal click opens the local file in the right-side Files surface as a preview, a double click makes that Files tab durable, and a modified click opens the configured desktop app. References carry line/column/range location into the Files viewer when present; unsupported or failed previews remain an explicit Files fallback with Open externally, while external opener failures fall back to Finder. The reference context menu exposes Open in Files, Open with, Copy path, Copy contents, and Reveal in Finder. In-app route anchors remain owned by their route handlers and are not intercepted globally.
 - The Files surface consumes a one-shot reveal location after its text viewer mounts: a start-only reference centers that line, a line range uses Pierre's range scroll and line selection, and an editable viewer additionally applies the zero-based character selection when column bounds exist. Invalid or reversed ranges are discarded at the tab-state boundary. The Files header `Open`, unsupported/oversized fallback action, and explicit `Open with` choices all use the configured external opener router; a failed opener may fall back to Finder, but no React click event is ever passed as an opener id.
 - Reasoning follows summary-first canonical projection: only the reasoning `summary` is retained in the transcript item, empty summaries produce no reasoning item, and raw `content` remains non-transcript state. The live activity renderer may keep that summary hidden from ordinary activity leaves while projecting its latest readable line into the turn-level fallback or activity-group header.
