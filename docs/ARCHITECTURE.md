@@ -1069,6 +1069,6 @@ Do not add implementation chronology, current version inventories, individual fi
 | Cross-cutting engineering principles                                                                         | [ENGINEERING_LEARNINGS.md](docs/ENGINEERING_LEARNINGS.md)        |
 | Build, signing, notarization, distribution recovery                                                          | [release-macos.md](docs/release-macos.md)                        |
 | Executable migration and protocol versions                                                                   | Source contracts, migration code, generated artifacts, and tests |
-| Temporary implementation sequence and evidence                                                               | Living plans under [`docs/plans`](docs/plans)                    |
+| Temporary implementation sequence and evidence                                                               | `notes.local/living-plans/`; see [plan requirements](PLANS.md)    |
 
 When two documents disagree, fix the narrow authoritative document first and then replace or remove the stale summary here.
