@@ -1,4 +1,7 @@
+import { captureCodexTurnPresentation } from "@/lib/codex-turn-presentation";
+import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import type { DocumentWaitOptions } from "@/lib/document-wait";
+import { registerPageEditorObservationParticipant } from "@/lib/page-editor-observation-registry";
 import {
   useEffect,
   useLayoutEffect,
@@ -200,6 +203,8 @@ import {
   type NfmEditorSource,
 } from "./nfm-editor-source";
 import {
+  hasNfmEditorTransientInput,
+  prepareNfmEditorObservation,
   prepareNfmEditorStructuralMutation,
   type NfmEditorStructuralMutationRuntime,
 } from "./nfm-editor-relocation";
@@ -467,6 +472,7 @@ function NfmEditorInstance({
   const { spellcheck } = useSpellcheck();
   const { settings: pasteResourceSettings } = usePasteResourceSettings();
   const codexManager = useDefaultCodexAppServerManager();
+  const workbenchOwner = useWorkbenchWindowOwner();
   const codexPermissionState = useCodexPermissionState(executionProjectId);
   const availableCodexModels = useCodexAvailableModels();
   const projectThreadSummaries = useProjectThreadSummaries(executionProjectId);
@@ -1553,6 +1559,24 @@ function NfmEditorInstance({
   }, [editor, syncSearchStats]);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const pendingObservationInputRef = useRef(false);
+  pendingObservationInputRef.current = pasteResourceDialog != null;
+  useLayoutEffect(() => {
+    if (!editorSession || editorSession.descriptor.ownerType !== "page") return;
+    const runtime = editorSession.runtime;
+    return registerPageEditorObservationParticipant(editorSession.key, {
+      read: () => ({
+        mounted: containerRef.current?.isConnected === true,
+        transientInput: pendingObservationInputRef.current || hasNfmEditorTransientInput(editor),
+        status: runtime.getStatus(),
+      }),
+      prepare: async (options) => {
+        if (pendingObservationInputRef.current)
+          throw new Error("The Page editor has pending input");
+        return prepareNfmEditorObservation(editor, containerRef.current, runtime, options);
+      },
+    });
+  }, [editor, editorSession]);
   const structuralMutationParticipant = useMemo(() => {
     if (!surfaceMutationBarrier) return undefined;
     return {
@@ -2037,10 +2061,19 @@ function NfmEditorInstance({
       }
 
       if (request.target.kind === "thread") {
-        await codexManager.startTurn(threadId, promptInput.text, {
-          permissionMode: codexPermissionState.mode,
-          promptInput,
+        const presentationTicket = await captureCodexTurnPresentation(workbenchOwner, {
+          kind: "thread",
+          threadId,
         });
+        await codexManager.startTurn(
+          threadId,
+          promptInput.text,
+          {
+            permissionMode: codexPermissionState.mode,
+            promptInput,
+          },
+          presentationTicket,
+        );
       }
 
       if (request.mode === "wrap-toggle") {
@@ -2069,6 +2102,7 @@ function NfmEditorInstance({
     },
     [
       codexManager,
+      workbenchOwner,
       codexPermissionState.mode,
       editor,
       executionProjectId,

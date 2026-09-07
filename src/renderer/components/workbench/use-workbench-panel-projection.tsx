@@ -148,6 +148,7 @@ interface WorkbenchPanelProjectionInput {
     | "activeSearchQuery"
     | "browserViewScopeId"
     | "onOpenBrowserSettings"
+    | "onOpenLibraryTarget"
     | "windowSessionId"
     | "onLeavePageStage"
     | "pageStageCloseRef"
@@ -201,10 +202,8 @@ function resolveProjectTargetTabChromeContext(
   )
     return {};
   if (tab.kind !== "db_view" && tab.kind !== "page_stage" && tab.kind !== "canvas_stage") return {};
-  if (!("projectId" in tab.config)) return {};
-
-  const targetProjectId = tab.config.projectId;
-  if (targetProjectId === null) return {};
+  if (tab.config.accessContext.kind === "library") return { contextLabel: "Library" };
+  const targetProjectId = tab.config.accessContext.projectId;
   if (targetProjectId === activeSession.projectId) return {};
 
   const targetProject = projects.find((project) => project.id === targetProjectId);
@@ -323,7 +322,11 @@ export function useWorkbenchPanelProjection({
             : tab.title;
         const pageStageProject =
           !transientPanelTab && tab.kind === "page_stage"
-            ? projects.find((project) => project.id === tab.config.projectId)
+            ? projects.find(
+                (project) =>
+                  tab.config.accessContext.kind === "project" &&
+                  project.id === tab.config.accessContext.projectId,
+              )
             : undefined;
         const pageStageTitleSource =
           !transientPanelTab && tab.kind === "page_stage" && pageStageProject

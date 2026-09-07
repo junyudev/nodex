@@ -26,6 +26,8 @@ import type {
   DatabaseApplyResult,
   DatabaseRead,
   DatabaseReadSnapshot,
+  QueryRead,
+  QueryReadSnapshot,
   LibraryApplyInput,
   LibraryApplyResult,
   LibraryRead,
@@ -44,11 +46,19 @@ import type {
   StoreAdministrationReadSnapshot,
 } from "../core-client/types";
 import { CoreSessionAccess } from "./CoreAuthority";
-import type { CoreRuntimeError } from "./CoreRuntimeError";
+import { CoreApplicationAgent } from "./CoreApplicationAgent";
+import { coreRuntimeError, type CoreRuntimeError } from "./CoreRuntimeError";
 
 type CoreEffect<A> = Effect.Effect<A, CoreRuntimeError>;
 
 export interface CoreModuleClients {
+  readonly query: {
+    readonly read: (
+      read: QueryRead,
+      projectId: string | null,
+      options?: CoreRequestOptions,
+    ) => CoreEffect<QueryReadSnapshot>;
+  };
   readonly localMutation: {
     readonly resolve: (
       input: CoreLocalMutationResolveRequest,
@@ -58,11 +68,11 @@ export interface CoreModuleClients {
     readonly read: (
       read: LibraryRead,
       options?: CoreRequestOptions,
-      projectId?: string,
+      projectId?: string | null,
     ) => CoreEffect<LibraryReadSnapshot>;
     readonly apply: (
       input: LibraryApplyInput,
-      projectId?: string,
+      projectId?: string | null,
     ) => CoreEffect<LibraryApplyResult>;
     readonly filterProjectionImpactForProject: (
       projectId: string,
@@ -70,34 +80,37 @@ export interface CoreModuleClients {
     ) => CoreEffect<ProjectionImpact>;
   };
   readonly database: {
-    readonly read: (read: DatabaseRead, projectId?: string) => CoreEffect<DatabaseReadSnapshot>;
+    readonly read: (
+      read: DatabaseRead,
+      projectId?: string | null,
+    ) => CoreEffect<DatabaseReadSnapshot>;
     readonly apply: (
       input: DatabaseApplyInput,
-      projectId?: string,
+      projectId?: string | null,
     ) => CoreEffect<DatabaseApplyResult>;
   };
   readonly workspace: {
     readonly read: (
       read: ProjectWorkspaceRead,
       options?: CoreRequestOptions,
-      projectId?: string,
+      projectId?: string | null,
     ) => CoreEffect<ProjectWorkspaceReadSnapshot>;
     readonly apply: (
       input: ProjectWorkspaceApplyInput,
       options?: CoreRequestOptions,
-      projectId?: string,
+      projectId?: string | null,
     ) => CoreEffect<ProjectWorkspaceApplyResult>;
   };
   readonly automation: {
     readonly read: (
       read: AutomationRead,
       options?: CoreRequestOptions,
-      projectId?: string,
+      projectId?: string | null,
     ) => CoreEffect<AutomationReadSnapshot>;
     readonly apply: (
       input: AutomationApplyInput,
       options?: CoreRequestOptions,
-      projectId?: string,
+      projectId?: string | null,
     ) => CoreEffect<AutomationApplyResult>;
   };
   readonly administration: {
@@ -111,28 +124,28 @@ export interface CoreModuleClients {
       clientSessionId: string,
       read: OwnedDocumentRead,
       options?: CoreRequestOptions,
-      projectId?: string,
+      projectId?: string | null,
     ) => CoreEffect<OwnedDocumentReadSnapshot>;
     readonly apply: (
       input: OwnedDocumentApplyInput,
       options?: CoreRequestOptions,
-      projectId?: string,
+      projectId?: string | null,
     ) => CoreEffect<OwnedDocumentApplyResult>;
     readonly sync: (
       input: DocumentSyncRequest,
-      projectId?: string,
+      projectId?: string | null,
     ) => CoreEffect<DocumentSyncResponse>;
     readonly canvasSync: (
       input: CanvasSceneSyncRequest,
-      projectId?: string,
+      projectId?: string | null,
     ) => CoreEffect<CanvasSceneSyncResponse>;
     readonly applyUpdate: (
       input: DocumentSyncApplyRequest,
-      projectId?: string,
+      projectId?: string | null,
     ) => CoreEffect<DocumentSyncApplyAck>;
     readonly publishAwareness: (
       input: DocumentAwarenessPublishRequest,
-      projectId?: string,
+      projectId?: string | null,
     ) => CoreEffect<DocumentAwarenessPublishAck>;
   };
 }
@@ -151,6 +164,15 @@ export const live: Layer.Layer<CoreModules, never, CoreSessionAccess> = Layer.ef
   Effect.gen(function* () {
     const access = yield* CoreSessionAccess;
     return CoreModules.of({
+      query: {
+        read: Effect.fn("CoreModules.query.read")((read, projectId, options) =>
+          access.use(
+            "query.read",
+            (client, signal) => client.queryRead(read, requestOptions(options, signal)),
+            { projectId },
+          ),
+        ),
+      },
       localMutation: {
         resolve: Effect.fn("CoreModules.localMutation.resolve")((input) =>
           access.use("localMutation.resolve", (client) => client.resolveLocalMutation(input)),
@@ -201,29 +223,67 @@ export const live: Layer.Layer<CoreModules, never, CoreSessionAccess> = Layer.ef
             { projectId },
           ),
         ),
-        apply: Effect.fn("CoreModules.workspace.apply")((input, options, projectId) =>
-          access.use(
+        apply: Effect.fn("CoreModules.workspace.apply")(function* (input, options, projectId) {
+          const provenance = yield* CoreApplicationAgent;
+          const request = provenance
+            ? {
+                ...input,
+                intent: { kind: "agent_command" as const, provenance, intent: input.intent },
+              }
+            : input;
+          return yield* access.use(
             "workspace.apply",
-            (client, signal) => client.workspaceApply(input, requestOptions(options, signal)),
-            { projectId },
-          ),
-        ),
+            (client, signal) => client.workspaceApply(request, requestOptions(options, signal)),
+            { projectId: provenance ? (provenance.authority.actor_project_id ?? null) : projectId },
+          );
+        }),
       },
       automation: {
-        read: Effect.fn("CoreModules.automation.read")((read, options, projectId) =>
-          access.use(
+        read: Effect.fn("CoreModules.automation.read")(function* (read, options, projectId) {
+          const provenance = yield* CoreApplicationAgent;
+          if (
+            provenance &&
+            read.kind !== "definition" &&
+            read.kind !== "agent_definition" &&
+            read.kind !== "definitions" &&
+            read.kind !== "agent_definitions"
+          ) {
+            return yield* coreRuntimeError({
+              operation: "automation.read",
+              reason: "operation",
+              retryable: false,
+              cause: new Error("Agent Automation access is limited to definitions"),
+            });
+          }
+          let request: AutomationRead = read;
+          if (provenance && (read.kind === "definition" || read.kind === "agent_definition")) {
+            request = { kind: "agent_definition", provenance, automation_id: read.automation_id };
+          }
+          if (provenance && (read.kind === "definitions" || read.kind === "agent_definitions")) {
+            request = {
+              kind: "agent_definitions",
+              provenance,
+              search_query: read.search_query,
+              window: read.window,
+            };
+          }
+          return yield* access.use(
             "automation.read",
-            (client, signal) => client.automationRead(read, requestOptions(options, signal)),
-            { projectId },
-          ),
-        ),
-        apply: Effect.fn("CoreModules.automation.apply")((input, options, projectId) =>
-          access.use(
+            (client, signal) => client.automationRead(request, requestOptions(options, signal)),
+            { projectId: provenance ? (provenance.authority.actor_project_id ?? null) : projectId },
+          );
+        }),
+        apply: Effect.fn("CoreModules.automation.apply")(function* (input, options, projectId) {
+          const provenance = yield* CoreApplicationAgent;
+          const request: AutomationApplyInput = provenance
+            ? { ...input, intent: { kind: "agent_command", provenance, intent: input.intent } }
+            : input;
+          return yield* access.use(
             "automation.apply",
-            (client, signal) => client.automationApply(input, requestOptions(options, signal)),
-            { projectId },
-          ),
-        ),
+            (client, signal) => client.automationApply(request, requestOptions(options, signal)),
+            { projectId: provenance ? (provenance.authority.actor_project_id ?? null) : projectId },
+          );
+        }),
       },
       administration: {
         read: Effect.fn("CoreModules.administration.read")((read) =>

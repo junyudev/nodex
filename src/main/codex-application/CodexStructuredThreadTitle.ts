@@ -1,3 +1,4 @@
+import { buildCodexThreadConfig } from "../codex/codex-thread-config";
 import type {
   ClientRequestParamsByMethod,
   ClientRequestResponsesByMethod,
@@ -475,12 +476,16 @@ export const make = (
                     approvalPolicy: "never",
                     permissions: ":read-only",
                     runtimeWorkspaceRoots: [],
-                    config: CODEX_THREAD_TITLE_CONFIG,
+                    config: buildCodexThreadConfig({
+                      nativeMcp: true,
+                      purpose: "system",
+                      overrides: CODEX_THREAD_TITLE_CONFIG,
+                    }),
                     personality: null,
                     ephemeral: true,
                     threadSource: "system",
                     experimentalRawEvents: false,
-                    dynamicTools: null,
+                    dynamicTools: [],
                     serviceTier: null,
                     ...(input.serviceName === undefined ? {} : { serviceName: input.serviceName }),
                   },

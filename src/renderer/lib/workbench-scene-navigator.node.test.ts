@@ -1,4 +1,18 @@
-import { describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import { createDefaultWorkbenchLayoutSnapshot } from "../../shared/workbench-layout";
+import {
+  createMaitaiStore,
+  createScopeHandle,
+  disposeMaitaiStore,
+  getMaitaiRootView,
+} from "./maitai/maitai-store";
+import { getWorkbenchWindowOwner } from "./workbench-window-owner";
+import { createWorkbenchSceneCommands } from "./workbench-scene-commands";
+import { createWorkbenchSceneSurfacePresenter } from "./workbench-scene-surface-presenter";
+import {
+  listWorkbenchScenePreviewEntries,
+  makeWorkbenchScenePreviewSlotKey,
+} from "./workbench-scene-preview";
 import {
   findNearestWorkbenchPanelLeafToRight,
   findWorkbenchPanelLeafForTab,
@@ -7,7 +21,6 @@ import {
 import {
   makeWorkbenchSceneKey,
   materializeInitialWorkbenchScene,
-  type WorkbenchSceneSnapshot,
 } from "../../shared/workbench-scene";
 import {
   createWorkbenchSceneNavigator,
@@ -15,53 +28,93 @@ import {
   type WorkbenchSceneNavigatorPort,
 } from "./workbench-scene-navigator";
 
+const disposers: Array<() => void> = [];
+afterEach(() => {
+  for (const dispose of disposers.splice(0).reverse()) dispose();
+});
+
 function createHarness(options: { readonly sessionHasAttachedThread?: boolean } = {}) {
-  const scenes: Record<string, WorkbenchSceneSnapshot> = {};
-  const previews: Record<string, WorkbenchScenePreviewEntry> = {};
-  const selectLocation = vi.fn();
+  const store = createMaitaiStore();
+  disposers.push(() => disposeMaitaiStore(store));
+  const windowOwner = getWorkbenchWindowOwner(
+    createScopeHandle(getMaitaiRootView(store)),
+    createDefaultWorkbenchLayoutSnapshot(),
+  );
+  windowOwner.initialize();
+  let layoutRevision = 0;
+  windowOwner.registerPersistenceCommit(async (snapshot) => ({
+    ...snapshot,
+    sessionId: "test-window",
+    layoutRevision: ++layoutRevision,
+  }));
+  const executor = createWorkbenchSceneCommands(windowOwner, {
+    prepareClose: async () => true,
+    close: async () => {},
+  });
+  const selectLocation: WorkbenchSceneNavigatorPort["selectLocation"] = vi.fn((location) =>
+    windowOwner.navigate(location),
+  );
   const setSceneAndSelect: WorkbenchSceneNavigatorPort["setSceneAndSelect"] = vi.fn(
     (owner, update, location) => {
-      const key = makeWorkbenchSceneKey(owner);
-      scenes[key] = update(scenes[key]);
-      selectLocation(location);
+      windowOwner.setSceneAndNavigate(owner, update, location);
     },
   );
   const port: WorkbenchSceneNavigatorPort = {
+    presentDurable: createWorkbenchSceneSurfacePresenter(windowOwner, executor),
     hasAttachedThread: () => options.sessionHasAttachedThread ?? true,
     setScene(owner, update) {
-      const key = makeWorkbenchSceneKey(owner);
-      scenes[key] = update(scenes[key]);
+      windowOwner.setScene(owner, update);
     },
     selectLocation,
     setSceneAndSelect,
     preview: {
       list(owner) {
-        const prefix = `${makeWorkbenchSceneKey(owner)}:`;
-        return Object.entries(previews).flatMap(([key, entry]) =>
-          key.startsWith(prefix) ? [entry] : [],
-        );
+        const state = windowOwner.read();
+        const scene = state.windowState.scenesByOwnerKey[makeWorkbenchSceneKey(owner)];
+        return scene
+          ? listWorkbenchScenePreviewEntries(scene, state.ephemeralPanels.previewSurfacesByPanel)
+          : [];
       },
       set(owner, panelId, leafId, surface) {
-        const key = `${makeWorkbenchSceneKey(owner)}:${panelId}:${leafId}`;
-        if (!surface) {
-          delete previews[key];
-          return;
-        }
-        previews[key] = { panelId, leafId, surface };
+        const key = makeWorkbenchScenePreviewSlotKey(owner, panelId, leafId);
+        windowOwner.dispatchEphemeral({
+          type: "update",
+          field: "previewSurfacesByPanel",
+          update: (current) => {
+            const next = { ...current };
+            if (surface) next[key] = surface;
+            else delete next[key];
+            return next;
+          },
+        });
       },
     },
   };
   let nextId = 0;
   const navigator = createWorkbenchSceneNavigator(port, {
     createId(kind) {
-      nextId += 1;
-      return `${kind}:${nextId}`;
+      return `${kind}:${++nextId}`;
     },
   });
   return {
     navigator,
-    previews,
-    scenes,
+    windowOwner,
+    get previews(): Record<string, WorkbenchScenePreviewEntry> {
+      const state = windowOwner.read();
+      return Object.fromEntries(
+        Object.values(state.windowState.scenesByOwnerKey).flatMap((scene) =>
+          listWorkbenchScenePreviewEntries(scene, state.ephemeralPanels.previewSurfacesByPanel).map(
+            (entry) => [
+              makeWorkbenchScenePreviewSlotKey(scene.owner, entry.panelId, entry.leafId),
+              entry,
+            ],
+          ),
+        ),
+      );
+    },
+    get scenes() {
+      return windowOwner.read().windowState.scenesByOwnerKey;
+    },
     selectLocation,
     setSceneAndSelect,
   };
@@ -278,7 +331,7 @@ describe("WorkbenchSceneNavigator", () => {
         },
       },
     });
-    harness.scenes[ownerKey] = initial;
+    harness.windowOwner.setScene(initial.owner, initial);
     if (!initial.primary) throw new Error("Expected Project primary");
     const primaryId = initial.primary.id;
     const sourceLeaf = findWorkbenchPanelLeafForTab(initial.panels.right.layout, primaryId);
@@ -470,7 +523,7 @@ describe("WorkbenchSceneNavigator", () => {
 
     harness.navigator.openSession({ id: "session:one", projectId: "alpha" });
 
-    expect(harness.selectLocation).toHaveBeenCalledWith({
+    expect(harness.windowOwner.read().windowState.location).toEqual({
       kind: "session",
       sessionId: "session:one",
       projectContextId: "alpha",
@@ -509,7 +562,7 @@ describe("WorkbenchSceneNavigator", () => {
     expect(scene.panels.right.collapsed).toBe(false);
     expect(scene.panels.right.size.fullWidth).toBe(false);
     expect(Object.values(scene.panelSurfacesById)).toHaveLength(1);
-    expect(harness.selectLocation).toHaveBeenLastCalledWith({
+    expect(harness.windowOwner.read().windowState.location).toEqual({
       kind: "session",
       sessionId: "session:one",
       projectContextId: null,
@@ -521,7 +574,7 @@ describe("WorkbenchSceneNavigator", () => {
 
     harness.navigator.openPages();
 
-    expect(harness.selectLocation).toHaveBeenCalledWith({
+    expect(harness.windowOwner.read().windowState.location).toEqual({
       kind: "pages",
     });
   });
@@ -553,8 +606,8 @@ describe("WorkbenchSceneNavigator", () => {
     expect(reused).toMatchObject({ status: "presented", reused: true });
     expect(Object.keys(harness.scenes)).toEqual(["pages"]);
     expect(Object.values(harness.scenes.pages!.panelSurfacesById)).toHaveLength(2);
-    expect(harness.selectLocation).toHaveBeenLastCalledWith({ kind: "pages" });
-    expect(harness.setSceneAndSelect).toHaveBeenCalledTimes(3);
+    expect(harness.windowOwner.read().windowState.location).toEqual({ kind: "pages" });
+    expect(harness.windowOwner.read().windowState.history.backStack.length).toBeGreaterThan(0);
   });
 
   test("keeps nested Pages navigation with a bottom-panel source", async () => {

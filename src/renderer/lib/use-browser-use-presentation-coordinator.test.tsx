@@ -137,7 +137,7 @@ describe("useBrowserUsePresentationCoordinator", () => {
     };
     mocks.runtime.presentationRequests = [request];
     const createSessionViewTab = vi.fn(
-      (input: WorkbenchTabCreateInput): WorkbenchTabProjection =>
+      async (input: WorkbenchTabCreateInput): Promise<WorkbenchTabProjection> =>
         ({
           id: input.clientTabId ?? "created",
           sessionId: input.sessionId,
@@ -450,7 +450,7 @@ describe("useBrowserUsePresentationCoordinator", () => {
 
   test("opens a runtime-only page from the thread summary without acknowledging a synthetic request", async () => {
     const createSessionViewTab = vi.fn(
-      (input: WorkbenchTabCreateInput): WorkbenchTabProjection =>
+      async (input: WorkbenchTabCreateInput): Promise<WorkbenchTabProjection> =>
         ({
           id: input.clientTabId ?? "created",
           sessionId: input.sessionId,

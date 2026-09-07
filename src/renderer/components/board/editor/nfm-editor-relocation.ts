@@ -22,6 +22,18 @@ export interface NfmEditorMutationRuntime {
 export type NfmEditorStructuralMutationRuntime = NfmEditorMutationRuntime &
   SideMenuDragCleanupEditor;
 
+export type NfmEditorObservationRuntime = NfmEditorStructuralMutationRuntime & {
+  readonly prosemirrorView?: { readonly composing?: boolean };
+};
+
+export function hasNfmEditorTransientInput(editor: NfmEditorObservationRuntime): boolean {
+  try {
+    return editor.prosemirrorView?.composing === true || editor.prosemirrorView?.dragging != null;
+  } catch {
+    return true;
+  }
+}
+
 const isNfmEditorElement = (
   editor: NfmEditorMutationRuntime,
   container: HTMLElement,
@@ -104,3 +116,17 @@ export const prepareNfmEditorStructuralMutation = async (
   assertDocumentWaitActive(options);
   return await barrier.flushAndFence(options);
 };
+
+/** Observational reads preserve focus and leave active composition or drag gestures to the user. */
+export async function prepareNfmEditorObservation(
+  editor: NfmEditorObservationRuntime,
+  container: HTMLElement | null,
+  barrier: BlockDocumentMutationBarrier,
+  options: DocumentWaitOptions,
+): Promise<DocumentHeadFence> {
+  if (!container?.isConnected) throw new Error("The Page editor is unavailable");
+  if (hasNfmEditorTransientInput(editor)) throw new Error("The Page editor has pending input");
+  return runNfmEditorFocusPreservingMutation(editor, container, () =>
+    prepareNfmEditorStructuralMutation(editor, container, barrier, options),
+  );
+}

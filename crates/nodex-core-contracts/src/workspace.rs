@@ -5,7 +5,7 @@ use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 21;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 29;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -35,6 +35,10 @@ pub enum ProjectWorkspaceRead {
         project_id: String,
     },
     ProjectlessPermissionMode,
+    SessionWindow {
+        archived: bool,
+        window: CollectionWindowRequest,
+    },
     TaskWindow {
         project_id: Option<String>,
         include_archived: Option<bool>,
@@ -53,6 +57,10 @@ pub enum ProjectWorkspaceRead {
         include_archived: Option<bool>,
         window: CollectionWindowRequest,
     },
+    BuiltinSidebarOrder {
+        lane: ProjectWorkspaceBuiltinSidebarLane,
+        window: CollectionWindowRequest,
+    },
     SidebarSectionPlacement {
         item: ProjectWorkspaceSidebarSectionItemRef,
     },
@@ -61,6 +69,10 @@ pub enum ProjectWorkspaceRead {
         window: CollectionWindowRequest,
     },
     Session {
+        session_id: String,
+    },
+    AgentSession {
+        provenance: crate::agent::AgentTurnProvenance,
         session_id: String,
     },
     Thread {
@@ -98,7 +110,7 @@ pub enum ProjectWorkspaceRead {
         thread_id: String,
         turn_id: String,
         root_thread_id: String,
-        actor_project_id: String,
+        actor_project_id: Option<String>,
     },
     BackgroundProcessWindow {
         thread_id: Option<String>,
@@ -140,6 +152,9 @@ pub enum ProjectWorkspaceReadValue {
     ProjectlessPermissionMode {
         mode: Option<CodexPermissionMode>,
     },
+    SessionWindow {
+        sessions: CollectionWindow<ProjectWorkspaceSessionListingItem>,
+    },
     TaskWindow {
         tasks: CollectionWindow<ProjectWorkspaceTaskSummary>,
     },
@@ -152,6 +167,10 @@ pub enum ProjectWorkspaceReadValue {
     SidebarSectionItemWindow {
         items: CollectionWindow<ProjectWorkspaceSidebarSectionItem>,
     },
+    BuiltinSidebarOrder {
+        order_revision: String,
+        items: CollectionWindow<ProjectWorkspaceSidebarOrderEntry>,
+    },
     SidebarSectionPlacement {
         section_id: Option<String>,
     },
@@ -160,6 +179,10 @@ pub enum ProjectWorkspaceReadValue {
     },
     Session {
         session: ProjectWorkspaceSessionSummary,
+    },
+    AgentSession {
+        session: ProjectWorkspaceSessionSummary,
+        thread: Option<Box<ProjectWorkspaceThread>>,
     },
     Thread {
         thread: Box<ProjectWorkspaceThread>,
@@ -267,6 +290,28 @@ pub enum ProjectWorkspaceSidebarSectionItemRef {
     Session { session_id: String },
 }
 
+/// An observed direct placement, supplied in its requested final order.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSidebarSectionOrderItem {
+    pub placement_id: String,
+    pub expected_revision: i64,
+    pub expected_rank_key: i64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceBuiltinSidebarLane {
+    Projects,
+    PinnedProjects,
+    PinnedSessions,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSidebarOrderEntry {
+    pub item: ProjectWorkspaceSidebarSectionItemRef,
+    pub title: String,
+}
+
 impl ProjectWorkspaceSidebarSectionItemRef {
     pub fn stable_key(&self) -> String {
         match self {
@@ -305,7 +350,7 @@ pub enum ProjectWorkspaceSidebarSectionItemValue {
         project: ProjectWorkspaceSidebarProjectItem,
     },
     Session {
-        task: ProjectWorkspaceTaskSummary,
+        task: Box<ProjectWorkspaceTaskSummary>,
     },
 }
 
@@ -609,7 +654,7 @@ pub struct ProjectWorkspaceTurnAuthority {
     pub thread_id: String,
     pub turn_id: String,
     pub root_thread_id: String,
-    pub actor_project_id: String,
+    pub actor_project_id: Option<String>,
     pub library_id: String,
     pub store_epoch: String,
     pub scope: ProjectWorkspaceTurnAuthorityScope,
@@ -620,6 +665,8 @@ pub struct ProjectWorkspaceTurnAuthority {
 pub struct ProjectWorkspaceTurnAuthorityResolution {
     pub authority: Option<ProjectWorkspaceTurnAuthority>,
     pub persisted: bool,
+    /// Immutable execution constraint, independent of resource scope.
+    pub read_only: bool,
     /// Present only for persisted authority and stable across process restarts.
     pub frozen_at_ms: Option<i64>,
 }
@@ -980,6 +1027,16 @@ pub struct ProjectWorkspaceTaskSummary {
     pub thread: Option<ProjectWorkspaceTaskThreadSummary>,
 }
 
+/// Profile-wide Session discovery metadata; transcript access is authorized separately.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceSessionListingItem {
+    pub task: ProjectWorkspaceTaskSummary,
+    pub project_name: Option<String>,
+    pub direct_section_id: Option<String>,
+    pub project_section_id: Option<String>,
+    pub project_pinned: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceTaskThreadSummary {
     pub thread_id: String,
@@ -1094,6 +1151,12 @@ pub struct ProjectWorkspaceQueuedFollowUpLedgerCommit {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceIntent {
+    /// A Turn-authorized application command. Core admits only organization intents.
+    AgentCommand {
+        provenance: Box<crate::agent::AgentTurnProvenance>,
+        #[schema(no_recursion)]
+        intent: Box<ProjectWorkspaceIntent>,
+    },
     CreateInitialProject {
         project_id: String,
         name: String,
@@ -1158,6 +1221,20 @@ pub enum ProjectWorkspaceIntent {
         section_id: Option<String>,
         placement: ProjectWorkspaceSidebarSectionItemPlacement,
     },
+    ReorderSidebarSectionItems {
+        section_id: String,
+        items: Vec<ProjectWorkspaceSidebarSectionOrderItem>,
+    },
+    ReorderBuiltinSidebarItems {
+        lane: ProjectWorkspaceBuiltinSidebarLane,
+        expected_order_revision: String,
+        item_ids: Vec<String>,
+    },
+    PrioritizeBuiltinSidebarProjects {
+        lane: ProjectWorkspaceBuiltinSidebarLane,
+        expected_order_revision: String,
+        project_ids: Vec<String>,
+    },
     ReorderSidebarSectionSessions {
         section_id: String,
         session_ids: Vec<String>,
@@ -1181,6 +1258,35 @@ pub enum ProjectWorkspaceIntent {
         project_id: Option<String>,
         title: String,
         initial_page_ids: Vec<String>,
+    },
+    /// Reserves one host launch with Session creation. Only a fresh receipt admits execution;
+    /// replay must reconcile the Session binding without launching another backend Thread.
+    AdmitSessionLaunch {
+        session_id: String,
+        project_id: Option<String>,
+        title: String,
+        launch_request_hash: String,
+    },
+    /// Reserves one message dispatch to an exact existing Session binding.
+    /// A duplicate receipt must never dispatch the message again.
+    AdmitSessionMessage {
+        session_id: String,
+        thread_id: String,
+        message_request_hash: String,
+    },
+    /// Reserves one handoff of an exact existing Session binding.
+    /// Replays observe the retained operation and never toggle the location again.
+    AdmitSessionHandoff {
+        session_id: String,
+        thread_id: String,
+        handoff_request_hash: String,
+    },
+    /// Reserves the destination Session for one fork of an authorized source binding.
+    AdmitSessionFork {
+        source_session_id: String,
+        source_thread_id: String,
+        session_id: String,
+        fork_request_hash: String,
     },
     CreateSessionInSidebarSection {
         session_id: String,
@@ -1330,8 +1436,9 @@ pub enum ProjectWorkspaceIntent {
         thread_id: String,
         turn_id: String,
         root_thread_id: String,
-        actor_project_id: String,
+        actor_project_id: Option<String>,
         source: ProjectWorkspaceTurnAuthoritySource,
+        read_only: bool,
         inherited_from: Option<ProjectWorkspaceTurnCoordinate>,
     },
     UpsertBackgroundProcess {

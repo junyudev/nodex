@@ -2,7 +2,9 @@ import {
   activateWorkbenchPanelLeaf,
   insertWorkbenchPanelTabInBackground,
   listWorkbenchPanelLeaves,
+  reorderWorkbenchPanelLeafTabs,
 } from "../../shared/workbench-panel-layout";
+import { orderWorkbenchPanelTabs } from "./workbench-panel-order";
 import {
   makeWorkbenchSceneKey,
   type WorkbenchSceneOwner,
@@ -44,12 +46,13 @@ export function listWorkbenchScenePreviewEntries(
 export function projectWorkbenchScenePreviews(
   scene: WorkbenchSceneSnapshot,
   previewSurfacesByPanel: Readonly<Record<string, WorkbenchSurfaceDescriptor>>,
+  tabOrderByPanelGroup: Readonly<Record<string, readonly string[]>> = {},
 ): {
   readonly scene: WorkbenchSceneSnapshot;
   readonly previewSurfaceIds: ReadonlySet<string>;
 } {
   const entries = listWorkbenchScenePreviewEntries(scene, previewSurfacesByPanel);
-  if (entries.length === 0) {
+  if (entries.length === 0 && Object.keys(tabOrderByPanelGroup).length === 0) {
     return { scene, previewSurfaceIds: new Set() };
   }
 
@@ -59,8 +62,6 @@ export function projectWorkbenchScenePreviews(
 
   for (const panelId of ["right", "bottom"] as const) {
     const panelEntries = entries.filter((entry) => entry.panelId === panelId);
-    if (panelEntries.length === 0) continue;
-
     const durableLayout = scene.panels[panelId].layout;
     let layout = durableLayout;
     for (const entry of panelEntries) {
@@ -71,6 +72,16 @@ export function projectWorkbenchScenePreviews(
       layout = activateWorkbenchPanelLeaf(layout, entry.leafId, entry.surface.id);
       panelSurfacesById[entry.surface.id] = entry.surface;
       previewSurfaceIds.add(entry.surface.id);
+    }
+    for (const leaf of listWorkbenchPanelLeaves(layout)) {
+      const order =
+        tabOrderByPanelGroup[makeWorkbenchScenePreviewSlotKey(scene.owner, panelId, leaf.id)];
+      if (!order) continue;
+      const orderedIds = orderWorkbenchPanelTabs(
+        leaf.tabIds.map((id) => ({ id })),
+        order,
+      ).map((tab) => tab.id);
+      layout = reorderWorkbenchPanelLeafTabs(layout, leaf.id, orderedIds);
     }
     panels[panelId] = {
       ...scene.panels[panelId],

@@ -25,8 +25,13 @@ files:
   - "!node_modules/node-pty/prebuilds/win32-*/**"
 asarUnpack:
   - "**/*.node"
+  - "out/main/app-tools/**"
 npmRebuild: true
 extraResources:
+  - from: .generated/workspace-runtime/${arch}
+    to: workspace-runtime
+    filter:
+      - "**/*"
   - from: .generated/prepared-electron-build.json
     to: prepared-electron-build.json
   - from: .generated/official-agent-skills

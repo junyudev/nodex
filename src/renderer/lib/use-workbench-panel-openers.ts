@@ -168,7 +168,8 @@ export function findCanvasStageTab(
     session.tabs.find(
       (tab) =>
         tab.kind === "canvas_stage" &&
-        tab.config.projectId === projectId &&
+        tab.config.accessContext.kind === "project" &&
+        tab.config.accessContext.projectId === projectId &&
         tab.config.canvasBlockId === canvasBlockId,
     ) ?? null
   );
@@ -192,7 +193,9 @@ interface WorkbenchPanelOpenersInput {
   readonly codexControl: ReturnType<typeof useCodexAppServerControl>;
   readonly projects: readonly Project[];
   readonly rightPanelFullWidth: boolean;
-  readonly createSessionViewTab: (input: WorkbenchTabCreateInput) => WorkbenchTabProjection | null;
+  readonly createSessionViewTab: (
+    input: WorkbenchTabCreateInput,
+  ) => Promise<WorkbenchTabProjection | null>;
   readonly updateTab: (
     tabId: string,
     patch: WorkbenchTabUpdateInput,
@@ -354,6 +357,7 @@ export function useWorkbenchPanelOpeners({
         toast.danger("Failed to open side chat", { id: "side-chat-open-failed" });
         return;
       }
+      const submittedPresentation = workbenchCodexControl.captureSubmissionPresentation();
       const panelId = input.targetPanelId ?? "right";
       const leafId = input.targetLeafId ?? resolveSessionPanelActiveLeafId(activeSession, panelId);
       const parentThreadId = activeSession.thread.threadId;
@@ -383,17 +387,20 @@ export function useWorkbenchPanelOpeners({
 
       try {
         const draftPrompt = input.kind === "draft" ? input.draftPrompt.trim() : "";
-        const result = await workbenchCodexControl.startSideChat({
-          parentThreadId,
-          parentNavigationPath,
-          ...(input.kind === "draft"
-            ? {}
-            : {
-                prompt: input.prompt,
-                promptInput: input.promptInput,
-              }),
-          collaborationMode: input.collaborationMode,
-        });
+        const result = await workbenchCodexControl.startSideChat(
+          {
+            parentThreadId,
+            parentNavigationPath,
+            ...(input.kind === "draft"
+              ? {}
+              : {
+                  prompt: input.prompt,
+                  promptInput: input.promptInput,
+                }),
+            collaborationMode: input.collaborationMode,
+          },
+          submittedPresentation,
+        );
         const readyTabId = `sidechat:${result.threadId}`;
         panelControllerRef.current.updateSideChatTabsBySession((current) => {
           const tabs = current[activeSession.id] ?? [];
@@ -571,18 +578,20 @@ export function useWorkbenchPanelOpeners({
 
   const openAutomationSidePanel = useCallback(
     async (input: ThreadSummaryPanelScheduledAutomationOpenInput) => {
-      if (!activeSession || activeSession.projectId === null) return;
+      if (!activeSession) return;
       const projectId = activeSession.projectId;
       const panelId: PanelId = "right";
       const leafId = resolveSessionPanelActiveLeafId(activeSession, panelId);
       const mode = input.mode ?? "open";
       const automationId = input.automationId ?? input.updateInput?.id ?? null;
-      const suggestionKey = [
-        mode,
-        input.updateInput?.id ?? automationId ?? "",
-        input.createInput?.name ?? input.updateInput?.name ?? input.title,
-        input.createInput?.rrule ?? input.updateInput?.rrule ?? "",
-      ].join(":");
+      const suggestionKey =
+        input.proposalId ??
+        [
+          mode,
+          input.updateInput?.id ?? automationId ?? "",
+          input.createInput?.name ?? input.updateInput?.name ?? input.title,
+          input.createInput?.rrule ?? input.updateInput?.rrule ?? "",
+        ].join(":");
       const tabId =
         mode === "suggested-create" || mode === "suggested-update"
           ? `automation-suggestion:${encodeURIComponent(suggestionKey)}`
@@ -881,7 +890,7 @@ export function useWorkbenchPanelOpeners({
         return true;
       }
       if (decision.kind === "create-from-empty") {
-        const created = createSessionViewTab({
+        const created = await createSessionViewTab({
           sessionId: activeSession.id,
           panelId: input.panelId,
           targetLeafId: leafId,
@@ -915,7 +924,7 @@ export function useWorkbenchPanelOpeners({
       }
 
       if (decision.kind === "create-durable") {
-        const created = createSessionViewTab({
+        const created = await createSessionViewTab({
           sessionId: activeSession.id,
           panelId: input.panelId,
           targetLeafId: leafId,
@@ -971,7 +980,8 @@ export function useWorkbenchPanelOpeners({
           tab.kind === "page_stage" &&
           "pageId" in tab.config &&
           tab.config.pageId === pageId &&
-          tab.config.projectId === projectId,
+          tab.config.accessContext.kind === "project" &&
+          tab.config.accessContext.projectId === projectId,
       );
       if (existing) {
         const existingLeafId = resolveLeafIdForPanelTab(
@@ -1024,7 +1034,8 @@ export function useWorkbenchPanelOpeners({
         matchingPreviewTab?.kind === "page_stage" &&
         "pageId" in matchingPreviewTab.config &&
         matchingPreviewTab.config.pageId === pageId &&
-        matchingPreviewTab.config.projectId === projectId
+        matchingPreviewTab.config.accessContext.kind === "project" &&
+        matchingPreviewTab.config.accessContext.projectId === projectId
       ) {
         await pinPreviewTab(targetPanelId, matchingPreviewTab.id, previewLeafId);
         return;
@@ -1048,14 +1059,14 @@ export function useWorkbenchPanelOpeners({
       if (sourcePreviewSlot) {
         clearPanelPreviewTab(activeSession.id, sourcePreviewSlot.panelId, sourcePreviewSlot.leafId);
       }
-      createSessionViewTab({
+      await createSessionViewTab({
         sessionId: activeSession.id,
         panelId: targetPanelId,
         ...(targetLeafId ? { targetLeafId } : {}),
         kind: "page_stage",
         title: titleSnapshot || pageId,
         config: {
-          projectId,
+          accessContext: { kind: "project", projectId },
           pageId: pageId,
           titleSnapshot,
         },
@@ -1125,14 +1136,14 @@ export function useWorkbenchPanelOpeners({
         clearPanelPreviewTab(activeSession.id, sourcePreviewSlot.panelId, sourcePreviewSlot.leafId);
       }
       clearPanelPreviewTab(activeSession.id, panelId, leafId);
-      const created = createSessionViewTab({
+      const created = await createSessionViewTab({
         sessionId: activeSession.id,
         panelId,
         targetLeafId: leafId,
         kind: "canvas_stage",
         title: titleSnapshot?.trim() || "Canvas",
         config: {
-          projectId,
+          accessContext: { kind: "project", projectId },
           canvasBlockId,
           ...(titleSnapshot?.trim() ? { titleSnapshot: titleSnapshot.trim() } : {}),
         },

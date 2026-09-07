@@ -10,7 +10,7 @@ use nodex_core_contracts::workspace::{
     ProjectWorkspaceSidebarSectionItem, ProjectWorkspaceSidebarSectionItemPlacement,
     ProjectWorkspaceSidebarSectionItemRef, ProjectWorkspaceSidebarSectionItemValue,
     ProjectWorkspaceSidebarSectionKind, ProjectWorkspaceSidebarSectionLifecycle,
-    ProjectWorkspaceSidebarSectionSummary,
+    ProjectWorkspaceSidebarSectionOrderItem, ProjectWorkspaceSidebarSectionSummary,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
@@ -23,7 +23,7 @@ use crate::infrastructure::cursor::{
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::ProjectWorkspaceApplyOutcome;
-use super::mutation::{WorkspaceMutationEffects, finish_mutation, workspace_event_anchor};
+use super::mutation::{WorkspaceMutationEffects, finish_mutation};
 use super::session_mutation::{sqlite_now, validate_id};
 
 const MAX_SECTION_NAME_CHARS: usize = 120;
@@ -543,6 +543,7 @@ pub(super) fn move_item(
              WHERE placement_id = ?1 AND library_id = ?2",
             params![item.stable_key(), library_id],
         )?;
+        clear_pin(connection, item)?;
     }
     let mut project_ids = Vec::new();
     let mut session_ids = Vec::new();
@@ -623,6 +624,76 @@ pub(super) fn reorder_sections(
         "reorder_sidebar_sections",
         Vec::new(),
         Vec::new(),
+        now,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn reorder_section_items(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    section_id: &str,
+    items: &[ProjectWorkspaceSidebarSectionOrderItem],
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    require_custom_section(connection, library_id, section_id, true)?;
+    let rows = read_placement_rows(connection, library_id, section_id)?;
+    let requested = items
+        .iter()
+        .map(|item| item.placement_id.as_str())
+        .collect::<BTreeSet<_>>();
+    if requested.len() != items.len()
+        || requested
+            != rows
+                .iter()
+                .map(|row| row.placement_id.as_str())
+                .collect::<BTreeSet<_>>()
+    {
+        return Err(conflict(
+            "Section order must contain every direct placement exactly once",
+        ));
+    }
+    let observed = rows
+        .iter()
+        .map(|row| (row.placement_id.as_str(), row))
+        .collect::<HashMap<_, _>>();
+    for item in items {
+        let row = observed
+            .get(item.placement_id.as_str())
+            .ok_or_else(|| conflict("Section placement is unavailable"))?;
+        if row.revision != item.expected_revision || row.rank_key != item.expected_rank_key {
+            return Err(conflict(
+                "Section placement changed; read the complete order again",
+            ));
+        }
+    }
+    let now = sqlite_now(connection)?;
+    for row in &rows {
+        connection.execute("UPDATE workspace_sidebar_section_items SET rank_key = -rank_key - 1 WHERE placement_id = ?1", [&row.placement_id])?;
+    }
+    for (item, rank) in items.iter().zip(rows.iter().map(|row| row.rank_key)) {
+        connection.execute(
+            "UPDATE workspace_sidebar_section_items SET rank_key = ?1, revision = revision + 1, updated_at = ?2 WHERE placement_id = ?3",
+            params![rank, now, item.placement_id],
+        )?;
+    }
+    finish_section_mutation(
+        connection,
+        library_id,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        "reorder_sidebar_section_items",
+        rows.iter()
+            .filter_map(|row| row.project_id.clone())
+            .collect(),
+        rows.iter()
+            .filter_map(|row| row.session_id.clone())
+            .collect(),
         now,
     )
 }
@@ -1072,7 +1143,7 @@ fn section_item_row(
         }
     } else {
         ProjectWorkspaceSidebarSectionItemValue::Session {
-            task: super::task_window::task_summary_from_row(row, 10)?,
+            task: Box::new(super::task_window::task_summary_from_row(row, 10)?),
         }
     };
     Ok(ProjectWorkspaceSidebarSectionItem {
@@ -1135,6 +1206,7 @@ fn place_item(
                 ProjectWorkspaceSidebarSectionItemRef::Project { .. } => None,
             },
             rank_key: 0,
+            revision: 1,
         },
     );
     for (index, row) in rows.iter().enumerate() {
@@ -1174,6 +1246,7 @@ struct PlacementRow {
     project_id: Option<String>,
     session_id: Option<String>,
     rank_key: i64,
+    revision: i64,
 }
 
 fn read_placement_rows(
@@ -1183,7 +1256,7 @@ fn read_placement_rows(
 ) -> Result<Vec<PlacementRow>, StoreError> {
     connection
         .prepare(
-            "SELECT placement_id, project_id, session_id, rank_key \
+            "SELECT placement_id, project_id, session_id, rank_key, revision \
              FROM workspace_sidebar_section_items \
              WHERE library_id = ?1 AND section_id = ?2 \
              ORDER BY rank_key, placement_id",
@@ -1194,6 +1267,7 @@ fn read_placement_rows(
                 project_id: row.get(1)?,
                 session_id: row.get(2)?,
                 rank_key: row.get(3)?,
+                revision: row.get(4)?,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()
@@ -1350,7 +1424,7 @@ fn collect_item_ids(
 #[allow(clippy::too_many_arguments)]
 fn finish_section_mutation(
     connection: &Connection,
-    library_id: &str,
+    _library_id: &str,
     context: &BoundModuleContext,
     store_epoch: &str,
     operation_id: &str,
@@ -1369,7 +1443,7 @@ fn finish_section_mutation(
         WorkspaceMutationEffects {
             operation_kind,
             project_catalog_change: None,
-            change_project_id: workspace_event_anchor(connection, library_id)?,
+            change_project_id: None,
             project_ids,
             session_ids: session_ids.clone(),
             thread_ids: Vec::new(),
@@ -1537,6 +1611,148 @@ mod tests {
                 expected_ids,
             );
         }
+    }
+
+    #[test]
+    fn mixed_section_order_requires_complete_current_placements_and_replays_atomically() {
+        use super::super::test_support::{context, request};
+        use nodex_core_contracts::workspace::ProjectWorkspaceSidebarSectionOrderItem;
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        apply(
+            module,
+            "draft",
+            ProjectWorkspaceIntent::CreateSession {
+                session_id: "session:mixed".into(),
+                project_id: Some("project:default".into()),
+                title: "Draft".into(),
+                initial_page_ids: vec![],
+            },
+        );
+        apply(
+            module,
+            "section",
+            ProjectWorkspaceIntent::CreateSidebarSection {
+                section_id: "section:mixed".into(),
+                name: "Mixed".into(),
+                initial_item: Some(ProjectWorkspaceSidebarSectionItemRef::Project {
+                    project_id: "project:default".into(),
+                }),
+            },
+        );
+        apply(
+            module,
+            "move",
+            ProjectWorkspaceIntent::MoveSidebarSectionItem {
+                item: ProjectWorkspaceSidebarSectionItemRef::Session {
+                    session_id: "session:mixed".into(),
+                },
+                section_id: Some("section:mixed".into()),
+                placement: ProjectWorkspaceSidebarSectionItemPlacement::End,
+            },
+        );
+        let observe = || {
+            let ProjectWorkspaceReadValue::SidebarSectionItemWindow { items } = read(
+                module,
+                ProjectWorkspaceRead::SidebarSectionItemWindow {
+                    section_id: "section:mixed".into(),
+                    include_archived: Some(true),
+                    window: window(),
+                },
+            ) else {
+                panic!("items")
+            };
+            items
+                .items
+                .iter()
+                .map(|item| ProjectWorkspaceSidebarSectionOrderItem {
+                    placement_id: item.placement_id.clone(),
+                    expected_revision: item.revision,
+                    expected_rank_key: item.rank_key,
+                })
+                .collect::<Vec<_>>()
+        };
+        let original = observe();
+        let command = |items| ProjectWorkspaceIntent::ReorderSidebarSectionItems {
+            section_id: "section:mixed".into(),
+            items,
+        };
+        for items in [vec![], vec![original[0].clone(), original[0].clone()]] {
+            assert!(
+                module
+                    .apply(&context(), request("incomplete", command(items)))
+                    .is_err()
+            );
+            assert_eq!(observe(), original);
+        }
+        let mut reordered = original.clone();
+        reordered.reverse();
+        let first = module
+            .apply(&context(), request("reorder", command(reordered.clone())))
+            .unwrap();
+        let current = observe();
+        assert_eq!(
+            current
+                .iter()
+                .map(|item| &item.placement_id)
+                .collect::<Vec<_>>(),
+            reordered
+                .iter()
+                .map(|item| &item.placement_id)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            first.committed.value.affected_project_ids,
+            vec!["project:default"]
+        );
+        assert_eq!(
+            first.committed.value.affected_session_ids,
+            vec!["session:mixed"]
+        );
+        assert!(
+            module
+                .apply(&context(), request("stale", command(original)))
+                .is_err()
+        );
+        assert_eq!(observe(), current);
+        assert!(
+            module
+                .apply(&context(), request("reorder", command(reordered)))
+                .unwrap()
+                .committed
+                .receipt
+                .mutation
+                .duplicate
+        );
+        assert_eq!(observe(), current);
+        let mut wrong_position = current.clone();
+        wrong_position[0].expected_rank_key += 1;
+        assert!(
+            module
+                .apply(
+                    &context(),
+                    request("wrong-position", command(wrong_position))
+                )
+                .is_err()
+        );
+        assert_eq!(observe(), current);
+        apply(
+            module,
+            "remove",
+            ProjectWorkspaceIntent::MoveSidebarSectionItem {
+                item: ProjectWorkspaceSidebarSectionItemRef::Session {
+                    session_id: "session:mixed".into(),
+                },
+                section_id: None,
+                placement: ProjectWorkspaceSidebarSectionItemPlacement::End,
+            },
+        );
+        assert!(
+            module
+                .apply(&context(), request("removed", command(current)))
+                .is_err()
+        );
+        assert_eq!(observe().len(), 1);
     }
 
     #[test]

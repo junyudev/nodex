@@ -22,7 +22,11 @@ import type {
   ProjectSessionListOptions,
   ProjectSessionForkInput,
 } from "../types";
-import { WorkbenchViewSchema } from "./workbench";
+import {
+  WorkbenchDbViewSurfaceConfigSchema,
+  WorkbenchPageStageSurfaceConfigSchema,
+  WorkbenchCanvasStageSurfaceConfigSchema,
+} from "./workbench-scene";
 import { WorkbenchReviewConfigSchema } from "./workbench-review";
 import { WorkbenchImageEditorSurfaceConfigSchema } from "./workbench-image-editor";
 import {
@@ -43,29 +47,12 @@ const boundedUniqueIds = (maximum: number) =>
     .max(maximum)
     .refine((ids) => new Set(ids).size === ids.length, "IDs must be unique");
 
-export const WorkbenchProjectionDbViewTabConfigSchema = z
-  .object({
-    projectId: z.string().min(1),
-    databaseViewId: z.string().min(1),
-    view: WorkbenchViewSchema,
-  })
-  .strict() satisfies z.ZodType<WorkbenchProjectionDbViewTabConfig>;
-
-export const WorkbenchProjectionPageStageTabConfigSchema = z
-  .object({
-    projectId: z.string().min(1),
-    pageId: z.string().min(1),
-    titleSnapshot: z.string().optional(),
-  })
-  .strict() satisfies z.ZodType<WorkbenchProjectionPageStageTabConfig>;
-
-export const WorkbenchProjectionCanvasStageTabConfigSchema = z
-  .object({
-    projectId: z.string().min(1),
-    canvasBlockId: z.string().min(1),
-    titleSnapshot: z.string().optional(),
-  })
-  .strict() satisfies z.ZodType<WorkbenchProjectionCanvasStageTabConfig>;
+export const WorkbenchProjectionDbViewTabConfigSchema =
+  WorkbenchDbViewSurfaceConfigSchema satisfies z.ZodType<WorkbenchProjectionDbViewTabConfig>;
+export const WorkbenchProjectionPageStageTabConfigSchema =
+  WorkbenchPageStageSurfaceConfigSchema satisfies z.ZodType<WorkbenchProjectionPageStageTabConfig>;
+export const WorkbenchProjectionCanvasStageTabConfigSchema =
+  WorkbenchCanvasStageSurfaceConfigSchema satisfies z.ZodType<WorkbenchProjectionCanvasStageTabConfig>;
 
 export const WorkbenchProjectionTerminalTabConfigSchema = z
   .object({

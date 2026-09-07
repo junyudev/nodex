@@ -474,23 +474,20 @@ fn replay(
 fn record_change(
     scope: &DurableMutationScope<'_>,
     context: &BoundModuleContext,
-    library_id: &str,
+    _library_id: &str,
     document_id: &str,
     generation: i64,
 ) -> Result<i64, StoreError> {
     let actor = context
         .project_id
         .as_ref()
-        .map(|id| Ok(id.0.clone()))
-        .unwrap_or_else(|| {
-            crate::library::resolve_library_actor_project_id(scope.connection(), library_id)
-        })?;
+        .map(|project| project.0.as_str());
     let detached = read_document_authority(scope.connection(), document_id)?.is_none();
     let payload = serde_json::json!({ "module": "owned_document", "kind": "recovery_changed", "documentId": document_id, "generation": generation, "headSeq": 0, "detached": detached });
     append_change_log(
         scope.connection(),
         NewChangeLogEntry {
-            project_id: &actor,
+            project_id: actor,
             store_epoch: scope.store_epoch(),
             kind: "owned_document.recovery_changed",
             operation_id: Some(scope.evidence().operation_id()),
@@ -1143,13 +1140,7 @@ impl OwnedDocumentModule {
                     &operation_id,
                 )?;
                 let now = sqlite_now(&tx)?;
-                let actor_project_id = context
-                    .project_id
-                    .as_ref()
-                    .map(|id| Ok(id.0.clone()))
-                    .unwrap_or_else(|| {
-                        crate::library::resolve_library_actor_project_id(&tx, &library_id)
-                    })?;
+                let actor_project_id = context.project_id.as_ref().map(|project| project.0.as_str());
                 let result = durable_mutation::run(
                     &tx,
                     OperationIdentity {
@@ -1194,7 +1185,7 @@ impl OwnedDocumentModule {
                                 &tx,
                                 Some(scope.evidence()),
                                 &authority,
-                                &actor_project_id,
+                                actor_project_id,
                                 &document_access_context(&context),
                                 &epoch.0,
                                 &operation_id,

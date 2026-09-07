@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "nodex_app": {
+      "command": "node",
+      "args": ["./server.mjs"],
+      "cwd": ".",
+      "enabled": true,
+      "default_tools_approval_mode": "approve",
+      "tools": {
+        "automation_update": { "approval_mode": "prompt" },
+        "create_session": { "approval_mode": "prompt" },
+        "send_message_to_session": { "approval_mode": "prompt" },
+        "fork_session": { "approval_mode": "prompt" },
+        "handoff_session": { "approval_mode": "prompt" }
+      },
+      "env_vars": ["HOME", "USERPROFILE", "PATH"],
+      "startup_timeout_sec": 10,
+      "tool_timeout_sec": 185
+    }
+  }
+}

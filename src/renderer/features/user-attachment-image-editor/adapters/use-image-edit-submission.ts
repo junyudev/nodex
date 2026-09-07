@@ -138,6 +138,7 @@ export function useImageEditSubmission(args: {
     setIsSubmitting(true);
     let optimisticEdit: ReturnType<typeof beginOptimisticGeneratedImageEdit> | null = null;
     try {
+      const submittedPresentation = control.captureSubmissionPresentation();
       if (args.composerTarget) {
         const result = await requestImageEditComposerSubmit(args.composerTarget.channelId, {
           intent,
@@ -202,9 +203,14 @@ export function useImageEditSubmission(args: {
         promptInput,
       };
       if (hasActiveTurn) {
-        await control.enqueueQueuedFollowUp(args.threadId, intent.promptRaw, options);
+        await control.enqueueQueuedFollowUp(
+          args.threadId,
+          intent.promptRaw,
+          options,
+          submittedPresentation,
+        );
       } else {
-        await control.startTurn(args.threadId, intent.promptRaw, options);
+        await control.startTurn(args.threadId, intent.promptRaw, options, submittedPresentation);
       }
       if (intent.focusComposerAfterSubmit) {
         control.setComposerIntent(args.threadId, {

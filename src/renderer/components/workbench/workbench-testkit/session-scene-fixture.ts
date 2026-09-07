@@ -16,50 +16,6 @@ function surfaceFromProjection(
     stateKey: tab.stateKey,
     state: tab.state,
   };
-  if (tab.kind === "db_view") {
-    return {
-      ...common,
-      kind: "db_view",
-      config: {
-        accessContext: {
-          kind: "project",
-          projectId: tab.config.projectId,
-        },
-        target: {
-          kind: "database-view",
-          databaseViewId: tab.config.databaseViewId,
-        },
-      },
-    };
-  }
-  if (tab.kind === "page_stage") {
-    return {
-      ...common,
-      kind: "page_stage",
-      config: {
-        accessContext: {
-          kind: "project",
-          projectId: tab.config.projectId,
-        },
-        pageId: tab.config.pageId,
-        ...(tab.config.titleSnapshot ? { titleSnapshot: tab.config.titleSnapshot } : {}),
-      },
-    };
-  }
-  if (tab.kind === "canvas_stage") {
-    return {
-      ...common,
-      kind: "canvas_stage",
-      config: {
-        accessContext: {
-          kind: "project",
-          projectId: tab.config.projectId,
-        },
-        canvasBlockId: tab.config.canvasBlockId,
-        ...(tab.config.titleSnapshot ? { titleSnapshot: tab.config.titleSnapshot } : {}),
-      },
-    };
-  }
   if (tab.kind === "browser") {
     return {
       ...common,

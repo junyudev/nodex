@@ -1,3 +1,4 @@
+import { resolveNativeSessionHandoffScope } from "./tool-metadata/native-session-handoff";
 import type {
   ThreadAgentActivityClassification,
   ThreadAgentActivityGrouping,
@@ -121,7 +122,9 @@ export function isThreadMcpActivityStandalone(input: {
   item: ThreadMcpActivityItem;
   mcpServerStatuses: ProtocolListMcpServerStatusResponse | null;
 }): boolean {
+  if (input.item.entry.automationUpdate?.source === "nativeMcp") return true;
   const payload = input.item.entry.mcpToolCall;
+  if (resolveNativeSessionHandoffScope(payload, input.item.entry.threadId)) return true;
 
   return (
     resolveCodexMcpAppClassification({

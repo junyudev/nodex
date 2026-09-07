@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -28,6 +28,7 @@ import type {
 } from "../core-client/types";
 import { AutomationRoutingIndex } from "../core-runtime/AutomationRoutingIndex";
 import { CoreModules } from "../core-runtime/CoreModules";
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { createDueWorkOperationId, createOperationId } from "../core-runtime/operation-identity";
 import {
   finiteDateMilliseconds,
@@ -104,18 +105,50 @@ export class AutomationApplicationError extends Schema.TaggedError<AutomationApp
 
 type AutomationEffect<A> = Effect.Effect<A, AutomationApplicationError>;
 
+export interface AutomationDefinitionCommand {
+  readonly operationId: string;
+}
+
+/** Explicit commands retain the observed revision and replace the complete definition. */
+export interface AutomationDefinitionRevisionCommand extends AutomationDefinitionCommand {
+  readonly expectedRevision: number;
+}
+
+export interface AutomationDefinitionWindowInput {
+  readonly query?: string;
+  readonly cursor?: string;
+  readonly limit?: number;
+}
+
+export interface AutomationDefinitionWindow {
+  readonly items: readonly CodexScheduledAutomation[];
+  readonly nextCursor: string | null;
+}
+
 export interface AutomationDefinitions {
+  readonly listWindow: (
+    input?: AutomationDefinitionWindowInput,
+    requestClass?: AutomationReadClass,
+  ) => AutomationEffect<AutomationDefinitionWindow>;
   readonly list: (
     requestClass?: AutomationReadClass,
   ) => AutomationEffect<readonly CodexScheduledAutomation[]>;
   readonly get: (automationId: string) => AutomationEffect<CodexScheduledAutomation | null>;
+  readonly getForExecution: (
+    automationId: string,
+  ) => AutomationEffect<CodexScheduledAutomation | null>;
   readonly create: (
     input: CodexScheduledAutomationCreateInput,
+    command?: AutomationDefinitionCommand,
   ) => AutomationEffect<CodexScheduledAutomation>;
   readonly update: (
     input: CodexScheduledAutomationUpdateInput,
+    command?: AutomationDefinitionRevisionCommand,
   ) => AutomationEffect<CodexScheduledAutomation | null>;
-  readonly delete: (automationId: string) => AutomationEffect<AutomationDefinitionDeleteResult>;
+  readonly delete: (
+    automationId: string,
+    command?: AutomationDefinitionRevisionCommand,
+  ) => AutomationEffect<AutomationDefinitionDeleteResult>;
   readonly dispatchNow: (automationId: string) => AutomationEffect<CodexScheduledAutomation | null>;
   readonly reschedule: (
     automationId: string,
@@ -261,10 +294,49 @@ export const make: Effect.Effect<
   const projectDefinition = (operation: string, definition: CoreAutomationDefinition) =>
     evaluate(operation, () => projectAutomationDefinition(definition));
 
-  const prepareCoreDefinitionInput = (
-    operation: string,
-    input: CodexScheduledAutomationCreateInput,
-  ) => evaluate(operation, () => toCoreAutomationDefinitionInput(input));
+  const requireDefinitionCommand = Effect.fn("AutomationApplication.requireDefinitionCommand")(
+    function* (operation: string, command: AutomationDefinitionCommand | undefined) {
+      if ((yield* CoreApplicationAgent) && !command) {
+        return yield* error(
+          operation,
+          new Error("Agent Automation mutations require a stable command identity"),
+        );
+      }
+    },
+  );
+
+  const prepareCoreDefinitionInput = Effect.fn("AutomationApplication.prepareDefinition")(
+    function* (
+      operation: string,
+      input: CodexScheduledAutomationCreateInput,
+      stableTarget = false,
+    ) {
+      if (stableTarget && input.kind === "heartbeat" && !input.targetSessionId) {
+        return yield* error(
+          operation,
+          new Error("A stable Heartbeat command requires its target Session"),
+        );
+      }
+      if (input.kind !== "heartbeat" || input.targetSessionId) {
+        return yield* evaluate(operation, () => toCoreAutomationDefinitionInput(input));
+      }
+      if (!input.targetThreadId)
+        return yield* error(operation, new Error("Heartbeat target Session is required"));
+      const snapshot = yield* core.workspace
+        .read({ kind: "thread", thread_id: input.targetThreadId })
+        .pipe(Effect.mapError((cause) => error(operation, cause)));
+      if (snapshot.value.kind !== "thread" || !snapshot.value.thread.session_id) {
+        return yield* error(
+          operation,
+          new Error("Heartbeat target Thread is not attached to a Session"),
+        );
+      }
+      const targetSessionId = snapshot.value.thread.session_id;
+      return yield* evaluate(operation, () =>
+        toCoreAutomationDefinitionInput({ ...input, targetSessionId }),
+      );
+    },
+  );
 
   const read = (
     operation: string,
@@ -318,7 +390,8 @@ export const make: Effect.Effect<
     const committed = yield* core.automation
       .apply(input, options, projectId)
       .pipe(Effect.mapError((cause) => error(operation, cause, projectId)));
-    commitRouting(committed, removals);
+    // A replay returns historical evidence; current routing follows newer commits.
+    if (!committed.receipt.duplicate) commitRouting(committed, removals);
     return committed;
   });
 
@@ -402,7 +475,8 @@ export const make: Effect.Effect<
     );
   });
 
-  const listDefinitions = Effect.fn("AutomationApplication.definitions.list")(function* (
+  const listDefinitionWindow = Effect.fn("AutomationApplication.definitions.listWindow")(function* (
+    input: AutomationDefinitionWindowInput = {},
     readClass: AutomationReadClass = "interactive",
   ) {
     const snapshot = yield* read(
@@ -410,7 +484,8 @@ export const make: Effect.Effect<
       {
         kind: "definitions",
         include_deleted: false,
-        window: { after: null, first: 200 },
+        search_query: input.query ?? null,
+        window: { after: input.cursor ?? null, first: input.limit ?? 20 },
       },
       requestOptions(readClass),
     );
@@ -420,23 +495,43 @@ export const make: Effect.Effect<
         new Error("Core returned a non-Definitions Automation read"),
       );
     }
-    if (snapshot.value.window.next_cursor) {
+    const definitions = snapshot.value.window.items;
+    return {
+      items: yield* evaluate("definitions.list", () =>
+        definitions.map(projectAutomationDefinition),
+      ),
+      nextCursor: snapshot.value.window.next_cursor ?? null,
+    };
+  });
+
+  const listDefinitions = Effect.fn("AutomationApplication.definitions.list")(function* (
+    readClass: AutomationReadClass = "interactive",
+  ) {
+    const window = yield* listDefinitionWindow({ limit: 200 }, readClass);
+    if (window.nextCursor) {
       return yield* error(
         "definitions.list",
         new Error("Active Scheduled Automation collection exceeded its fixed Core bound"),
       );
     }
-    const definitions = snapshot.value.window.items;
-    return yield* evaluate("definitions.list", () => definitions.map(projectAutomationDefinition));
+    return window.items;
   });
 
   const createDefinition = Effect.fn("AutomationApplication.definitions.create")(function* (
     input: CodexScheduledAutomationCreateInput,
+    command?: AutomationDefinitionCommand,
   ) {
-    const definition = yield* prepareCoreDefinitionInput("definitions.create", input);
-    const automationId = yield* allocateDefinitionId(input.name);
+    yield* requireDefinitionCommand("definitions.create", command);
+    const definition = yield* prepareCoreDefinitionInput(
+      "definitions.create",
+      input,
+      command !== undefined,
+    );
+    const automationId = command
+      ? `automation-${createHash("sha256").update(command.operationId).digest("hex")}`
+      : yield* allocateDefinitionId(input.name);
     const committed = yield* apply("definitions.create", {
-      operationId: operationId(`create:${automationId}`),
+      operationId: command?.operationId ?? operationId(`create:${automationId}`),
       intent: {
         kind: "create_definition",
         automation_id: automationId,
@@ -451,29 +546,39 @@ export const make: Effect.Effect<
 
   const updateDefinition = Effect.fn("AutomationApplication.definitions.update")(function* (
     input: CodexScheduledAutomationUpdateInput,
+    command?: AutomationDefinitionRevisionCommand,
   ) {
-    const current = yield* readDefinition(input.id);
-    if (!current) return null;
-    const projectedCurrent = yield* projectDefinition("definitions.update", current);
-    const definition = yield* prepareCoreDefinitionInput("definitions.update", {
-      ...input,
-      backendBinding: input.backendBinding ?? projectedCurrent.backendBinding,
-    });
+    yield* requireDefinitionCommand("definitions.update", command);
+    const current = command ? null : yield* readDefinition(input.id);
+    const expectedRevision = command?.expectedRevision ?? current?.definition_revision;
+    if (expectedRevision === undefined) return null;
+    const projectedCurrent = current
+      ? yield* projectDefinition("definitions.update", current)
+      : null;
+    const definition = yield* prepareCoreDefinitionInput(
+      "definitions.update",
+      {
+        ...input,
+        backendBinding: input.backendBinding ?? projectedCurrent?.backendBinding,
+        projectId: input.projectId === undefined ? projectedCurrent?.projectId : input.projectId,
+      },
+      command !== undefined,
+    );
     const committed = yield* apply(
       "definitions.update",
       {
-        operationId: operationId(`update:${input.id}`),
+        operationId: command?.operationId ?? operationId(`update:${input.id}`),
         intent:
           input.status === "DELETED"
             ? {
                 kind: "delete_definition",
                 automation_id: input.id,
-                expected_revision: current.definition_revision,
+                expected_revision: expectedRevision,
               }
             : {
                 kind: "update_definition",
                 automation_id: input.id,
-                expected_revision: current.definition_revision,
+                expected_revision: expectedRevision,
                 status: input.status,
                 definition,
               },
@@ -490,9 +595,12 @@ export const make: Effect.Effect<
 
   const deleteDefinition = Effect.fn("AutomationApplication.definitions.delete")(function* (
     automationId: string,
+    command?: AutomationDefinitionRevisionCommand,
   ) {
-    const current = yield* readDefinition(automationId);
-    if (!current) {
+    yield* requireDefinitionCommand("definitions.delete", command);
+    const current = command ? null : yield* readDefinition(automationId);
+    const expectedRevision = command?.expectedRevision ?? current?.definition_revision;
+    if (expectedRevision === undefined) {
       return {
         item: null,
         success: true,
@@ -500,15 +608,14 @@ export const make: Effect.Effect<
         deletedRunCount: 0,
       };
     }
-    const projectedCurrent = yield* projectDefinition("definitions.delete", current);
     const committed = yield* apply(
       "definitions.delete",
       {
-        operationId: operationId(`delete:${automationId}`),
+        operationId: command?.operationId ?? operationId(`delete:${automationId}`),
         intent: {
           kind: "delete_definition",
           automation_id: automationId,
-          expected_revision: current.definition_revision,
+          expected_revision: expectedRevision,
         },
       },
       undefined,
@@ -516,7 +623,10 @@ export const make: Effect.Effect<
       { definitionIds: [automationId] },
     );
     return {
-      item: projectedCurrent,
+      item: yield* projectDefinition(
+        "definitions.delete",
+        yield* requireDefinition("definitions.delete", committed, automationId),
+      ),
       success: true,
       status: "deleted" as const,
       deletedRunCount: committed.outcome.deleted_run_ids.length,
@@ -857,7 +967,23 @@ export const make: Effect.Effect<
 
   return AutomationApplication.of({
     definitions: {
+      getForExecution: (automationId) =>
+        Effect.gen(function* () {
+          const snapshot = yield* read("definitions.getForExecution", {
+            kind: "execution_definition",
+            automation_id: automationId,
+          });
+          if (snapshot.value.kind !== "definition")
+            return yield* error(
+              "definitions.getForExecution",
+              new Error("Expected an execution Definition"),
+            );
+          return snapshot.value.item
+            ? yield* projectDefinition("definitions.getForExecution", snapshot.value.item)
+            : null;
+        }),
       list: listDefinitions,
+      listWindow: listDefinitionWindow,
       get: (automationId) =>
         readDefinition(automationId).pipe(
           Effect.flatMap((item) =>

@@ -49,7 +49,15 @@ import {
 } from "@/lib/database-view-render-model";
 import { readDatabasePropertyOptions } from "@/lib/database-view-authoring";
 import { collectRequiredPropertyOptionIds } from "@/lib/database-option-registry-requirements";
-import { databasePropertyValueSearchText } from "@/lib/database-property-search-text";
+import { databaseRowPropertySearchText } from "@/lib/database-property-search-text";
+import { useWorkbenchViewContent } from "@/lib/use-workbench-view-content";
+import {
+  boardWorkbenchOccurrenceKey,
+  createWorkbenchViewSnapshot,
+  workbenchElementInViewport,
+  workbenchViewOccurrence,
+  type WorkbenchViewContentBinding,
+} from "@/lib/workbench-view-content";
 import { normalizeSearchText } from "@/lib/search-text";
 import { cn } from "@/lib/utils";
 import { parseDataSourcePropertyId } from "../../../shared/database-identities";
@@ -58,7 +66,6 @@ import {
   buildDataSourceMultiSelectPatchOperations,
   buildDataSourceRelationReplacementOperations,
 } from "@/lib/data-source-property-value-operations";
-import { readRelationValuePreview } from "@/lib/data-source-relation-value";
 import { usePropertyOptionRegistries } from "../database/use-property-option-registries";
 import {
   readDataSourceRelationTargets,
@@ -168,6 +175,7 @@ const readDraggedPageIds = (dataTransfer: DataTransfer): readonly string[] => {
 };
 
 interface DatabaseViewSurfaceProps {
+  readonly workbenchContent?: WorkbenchViewContentBinding;
   readonly model: DatabaseViewRenderModel;
   readonly canonicalModel?: DatabaseViewRenderModel;
   readonly canonicalReadGeneration?: number;
@@ -203,25 +211,7 @@ const searchablePropertyValues = (
 ): string => {
   const row = rowByPageId(model, pageId);
   if (!row) return "";
-  const propertyById = new Map(
-    model.query.properties.map((property) => [String(property.propertyId), property] as const),
-  );
-  return Object.values(row.values)
-    .map((value) => {
-      const relation = readRelationValuePreview(value.value);
-      if (!relation) {
-        return databasePropertyValueSearchText(value.value, {
-          optionBacked:
-            propertyById.get(value.propertyId)?.valueType === "select" ||
-            propertyById.get(value.propertyId)?.valueType === "multi_select",
-          options: optionRegistries[value.propertyId],
-        });
-      }
-      return relation.targets
-        .flatMap((target) => (target.kind === "visible" ? [target.title] : []))
-        .join(" ");
-    })
-    .join(" ");
+  return databaseRowPropertySearchText(row, model.query.properties, optionRegistries);
 };
 
 export const databaseViewMutationErrorMessage = (error: unknown, pageMutation: boolean): string => {
@@ -283,6 +273,7 @@ function DatabaseViewSurfaceContent(props: DatabaseViewSurfaceProps) {
   if (effectivePresentation.layout === "list") {
     return (
       <DatabaseList
+        workbenchContent={props.workbenchContent}
         model={props.model}
         effectivePresentation={effectivePresentation}
         groupPagination={props.groupPagination}
@@ -317,6 +308,7 @@ function DatabaseViewSurfaceContent(props: DatabaseViewSurfaceProps) {
 }
 
 function BoardDatabaseViewSurface({
+  workbenchContent,
   model,
   canonicalModel,
   canonicalReadGeneration,
@@ -376,6 +368,7 @@ function BoardDatabaseViewSurface({
   const presentationId =
     keyboardSurface?.presentationId ?? `database-view-presentation:${keyboardSurfaceFallbackId}`;
   const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const occurrenceElements = useRef(new Map<string, HTMLDivElement>());
   const requiredOptionIds = useMemo(
     () =>
       collectRequiredPropertyOptionIds({
@@ -612,6 +605,90 @@ function BoardDatabaseViewSurface({
         total + (groupPagination?.get(subgroup.scopeKey)?.totalRows ?? subgroup.rows.length),
       0,
     );
+  useWorkbenchViewContent(workbenchContent, (request) => {
+    if (!workbenchContent || !surfaceRef.current?.isConnected) return null;
+    const authority = new Map(
+      mutationModel.query.rows.map((row) => [row.page.pageId, row] as const),
+    );
+    const occurrences = boardSubgroups.flatMap((subgroup) =>
+      columns.flatMap((column) =>
+        (
+          subgroupsByColumn.get(column.id)?.find((candidate) => candidate.key === subgroup.key)
+            ?.rows ?? []
+        ).flatMap((row) => {
+          const source = authority.get(row.pageId);
+          if (!source) return [];
+          const key = boardWorkbenchOccurrenceKey(row.pageId, column.groupKey, subgroup.key);
+          const element = occurrenceElements.current.get(key);
+          return [
+            workbenchViewOccurrence({
+              row: source,
+              displayKey: key,
+              occurrenceKey: null,
+              groupPath: presentation.group
+                ? presentation.subgroup
+                  ? [column.groupKey, subgroup.key]
+                  : [column.groupKey]
+                : [],
+              ancestorPageIds: [],
+              mounted: element?.isConnected === true,
+              inViewport: workbenchElementInViewport(element),
+              selected: selectedPageIds.has(row.pageId),
+            }),
+          ];
+        }),
+      ),
+    );
+    const pagination = [...(groupPagination?.values() ?? [])];
+    const allRowsLoaded =
+      (groupPagination !== undefined || model.authorization === null) &&
+      pagination.every((entry) => !entry.hasMore && !entry.loadingMore && entry.error === null);
+    const searched = compiledSearchQuery.normalizedQuery.length > 0;
+    const totalOccurrenceCount = searched
+      ? allRowsLoaded
+        ? occurrences.length
+        : null
+      : pagination.length > 0 && pagination.every((entry) => entry.totalRows !== null)
+        ? pagination.reduce((total, entry) => total + entry.totalRows!, 0)
+        : allRowsLoaded
+          ? occurrences.length
+          : null;
+    return createWorkbenchViewSnapshot({
+      request,
+      binding: workbenchContent,
+      model: canonicalMutationModel,
+      effective: effectivePresentation,
+      search: { current: searchQuery, deferred: deferredSearchQuery },
+      pending: {
+        optimistic:
+          presentationOwner.owner.hasWork() ||
+          pendingMutationKeys.size > 0 ||
+          draggingPageIds.size > 0 ||
+          dropIndicator !== null,
+        loading: pagination.some((entry) => entry.loadingMore || entry.error !== null),
+        options: searched && Object.values(optionRegistryStates).some((state) => state !== "ready"),
+      },
+      selection: {
+        allMatching: false,
+        selectedOccurrenceKeys: occurrences
+          .filter((row) => row.selected)
+          .map((row) => row.displayKey),
+        excludedOccurrenceKeys: [],
+        anchorOccurrenceKey: null,
+        activeOccurrenceKey:
+          occurrences.find((row) => row.pageId === highlightedPageId)?.displayKey ?? null,
+      },
+      collapsedOccurrenceKeys: columns.flatMap((column) =>
+        getDatabaseBoardColumnLayout(columnLayoutPrefs, column.scopeKey).collapsed
+          ? [column.scopeKey]
+          : [],
+      ),
+      occurrences,
+      totalOccurrenceCount,
+      allRowsLoaded,
+      viewportKnown: surfaceRef.current.getClientRects().length > 0,
+    });
+  });
   const groupShowMore = (scopeKey: string) => {
     const state = groupPagination?.get(scopeKey);
     if (!state?.hasMore || !onLoadMoreGroup) return null;
@@ -1805,7 +1882,19 @@ function BoardDatabaseViewSurface({
                                 }}
                               >
                                 {rows.map((row) => (
-                                  <div key={row.pageId} className="relative">
+                                  <div
+                                    key={row.pageId}
+                                    className="relative"
+                                    ref={(element) => {
+                                      const key = boardWorkbenchOccurrenceKey(
+                                        row.pageId,
+                                        column.groupKey,
+                                        subgroupIdentity.key,
+                                      );
+                                      if (element) occurrenceElements.current.set(key, element);
+                                      else occurrenceElements.current.delete(key);
+                                    }}
+                                  >
                                     {dropIndicator?.exactSlot &&
                                     indicatorPlacement.beforePageId === row.pageId ? (
                                       <DropIndicator

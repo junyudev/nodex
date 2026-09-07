@@ -1,5 +1,15 @@
 import type { CodexThreadHandoffSnapshot } from "./codex-thread-handoff";
 import type { DictationStreamingConnectInfo } from "./dictation-streaming";
+import type {
+  CodexTurnPresentationCaptureInput,
+  CodexTurnPresentationTicket,
+} from "./nodex-app-tools/turn-presentation";
+import type {
+  WorkbenchAgentCancel,
+  WorkbenchAgentReply,
+  WorkbenchAgentRequest,
+  WorkbenchWindowReference,
+} from "./nodex-app-tools/workbench";
 import type { DictationTextResult } from "./dictation-diagnostics";
 import type { ReadFileBytesInput, SaveFileInput } from "./library-files";
 import type { ThreadBackgroundTerminal } from "@nodex/codex-app-server-protocol/v2/ThreadBackgroundTerminal";
@@ -701,6 +711,16 @@ export interface RendererDiagnosticsLogInput {
 }
 
 export interface IpcApi {
+  "codex:turn-presentation:capture": {
+    args: [input: CodexTurnPresentationCaptureInput];
+    result: CodexTurnPresentationTicket;
+  };
+  "workbench-agent:register": {
+    args: [input: { ownerId: string }];
+    result: WorkbenchWindowReference;
+  };
+  "workbench-agent:release": { args: [reference: WorkbenchWindowReference]; result: void };
+  "workbench-agent:reply": { args: [reply: WorkbenchAgentReply]; result: boolean };
   "avatar-overlay:event": {
     args: [event: import("./avatar-overlay").AvatarOverlayRendererEvent];
     result: boolean;
@@ -2344,7 +2364,12 @@ export interface IpcApi {
     result: boolean;
   };
   "codex:turn:start": {
-    args: [threadId: string, prompt: string, opts?: CodexTurnStartOptions];
+    args: [
+      threadId: string,
+      prompt: string,
+      opts?: CodexTurnStartOptions,
+      presentationTicket?: CodexTurnPresentationTicket,
+    ];
     result: CodexTurnSummary | null;
   };
   "codex:review:start": {
@@ -2352,7 +2377,12 @@ export interface IpcApi {
     result: CodexReviewStartResponse;
   };
   "codex:thread:follow-up:enqueue": {
-    args: [threadId: string, prompt: string, opts?: CodexTurnStartOptions];
+    args: [
+      threadId: string,
+      prompt: string,
+      opts?: CodexTurnStartOptions,
+      presentationTicket?: CodexTurnPresentationTicket,
+    ];
     result: void;
   };
   "codex:thread:follow-up:remove": {
@@ -2366,6 +2396,7 @@ export interface IpcApi {
       expectedLedgerRevision: number,
       prompt: string,
       opts?: CodexTurnStartOptions,
+      presentationTicket?: CodexTurnPresentationTicket,
     ];
     result: boolean;
   };
@@ -2576,6 +2607,8 @@ export interface IpcApi {
 export type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"];
 
 export interface IpcEvents {
+  "workbench-agent:request": WorkbenchAgentRequest;
+  "workbench-agent:cancel": WorkbenchAgentCancel;
   "global-dictation:command": import("./global-dictation").GlobalDictationRendererCommand;
   "agent-import:progress": AgentImportProgress;
   "agent-backend:acp:session-changed": import("./agent-backend-api").AcpBackendSessionChangedEvent;

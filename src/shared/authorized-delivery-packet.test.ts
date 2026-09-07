@@ -58,6 +58,51 @@ const packet = (): AuthorizedDeliveryPacket => ({
 });
 
 describe("authorized delivery packet boundary", () => {
+  test("accepts projectless Automation delivery while rejecting invalid actor coordinates", () => {
+    const value: AuthorizedDeliveryPacket = {
+      ...packet(),
+      atoms: [
+        {
+          descriptor: {
+            atom_id: "5".repeat(64),
+            atom_order: 0,
+            kind: "automation_changed",
+            payload_hash: "6".repeat(64),
+            required_resources: [{ kind: "library", library_id: "library-1" }],
+          },
+          payload: {
+            module: "automation",
+            library_id: "library-1",
+            project_id: null,
+            event: {
+              kind: "automation_changed",
+              automation_ids: ["automation-1"],
+              database_ids: [],
+              document_ids: [],
+              lease_ids: [],
+              page_ids: [],
+              reminder_lease_ids: [],
+              run_ids: [],
+              snooze_ids: [],
+            },
+          },
+        },
+      ],
+      coverage: { ...packet().coverage, atom_ids: ["5".repeat(64)] },
+    };
+    expect(parseAuthorizedDeliveryPacket(value)).toBe(value);
+    for (const projectId of [undefined, "", " ", 42]) {
+      expect(() =>
+        parseAuthorizedDeliveryPacket({
+          ...value,
+          atoms: [
+            { ...value.atoms[0], payload: { ...value.atoms[0]!.payload, project_id: projectId } },
+          ],
+        }),
+      ).toThrow("Authorized delivery packet is invalid");
+    }
+  });
+
   test("rejects history evidence outside its exact Document transition", () => {
     const value = packet();
     expect(() =>

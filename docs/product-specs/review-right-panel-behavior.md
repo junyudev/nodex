@@ -60,6 +60,11 @@ Diff disclosure uses the same two-level model as Codex: one source-scoped all-ex
 
 Turn changed-file navigation carries only source identity plus a canonical repository-relative path. It writes a new monotonic reveal request even when the same file is clicked twice, activates the durable Review singleton, waits for the source and row to mount, expands/selects the file, and scrolls it to the start. A newer reveal cancels an older one. Absolute cwd paths, patch `a/`/`b/` prefixes, and rename aliases resolve through the same canonical path boundary; ambiguous aliases fail closed.
 
+An application-tool open carries a bounded one-shot source/path request in the target
+Session's Review surface until that surface mounts. The Route consumes its exact operation
+identity once and removes the pending request; later user source changes are not overwritten
+by replaying the same opening. The containing Session still supplies Thread and Route identity.
+
 ## Empty-State Contract
 
 No-change states are source-specific. `staged` with no diff renders `No staged changes` with `Accept edits to stage them`; `unstaged` with no diff renders `No unstaged changes` with `Code changes will appear here`. These stage-filter empty states do not render the generic Review illustration. When a Git branch diff is available and the active source is not already `branch`, the empty-state action is the secondary toolbar-size `View branch diff` button. Clicking it only switches the Review source to `branch`; it must not call `codex:review:start` or send a prompt.

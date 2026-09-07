@@ -32,8 +32,8 @@ use nodex_core_contracts::events::ResourceKey;
 use nodex_core_contracts::{
     AdapterKind, ApplyResponse, BoundModuleContext, CommittedCoreModuleEvent, CoreError,
     CoreErrorCode, CoreErrorRecovery, ModuleApplyRequest, ModuleMutationReceipt, ModuleName,
-    ModuleReadRequest, ModuleReadSnapshot, OWNED_DOCUMENT_CONTRACT_VERSION, ProjectId,
-    ProjectionImpact, StoreEpoch,
+    ModuleReadRequest, ModuleReadSnapshot, OWNED_DOCUMENT_CONTRACT_VERSION, ProjectionImpact,
+    StoreEpoch,
 };
 #[cfg(test)]
 use nodex_core_contracts::{CoreModuleEventPayload, document::OwnedDocumentEvent};
@@ -1018,7 +1018,11 @@ impl OwnedDocumentModule {
                     );
                 }
                 let cursor_coordinate = AgentDocumentCursorCoordinate {
-                    project_id: &authorization.provenance.authority.actor_project_id,
+                    project_id: authorization
+                        .provenance
+                        .authority
+                        .actor_project_id
+                        .as_deref(),
                     store_epoch: &store_epoch,
                     document_id: &authority.head.id,
                     target_block_id: &target_block_id,
@@ -1066,14 +1070,22 @@ impl OwnedDocumentModule {
                             .map(|kind| match kind {
                                 AgentDocumentBlockGuardKind::Update => mint_document_block_etag(
                                     &transaction,
-                                    &authorization.provenance.authority.actor_project_id,
+                                    authorization
+                                        .provenance
+                                        .authority
+                                        .actor_project_id
+                                        .as_deref(),
                                     &store_epoch,
                                     &authority.head.id,
                                     coordinate.block,
                                 ),
                                 AgentDocumentBlockGuardKind::Delete => mint_document_subtree_etag(
                                     &transaction,
-                                    &authorization.provenance.authority.actor_project_id,
+                                    authorization
+                                        .provenance
+                                        .authority
+                                        .actor_project_id
+                                        .as_deref(),
                                     &store_epoch,
                                     &authority.head.id,
                                     coordinate.block,
@@ -1096,7 +1108,11 @@ impl OwnedDocumentModule {
                 let (title_etag, body_etag) = if prepare_title || prepare_body {
                     let (title, body) = mint_document_semantic_etags(
                         &transaction,
-                        &authorization.provenance.authority.actor_project_id,
+                        authorization
+                            .provenance
+                            .authority
+                            .actor_project_id
+                            .as_deref(),
                         &store_epoch,
                         &authority.head.id,
                         &materialization,
@@ -1248,7 +1264,11 @@ impl OwnedDocumentModule {
                     &mutation.commands,
                     &operation_id,
                     &operation_id,
-                    &authorization.provenance.authority.actor_project_id,
+                    authorization
+                        .provenance
+                        .authority
+                        .actor_project_id
+                        .as_deref(),
                 )?;
                 let mutation_effect = match &prepared_update {
                     PreparedUpdate::Apply {
@@ -1702,7 +1722,9 @@ impl OwnedDocumentModule {
                                         &transaction,
                                         PersistYjsGenesis {
                                             authority: &authority,
-                                            actor_project_id: bound_actor_project_id(&context)?,
+                                            actor_project_id: Some(bound_actor_project_id(
+                                                &context,
+                                            )?),
                                             materialization: &prepared.materialization,
                                             update_id: &operation_id,
                                             client_session_id: &context.connection_id,
@@ -1828,7 +1850,9 @@ impl OwnedDocumentModule {
                                         &transaction,
                                         PersistYjsCommit {
                                             authority: &authority,
-                                            actor_project_id: bound_actor_project_id(&context)?,
+                                            actor_project_id: Some(bound_actor_project_id(
+                                                &context,
+                                            )?),
                                             base_materialization: &base_materialization,
                                             materialization: &materialization,
                                             update_id: &operation_id,
@@ -1994,28 +2018,8 @@ impl OwnedDocumentModule {
                     &authority,
                     DocumentAccessKind::Write,
                 )?;
-                let actor_project_id = context
-                    .project_id
-                    .as_ref()
-                    .map(|project_id| project_id.0.clone())
-                    .map_or_else(
-                        || {
-                            crate::library::resolve_library_actor_project_id(
-                                &transaction,
-                                &authority.head.library_id,
-                            )
-                        },
-                        Ok,
-                    )?;
-                let actor_context = if context.project_id.is_some() {
-                    context.clone()
-                } else {
-                    BoundModuleContext {
-                        editor_history_owner: None,
-                        project_id: Some(ProjectId(actor_project_id.clone())),
-                        ..context.clone()
-                    }
-                };
+                let actor_project_id = context.project_id.as_ref().map(|project| project.0.clone());
+                let actor_context = context.clone();
                 if authority.head.generation != generation {
                     return Err(StoreError::new(
                         StoreErrorCode::GenerationConflict,
@@ -2064,7 +2068,7 @@ impl OwnedDocumentModule {
                                 &transaction,
                                 Some(scope.evidence()),
                                 &authority,
-                                &actor_project_id,
+                                actor_project_id.as_deref(),
                                 &document_access_context(&context),
                                 &store_epoch,
                                 &operation_id,
@@ -2110,7 +2114,7 @@ impl OwnedDocumentModule {
                         &transaction,
                         None,
                         &authority,
-                        &actor_project_id,
+                        actor_project_id.as_deref(),
                         &document_access_context(&context),
                         &store_epoch,
                         &operation_id,
@@ -2235,28 +2239,8 @@ impl OwnedDocumentModule {
                     &authority,
                     DocumentAccessKind::Write,
                 )?;
-                let actor_project_id = context
-                    .project_id
-                    .as_ref()
-                    .map(|project_id| project_id.0.clone())
-                    .map_or_else(
-                        || {
-                            crate::library::resolve_library_actor_project_id(
-                                &transaction,
-                                &authority.head.library_id,
-                            )
-                        },
-                        Ok,
-                    )?;
-                let actor_context = if context.project_id.is_some() {
-                    context.clone()
-                } else {
-                    BoundModuleContext {
-                        editor_history_owner: None,
-                        project_id: Some(ProjectId(actor_project_id.clone())),
-                        ..context.clone()
-                    }
-                };
+                let actor_project_id = context.project_id.as_ref().map(|project| project.0.clone());
+                let actor_context = context.clone();
                 if authority.head.generation != generation {
                     return Err(StoreError::new(
                         StoreErrorCode::GenerationConflict,
@@ -2359,7 +2343,7 @@ impl OwnedDocumentModule {
                             let event_sequence = append_change_log(
                                 &transaction,
                                 NewChangeLogEntry {
-                                    project_id: &actor_project_id,
+                                    project_id: actor_project_id.as_deref(),
                                     store_epoch: &store_epoch,
                                     kind: "owned_document.canvas_generation_changed",
                                     operation_id: Some(&operation_id),
@@ -2624,20 +2608,12 @@ impl OwnedDocumentModule {
                 } else {
                     None
                 };
-                let actor_project_id = requested_actor_project_id.clone().map_or_else(
-                    || {
-                        crate::library::resolve_library_actor_project_id(
-                            connection,
-                            &authority.head.library_id,
-                        )
-                    },
-                    Ok,
-                )?;
+                let actor_project_id = requested_actor_project_id.clone();
                 if let Some(artifact_id) = persist_recovery_if_barrier_crossed(
                     connection,
                     authority,
                     StaleYjsUpdate {
-                        actor_project_id: &actor_project_id,
+                        actor_project_id: actor_project_id.as_deref(),
                         store_epoch,
                         client_session_id: &receipt_client_session_id,
                         generation,
@@ -2711,23 +2687,15 @@ impl OwnedDocumentModule {
             .map_err(|_| invalid("Owned Document semantic request cannot be fingerprinted"))?
         };
         let allocation_seed = operation_id.clone();
-        let etag_project_id = prepared_agent
-            .as_ref()
-            .map(|execution| {
-                execution
-                    .authorization
-                    .provenance
-                    .authority
-                    .actor_project_id
-                    .clone()
-            })
-            .or_else(|| {
-                context
-                    .project_id
-                    .as_ref()
-                    .map(|project_id| project_id.0.clone())
-            })
-            .ok_or_else(|| unauthorized_core("Semantic mutation requires a bound Project"))?;
+        let etag_project_id = match prepared_agent.as_ref() {
+            Some(execution) => execution
+                .authorization
+                .provenance
+                .authority
+                .actor_project_id
+                .clone(),
+            None => context.project_id.as_ref().map(|project| project.0.clone()),
+        };
         let mutation_context = if prepared_agent.is_some() {
             BoundModuleContext {
                 editor_history_owner: None,
@@ -2778,7 +2746,7 @@ impl OwnedDocumentModule {
                     &commands,
                     &allocation_seed,
                     &operation_id,
-                    &etag_project_id,
+                    etag_project_id.as_deref(),
                 )
                 .map(|(prepared, _preview_markdown)| prepared)
             },
@@ -3407,13 +3375,7 @@ impl OwnedDocumentModule {
                 let actor_project_id = context
                     .project_id
                     .as_ref()
-                    .map(|project| Ok(project.0.clone()))
-                    .unwrap_or_else(|| {
-                        crate::library::resolve_library_actor_project_id(
-                            &transaction,
-                            &context.library_id.0,
-                        )
-                    })?;
+                    .map(|project| project.0.as_str());
                 let loaded = load_canvas_scene(&transaction, &authority)?;
                 let target = super::canvas_files::validated_revision_scene(
                     &transaction,
@@ -3498,7 +3460,7 @@ impl OwnedDocumentModule {
                             &transaction,
                             Some(scope.evidence()),
                             &authority,
-                            &actor_project_id,
+                            actor_project_id,
                             &document_access_context(&context),
                             &store_epoch,
                             &operation_id,
@@ -3662,29 +3624,8 @@ impl OwnedDocumentModule {
                     )?;
                     None
                 };
-                let actor_project_id = job
-                    .context
-                    .project_id
-                    .as_ref()
-                    .map(|project_id| project_id.0.clone())
-                    .map_or_else(
-                        || {
-                            crate::library::resolve_library_actor_project_id(
-                                &transaction,
-                                &authority.head.library_id,
-                            )
-                        },
-                        Ok,
-                    )?;
-                let actor_context = if job.context.project_id.is_some() {
-                    job.context.clone()
-                } else {
-                    BoundModuleContext {
-                        editor_history_owner: None,
-                        project_id: Some(ProjectId(actor_project_id.clone())),
-                        ..job.context.clone()
-                    }
-                };
+                let actor_project_id = job.context.project_id.as_ref().map(|project| project.0.clone());
+                let actor_context = job.context.clone();
                 if authority.head.generation != job.generation {
                     return Err(StoreError::new(
                         StoreErrorCode::GenerationConflict,
@@ -3896,7 +3837,7 @@ impl OwnedDocumentModule {
                             &transaction,
                             PersistYjsCommit {
                                 authority: &authority,
-                                actor_project_id: &actor_project_id,
+                                actor_project_id: actor_project_id.as_deref(),
                                 base_materialization: &base_materialization,
                                 materialization: &materialization,
                                 update_id: &update_id,
@@ -4397,11 +4338,11 @@ fn attach_semantic_etags(
             .provenance
             .authority
             .actor_project_id
-            .as_str(),
+            .as_deref(),
         None if job.context.adapter == AdapterKind::NativeCli
             && job.operation_kind == "apply_semantic_mutation" =>
         {
-            bound_actor_project_id(&job.context)?
+            Some(bound_actor_project_id(&job.context)?)
         }
         None => return Ok(()),
     };
@@ -4709,7 +4650,7 @@ fn prepare_semantic_update(
     commands: &[DocumentSemanticCommand],
     allocation_seed: &str,
     update_id: &str,
-    etag_project_id: &str,
+    etag_project_id: Option<&str>,
 ) -> Result<(PreparedUpdate, Option<String>), StoreError> {
     let footprint =
         agent_semantic_footprint(&authority.owner_block_id, commands, materialization, None)?;
@@ -5028,7 +4969,7 @@ fn validate_agent_transport_context(
     ) && context.profile_id.0 == provenance.profile_id
         && context.library_id.0 == authority.library_id
         && context.project_id.as_ref().map(|id| id.0.as_str())
-            == Some(authority.actor_project_id.as_str())
+            == authority.actor_project_id.as_deref()
         && !context.connection_id.is_empty()
         && context.connection_id.len() <= 512;
     if valid {
@@ -6653,10 +6594,11 @@ mod tests {
                     operation_id: format!("workspace:agent-turn:{actor_project_id}"),
                     store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
                     intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
+                        read_only: false,
                         thread_id: thread_id.clone(),
                         turn_id: turn_id.clone(),
                         root_thread_id: thread_id.clone(),
-                        actor_project_id: actor_project_id.to_owned(),
+                        actor_project_id: Some(actor_project_id.to_owned()),
                         source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
                         inherited_from: None,
                     },
@@ -6669,7 +6611,7 @@ mod tests {
                 thread_id: thread_id.clone(),
                 turn_id,
                 root_thread_id: thread_id,
-                actor_project_id: actor_project_id.to_owned(),
+                actor_project_id: Some(actor_project_id.to_owned()),
                 library_id: LIBRARY_ID.to_owned(),
                 store_epoch: STORE_EPOCH.to_owned(),
                 scope: ProjectWorkspaceTurnAuthorityScope::Project,
@@ -6693,7 +6635,10 @@ mod tests {
                 turn_id: Some(authority.turn_id.clone()),
                 call_id: Some(call_id),
                 root_thread_id: authority.root_thread_id.clone(),
-                actor_project_id: authority.actor_project_id.clone(),
+                actor_project_id: authority
+                    .actor_project_id
+                    .clone()
+                    .expect("Project consent fixture"),
                 library_id: authority.library_id.clone(),
                 store_epoch: authority.store_epoch.clone(),
                 grants: vec![AgentResourceGrantSpec {
@@ -11206,7 +11151,7 @@ mod tests {
                     super::super::semantic::mint_etag(
                         connection,
                         "title",
-                        PROJECT_ID,
+                        Some(PROJECT_ID),
                         STORE_EPOCH,
                         &[DOCUMENT_ID],
                         json!({ "richTitle": materialization.rich_title }),
@@ -11623,7 +11568,7 @@ mod tests {
                 super::super::semantic::mint_etag(
                     connection,
                     "title",
-                    PROJECT_ID,
+                    Some(PROJECT_ID),
                     STORE_EPOCH,
                     &[DOCUMENT_ID],
                     json!({ "richTitle": materialization.rich_title }),
@@ -12906,7 +12851,7 @@ mod tests {
                 super::super::semantic::mint_etag(
                     connection,
                     "title",
-                    ACTOR_PROJECT_ID,
+                    Some(ACTOR_PROJECT_ID),
                     STORE_EPOCH,
                     &[DOCUMENT_ID],
                     json!({ "richTitle": materialization.rich_title }),
@@ -13037,7 +12982,7 @@ mod tests {
                 let title = super::super::semantic::mint_etag(
                     connection,
                     "title",
-                    PROJECT_ID,
+                    Some(PROJECT_ID),
                     STORE_EPOCH,
                     &[DOCUMENT_ID],
                     json!({ "richTitle": materialization.rich_title }),
@@ -13046,7 +12991,7 @@ mod tests {
                 let body = super::super::semantic::mint_etag(
                     connection,
                     "document_body",
-                    PROJECT_ID,
+                    Some(PROJECT_ID),
                     STORE_EPOCH,
                     &[DOCUMENT_ID],
                     json!({ "nfm": materialization.nfm }),
@@ -13172,6 +13117,7 @@ mod tests {
                             old_fragment: "Semantic body".to_owned(),
                             new_fragment: "Merged body".to_owned(),
                             expected_matches: None,
+                            expected_etag: None,
                         }],
                     },
                 },
@@ -13217,7 +13163,7 @@ mod tests {
                 super::super::semantic::mint_etag(
                     connection,
                     "title",
-                    PROJECT_ID,
+                    Some(PROJECT_ID),
                     STORE_EPOCH,
                     &[DOCUMENT_ID],
                     json!({ "richTitle": materialization.rich_title }),
@@ -13307,7 +13253,7 @@ mod tests {
                 super::super::semantic::mint_etag(
                     connection,
                     "title",
-                    CLI_PROJECT_ID,
+                    Some(CLI_PROJECT_ID),
                     STORE_EPOCH,
                     &[DOCUMENT_ID],
                     json!({ "richTitle": materialization.rich_title }),
@@ -13375,7 +13321,7 @@ mod tests {
                 super::super::semantic::mint_etag(
                     connection,
                     "document_body",
-                    PROJECT_ID,
+                    Some(PROJECT_ID),
                     STORE_EPOCH,
                     &[DOCUMENT_ID],
                     json!({ "nfm": materialization.nfm }),
@@ -13426,6 +13372,7 @@ mod tests {
                 old_fragment: "missing\n".to_owned(),
                 new_fragment: "replacement\n".to_owned(),
                 expected_matches: None,
+                expected_etag: None,
             }],
         )
         .expect_err("missing exact fragment");
@@ -13437,6 +13384,7 @@ mod tests {
                 old_fragment: "same".to_owned(),
                 new_fragment: "different".to_owned(),
                 expected_matches: None,
+                expected_etag: None,
             }],
         )
         .expect_err("ambiguous exact fragment");
@@ -13449,11 +13397,13 @@ mod tests {
                     old_fragment: "a\nb\n".to_owned(),
                     new_fragment: "A\nb\n".to_owned(),
                     expected_matches: None,
+                    expected_etag: None,
                 },
                 DocumentSemanticCommand::PatchBody {
                     old_fragment: "b\nc\n".to_owned(),
                     new_fragment: "B\nc\n".to_owned(),
                     expected_matches: None,
+                    expected_etag: None,
                 },
             ],
         )

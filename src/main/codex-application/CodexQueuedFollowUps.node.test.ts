@@ -1,3 +1,8 @@
+import { CodexTurnPresentation } from "./CodexTurnPresentation";
+import {
+  makeTestTurnPresentation,
+  testSubmitPresentation,
+} from "./CodexTurnPresentation.test-support";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -24,7 +29,11 @@ import {
   CodexRendererConversationRegistry,
   makeCodexRendererConversationRegistryState,
 } from "./CodexRendererConversationRegistry";
-import { CodexTurnCommandError, CodexTurnCommands } from "./CodexTurnCommands";
+import {
+  CodexTurnCommandError,
+  CodexTurnCommands,
+  type CodexTurnStartOverrides,
+} from "./CodexTurnCommands";
 import {
   ConversationEntityMap,
   live as conversationEntityMapLive,
@@ -131,12 +140,16 @@ const makeHarness = (
     readonly submit?: (row: {
       readonly threadId: string;
       readonly prompt: string;
+      readonly overrides?: CodexTurnStartOverrides;
     }) => Effect.Effect<void, CodexTurnCommandError>;
   } = {},
 ) =>
   Effect.gen(function* () {
     let activeTurnId = options.activeTurnId ?? null;
     const scope = yield* Scope.make();
+    const presentation = yield* makeTestTurnPresentation.pipe(
+      Effect.provideService(Scope.Scope, scope),
+    );
     const context = yield* Layer.buildWithScope(conversationEntityMapLive, scope);
     const conversations = Context.get(context, ConversationEntityMap);
     conversations.entity(threadId).installSnapshot(snapshot());
@@ -144,8 +157,8 @@ const makeHarness = (
     if (options.ownerClientId) registry.setOwner(threadId, options.ownerClientId);
     const submit = options.submit ?? (() => Effect.void);
     const turns = CodexTurnCommands.of({
-      start: (id: string, prompt: string) =>
-        submit({ threadId: id, prompt }).pipe(
+      start: (id: string, prompt: string, overrides?: CodexTurnStartOverrides) =>
+        submit({ threadId: id, prompt, overrides }).pipe(
           Effect.as({
             threadId: id,
             turnId: "turn-started",
@@ -173,12 +186,14 @@ const makeHarness = (
       Effect.provideService(CodexRendererConversationRegistry, registry),
       Effect.provideService(RendererClientRuntime, rendererClients),
       Effect.provideService(CodexTurnCommands, turns),
+      Effect.provideService(CodexTurnPresentation, presentation),
       Effect.provideService(CodexConversationProjection, projection),
       Effect.provideService(ConversationEntityMap, conversations),
       Effect.provideService(Scope.Scope, scope),
     );
     return {
       conversations,
+      presentation,
       queued,
       scope,
       setActiveTurnId: (turnId: string | null) => {
@@ -479,4 +494,97 @@ it.effect("keeps a steer that loses the terminal race as a failed queue head", (
     assert.strictEqual(state.ledger.entries.length, 2);
     yield* close(harness.scope);
   }),
+);
+
+it.effect(
+  "dispatches the origin captured at enqueue and keeps unrelated steer recovery origins",
+  () =>
+    Effect.gen(function* () {
+      const submitted: CodexTurnStartOverrides[] = [];
+      const harness = yield* makeHarness(emptyState(), {
+        activeTurnId: "active",
+        submit: ({ overrides }) =>
+          Effect.sync(() => {
+            if (overrides) submitted.push(overrides);
+          }),
+      });
+      const target = { kind: "thread", threadId } as const;
+      const steerTicket = yield* harness.presentation.capture(11, {
+        target,
+        presentation: testSubmitPresentation,
+      });
+      const steerClaim = yield* harness.presentation.claim(steerTicket, target, "steer-client");
+      harness.presentation.retainQueued(steerClaim);
+      const removedTicket = yield* harness.presentation.capture(11, {
+        target,
+        presentation: testSubmitPresentation,
+      });
+      const removedId = yield* harness.queued.enqueue({
+        threadId,
+        prompt: "remove",
+        presentationTicket: removedTicket,
+      });
+      yield* harness.queued.remove(threadId, removedId);
+      assert.deepEqual(harness.presentation.readQueued(threadId, "steer-client"), steerClaim);
+      const ticket = yield* harness.presentation.capture(11, {
+        target,
+        presentation: testSubmitPresentation,
+      });
+      const followUpId = yield* harness.queued.enqueue({
+        threadId,
+        prompt: "original",
+        presentationTicket: ticket,
+      });
+      const row = harness.queued.list(threadId)[0]!;
+      harness.setActiveTurnId(null);
+      yield* harness.queued.sendNow(threadId, followUpId);
+      assert.deepEqual(submitted[0]?.presentationClaim, {
+        ticketId: ticket.ticketId,
+        submissionId: row.clientUserMessageId,
+      });
+      const launch = yield* harness.presentation.begin(submitted[0]?.presentationClaim, threadId);
+      yield* harness.presentation.bind(launch, "queued-turn");
+      assert.equal(harness.presentation.read(threadId, "queued-turn")?.windowSessionId, "window-a");
+      yield* close(harness.scope);
+    }),
+);
+
+it.effect(
+  "replaces a queued origin with the editing submission and drops it after a cold reopen",
+  () =>
+    Effect.gen(function* () {
+      const state = emptyState();
+      const harness = yield* makeHarness(state, { activeTurnId: "active" });
+      const target = { kind: "thread", threadId } as const;
+      const originalTicket = yield* harness.presentation.capture(11, {
+        target,
+        presentation: testSubmitPresentation,
+      });
+      const followUpId = yield* harness.queued.enqueue({
+        threadId,
+        prompt: "original",
+        presentationTicket: originalTicket,
+      });
+      const before = yield* harness.queued.read(threadId);
+      const replacementTicket = yield* harness.presentation.capture(22, {
+        target,
+        presentation: { ...testSubmitPresentation, rendererGeneration: "renderer-b" },
+      });
+      assert.isTrue(
+        yield* harness.queued.replace(threadId, followUpId, before.ledgerRevision, {
+          prompt: "edited",
+          presentationTicket: replacementTicket,
+        }),
+      );
+      const clientId = before.entries[0]!.clientUserMessageId;
+      assert.deepEqual(harness.presentation.readQueued(threadId, clientId), {
+        ticketId: replacementTicket.ticketId,
+        submissionId: clientId,
+      });
+      yield* close(harness.scope);
+      const reopened = yield* makeHarness(state, { activeTurnId: "active" });
+      assert.equal((yield* reopened.queued.read(threadId)).entries[0]?.prompt, "edited");
+      assert.isUndefined(reopened.presentation.readQueued(threadId, clientId));
+      yield* close(reopened.scope);
+    }),
 );

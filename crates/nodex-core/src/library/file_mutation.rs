@@ -66,7 +66,7 @@ pub(super) fn apply(
             connection,
             store_epoch,
             library_id,
-            &authority.actor_project_id,
+            authority.actor_project_id.as_deref(),
             operation_id,
             prepared_blob_receipt_id,
         )?),
@@ -96,9 +96,10 @@ pub(super) fn apply(
                 };
                 if changes_presentation {
                     let actor_context = BoundModuleContext {
-                        project_id: Some(nodex_core_contracts::ProjectId(
-                            authority.actor_project_id.clone(),
-                        )),
+                        project_id: authority
+                            .actor_project_id
+                            .clone()
+                            .map(nodex_core_contracts::ProjectId),
                         ..context.clone()
                     };
                     crate::document::prepare_file_content_revisions(
@@ -112,7 +113,7 @@ pub(super) fn apply(
             let write = FileWriteContext {
                 connection,
                 library_id,
-                actor_id: &authority.actor_project_id,
+                actor_id: authority.actor_project_id.as_deref(),
                 turn_id,
                 operation_id,
                 now: &now,

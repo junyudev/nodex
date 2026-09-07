@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 import type {
   CodexAutomationRunsUpdatedEvent,
+  CodexScheduledAutomationUpdateInput,
   PageOccurrenceActionInput,
   PageOccurrenceCompleteInput,
   PageOccurrenceUpdateInput,
@@ -15,6 +16,7 @@ import { ConversationCommands } from "../../codex-application/ConversationComman
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { ScheduledAutomationRuntime } from "../../host-runtime/ScheduledAutomationRuntime";
 import { safeBroadcastToWindows } from "../../ipc-safe-send";
+import { createOperationId } from "../../core-runtime/operation-identity";
 import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
@@ -23,6 +25,43 @@ export class AutomationIpcError extends Schema.TaggedError<AutomationIpcError>()
   "AutomationIpcError",
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
+
+/** A reviewed proposal keeps its observed revision through preparation and the Core commit. */
+export const updateAutomationFromRenderer = Effect.fn("AutomationIpc.updateDefinition")(function* (
+  input: CodexScheduledAutomationUpdateInput,
+) {
+  const automation = yield* AutomationApplication;
+  const execution = yield* AutomationExecution;
+  const { expectedRevision, ...definition } = input;
+  if (
+    expectedRevision !== undefined &&
+    (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1)
+  ) {
+    return yield* new AutomationIpcError({
+      operation: "codex:scheduled-automations:update",
+      cause: new Error("Scheduled task revision is invalid."),
+    });
+  }
+  const current = yield* automation.definitions.get(input.id);
+  if (expectedRevision !== undefined && current?.definitionRevision !== expectedRevision) {
+    return yield* new AutomationIpcError({
+      operation: "codex:scheduled-automations:update",
+      cause: new Error(
+        "This scheduled task changed after the proposal was created. Review a new proposal before saving.",
+      ),
+    });
+  }
+  const prepared = yield* execution.prepareDefinition(definition, current);
+  return yield* automation.definitions.update(
+    prepared,
+    expectedRevision === undefined
+      ? undefined
+      : {
+          operationId: createOperationId("automation.reviewed-update"),
+          expectedRevision,
+        },
+  );
+});
 
 const requireOccurrence = (input: PageOccurrenceActionInput): void => {
   if (
@@ -185,9 +224,9 @@ export const live: Layer.Layer<
       ),
     );
     yield* handlePlainCommand("codex:scheduled-automations:update", (_, input) =>
-      automation.definitions.get(input.id).pipe(
-        Effect.flatMap((current) => execution.prepareDefinition(input, current)),
-        Effect.flatMap(automation.definitions.update),
+      updateAutomationFromRenderer(input).pipe(
+        Effect.provideService(AutomationApplication, automation),
+        Effect.provideService(AutomationExecution, execution),
         Effect.flatMap((item) =>
           item
             ? broadcastDefinitionChanged(item.id, item.targetThreadId, "upsert").pipe(

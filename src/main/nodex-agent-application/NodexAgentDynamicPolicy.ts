@@ -94,11 +94,22 @@ export function fail(failure: ToolFailure): never {
 }
 
 export function projectRequired(context: NodexAgentDynamicExecutionContext): string {
-  if (context.authority) return context.authority.actorProjectId;
+  if (context.authority?.actorProjectId != null) return context.authority.actorProjectId;
   return fail(
     toolFailure(
       "project_context_required",
       "This Nodex tool requires a task bound to a Project",
+      "start_new_task",
+    ),
+  );
+}
+
+export function actorProject(context: NodexAgentDynamicExecutionContext): string | null {
+  if (context.authority) return context.authority.actorProjectId;
+  return fail(
+    toolFailure(
+      "authorization_denied",
+      "This Nodex tool requires verified execution authority",
       "start_new_task",
     ),
   );

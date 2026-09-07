@@ -5,6 +5,8 @@ import {
   buildCodexScheduledAutomationUpdateInput,
   createCodexScheduledAutomationId,
   createWorkbenchAutomationDraft,
+  createWorkbenchAutomationDraftFromCreateInput,
+  createWorkbenchAutomationDraftFromUpdateInput,
   formatWorkbenchAutomationDraftSaveTooltip,
   hasWorkbenchAutomationCreateDraftChanges,
   isWorkbenchAutomationDraftDirty,
@@ -56,6 +58,9 @@ function makeAutomation(
   return {
     id: "automation-1",
     definitionRevision: 1,
+    projectId: null,
+    targetSessionId: null,
+    notificationPolicy: null,
     kind: "heartbeat",
     status: "ACTIVE",
     targetThreadId: "thread-1",
@@ -78,12 +83,94 @@ function makeAutomation(
 }
 
 describe("workbench automation draft", () => {
+  test("uses a revisioned replacement's omitted execution fields instead of inheriting a newer definition", () => {
+    const draft = createWorkbenchAutomationDraftFromUpdateInput({
+      update: {
+        id: "automation-1",
+        expectedRevision: 3,
+        kind: "cron",
+        status: "ACTIVE",
+        projectId: null,
+        executionEnvironment: "local",
+        name: "Independent check",
+        prompt: "Check progress",
+        rrule: "FREQ=DAILY",
+      },
+      automation: makeAutomation({
+        kind: "cron",
+        definitionRevision: 4,
+        projectId: "project:newer",
+        cwds: ["/newer"],
+        model: "newer-model",
+        serviceTier: "priority",
+        localEnvironmentConfigPath: "/newer/environment.toml",
+      }),
+    });
+    expect(draft).toMatchObject({
+      projectId: null,
+      expectedRevision: 3,
+      cwds: [],
+      model: "",
+      serviceTier: "",
+      localEnvironmentConfigPath: "",
+    });
+  });
+
+  test.each([undefined, null, "failed_runs_only"] as const)(
+    "keeps a reviewed Session target and notification policy %s",
+    (notificationPolicy) => {
+      const draft = createWorkbenchAutomationDraftFromCreateInput({
+        kind: "heartbeat",
+        name: "Follow up",
+        prompt: "Check progress",
+        rrule: "FREQ=DAILY",
+        targetSessionId: "session:original",
+        ...(notificationPolicy !== undefined ? { notificationPolicy } : {}),
+      });
+      const payload = buildCodexScheduledAutomationCreateInput({ draft });
+      expect(payload).toMatchObject({ targetSessionId: "session:original", targetThreadId: null });
+      expect(payload?.notificationPolicy).toBe(notificationPolicy);
+      expect(Object.hasOwn(payload ?? {}, "notificationPolicy")).toBe(
+        notificationPolicy !== undefined,
+      );
+    },
+  );
+
+  test("retains the proposal revision and target when a newer definition loads during review", () => {
+    const draft = createWorkbenchAutomationDraftFromUpdateInput({
+      update: {
+        id: "automation-1",
+        kind: "heartbeat",
+        status: "PAUSED",
+        expectedRevision: 3,
+        name: "Follow up",
+        prompt: "Check progress",
+        rrule: "FREQ=DAILY",
+        targetSessionId: "session:original",
+      },
+      automation: makeAutomation({
+        definitionRevision: 4,
+        targetSessionId: "session:newer",
+        notificationPolicy: "failed_runs_only",
+      }),
+    });
+    const payload = buildCodexScheduledAutomationUpdateInput({ draft });
+    expect(payload).toMatchObject({
+      expectedRevision: 3,
+      targetSessionId: "session:original",
+      targetThreadId: null,
+      status: "PAUSED",
+    });
+    expect(Object.hasOwn(payload ?? {}, "notificationPolicy")).toBe(false);
+  });
+
   test("builds create payloads with normalized fields", () => {
     const draft = createWorkbenchAutomationDraft({ id: "automation-new" });
     draft.name = "  Weekly triage  ";
     draft.prompt = "  Triage the project queue.  ";
     draft.targetThreadId = " thread-alpha ";
     draft.rrule = " FREQ=WEEKLY ";
+    draft.projectId = "project";
     draft.cwds = ["/tmp/project"];
     draft.model = "gpt-5.5";
     draft.reasoningEffort = "high";
@@ -139,6 +226,7 @@ describe("workbench automation draft", () => {
         targetThreadId: null,
         model: "unavailable-model",
         reasoningEffort: "max",
+        projectId: "project",
         cwds: ["/tmp/project"],
       }),
     });
@@ -176,6 +264,7 @@ describe("workbench automation draft", () => {
       rrule: calendarRrule,
       model: "gpt-5.5",
       reasoningEffort: "medium",
+      projectId: "project",
       cwds: ["/tmp/project"],
       executionEnvironment: "local",
     });
@@ -212,6 +301,7 @@ describe("workbench automation draft", () => {
     draft.cwds = [];
     expect(validateWorkbenchAutomationDraft(draft).canSave).toBe(false);
 
+    draft.projectId = "project";
     draft.cwds = ["/tmp/project"];
     draft.model = "";
     expect(validateWorkbenchAutomationDraft(draft).canSave).toBe(false);
@@ -236,13 +326,12 @@ describe("workbench automation draft", () => {
         draft,
         action: "create",
       }),
-    ).toBe(
-      "Create title, add prompt, select project, choose a model, and fix the schedule to create",
-    );
+    ).toBe("Create title, add prompt, choose a model, and fix the schedule to create");
 
     draft.name = "Weekly triage";
     draft.prompt = "Run the report.";
     draft.rrule = "FREQ=DAILY";
+    draft.projectId = "project";
     draft.cwds = ["/tmp/project"];
     draft.model = "";
 
@@ -289,6 +378,7 @@ describe("workbench automation draft", () => {
     expect(hasWorkbenchAutomationCreateDraftChanges(draft)).toBe(true);
 
     draft.name = "";
+    draft.projectId = "project";
     draft.cwds = ["/tmp/project"];
     expect(hasWorkbenchAutomationCreateDraftChanges(draft)).toBe(true);
 
@@ -313,4 +403,18 @@ describe("workbench automation draft", () => {
     draft.prompt = "Scan recent commits and CI failures.";
     expect(hasWorkbenchAutomationCreateDraftChanges(draft, initialDraft)).toBe(true);
   });
+});
+
+test("builds a projectless local task without borrowing a directory or Project", () => {
+  const draft = createWorkbenchAutomationDraft();
+  draft.name = "Daily review";
+  draft.prompt = "Review updates";
+  draft.model = "gpt-5.5";
+  expect(buildCodexScheduledAutomationCreateInput({ draft })).toMatchObject({
+    projectId: null,
+    cwds: [],
+    executionEnvironment: "local",
+  });
+  draft.executionEnvironment = "worktree";
+  expect(validateWorkbenchAutomationDraft(draft).canSave).toBe(false);
 });

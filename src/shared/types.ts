@@ -1,3 +1,5 @@
+import type { components as CoreProtocolComponents } from "@nodex/core-protocol";
+import type { CodexTurnPresentationTicket } from "./nodex-app-tools/turn-presentation";
 import type {
   ApprovalsReviewer as CodexAppServerApprovalsReviewer,
   AdditionalContextEntry as CodexAppServerAdditionalContextEntry,
@@ -61,6 +63,12 @@ import type {
   TurnSteerResponse as CodexAppServerTurnSteerResponse,
 } from "@nodex/codex-app-server-protocol/v2";
 import type { WorkbenchReviewConfig } from "./workbench-review";
+import type { AutomationProposal } from "./nodex-app-tools/automation-schema";
+import type {
+  WorkbenchDbViewSurfaceConfig,
+  WorkbenchPageStageSurfaceConfig,
+  WorkbenchCanvasStageSurfaceConfig,
+} from "./workbench-scene";
 import type { WorkbenchImageEditorSurfaceConfig } from "./workbench-image-editor";
 import type {
   BrowserSidebarDeviceToolbarState,
@@ -788,27 +796,9 @@ export const PROJECT_SESSION_SINGLETON_TAB_KINDS = [
 
 export type ProjectSessionSingletonTabKind = (typeof PROJECT_SESSION_SINGLETON_TAB_KINDS)[number];
 
-export interface WorkbenchProjectionDbViewTabConfig {
-  projectId: string;
-  /**
-   * Durable Database View identity. Required at every boundary: tab creation
-   * resolves it up front (existing tab, else the Project's default View), so a
-   * db_view descriptor can never silently lack its target.
-   */
-  databaseViewId: string;
-}
-
-export interface WorkbenchProjectionPageStageTabConfig {
-  projectId: string;
-  pageId: string;
-  titleSnapshot?: string;
-}
-
-export interface WorkbenchProjectionCanvasStageTabConfig {
-  projectId: string;
-  canvasBlockId: string;
-  titleSnapshot?: string;
-}
+export type WorkbenchProjectionDbViewTabConfig = WorkbenchDbViewSurfaceConfig;
+export type WorkbenchProjectionPageStageTabConfig = WorkbenchPageStageSurfaceConfig;
+export type WorkbenchProjectionCanvasStageTabConfig = WorkbenchCanvasStageSurfaceConfig;
 
 export interface WorkbenchProjectionTerminalTabConfig {
   terminalSessionId: string;
@@ -2141,12 +2131,18 @@ export type CodexScheduledAutomationStatus = "ACTIVE" | "PAUSED" | "DELETED";
 export type CodexScheduledAutomationExecutionEnvironment = "local" | "worktree";
 export type CodexScheduledAutomationReasoningEffort = string;
 
+export type CodexScheduledAutomationNotificationPolicy =
+  CoreProtocolComponents["schemas"]["AutomationNotificationPolicy"];
+
 export interface CodexScheduledAutomation {
   id: string;
   definitionRevision: number;
   kind: CodexScheduledAutomationKind;
   status: CodexScheduledAutomationStatus;
+  projectId: string | null;
+  targetSessionId: string | null;
   targetThreadId: string | null;
+  notificationPolicy: CodexScheduledAutomationNotificationPolicy | null;
   name: string;
   prompt: string;
   rrule: string | null;
@@ -2165,7 +2161,10 @@ export interface CodexScheduledAutomation {
 
 export interface CodexScheduledAutomationCreateInput {
   kind: CodexScheduledAutomationKind;
+  projectId?: string | null;
+  targetSessionId?: string | null;
   targetThreadId?: string | null;
+  notificationPolicy?: CodexScheduledAutomationNotificationPolicy | null;
   name: string;
   prompt?: string | null;
   rrule?: string | null;
@@ -2181,6 +2180,7 @@ export interface CodexScheduledAutomationCreateInput {
 export interface CodexScheduledAutomationUpdateInput extends CodexScheduledAutomationCreateInput {
   id: string;
   status: CodexScheduledAutomationStatus;
+  expectedRevision?: number;
 }
 
 export interface CodexScheduledAutomationListResponse {
@@ -2501,6 +2501,7 @@ export interface CodexProjectlessThreadCwdInput {
 }
 
 export interface CodexThreadStartForSessionInput {
+  presentationTicket?: CodexTurnPresentationTicket;
   firstSubmission: ConversationFirstSubmissionIdentity;
   projectId: string | null;
   sessionId: string;
@@ -2557,6 +2558,8 @@ export type CodexThreadStartForSessionResult =
     };
 
 export interface CodexSideChatStartInput {
+  presentationTicket?: CodexTurnPresentationTicket;
+  clientUserMessageId?: string;
   parentThreadId: string;
   parentNavigationPath?: string | null;
   prompt?: string;
@@ -2837,6 +2840,7 @@ export type CodexSteerTurnResult = CodexAppServerTurnSteerResponse & {
 };
 
 export interface CodexSteerTurnInput {
+  presentationTicket?: CodexTurnPresentationTicket;
   threadId: string;
   expectedTurnId?: string;
   prompt: string;
@@ -2895,6 +2899,7 @@ export type CodexOwnerAppServerRequest =
   | {
       method: "turn/start";
       params: {
+        presentationTicket?: CodexTurnPresentationTicket;
         threadId: string;
         prompt: string;
         opts?: CodexTurnStartOptions;
@@ -2905,6 +2910,7 @@ export type CodexOwnerAppServerRequest =
   | {
       method: "turn/resume-interrupted";
       params: {
+        presentationTicket?: CodexTurnPresentationTicket;
         threadId: string;
         opts?: CodexTurnStartOptions;
         clientUserMessageId: string;
@@ -3275,6 +3281,8 @@ export interface CodexDynamicToolCallView {
 export interface CodexAutomationUpdateView {
   callId: string;
   arguments: Record<string, unknown>;
+  source?: "nativeMcp";
+  proposal?: AutomationProposal;
   result: {
     automationId: string;
     mode: "create" | "update" | "delete" | null;
@@ -4867,6 +4875,7 @@ export interface CodexRendererThreadRoleRequest {
 export type CodexThreadOwnerActionRequest =
   | {
       type: "startTurn";
+      presentationTicket?: CodexTurnPresentationTicket;
       threadId: string;
       prompt: string;
       opts?: CodexTurnStartOptions;
@@ -4877,6 +4886,7 @@ export type CodexThreadOwnerActionRequest =
     }
   | {
       type: "resumeInterruptedTurn";
+      presentationTicket?: CodexTurnPresentationTicket;
       threadId: string;
       opts?: CodexTurnStartOptions;
     }
@@ -4912,6 +4922,7 @@ export type CodexThreadOwnerActionRequest =
     }
   | {
       type: "editLastUserTurn";
+      presentationTicket?: CodexTurnPresentationTicket;
       threadId: string;
       turnId: string;
       message: string;
@@ -4938,6 +4949,7 @@ export type CodexThreadOwnerActionRequest =
     }
   | {
       type: "enqueueQueuedFollowUp";
+      presentationTicket?: CodexTurnPresentationTicket;
       threadId: string;
       prompt: string;
       opts?: CodexTurnStartOptions;
@@ -4949,6 +4961,7 @@ export type CodexThreadOwnerActionRequest =
     }
   | {
       type: "replaceQueuedFollowUp";
+      presentationTicket?: CodexTurnPresentationTicket;
       threadId: string;
       followUpId: string;
       expectedLedgerRevision: number;

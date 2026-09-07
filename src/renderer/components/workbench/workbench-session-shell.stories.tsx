@@ -542,8 +542,8 @@ function makeSession(args: ShellStoryArgs): ProjectSession {
         title: "Database",
         order: 0,
         config: {
-          projectId: "nodex",
-          databaseViewId: "database-view:nodex:primary-board",
+          accessContext: { kind: "project", projectId: "nodex" },
+          target: { kind: "database-view", databaseViewId: "database-view:nodex:primary-board" },
         },
       }),
       makeTab({
@@ -552,7 +552,7 @@ function makeSession(args: ShellStoryArgs): ProjectSession {
         title: INITIAL_PROJECT_WELCOME_TITLE,
         order: 1,
         config: {
-          projectId: "nodex",
+          accessContext: { kind: "project", projectId: "nodex" },
           pageId: WELCOME_PAGE_ID,
           titleSnapshot: INITIAL_PROJECT_WELCOME_TITLE,
         },
@@ -600,8 +600,8 @@ function makeSession(args: ShellStoryArgs): ProjectSession {
       title: "DB View",
       order: 0,
       config: {
-        projectId: "nodex",
-        databaseViewId: "database-view:nodex:primary-board",
+        accessContext: { kind: "project", projectId: "nodex" },
+        target: { kind: "database-view", databaseViewId: "database-view:nodex:primary-board" },
       },
     }),
     makeTab({
@@ -610,7 +610,7 @@ function makeSession(args: ShellStoryArgs): ProjectSession {
       title: pageTitle,
       order: 1,
       config: {
-        projectId: cardProjectId,
+        accessContext: { kind: "project", projectId: cardProjectId },
         pageId:
           args.activeTab === "missing-card"
             ? "missing-card"

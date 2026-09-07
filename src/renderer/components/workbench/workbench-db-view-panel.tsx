@@ -44,7 +44,10 @@ import { DatabaseViewRulesBar, DatabaseViewRuleToolbarControls } from "./databas
 import { usePropertyOptionRegistries } from "@/components/database/use-property-option-registries";
 import { collectRequiredPropertyOptionIds } from "@/lib/database-option-registry-requirements";
 import { useDatabaseViewPersonalPreference } from "@/lib/database-view-personal-preferences";
+import type { WorkbenchViewContentBinding } from "@/lib/workbench-view-content";
 import { resolveDatabaseViewPresentationActivity } from "@/lib/database-view-presentation-activity";
+import { useWorkbenchDatabaseViewPresentation } from "@/lib/use-workbench-database-view-presentation";
+import type { WorkbenchDatabaseViewPresentationRegistration } from "@/lib/workbench-database-view-presentation";
 import { useWorkbenchProfilePreferences } from "@/lib/use-workbench-profile-preferences";
 import { commitDatabaseViewOperations } from "@/lib/database-view-row-mutations";
 import {
@@ -130,6 +133,7 @@ export function DatabaseViewTabSurface({
 }
 
 function DatabaseViewTabSurfaceContent({
+  workbenchContent,
   model,
   canonicalModel,
   canonicalReadGeneration,
@@ -166,6 +170,7 @@ function DatabaseViewTabSurfaceContent({
   onRequestCreatePage,
   mutationHistory: providedMutationHistory,
 }: {
+  readonly workbenchContent?: WorkbenchViewContentBinding;
   readonly model: DatabaseViewRenderModel;
   readonly canonicalModel?: DatabaseViewRenderModel;
   readonly canonicalReadGeneration?: number;
@@ -245,6 +250,7 @@ function DatabaseViewTabSurfaceContent({
             {overlay}
             {presentation.layout === "list" ? (
               <DatabaseList
+                workbenchContent={workbenchContent}
                 model={model}
                 effectivePresentation={presentation}
                 groupPagination={groupPagination}
@@ -268,6 +274,7 @@ function DatabaseViewTabSurfaceContent({
               />
             ) : (
               <DatabaseViewSurface
+                workbenchContent={workbenchContent}
                 model={model}
                 canonicalModel={canonicalModel}
                 canonicalReadGeneration={canonicalReadGeneration}
@@ -296,6 +303,7 @@ function DatabaseViewTabSurfaceContent({
 }
 
 export function DbViewSessionTab({
+  workbenchPresentation,
   sessionId,
   tab,
   projects,
@@ -312,6 +320,7 @@ export function DbViewSessionTab({
   onSelectDatabaseView,
   targetLeafId,
 }: {
+  readonly workbenchPresentation?: WorkbenchDatabaseViewPresentationRegistration;
   readonly sessionId: string;
   readonly tab: WorkbenchTabProjection;
   readonly projects: Project[];
@@ -329,10 +338,15 @@ export function DbViewSessionTab({
   readonly onSelectDatabaseView?: (viewId: string, title: string) => void;
   readonly targetLeafId: string;
 }) {
-  if (tab.kind !== "db_view") {
-    throw new Error("Database view tabs require a db_view descriptor");
+  if (
+    tab.kind !== "db_view" ||
+    tab.config.accessContext.kind !== "project" ||
+    tab.config.target.kind !== "database-view"
+  ) {
+    throw new Error("Project Database View body requires an exact View with Project access");
   }
-  const { projectId, databaseViewId } = tab.config;
+  const projectId = tab.config.accessContext.projectId;
+  const databaseViewId = tab.config.target.databaseViewId;
   const appHandle = useScopeHandle(appScope);
   const surfaceId = `database-view:${sessionId}:${tab.id}:${databaseViewId}`;
   const listClientSessionId = `${tab.id}:database-view`;
@@ -833,6 +847,12 @@ export function DbViewSessionTab({
     openTaskSearch(true);
   }, [openTaskSearch, taskSearchOpenTick]);
 
+  useWorkbenchDatabaseViewPresentation(
+    workbenchPresentation,
+    databaseView && effectiveFilter && effectivePresentation && durableEffectivePresentation
+      ? databaseView.databaseViewId
+      : null,
+  );
   if (
     !databaseView ||
     !effectiveFilter ||
@@ -976,6 +996,21 @@ export function DbViewSessionTab({
   return (
     <>
       <DatabaseViewTabSurface
+        workbenchContent={
+          workbenchPresentation
+            ? {
+                presentation: workbenchPresentation,
+                preferencesRevision: personalPreference.preferencesRevision,
+                preferencesPending:
+                  personalPreference.loading ||
+                  personalPreference.saving ||
+                  publishingPresentation ||
+                  personalPreference.error !== null ||
+                  conditionalColorPreview !== null,
+                loading: runtime.loading,
+              }
+            : undefined
+        }
         model={databaseView}
         canonicalModel={runtime.canonicalDatabaseView ?? undefined}
         canonicalReadGeneration={runtime.canonicalReadGeneration}

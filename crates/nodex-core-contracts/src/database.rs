@@ -326,6 +326,58 @@ pub struct DatabaseViewPreferencesOverrideInput {
     pub presentation_override: DatabaseViewPresentationOverrideInput,
 }
 
+/// Exact durable rules and transient search captured from one displayed View.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DatabaseEffectiveViewCoordinate {
+    pub database_id: String,
+    pub data_source_id: String,
+    pub view_id: String,
+    pub expected_view_revision: i64,
+    pub expected_schema_revision: i64,
+    /// None binds shared saved rules; Some binds the Profile's committed personal preferences.
+    pub expected_preferences_revision: Option<i64>,
+    pub preferences_override: DatabaseViewPreferencesOverrideInput,
+    pub search_query: String,
+}
+
+/// Row conditions retain the exact displayed values without trusting renderer content.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DatabaseObservedRowCondition {
+    pub metadata_revision: i64,
+    pub parent_revision: i64,
+    pub document_id: String,
+    pub document_generation: i64,
+    pub document_head_seq: i64,
+    pub membership_id: String,
+    pub membership_revision: i64,
+    pub database_value_revisions: BTreeMap<String, i64>,
+    pub position_revision: Option<i64>,
+    pub rank_key: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DatabaseObservedOccurrence {
+    /// List surfaces retain their canonical occurrence key. Board surfaces use Page/group coordinates.
+    pub occurrence_key: Option<String>,
+    pub page_id: String,
+    pub group_path: Vec<Option<String>>,
+    pub ancestor_page_ids: Vec<String>,
+    pub condition: DatabaseObservedRowCondition,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DatabaseDisplayedViewSelection {
+    /// No limit means a complete result or a budget failure, never implicit truncation.
+    Effective { limit: Option<u32> },
+    Observed {
+        occurrences: Vec<DatabaseObservedOccurrence>,
+    },
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DatabaseViewLayout {
@@ -636,7 +688,7 @@ pub enum DatabaseViewReadTarget {
     },
     PresentedView {
         view_id: String,
-        preferences_override: DatabaseViewPreferencesOverrideInput,
+        preferences_override: Box<DatabaseViewPreferencesOverrideInput>,
     },
 }
 

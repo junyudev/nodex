@@ -36,6 +36,8 @@ use crate::infrastructure::cursor::{
 };
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
+pub(crate) mod effective_query;
+
 const MAX_FILTER_DEPTH: usize = 8;
 const MAX_FILTER_NODES: usize = 1_024;
 const MAX_DISPLAY_PROPERTIES: usize = 64;
@@ -239,7 +241,7 @@ pub(super) fn presented_view_window(
     preferences_override: &DatabaseViewPreferencesOverrideInput,
     read: ViewWindowRead<'_>,
 ) -> Result<DatabaseViewWindow, StoreError> {
-    let mut view = resolve_view(connection, library_id, view_id)?;
+    let mut view = resolve_saved_view(connection, library_id, view_id)?;
     apply_definition_override(&mut view.config, preferences_override)?;
     refresh_effective_presentation(connection, &mut view)?;
     view.exact_primary_board_config = false;
@@ -294,7 +296,7 @@ pub(super) fn presented_list_window(
     preferences_override: &DatabaseViewPreferencesOverrideInput,
     read: ViewWindowRead<'_>,
 ) -> Result<DatabaseListWindow, StoreError> {
-    let mut view = resolve_view(connection, library_id, view_id)?;
+    let mut view = resolve_saved_view(connection, library_id, view_id)?;
     apply_definition_override(&mut view.config, preferences_override)?;
     refresh_effective_presentation(connection, &mut view)?;
     view.exact_primary_board_config = false;
@@ -339,7 +341,7 @@ pub(super) fn direct_drop_presentation(
     view_id: &str,
     preferences_override: &DatabaseViewPreferencesOverrideInput,
 ) -> Result<DirectDropPresentation, StoreError> {
-    let mut view = resolve_view(connection, library_id, view_id)?;
+    let mut view = resolve_saved_view(connection, library_id, view_id)?;
     apply_definition_override(&mut view.config, preferences_override)?;
     if !matches!(view.layout, ViewLayout::Board) {
         return Err(invalid(
@@ -387,7 +389,7 @@ pub(crate) fn presented_list_projection(
     store_epoch: &str,
     project_id: Option<&str>,
 ) -> Result<PresentedListProjection, StoreError> {
-    let mut view = resolve_view(connection, library_id, view_id)?;
+    let mut view = resolve_saved_view(connection, library_id, view_id)?;
     apply_definition_override(&mut view.config, preferences_override)?;
     if !matches!(view.layout, ViewLayout::List) {
         return Err(invalid(
@@ -458,6 +460,24 @@ fn complete_filtered_view_rows(
     commit_head: i64,
     view: &ResolvedView,
 ) -> Result<Vec<DatabaseRowSummary>, StoreError> {
+    complete_filtered_view_rows_with(
+        connection,
+        library_id,
+        commit_head,
+        view,
+        &BTreeSet::new(),
+        &|_| Ok(()),
+    )
+}
+
+fn complete_filtered_view_rows_with(
+    connection: &Connection,
+    library_id: &str,
+    commit_head: i64,
+    view: &ResolvedView,
+    projection_property_ids: &BTreeSet<String>,
+    check: &impl Fn(&[DatabaseRowSummary]) -> Result<(), StoreError>,
+) -> Result<Vec<DatabaseRowSummary>, StoreError> {
     let mut rows = Vec::new();
     let mut after = None;
     loop {
@@ -471,11 +491,12 @@ fn complete_filtered_view_rows(
                 first: Some(200),
             },
             None,
-            &BTreeSet::new(),
+            projection_property_ids,
         )?;
         if window.items.len() > MAX_LIST_PROJECTION_MODELS.saturating_sub(rows.len()) {
             return Err(invalid("Database List projection exceeds its model bound"));
         }
+        check(&window.items)?;
         rows.extend(window.items);
         let Some(next_cursor) = window.next_cursor else {
             break;
@@ -1198,6 +1219,7 @@ fn build_list_projection_graph(
     let mut path_nodes = BTreeMap::<ListGroupPath, BTreeMap<String, ListProjectionNode>>::new();
     let mut encountered_paths = Vec::new();
     let mut encountered_path_set = BTreeSet::new();
+    let mut total_projection_nodes = 0usize;
 
     for (sort_index, summary) in matched_rows.into_iter().enumerate() {
         if !show_sub_pages && summary.task_parent_page_id.is_some() {
@@ -1208,6 +1230,7 @@ fn build_list_projection_graph(
                 encountered_paths.push(path.clone());
             }
             let nodes = path_nodes.entry(path).or_default();
+            let previous_node_count = nodes.len();
             insert_list_node(
                 nodes,
                 summary.clone(),
@@ -1215,6 +1238,12 @@ fn build_list_projection_graph(
                 sort_index,
             );
             if !nested {
+                total_projection_nodes += nodes.len().saturating_sub(previous_node_count);
+                if total_projection_nodes > MAX_LIST_PROJECTION_MODELS {
+                    return Err(invalid(
+                        "Database List projection exceeds its occurrence bound",
+                    ));
+                }
                 continue;
             }
             add_list_ancestors(
@@ -1237,7 +1266,8 @@ fn build_list_projection_graph(
                 nodes,
                 &mut HashSet::new(),
             )?;
-            if nodes.len() > MAX_LIST_PROJECTION_MODELS {
+            total_projection_nodes += nodes.len().saturating_sub(previous_node_count);
+            if total_projection_nodes > MAX_LIST_PROJECTION_MODELS {
                 return Err(invalid(
                     "Database List projection exceeds its occurrence bound",
                 ));
@@ -1726,7 +1756,7 @@ pub(crate) fn presented_view_groups(
     preferences_override: &DatabaseViewPreferencesOverrideInput,
     read: ViewGroupsRead<'_>,
 ) -> Result<DatabaseViewGroups, StoreError> {
-    let mut view = resolve_view(connection, library_id, view_id)?;
+    let mut view = resolve_saved_view(connection, library_id, view_id)?;
     apply_definition_override(&mut view.config, preferences_override)?;
     refresh_effective_presentation(connection, &mut view)?;
     view.exact_primary_board_config = false;
@@ -2178,7 +2208,7 @@ pub(crate) fn mint_page_move_etag(
     mint_page_move_etag_with_authority(
         connection,
         library_id,
-        project_id,
+        Some(project_id),
         Some(project_id),
         store_epoch,
         page_id,
@@ -2193,7 +2223,7 @@ pub(crate) fn mint_page_move_etag(
 pub(crate) fn mint_page_move_etag_prevalidated(
     connection: &Connection,
     library_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     store_epoch: &str,
     page_id: &str,
     view_id: Option<&str>,
@@ -2213,7 +2243,7 @@ pub(crate) fn mint_page_move_etag_prevalidated(
 fn mint_page_move_etag_with_authority(
     connection: &Connection,
     library_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     authorizing_project_id: Option<&str>,
     store_epoch: &str,
     page_id: &str,
@@ -2526,6 +2556,18 @@ fn resolve_view(
     library_id: &str,
     view_id: &str,
 ) -> Result<ResolvedView, StoreError> {
+    let mut view = resolve_saved_view(connection, library_id, view_id)?;
+    refresh_effective_presentation(connection, &mut view)?;
+    Ok(view)
+}
+
+// Apply personal overrides before canonicalization so sparse display rules keep
+// the same field and Source order as a complete effective presentation.
+fn resolve_saved_view(
+    connection: &Connection,
+    library_id: &str,
+    view_id: &str,
+) -> Result<ResolvedView, StoreError> {
     validate_identity(view_id, "Database View identity")?;
     connection
         .query_row(
@@ -2609,7 +2651,7 @@ fn resolve_view(
                     "list" => ViewLayout::List,
                     _ => return Err(corrupt("Database View default layout is unsupported")),
                 };
-                let mut view = ResolvedView {
+                Ok(ResolvedView {
                     database_id,
                     data_source_id,
                     view_id: view_id.to_owned(),
@@ -2620,9 +2662,7 @@ fn resolve_view(
                     layout,
                     config,
                     query_scope: RowQueryScope::View,
-                };
-                refresh_effective_presentation(connection, &mut view)?;
-                Ok(view)
+                })
             },
         )
         .transpose()?
@@ -2714,7 +2754,7 @@ fn resolve_data_source_query(
     super::mutation::validate_view_definition(
         connection,
         library_id,
-        project_id,
+        Some(project_id),
         data_source_id,
         &definition,
         false,
@@ -2808,12 +2848,17 @@ fn refresh_effective_presentation(
     let properties = connection
         .prepare(
             "SELECT id, value_type FROM data_source_properties \
-             WHERE data_source_id = ?1 AND lifecycle = 'active' ORDER BY id",
+             WHERE data_source_id = ?1 AND lifecycle = 'active' ORDER BY rank_key, id",
         )?
         .query_map([&view.data_source_id], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?
-        .collect::<rusqlite::Result<BTreeMap<_, _>>>()?;
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let property_ids = properties
+        .iter()
+        .map(|(id, _)| id.clone())
+        .collect::<Vec<_>>();
+    let properties = BTreeMap::from_iter(properties);
     let valid_group = |group: &ViewGroup| {
         properties
             .get(&group.property_id)
@@ -2880,6 +2925,19 @@ fn refresh_effective_presentation(
         layout.property_order.retain(|property_id| {
             properties.contains_key(property_id) && seen_properties.insert(property_id.clone())
         });
+        for field in &layout.fields {
+            let ViewField::Property { property_id } = field else {
+                continue;
+            };
+            if seen_properties.insert(property_id.clone()) {
+                layout.property_order.push(property_id.clone());
+            }
+        }
+        for property_id in property_ids {
+            if seen_properties.insert(property_id.clone()) {
+                layout.property_order.push(property_id);
+            }
+        }
     }
     let finite = |group: &Option<ViewGroup>| {
         group.as_ref().is_some_and(|group| {
@@ -3082,12 +3140,12 @@ fn apply_definition_override(
 pub(super) fn validate_preferences_override(
     connection: &Connection,
     library_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     authority_project_id: Option<&str>,
     view_id: &str,
     preferences_override: &DatabaseViewPreferencesOverrideInput,
 ) -> Result<(), StoreError> {
-    let mut view = resolve_view(connection, library_id, view_id)?;
+    let mut view = resolve_saved_view(connection, library_id, view_id)?;
     apply_definition_override(&mut view.config, preferences_override)?;
     refresh_effective_presentation(connection, &mut view)?;
     super::mutation::validate_view_definition(

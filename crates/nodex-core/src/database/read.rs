@@ -1086,7 +1086,7 @@ fn resolve_view_read_target(
                 primary_database_id,
                 &view_id,
             )?;
-            (view_id, Some(preferences_override))
+            (view_id, Some(*preferences_override))
         }
     };
     Ok(ResolvedViewReadTarget {
@@ -1106,7 +1106,7 @@ fn authorize_view(
     authorize_required(connection, project_id, primary_database_id, &database_id)
 }
 
-fn view_personal_preferences(
+pub(super) fn view_personal_preferences(
     connection: &Connection,
     profile_id: &str,
     view_id: &str,
@@ -1210,6 +1210,8 @@ fn hydrate_relation_previews(
             )?;
             for (row, selected) in value.rows.items.iter_mut().zip(selected) {
                 row.database_values.retain(|id, _| selected.contains(id));
+                row.database_value_revisions
+                    .retain(|id, _| selected.contains(id));
             }
             Ok(())
         }
@@ -1304,7 +1306,7 @@ fn hydrate_summary_refs(
         &mut owned,
     )?;
     for (target, hydrated) in rows.iter_mut().zip(owned) {
-        target.database_values = hydrated.database_values;
+        **target = hydrated;
     }
     Ok(())
 }

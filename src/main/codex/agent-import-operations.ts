@@ -43,7 +43,7 @@ import { CodexThreadTitlePersistence } from "../codex-application/CodexThreadTit
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { getLogger } from "../logging/logger";
-import { buildCodexThreadConfigOverrides } from "./codex-thread-capabilities";
+import { buildCodexThreadConfig } from "./codex-thread-config";
 
 const SCAN_TTL_MS = 10 * 60 * 1_000;
 const SESSION_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1_000;
@@ -1366,8 +1366,9 @@ class AgentImportOperations {
             path: session.sourcePath,
             threadId: session.sourceThreadId,
             threadSource: "user",
-            config:
-              buildCodexThreadConfigOverrides() as ClientRequestParamsByMethod["thread/fork"]["config"],
+            config: buildCodexThreadConfig({
+              nativeMcp: true,
+            }) as ClientRequestParamsByMethod["thread/fork"]["config"],
           },
           codexGatewayGenerationFence(capability),
         )) as unknown as ThreadForkResponse;

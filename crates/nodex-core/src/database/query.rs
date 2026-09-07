@@ -15,6 +15,10 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 const MAX_ROWS: usize = 100_000;
 const MAX_BYTES: usize = 16 * 1024 * 1024;
 
+pub(crate) use super::window::effective_query::{
+    EffectiveViewRequest, project as project_effective_view,
+};
+
 pub(crate) struct QueryContext<'a> {
     pub connection: &'a Connection,
     pub library_id: &'a str,

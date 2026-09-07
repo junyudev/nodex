@@ -244,7 +244,7 @@ pub(super) fn delete_with_etag(
     let current_etag = super::page_projection::mint_page_shell_etag(
         connection,
         library_id,
-        project_id,
+        Some(project_id),
         store_epoch,
         page_id,
     )?;
@@ -515,7 +515,7 @@ fn create_page(
                 connection,
                 PersistYjsGenesis {
                     authority: &authority,
-                    actor_project_id: project_id,
+                    actor_project_id: Some(project_id),
                     materialization: &prepared.materialization,
                     update_id: &genesis_update_id,
                     client_session_id: "page-lifecycle-v2-create",
@@ -664,7 +664,7 @@ fn create_page(
                     page_file_entries: Vec::new(),
                     file_revisions: BTreeMap::new(),
                     file_mutation: Default::default(),
-                    project_id: project_id.to_owned(),
+                    project_id: Some(project_id.to_owned()),
                     operation_kind: "create_page",
                     change_kind: "library.changed",
                     did_mutate: true,
@@ -1673,11 +1673,13 @@ fn delete_page(
                     persist_parent_operations_detailed_with_local_commit(
                         connection,
                         ParentDocumentWriteContext {
-                            actor_project_id: context
-                                .project_id
-                                .as_ref()
-                                .map(|project_id| project_id.0.as_str())
-                                .ok_or_else(|| corrupt("Page delete lost its actor Project"))?,
+                            actor_project_id: Some(
+                                context
+                                    .project_id
+                                    .as_ref()
+                                    .map(|project_id| project_id.0.as_str())
+                                    .ok_or_else(|| corrupt("Page delete lost its actor Project"))?,
+                            ),
                             store_epoch,
                             operation_id,
                             commit: scope.evidence(),
@@ -1973,11 +1975,15 @@ fn restore_page(
                     Some(persist_parent_operations_detailed_with_local_commit(
                         connection,
                         ParentDocumentWriteContext {
-                            actor_project_id: context
-                                .project_id
-                                .as_ref()
-                                .map(|project_id| project_id.0.as_str())
-                                .ok_or_else(|| corrupt("Page restore lost its actor Project"))?,
+                            actor_project_id: Some(
+                                context
+                                    .project_id
+                                    .as_ref()
+                                    .map(|project_id| project_id.0.as_str())
+                                    .ok_or_else(|| {
+                                        corrupt("Page restore lost its actor Project")
+                                    })?,
+                            ),
                             store_epoch,
                             operation_id,
                             commit: scope.evidence(),
@@ -3220,11 +3226,13 @@ fn seal_page_lifecycle(
             page_file_entries: Vec::new(),
             file_revisions: BTreeMap::new(),
             file_mutation: Default::default(),
-            project_id: context
-                .project_id
-                .as_ref()
-                .map(|project_id| project_id.0.clone())
-                .ok_or_else(|| corrupt("Page lifecycle commit lost its actor Project"))?,
+            project_id: Some(
+                context
+                    .project_id
+                    .as_ref()
+                    .map(|project_id| project_id.0.clone())
+                    .ok_or_else(|| corrupt("Page lifecycle commit lost its actor Project"))?,
+            ),
             operation_kind,
             change_kind: "library.changed",
             did_mutate: true,

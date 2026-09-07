@@ -9,6 +9,7 @@ import {
   mergeVisibleCodexPinnedThreadOrder,
   mergePendingWorktreesIntoSidebarSnapshot,
   orderCodexSidebarPinnedThreadKeys,
+  orderSidebarPinnedSessionKeys,
   resolveCodexSidebarThreadHomeContainerId,
   sortSidebarThreadKeysForDisplay,
 } from "./codex-sidebar-thread-sync";
@@ -727,5 +728,41 @@ describe("resolveCodexSidebarThreadHomeContainerId", () => {
         knownProjectIds,
       }),
     ).toBe(null);
+  });
+});
+
+describe("durable Session pin order", () => {
+  test("uses Session order across draft and attached rows while retaining pending anchors", () => {
+    const attached = {
+      ...makeThread({ threadId: "attached", projectId: null, pinned: true }),
+      pinnedOrder: 0,
+    };
+    const draft = {
+      ...makeThread({ threadId: "draft", projectId: null, pinned: true }),
+      pinnedOrder: 9,
+    };
+    const pending = makePendingThreadItem({
+      key: "local:pending",
+      id: "pending",
+      anchor: "attached",
+    });
+    const items = [attached, pending, draft];
+    const sessionsById = new Map([
+      [
+        attached.sessionId!,
+        makeSession({ id: attached.sessionId!, order: 1, pinned: true, pinnedOrder: 2 }),
+      ],
+      [
+        draft.sessionId!,
+        makeSession({ id: draft.sessionId!, order: 0, pinned: true, pinnedOrder: 0 }),
+      ],
+    ]);
+    expect(
+      orderSidebarPinnedSessionKeys({
+        threadKeys: items.map((item) => item.key),
+        itemsByKey: new Map(items.map((item) => [item.key, item])),
+        sessionsById,
+      }),
+    ).toEqual([draft.key, pending.key, attached.key]);
   });
 });

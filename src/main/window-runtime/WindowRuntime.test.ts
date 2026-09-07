@@ -21,6 +21,7 @@ const fakeWindow = (webContentsId: number) => {
   let destroyed = false;
   let focused = false;
   const events = new EventEmitter();
+  const rendererEvents = new EventEmitter();
   const sentChannels: string[] = [];
   return {
     window: {
@@ -47,6 +48,8 @@ const fakeWindow = (webContentsId: number) => {
       setVibrancy: () => undefined,
       webContents: {
         id: webContentsId,
+        on: rendererEvents.on.bind(rendererEvents),
+        removeListener: rendererEvents.removeListener.bind(rendererEvents),
         isDestroyed: () => false,
         send: (channel: string) => sentChannels.push(channel),
       },
@@ -61,6 +64,7 @@ const fakeWindow = (webContentsId: number) => {
     },
     isDestroyed: () => destroyed,
     sentChannels,
+    rendererEvents,
   };
 };
 
@@ -72,6 +76,104 @@ const sessionLayout = (sessionId: string) => ({
     sessionId,
   },
 });
+
+it.effect("revokes exact renderer identities on navigation, process loss, and window release", () =>
+  Effect.gen(function* () {
+    const sessions = new WindowSessionState(mkdtempSync(join(tmpdir(), "window-renderer-")));
+    const subject = fakeWindow(81);
+    const other = fakeWindow(82);
+    const scope = yield* Scope.make();
+    const context = yield* Layer.buildWithScope(fromState(sessions), scope);
+    const runtime = Context.get(context, WindowRuntime);
+    runtime.attach(subject.window, sessions.createFreshSession().id);
+    runtime.attach(other.window, sessions.createFreshSession().id);
+    assert.isNull(runtime.resolveRendererGeneration(81));
+    subject.rendererEvents.emit("did-navigate");
+    other.rendererEvents.emit("did-navigate");
+    const first = runtime.resolveRendererGeneration(81);
+    const otherGeneration = runtime.resolveRendererGeneration(82);
+    assert.isString(first);
+    assert.notEqual(first, otherGeneration);
+    assert.equal(runtime.claimPresentationGeneration(81, "owner-a"), first);
+    assert.equal(runtime.claimPresentationGeneration(81, "owner-a"), first);
+    runtime.markRendererInitialized(81);
+
+    subject.rendererEvents.emit("did-start-navigation", {
+      isMainFrame: false,
+      isSameDocument: false,
+    });
+    subject.rendererEvents.emit("did-start-navigation", {
+      isMainFrame: true,
+      isSameDocument: true,
+    });
+    assert.equal(runtime.resolveRendererGeneration(81), first);
+    assert.isTrue(runtime.isRendererInitialized(81));
+
+    const collected = yield* runtime.events.pipe(
+      Stream.take(4),
+      Stream.runCollect,
+      Effect.forkIn(scope, { startImmediately: true }),
+    );
+    subject.rendererEvents.emit("did-start-navigation", {
+      isMainFrame: true,
+      isSameDocument: false,
+    });
+    assert.isNull(runtime.resolveRendererGeneration(81));
+    assert.isFalse(runtime.isRendererInitialized(81));
+    subject.rendererEvents.emit("did-navigate");
+    const second = runtime.resolveRendererGeneration(81);
+    assert.isString(second);
+    assert.notEqual(second, first);
+    subject.rendererEvents.emit("render-process-gone");
+    assert.isNull(runtime.resolveRendererGeneration(81));
+    runtime.release(81, { disposition: "unexpected" });
+    assert.isNull(runtime.resolveRendererGeneration(81));
+    assert.equal(runtime.resolveRendererGeneration(82), otherGeneration);
+    const events = yield* Fiber.join(collected);
+    assert.deepEqual(
+      events.map((event) => event.kind),
+      ["renderer-changed", "renderer-changed", "renderer-changed", "released"],
+    );
+    const changes = events.filter((event) => event.kind === "renderer-changed");
+    assert.deepEqual(
+      changes.map((event) => [event.previousRendererGeneration, event.window.rendererGeneration]),
+      [
+        [first, null],
+        [null, second],
+        [second, null],
+      ],
+    );
+    assert.equal(subject.rendererEvents.listenerCount("did-navigate"), 0);
+    assert.equal(subject.rendererEvents.listenerCount("did-start-navigation"), 0);
+    assert.equal(subject.rendererEvents.listenerCount("render-process-gone"), 0);
+    yield* Scope.close(scope, Exit.void);
+    assert.equal(other.rendererEvents.listenerCount("did-navigate"), 0);
+  }),
+);
+
+it.effect(
+  "replaces presentation generations independently of initialization and other windows",
+  () =>
+    Effect.gen(function* () {
+      const sessions = new WindowSessionState(mkdtempSync(join(tmpdir(), "window-presentation-")));
+      const subject = fakeWindow(83);
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(fromState(sessions), scope);
+      const runtime = Context.get(context, WindowRuntime);
+      runtime.attach(subject.window, sessions.createFreshSession().id);
+      assert.isNull(runtime.claimPresentationGeneration(83, "owner-before-navigation"));
+      subject.rendererEvents.emit("did-navigate");
+      const first = runtime.claimPresentationGeneration(83, "owner-a");
+      runtime.markRendererInitialized(83);
+      const second = runtime.claimPresentationGeneration(83, "owner-b");
+      assert.isString(second);
+      assert.notEqual(second, first);
+      assert.equal(runtime.claimPresentationGeneration(83, "owner-b"), second);
+      assert.isTrue(runtime.isRendererInitialized(83));
+      assert.equal(runtime.resolveRendererGeneration(83), second);
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
 
 it.effect("owns window registration, focus, session assignment, and final release", () =>
   Effect.gen(function* () {

@@ -12,7 +12,10 @@ import type {
   WorkbenchSceneSnapshot,
   WorkbenchSurfaceDescriptor,
 } from "../../shared/workbench-scene";
-import type { WorkbenchSessionRenderProjection } from "./workbench-session-presentation";
+import type {
+  WorkbenchSessionPanelProjection,
+  WorkbenchSessionRenderProjection,
+} from "./workbench-session-presentation";
 
 export type WorkbenchSurfaceUpdatePatch = WorkbenchTabUpdateInput;
 
@@ -21,7 +24,7 @@ function makeRuntimeId(prefix: string): string {
 }
 
 function resourceProjectId(
-  session: ProjectSession,
+  session: Pick<WorkbenchSessionPanelProjection, "projectId">,
   surface: WorkbenchSurfaceDescriptor,
 ): string | null {
   if (
@@ -33,49 +36,12 @@ function resourceProjectId(
       ? surface.config.accessContext.projectId
       : null;
   }
-  return "projectId" in surface.config ? surface.config.projectId : session.projectId;
-}
-
-function requireProjectAccess(
-  surface: Extract<
-    WorkbenchSurfaceDescriptor,
-    { readonly kind: "db_view" | "page_stage" | "canvas_stage" }
-  >,
-): string {
-  if (surface.config.accessContext.kind === "project") {
-    return surface.config.accessContext.projectId;
-  }
-  throw new Error("A Library resource surface cannot be rendered as a Session panel tab");
+  return "projectId" in surface.config ? surface.config.projectId : (session.projectId ?? null);
 }
 
 function projectionConfig(
   surface: Exclude<WorkbenchSurfaceDescriptor, { readonly kind: "conversation" }>,
 ): WorkbenchTabProjection["config"] {
-  if (surface.kind === "db_view") {
-    if (surface.config.target.kind !== "database-view") {
-      throw new Error(
-        "A symbolic Project Database surface cannot be rendered as a Session panel tab",
-      );
-    }
-    return {
-      projectId: requireProjectAccess(surface),
-      databaseViewId: surface.config.target.databaseViewId,
-    };
-  }
-  if (surface.kind === "page_stage") {
-    return {
-      projectId: requireProjectAccess(surface),
-      pageId: surface.config.pageId,
-      ...(surface.config.titleSnapshot ? { titleSnapshot: surface.config.titleSnapshot } : {}),
-    };
-  }
-  if (surface.kind === "canvas_stage") {
-    return {
-      projectId: requireProjectAccess(surface),
-      canvasBlockId: surface.config.canvasBlockId,
-      ...(surface.config.titleSnapshot ? { titleSnapshot: surface.config.titleSnapshot } : {}),
-    };
-  }
   if (surface.kind !== "browser") return surface.config;
   return {
     projectId: null,
@@ -101,6 +67,14 @@ export function presentWorkbenchSessionDomainWithScene(
   session: ProjectSession,
   scene: WorkbenchSceneSnapshot,
 ): WorkbenchSessionRenderProjection {
+  return { ...session, ...presentWorkbenchSessionPanelsWithScene(session, scene) };
+}
+
+/** Project only existing Scene panel identities; no Session domain record is synthesized. */
+export function presentWorkbenchSessionPanelsWithScene(
+  session: Pick<WorkbenchSessionPanelProjection, "id" | "projectId">,
+  scene: WorkbenchSceneSnapshot,
+): WorkbenchSessionPanelProjection {
   if (scene.owner.kind !== "session" || scene.owner.sessionId !== session.id) {
     throw new Error(`Scene does not belong to Session ${session.id}`);
   }
@@ -132,7 +106,8 @@ export function presentWorkbenchSessionDomainWithScene(
       .filter((tab): tab is WorkbenchTabProjection => Boolean(tab)),
   );
   return {
-    ...session,
+    id: session.id,
+    ...(session.projectId === undefined ? {} : { projectId: session.projectId }),
     panels: scene.panels as Record<PanelId, WorkbenchPanelState>,
     tabs,
   };
@@ -169,50 +144,6 @@ export function workbenchSurfaceFromCreateInput(
         ...("deviceToolbarState" in input.config && input.config.deviceToolbarState !== undefined
           ? { deviceToolbarState: input.config.deviceToolbarState }
           : {}),
-      },
-    };
-  }
-  if (input.kind === "db_view") {
-    return {
-      ...common,
-      kind: "db_view",
-      config: {
-        accessContext: {
-          kind: "project",
-          projectId: input.config.projectId,
-        },
-        target: {
-          kind: "database-view",
-          databaseViewId: input.config.databaseViewId,
-        },
-      },
-    };
-  }
-  if (input.kind === "page_stage") {
-    return {
-      ...common,
-      kind: "page_stage",
-      config: {
-        accessContext: {
-          kind: "project",
-          projectId: input.config.projectId,
-        },
-        pageId: input.config.pageId,
-        ...(input.config.titleSnapshot ? { titleSnapshot: input.config.titleSnapshot } : {}),
-      },
-    };
-  }
-  if (input.kind === "canvas_stage") {
-    return {
-      ...common,
-      kind: "canvas_stage",
-      config: {
-        accessContext: {
-          kind: "project",
-          projectId: input.config.projectId,
-        },
-        canvasBlockId: input.config.canvasBlockId,
-        ...(input.config.titleSnapshot ? { titleSnapshot: input.config.titleSnapshot } : {}),
       },
     };
   }
@@ -263,50 +194,27 @@ export function applyWorkbenchSurfacePatch(
     };
   }
   if (surface.kind === "db_view") {
-    if (!("databaseViewId" in patch.config)) {
+    if (!("target" in patch.config)) {
       return common;
     }
     return {
       ...common,
       kind: "db_view",
-      config: {
-        accessContext: {
-          kind: "project",
-          projectId: patch.config.projectId,
-        },
-        target: {
-          kind: "database-view",
-          databaseViewId: patch.config.databaseViewId,
-        },
-      },
+      config: patch.config,
     };
   }
   if (surface.kind === "page_stage" && "pageId" in patch.config) {
     return {
       ...common,
       kind: "page_stage",
-      config: {
-        accessContext: {
-          kind: "project",
-          projectId: patch.config.projectId,
-        },
-        pageId: patch.config.pageId,
-        ...(patch.config.titleSnapshot ? { titleSnapshot: patch.config.titleSnapshot } : {}),
-      },
+      config: patch.config,
     };
   }
   if (surface.kind === "canvas_stage" && "canvasBlockId" in patch.config) {
     return {
       ...common,
       kind: "canvas_stage",
-      config: {
-        accessContext: {
-          kind: "project",
-          projectId: patch.config.projectId,
-        },
-        canvasBlockId: patch.config.canvasBlockId,
-        ...(patch.config.titleSnapshot ? { titleSnapshot: patch.config.titleSnapshot } : {}),
-      },
+      config: patch.config,
     };
   }
   return {

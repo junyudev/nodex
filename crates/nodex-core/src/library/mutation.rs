@@ -67,7 +67,7 @@ pub(super) struct MutationEffects {
     pub(super) page_file_entries: Vec<nodex_core_contracts::library::LibraryPageFileEntryReceipt>,
     pub(super) file_revisions: BTreeMap<String, i64>,
     pub(super) file_mutation: Option<nodex_core_contracts::library::LibraryFileMutationResult>,
-    pub(super) project_id: String,
+    pub(super) project_id: Option<String>,
     pub(super) operation_kind: &'static str,
     pub(super) change_kind: &'static str,
     pub(super) did_mutate: bool,
@@ -103,7 +103,7 @@ pub(super) struct ResolvedWriteParent {
     pub(super) page_id: Option<String>,
     /// Project whose command is responsible for the mutation. Content remains
     /// Library-owned even when it is inserted into a Page reached by a grant.
-    pub(super) actor_project_id: String,
+    pub(super) actor_project_id: Option<String>,
     /// A real Project actor that should receive an explicit grant when this
     /// command creates or moves a root resource. Trusted Library-wide commands
     /// do not mint a durable Project grant and therefore leave this coordinate
@@ -116,7 +116,7 @@ pub(super) struct ResolvedWriteParent {
 pub(super) struct LibraryMutationAuthority {
     /// Project actor/delivery coordinate for receipts and change events. It is
     /// derived for trusted Library commands and never owns physical content.
-    pub(super) actor_project_id: String,
+    pub(super) actor_project_id: Option<String>,
     pub(super) requesting_project_id: Option<String>,
 }
 
@@ -132,7 +132,7 @@ pub(super) struct ResolvedParentDocument {
 /// explicit at the persistence seam.
 #[derive(Clone, Copy)]
 pub(super) struct ParentDocumentWriteContext<'a> {
-    pub(super) actor_project_id: &'a str,
+    pub(super) actor_project_id: Option<&'a str>,
     pub(super) store_epoch: &'a str,
     pub(super) operation_id: &'a str,
     pub(super) commit: &'a CommitContext,
@@ -855,7 +855,7 @@ fn move_block(
 
             let mut committed_document_heads = BTreeMap::new();
             let parent_write = ParentDocumentWriteContext {
-                actor_project_id: &actor_project_id,
+                actor_project_id: actor_project_id.as_deref(),
                 store_epoch,
                 operation_id,
                 commit: scope.evidence(),
@@ -956,7 +956,7 @@ fn move_block(
                 {
                     insert_creator_resource_grant(
                         connection,
-                        creator_project_id,
+                        Some(creator_project_id),
                         library_id,
                         authority.resource_kind,
                         &authority.id,
@@ -1335,7 +1335,7 @@ fn grant_project_access(
                     page_file_entries: Vec::new(),
                     file_revisions: BTreeMap::new(),
                     file_mutation: Default::default(),
-                    project_id: project_id.to_owned(),
+                    project_id: Some(project_id.to_owned()),
                     operation_kind: "grant_project_access",
                     change_kind: "library.changed",
                     did_mutate: mutation.did_mutate,
@@ -1844,7 +1844,7 @@ pub(super) fn resolve_write_parent(
     resolve_write_parent_with_access(
         connection,
         library_id,
-        requesting_project_id,
+        Some(requesting_project_id),
         parent,
         true,
         true,
@@ -1862,7 +1862,7 @@ pub(super) fn resolve_write_parent_for_context(
         return resolve_write_parent_with_access(
             connection,
             library_id,
-            &authority.actor_project_id,
+            authority.actor_project_id.as_deref(),
             parent,
             false,
             false,
@@ -1874,7 +1874,7 @@ pub(super) fn resolve_write_parent_for_context(
 pub(super) fn resolve_write_parent_prevalidated(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: &str,
+    requesting_project_id: Option<&str>,
     parent: &LibraryWriteParent,
 ) -> Result<ResolvedWriteParent, StoreError> {
     resolve_write_parent_with_access(
@@ -1890,7 +1890,7 @@ pub(super) fn resolve_write_parent_prevalidated(
 fn resolve_write_parent_with_access(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: &str,
+    requesting_project_id: Option<&str>,
     parent: &LibraryWriteParent,
     require_access: bool,
     grant_creator_access: bool,
@@ -1910,13 +1910,18 @@ fn resolve_write_parent_with_access(
             validate_library_anchor(connection, library_id, anchor)?;
         }
         if require_access {
+            let requesting_project_id = requesting_project_id
+                .ok_or_else(|| unauthorized("Project write requires an actor Project"))?;
             require_project_in_library(connection, requesting_project_id, library_id)?;
         }
         return Ok(ResolvedWriteParent {
             parent_key: "library".to_owned(),
             page_id: None,
-            actor_project_id: requesting_project_id.to_owned(),
-            creator_project_id: grant_creator_access.then(|| requesting_project_id.to_owned()),
+            actor_project_id: requesting_project_id.map(str::to_owned),
+            creator_project_id: grant_creator_access
+                .then_some(requesting_project_id)
+                .flatten()
+                .map(str::to_owned),
             document: None,
             before_block_id: before.as_ref().map(|anchor| anchor.block_id.clone()),
         });
@@ -1947,6 +1952,8 @@ fn resolve_write_parent_with_access(
         return Err(invalid("Target Page is unavailable"));
     }
     if require_access {
+        let requesting_project_id = requesting_project_id
+            .ok_or_else(|| unauthorized("Project write requires an actor Project"))?;
         super::history::require_page_write_access(
             connection,
             library_id,
@@ -2012,8 +2019,11 @@ fn resolve_write_parent_with_access(
     Ok(ResolvedWriteParent {
         parent_key: format!("page:{page_id}"),
         page_id: Some(page_id.clone()),
-        actor_project_id: requesting_project_id.to_owned(),
-        creator_project_id: grant_creator_access.then(|| requesting_project_id.to_owned()),
+        actor_project_id: requesting_project_id.map(str::to_owned),
+        creator_project_id: grant_creator_access
+            .then_some(requesting_project_id)
+            .flatten()
+            .map(str::to_owned),
         document: Some(ResolvedParentDocument {
             authority,
             engine,
@@ -2506,7 +2516,7 @@ fn create_database(
                 if let Some(creator_project_id) = resolved_parent.creator_project_id.as_deref() {
                     insert_creator_resource_grant(
                         connection,
-                        creator_project_id,
+                        Some(creator_project_id),
                         library_id,
                         "database",
                         database_id,
@@ -2530,7 +2540,7 @@ fn create_database(
                     persist_parent_insert(
                         connection,
                         ParentDocumentWriteContext {
-                            actor_project_id: &project_id,
+                            actor_project_id: project_id.as_deref(),
                             store_epoch,
                             operation_id,
                             commit: scope.evidence(),
@@ -2619,7 +2629,7 @@ fn create_page_records_and_genesis(
     genesis: PageGenesisInput<'_>,
     parent: &LibraryWriteParent,
     resolved_parent: &ResolvedWriteParent,
-    project_id: &str,
+    project_id: Option<&str>,
     now: &str,
     commit: &CommitContext,
 ) -> Result<LibraryPageCreateResult, StoreError> {
@@ -2708,7 +2718,7 @@ fn create_page_records_and_genesis(
         if let Some(creator_project_id) = resolved_parent.creator_project_id.as_deref() {
             insert_creator_resource_grant(
                 connection,
-                creator_project_id,
+                Some(creator_project_id),
                 library_id,
                 "page",
                 page_id,
@@ -3150,12 +3160,12 @@ fn create_page_mention(
                 PageGenesisInput::PlainTitle(title),
                 &destination_parent,
                 &resolved_destination,
-                &project_id,
+                project_id.as_deref(),
                 &now,
                 scope.evidence(),
             )?;
             let write = ParentDocumentWriteContext {
-                actor_project_id: &project_id,
+                actor_project_id: project_id.as_deref(),
                 store_epoch,
                 operation_id,
                 commit: scope.evidence(),
@@ -3226,7 +3236,7 @@ fn create_page_mention(
             )?;
             let mut effects = super::structural_edit::page_mention_history_effects(
                 &prepared_history,
-                &project_id,
+                project_id.as_deref(),
                 &now,
             );
             effects.created_target = Some(LibraryResourceTarget::Page {
@@ -3272,7 +3282,7 @@ fn create_page_mention(
                         &prepared_history,
                         operation_id,
                         library_id,
-                        &project_id,
+                        project_id.as_deref(),
                         store_epoch,
                         request_hash,
                         event_sequence,
@@ -3296,12 +3306,15 @@ enum PageGenesisInput<'a> {
 
 pub(crate) fn insert_creator_resource_grant(
     connection: &Connection,
-    project_id: &str,
+    project_id: Option<&str>,
     library_id: &str,
     root_kind: &str,
     root_id: &str,
     now: &str,
 ) -> Result<(), StoreError> {
+    let Some(project_id) = project_id else {
+        return Ok(());
+    };
     let grant_id = format!(
         "grant:{}",
         sha256(
@@ -3664,17 +3677,18 @@ pub(super) fn build_mutation_result(
             history_projects.insert(effects.project_id.clone());
         }
         for recipe_id in &history.superseded_history_recipe_operation_ids {
-            let project_id: String = connection.query_row(
+            let project_id: Option<String> = connection.query_row(
                 "SELECT project_id FROM structural_history_recipes WHERE recipe_operation_id = ?1 AND library_id = ?2",
                 params![recipe_id, context.library_id.0], |row| row.get(0),
             )?;
             history_projects.insert(project_id);
         }
         for project_id in history_projects {
-            local_commit::require_projection_read(
+            crate::library::structural_edit::require_history_projection_read(
                 connection,
                 commit,
-                nodex_core_contracts::LocalProjectionScope::StructuralHistory { project_id },
+                &context.library_id.0,
+                project_id.as_deref(),
             )?;
         }
     }
@@ -3690,7 +3704,7 @@ pub(super) fn build_mutation_result(
     let payload_json =
         serde_json::to_string(&payload).map_err(|_| internal("Library event payload"))?;
     let event_entry = NewChangeLogEntry {
-        project_id: &effects.project_id,
+        project_id: effects.project_id.as_deref(),
         store_epoch,
         kind: effects.change_kind,
         operation_id: Some(operation_id),
@@ -3973,7 +3987,7 @@ pub(super) fn resolve_library_mutation_authority(
     if let Some(project_id) = context.project_id.as_ref() {
         require_project_in_library(connection, &project_id.0, library_id)?;
         return Ok(LibraryMutationAuthority {
-            actor_project_id: project_id.0.clone(),
+            actor_project_id: Some(project_id.0.clone()),
             requesting_project_id: Some(project_id.0.clone()),
         });
     }
@@ -3985,34 +3999,10 @@ pub(super) fn resolve_library_mutation_authority(
             "Library mutations require a Project or trusted local Library authority",
         ));
     }
-    let actor_project_id = resolve_library_actor_project_id(connection, library_id)?;
     Ok(LibraryMutationAuthority {
-        actor_project_id,
+        actor_project_id: None,
         requesting_project_id: None,
     })
-}
-
-/// Returns the stable Project actor used by trusted local Library operations
-/// whose transport does not carry a Project binding. This coordinate scopes
-/// receipts and signed validators; it never owns Library content.
-pub(crate) fn resolve_library_actor_project_id(
-    connection: &Connection,
-    library_id: &str,
-) -> Result<String, StoreError> {
-    connection
-        .query_row(
-            "SELECT id FROM projects WHERE library_id = ?1 ORDER BY created, id LIMIT 1",
-            [library_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?
-        .ok_or_else(|| {
-            StoreError::new(
-                StoreErrorCode::NotFound,
-                "The Library has no Project actor for local operations",
-                false,
-            )
-        })
 }
 
 pub(crate) fn require_project_in_library(
@@ -4391,7 +4381,7 @@ fn execute_page_create(
     genesis: PageGenesisInput<'_>,
     parent: &LibraryWriteParent,
     resolved_parent: &ResolvedWriteParent,
-    project_id: String,
+    project_id: Option<String>,
     now: String,
     scope: &DurableMutationScope<'_>,
 ) -> Result<MutationEffects, StoreError> {
@@ -4405,7 +4395,7 @@ fn execute_page_create(
         genesis,
         parent,
         resolved_parent,
-        &project_id,
+        project_id.as_deref(),
         &now,
         scope.evidence(),
     )?;
@@ -4419,7 +4409,7 @@ fn execute_page_create(
         .as_ref()
         .map(|parent| {
             let write = ParentDocumentWriteContext {
-                actor_project_id: &project_id,
+                actor_project_id: project_id.as_deref(),
                 store_epoch,
                 operation_id,
                 commit: scope.evidence(),
@@ -6442,7 +6432,7 @@ mod tests {
                 crate::library::page_projection::mint_page_shell_etag(
                     connection,
                     "library-1",
-                    "project-1",
+                    Some("project-1"),
                     "epoch-1",
                     "page:nested",
                 )
@@ -6764,7 +6754,7 @@ mod tests {
                     persist_parent_operations(
                         transaction,
                         ParentDocumentWriteContext {
-                            actor_project_id: "project-1",
+                            actor_project_id: Some("project-1"),
                             store_epoch: "epoch-1",
                             operation_id: "operation:add-guard-paragraph",
                             commit: &commit,
@@ -6824,7 +6814,7 @@ mod tests {
                     persist_parent_operations(
                         transaction,
                         ParentDocumentWriteContext {
-                            actor_project_id: "project-1",
+                            actor_project_id: Some("project-1"),
                             store_epoch: "epoch-1",
                             operation_id: "operation:ordinary-canvas-delete",
                             commit: &commit,

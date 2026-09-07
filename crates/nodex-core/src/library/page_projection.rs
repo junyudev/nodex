@@ -17,7 +17,7 @@ use crate::domain::rich_text::{RichTextItem, RichTextStyles, canonicalize_rich_t
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::content::page_content;
-use super::mutation::{require_project_in_library, resolve_library_actor_project_id};
+use super::mutation::require_project_in_library;
 
 const PAGE_FILE_VERSION: u32 = 2;
 const PAGE_DRAFT_VERSION: u32 = 2;
@@ -51,7 +51,7 @@ pub(super) fn prepare_page_operation(
             page_etag: mint_page_shell_etag(
                 connection,
                 library_id,
-                project_id,
+                Some(project_id),
                 store_epoch,
                 page_id,
             )?,
@@ -97,17 +97,14 @@ pub(super) fn page_projection_file(
     } = request;
     validate_prepare(kind, prepare.as_ref())?;
     let page = page_content(connection, library_id, store_epoch, commit_head, page_id)?;
-    let etag_project_id = match requesting_project_id {
-        Some(project_id) => {
-            require_project_in_library(connection, project_id, library_id)?;
-            project_id.to_owned()
-        }
-        None => resolve_library_actor_project_id(connection, library_id)?,
-    };
+    if let Some(project_id) = requesting_project_id {
+        require_project_in_library(connection, project_id, library_id)?;
+    }
+    let etag_project_id = requesting_project_id;
     let page_key = crate::database::current_page_key_for_page(connection, library_id, page_id)?;
     let (title_etag, body_etag) = mint_document_projection_etags(
         connection,
-        &etag_project_id,
+        etag_project_id,
         store_epoch,
         &page.document_id,
         page.rich_title.clone(),
@@ -127,7 +124,7 @@ pub(super) fn page_projection_file(
             validators.page_etag = Some(mint_page_shell_etag(
                 connection,
                 library_id,
-                &etag_project_id,
+                etag_project_id,
                 store_epoch,
                 page_id,
             )?);
@@ -328,7 +325,7 @@ struct PageStorageAuthority {
 pub(super) fn mint_page_shell_etag(
     connection: &Connection,
     library_id: &str,
-    etag_project_id: &str,
+    etag_project_id: Option<&str>,
     store_epoch: &str,
     page_id: &str,
 ) -> Result<String, StoreError> {

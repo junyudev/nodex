@@ -149,6 +149,22 @@ describe("workbench session shell / automations-conversation", () => {
         await Promise.resolve();
       });
       await settleAsyncRender();
+      await act(async () => {
+        fireEvent.keyDown(projectItem, { key: "Escape" });
+        await Promise.resolve();
+      });
+      await act(async () => {
+        fireEvent.mouseDown(screen.getByLabelText("Execution environment"), {
+          button: 0,
+          ctrlKey: false,
+        });
+        await Promise.resolve();
+      });
+      const worktreeItem = await screen.findByRole("menuitem", { name: "Worktree" });
+      await act(async () => {
+        fireEvent.click(worktreeItem);
+        await Promise.resolve();
+      });
       const environmentTrigger = await screen.findByLabelText("Environment");
       await act(async () => {
         fireEvent.mouseDown(environmentTrigger, { button: 0, ctrlKey: false });
@@ -296,6 +312,7 @@ describe("workbench session shell / automations-conversation", () => {
     const automation = makeScheduledAutomation({
       id: "automation-autosave",
       kind: "cron",
+      projectId: "alpha",
       targetThreadId: null,
       name: "Autosave report",
       prompt: "Summarize the project.",
@@ -375,6 +392,7 @@ describe("workbench session shell / automations-conversation", () => {
     const automation = makeScheduledAutomation({
       id: "automation-model-flush",
       kind: "cron",
+      projectId: "alpha",
       targetThreadId: null,
       name: "Model flush report",
       prompt: "Summarize the project model choice.",
@@ -444,6 +462,7 @@ describe("workbench session shell / automations-conversation", () => {
     const automation = makeScheduledAutomation({
       id: "automation-history-open",
       kind: "cron",
+      projectId: "alpha",
       targetThreadId: null,
       name: "History open task",
       prompt: "Summarize the run before opening.",
@@ -1240,6 +1259,7 @@ describe("workbench session shell / automations-conversation", () => {
     const automation = makeScheduledAutomation({
       id: "automation-history",
       kind: "cron",
+      projectId: "alpha",
       name: "History task",
       prompt: "Summarize the previous run history.",
       targetThreadId: null,

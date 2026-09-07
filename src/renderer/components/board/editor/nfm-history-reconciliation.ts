@@ -53,7 +53,11 @@ export const coreHistoryReconciliation: NfmHistoryReconciliation = {
       (message) => {
         if (
           message.kind === "effect" &&
-          message.delivery.effect.scope.scope.kind !== "structural_history"
+          message.delivery.effect.scope.scope.kind !== "structural_history" &&
+          !(
+            scope.accessContext.kind === "library" &&
+            message.delivery.effect.scope.scope.kind === "library"
+          )
         )
           return;
         invalidate();

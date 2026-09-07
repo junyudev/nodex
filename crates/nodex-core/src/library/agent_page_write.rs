@@ -64,7 +64,7 @@ pub(super) struct ResolvedDestination {
     pub(super) document_heads: Vec<LibraryAgentDocumentHead>,
     pub(super) database_id: Option<String>,
     /// Project-scoped actor/event-delivery coordinate; never a content owner.
-    pub(super) actor_project_id: String,
+    pub(super) actor_project_id: Option<String>,
 }
 
 pub(super) struct PreparePageCopyInput {
@@ -609,7 +609,11 @@ pub(super) fn resolve_destination(
                 },
                 AgentProjectResourceAction::CreateChild,
             )?;
-            let actor_project_id = authorization.provenance.authority.actor_project_id.as_str();
+            let actor_project_id = authorization
+                .provenance
+                .authority
+                .actor_project_id
+                .as_deref();
             let ids = connection
                 .prepare(
                     "SELECT placement.block_id FROM library_block_placements placement \
@@ -629,7 +633,7 @@ pub(super) fn resolve_destination(
                 authorization_fingerprint: fingerprint,
                 document_heads: Vec::new(),
                 database_id: None,
-                actor_project_id: actor_project_id.to_owned(),
+                actor_project_id: actor_project_id.map(str::to_owned),
             })
         }
         LibraryAgentPageDestination::Page { page_id, at } => {

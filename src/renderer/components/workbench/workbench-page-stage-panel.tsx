@@ -188,11 +188,14 @@ export function PageStageSessionTab({
   onToggleHistoryPanel: (context: PageStageHistoryModalContext) => void;
   isActivePanelTab: boolean;
 }) {
-  const codexControl = useCodexAppServerControl(tab.config.projectId);
+  if (tab.config.accessContext.kind !== "project")
+    throw new Error("Project Page Stage requires Project access");
+  const pageAccessProjectId = tab.config.accessContext.projectId;
+  const codexControl = useCodexAppServerControl(pageAccessProjectId);
   const queryClient = useQueryClient();
   const relatedChatsQuery = useInfiniteQuery({
     ...pageChatWindowQueryOptions({
-      pageAccessProjectId: tab.config.projectId,
+      pageAccessProjectId: pageAccessProjectId,
       pageId: tab.config.pageId,
       includeArchived: false,
       first: 20,
@@ -203,18 +206,18 @@ export function PageStageSessionTab({
   const removeRelatedChat = useCallback(
     async (relatedSessionId: string): Promise<void> => {
       await unlinkPageChat(relatedSessionId, {
-        pageAccessProjectId: tab.config.projectId,
+        pageAccessProjectId: pageAccessProjectId,
         pageId: tab.config.pageId,
       });
       await queryClient.invalidateQueries({ queryKey: queryKeys.pageChats.all() });
     },
-    [queryClient, tab.config.pageId, tab.config.projectId],
+    [queryClient, tab.config.pageId, pageAccessProjectId],
   );
   const editorSessionKey = makeEditorSurfaceKey(sessionId, tab.id);
 
   const detailSnapshot = usePageDetail(
     project?.libraryId ?? null,
-    tab.config.projectId,
+    pageAccessProjectId,
     tab.config.pageId,
   );
   const stageProjection = useMemo(() => {
@@ -251,7 +254,7 @@ export function PageStageSessionTab({
     !page && (detailSnapshot.loading || (!detailSnapshot.error && !stageProjection.error));
 
   const ownershipPath = usePageOwnershipPathReadModel(
-    projectContentAccess(project?.id ?? tab.config.projectId),
+    projectContentAccess(project?.id ?? pageAccessProjectId),
     tab.config.pageId,
   );
   const ownershipAncestors =
@@ -260,7 +263,7 @@ export function PageStageSessionTab({
     ownershipAncestors.length > 0
       ? {
           ancestors: ownershipAncestors.map((ancestor) => ({
-            projectId: tab.config.projectId,
+            projectId: pageAccessProjectId,
             pageId: ancestor.pageId,
             title: ancestor.title.trim() || "Untitled",
             disabled: false,
@@ -281,24 +284,28 @@ export function PageStageSessionTab({
       promptInput?: CodexPromptInput;
       threadName?: string;
     }) => {
+      const submittedPresentation = codexControl.captureSubmissionPresentation();
       const targetSessionId =
         input.targetSessionId?.trim() ||
         (await onEnsureDefaultDraftSessionForProject(input.projectId, { select: false })).id;
       await onLinkPageToChat({
-        pageAccessProjectId: tab.config.projectId,
+        pageAccessProjectId: pageAccessProjectId,
         pageId: tab.config.pageId,
         sessionId: targetSessionId,
       });
-      const result = await codexControl.startThreadForSession({
-        firstSubmission: createCodexFirstSubmissionIdentity(),
-        projectId: input.projectId,
-        sessionId: targetSessionId,
-        prompt: input.prompt,
-        promptInput: input.promptInput,
-        threadName: input.threadName,
-        skipAutoTitleGeneration: Boolean(input.threadName?.trim()),
-        runInTarget: "localProject",
-      });
+      const result = await codexControl.startThreadForSession(
+        {
+          firstSubmission: createCodexFirstSubmissionIdentity(),
+          projectId: input.projectId,
+          sessionId: targetSessionId,
+          prompt: input.prompt,
+          promptInput: input.promptInput,
+          threadName: input.threadName,
+          skipAutoTitleGeneration: Boolean(input.threadName?.trim()),
+          runInTarget: "localProject",
+        },
+        submittedPresentation,
+      );
       if (result.kind !== "started") {
         throw new Error("Page thread unexpectedly started in a worktree");
       }
@@ -316,7 +323,7 @@ export function PageStageSessionTab({
       onLinkPageToChat,
       onRefreshSessions,
       tab.config.pageId,
-      tab.config.projectId,
+      pageAccessProjectId,
     ],
   );
 
@@ -383,7 +390,7 @@ export function PageStageSessionTab({
     databaseCapability: PageStageDatabaseCapability | null,
   ): ReactNode => (
     <OwnedBlockDocumentBoundary
-      accessContext={projectContentAccess(tab.config.projectId)}
+      accessContext={projectContentAccess(pageAccessProjectId)}
       ownerBlockId={page.page.id}
     >
       {(documentModel, documentControls) => {
@@ -440,7 +447,7 @@ export function PageStageSessionTab({
 
         return (
           <PageStage
-            contentAccessContext={projectContentAccess(tab.config.projectId)}
+            contentAccessContext={projectContentAccess(pageAccessProjectId)}
             editorSessionKey={editorSessionKey}
             pageTitleIdentity={
               project ? { libraryId: project.libraryId, pageId: tab.config.pageId } : undefined
@@ -457,7 +464,7 @@ export function PageStageSessionTab({
             onLeavePage={onLeavePage}
             onUpdate={async (pageId: string, updates: Partial<PageInput>) =>
               await commitPageDetailMetadataPatch({
-                projectId: tab.config.projectId,
+                projectId: pageAccessProjectId,
                 pageId,
                 operationId: createUuidV7(),
                 clientSessionId: tab.id,
@@ -466,7 +473,7 @@ export function PageStageSessionTab({
             }
             onUpdateProperty={async (pageId, propertyId, edit) =>
               await commitPageDetailPropertyEdit({
-                projectId: tab.config.projectId,
+                projectId: pageAccessProjectId,
                 pageId,
                 propertyId,
                 edit,
@@ -475,7 +482,7 @@ export function PageStageSessionTab({
               })
             }
             onRefreshProperties={async () => {
-              await fetchPageDetail(tab.config.projectId, tab.config.pageId);
+              await fetchPageDetail(pageAccessProjectId, tab.config.pageId);
             }}
             {...(databaseCapability?.onDelete ? { onDelete: databaseCapability.onDelete } : {})}
             {...(databaseCapability
@@ -491,7 +498,7 @@ export function PageStageSessionTab({
               onToggleHistoryPanel({
                 sessionId,
                 tabId: tab.id,
-                projectId: tab.config.projectId,
+                projectId: pageAccessProjectId,
                 pageId: tab.config.pageId,
                 pageTitle: snapshot.title || tab.config.titleSnapshot,
                 pageNfm: snapshot.nfm,
@@ -514,7 +521,7 @@ export function PageStageSessionTab({
               onOpenPageInNewChat
                 ? async () => {
                     await onOpenPageInNewChat({
-                      projectId: tab.config.projectId,
+                      projectId: pageAccessProjectId,
                       pageId: tab.config.pageId,
                       titleSnapshot: page.page.title,
                     });
@@ -523,7 +530,7 @@ export function PageStageSessionTab({
             }
             onLinkRelatedChat={async (relatedSessionId) => {
               await onLinkPageToChat({
-                pageAccessProjectId: tab.config.projectId,
+                pageAccessProjectId: pageAccessProjectId,
                 pageId: tab.config.pageId,
                 sessionId: relatedSessionId,
               });
@@ -557,19 +564,25 @@ export function PageStageSessionTab({
             }}
             onStartNewSessionThreadFromEditor={handleStartNewSessionThreadFromEditor}
             onSendThreadSectionPrompt={async ({ threadId, prompt, promptInput }) => {
+              const submittedPresentation = codexControl.captureSubmissionPresentation();
               const targetSession = await onResolveChatSessionForThread(threadId);
               if (!targetSession.projectId) {
                 throw new Error("Page content can only be sent to a Project chat");
               }
               await onLinkPageToChat({
-                pageAccessProjectId: tab.config.projectId,
+                pageAccessProjectId: pageAccessProjectId,
                 pageId: tab.config.pageId,
                 sessionId: targetSession.id,
               });
-              await codexControl.startTurn(threadId, prompt, {
-                projectId: targetSession.projectId,
-                promptInput,
-              });
+              await codexControl.startTurn(
+                threadId,
+                prompt,
+                {
+                  projectId: targetSession.projectId,
+                  promptInput,
+                },
+                submittedPresentation,
+              );
             }}
           />
         );
@@ -579,7 +592,7 @@ export function PageStageSessionTab({
 
   return (
     <PageStageDatabaseCapabilityBoundary
-      projectId={tab.config.projectId}
+      projectId={pageAccessProjectId}
       databaseViewId={project.defaultDatabaseViewId}
       sessionId={tab.id}
       properties={semanticValues}

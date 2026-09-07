@@ -145,7 +145,7 @@ pub(super) fn apply(
     let actor_project_id = actor_project_id(connection, context, library_id)?;
     let evidence = match validate_request(
         library_id,
-        &actor_project_id,
+        actor_project_id.as_deref(),
         store_epoch,
         operation_id,
         mutation,
@@ -157,14 +157,14 @@ pub(super) fn apply(
             }
             let evidence = minimal_evidence(
                 library_id,
-                &actor_project_id,
+                actor_project_id.as_deref(),
                 store_epoch,
                 operation_id,
                 mutation,
             )?;
             persist_property_ledger(
                 connection,
-                &actor_project_id,
+                actor_project_id.as_deref(),
                 store_epoch,
                 operation_id,
                 mutation.client_session_id.as_deref(),
@@ -190,7 +190,7 @@ pub(super) fn apply(
 
     if let Some(collision) = read_ledger_collision(
         connection,
-        &actor_project_id,
+        actor_project_id.as_deref(),
         store_epoch,
         operation_id,
         mutation.client_session_id.as_deref(),
@@ -218,7 +218,7 @@ pub(super) fn apply(
             }
             persist_property_ledger(
                 connection,
-                &actor_project_id,
+                actor_project_id.as_deref(),
                 store_epoch,
                 operation_id,
                 mutation.client_session_id.as_deref(),
@@ -389,7 +389,7 @@ pub(super) fn apply(
     let ledger_result = ledger_success_json(
         operation_id,
         library_id,
-        &actor_project_id,
+        actor_project_id.as_deref(),
         store_epoch,
         &field_results,
         &block_metadata_revisions,
@@ -398,7 +398,7 @@ pub(super) fn apply(
     );
     persist_property_ledger(
         connection,
-        &actor_project_id,
+        actor_project_id.as_deref(),
         store_epoch,
         operation_id,
         mutation.client_session_id.as_deref(),
@@ -424,7 +424,7 @@ pub(super) fn apply(
 
 fn validate_request(
     library_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     store_epoch: &str,
     operation_id: &str,
     mutation: &LibraryBlockPropertyMutation,
@@ -995,13 +995,13 @@ fn actor_project_id(
     connection: &Connection,
     context: &BoundModuleContext,
     library_id: &str,
-) -> Result<String, StoreError> {
+) -> Result<Option<String>, StoreError> {
     Ok(resolve_library_mutation_authority(connection, context, library_id)?.actor_project_id)
 }
 
 fn make_evidence(
     library_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     store_epoch: &str,
     operation_id: &str,
     mutation: &LibraryBlockPropertyMutation,
@@ -1074,7 +1074,7 @@ fn make_evidence(
 
 fn minimal_evidence(
     library_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     store_epoch: &str,
     operation_id: &str,
     mutation: &LibraryBlockPropertyMutation,
@@ -1153,7 +1153,7 @@ fn change_payload(
 #[allow(clippy::too_many_arguments)]
 fn persist_property_ledger(
     connection: &Connection,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     store_epoch: &str,
     operation_id: &str,
     client_session_id: Option<&str>,
@@ -1198,7 +1198,7 @@ fn persist_property_ledger(
 
 fn read_ledger_collision(
     connection: &Connection,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     store_epoch: &str,
     operation_id: &str,
     client_session_id: Option<&str>,
@@ -1213,7 +1213,7 @@ fn read_ledger_collision(
             [operation_id],
             |row| {
                 Ok((
-                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
@@ -1231,7 +1231,7 @@ fn read_ledger_collision(
     let Some(existing) = existing else {
         return Ok(None);
     };
-    let exact = existing.0 == actor_project_id
+    let exact = existing.0.as_deref() == actor_project_id
         && existing.1 == store_epoch
         && existing.2 == MUTATION_KIND
         && existing.3 == evidence.actor_json
@@ -1266,7 +1266,7 @@ fn read_ledger_collision(
 fn ledger_success_json(
     operation_id: &str,
     library_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     store_epoch: &str,
     fields: &[LibraryBlockPropertyFieldResult],
     block_metadata_revisions: &BTreeMap<String, i64>,

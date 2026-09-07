@@ -1,8 +1,14 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type { AutomationApplyResult, AutomationReadSnapshot } from "../core-client/types";
+import type {
+  AutomationApplyInput,
+  AutomationApplyResult,
+  AutomationReadSnapshot,
+} from "../core-client/types";
 import { AutomationRoutingIndex } from "../core-runtime/AutomationRoutingIndex";
+import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
+import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { make } from "./AutomationApplication";
 import type {
   CoreAutomationDefinition,
@@ -17,6 +23,7 @@ const definition = (
   definition_revision: 1,
   kind: "heartbeat",
   status: "ACTIVE",
+  target_session_id: "session:source",
   target_thread_id: "thread:source",
   name: "Daily Report",
   prompt: "Summarize the workspace.",
@@ -159,8 +166,8 @@ const routingIndex = () => {
         for (const [threadId, automationId] of activeHeartbeats) {
           if (automationId === item.automation_id) activeHeartbeats.delete(threadId);
         }
-        if (item.kind === "heartbeat" && item.status === "ACTIVE" && item.target_thread_id) {
-          activeHeartbeats.set(item.target_thread_id, item.automation_id);
+        if (item.kind === "heartbeat" && item.status === "ACTIVE" && item.target_session_id) {
+          activeHeartbeats.set(item.target_session_id, item.automation_id);
         }
       }
       for (const threadId of input.runs?.removeThreadIds ?? []) runs.delete(threadId);
@@ -174,8 +181,345 @@ const routingIndex = () => {
   });
 };
 
-const coreModules = (automation: CoreModuleClients["automation"]): CoreModules["Service"] =>
-  CoreModules.of({ automation } as unknown as CoreModuleClients);
+const coreModules = (
+  automation: CoreModuleClients["automation"],
+  workspace?: CoreModuleClients["workspace"],
+): CoreModules["Service"] =>
+  CoreModules.of({ automation, workspace } as unknown as CoreModuleClients);
+
+const lostCommandResponse = coreRuntimeError({
+  operation: "automation.apply",
+  reason: "transport-loss",
+  retryable: true,
+});
+
+const agentProvenance = {
+  profile_id: "profile:a",
+  authority: {
+    thread_id: "thread:a",
+    turn_id: "turn:a",
+    root_thread_id: "thread:a",
+    actor_project_id: "project:actor",
+    library_id: "library:a",
+    store_epoch: "epoch:a",
+    scope: "project",
+    source: "project_turn",
+  },
+} as const;
+
+it.effect("returns duplicate creation receipts without restoring stale Heartbeat routing", () =>
+  Effect.gen(function* () {
+    let creation: AutomationApplyResult | undefined;
+    const routing = routingIndex();
+    const application = yield* make.pipe(
+      Effect.provideService(
+        CoreModules,
+        coreModules({
+          read: () => Effect.die("Explicit commands must not reread Definitions"),
+          apply: ({ intent }) => {
+            if (intent.kind === "create_definition") {
+              if (creation) {
+                return Effect.succeed({
+                  ...creation,
+                  receipt: { ...creation.receipt, duplicate: true },
+                });
+              }
+              creation = committed({
+                definitions: [definition({ automation_id: intent.automation_id })],
+              });
+              return Effect.succeed(creation);
+            }
+            if (intent.kind !== "update_definition") return Effect.die("unexpected intent");
+            return Effect.succeed(
+              committed({
+                definitions: [
+                  definition({
+                    automation_id: intent.automation_id,
+                    status: "PAUSED",
+                    definition_revision: 2,
+                  }),
+                ],
+              }),
+            );
+          },
+        }),
+      ),
+      Effect.provideService(AutomationRoutingIndex, routing),
+    );
+    const input = {
+      kind: "heartbeat" as const,
+      name: "Daily Report",
+      targetSessionId: "session:source",
+    };
+    const command = { operationId: "create:daily-report" };
+    const created = yield* application.definitions.create(input, command);
+    assert.strictEqual(routing.activeHeartbeatAutomationId("session:source"), created.id);
+
+    yield* application.definitions.update(
+      { ...input, id: created.id, status: "PAUSED" },
+      { operationId: "pause:daily-report", expectedRevision: created.definitionRevision },
+    );
+    assert.isNull(routing.activeHeartbeatAutomationId("session:source"));
+
+    const replayed = yield* application.definitions.create(input, command);
+    assert.deepStrictEqual(replayed, created);
+    assert.isNull(routing.activeHeartbeatAutomationId("session:source"));
+  }),
+);
+
+it.effect("replays create identity across fresh owners without reading mutable Definitions", () =>
+  Effect.gen(function* () {
+    const requests: AutomationApplyInput[] = [];
+    const createApplication = make.pipe(
+      Effect.provideService(
+        CoreModules,
+        coreModules({
+          read: () => Effect.die("A stable create must not read Definitions"),
+          apply: (input) => {
+            requests.push(input);
+            if (input.intent.kind !== "create_definition") return Effect.die("unexpected intent");
+            if (requests.length === 1) return Effect.fail(lostCommandResponse);
+            return Effect.succeed(
+              committed({
+                definitions: [
+                  definition({
+                    automation_id: input.intent.automation_id,
+                    name: "Committed report",
+                    definition_revision: 8,
+                  }),
+                ],
+              }),
+            );
+          },
+        }),
+      ),
+      Effect.provideService(AutomationRoutingIndex, routingIndex()),
+    );
+    const input = {
+      kind: "heartbeat" as const,
+      name: "Daily Report",
+      targetSessionId: "session:source",
+    };
+    const command = { operationId: "create:daily-report" };
+    const firstOwner = yield* createApplication;
+    const lost = yield* Effect.flip(firstOwner.definitions.create(input, command));
+    assert.strictEqual(lost.cause, lostCommandResponse);
+
+    const secondOwner = yield* createApplication;
+    const recovered = yield* secondOwner.definitions.create(input, command);
+    const another = yield* secondOwner.definitions.create(input, {
+      operationId: "create:another-report",
+    });
+
+    assert.deepStrictEqual(requests[1], requests[0]);
+    assert.strictEqual(requests[1]?.operationId, command.operationId);
+    assert.strictEqual(recovered.name, "Committed report");
+    assert.strictEqual(recovered.definitionRevision, 8);
+    assert.notStrictEqual(recovered.id, another.id);
+  }),
+);
+
+it.effect("replays complete Definition replacements with the original revision and result", () =>
+  Effect.gen(function* () {
+    const requests: AutomationApplyInput[] = [];
+    const createApplication = make.pipe(
+      Effect.provideService(
+        CoreModules,
+        coreModules({
+          read: () => Effect.die("A stable update must not read the current revision"),
+          apply: (input) => {
+            requests.push(input);
+            if (requests.length === 1) return Effect.fail(lostCommandResponse);
+            return Effect.succeed(
+              committed({
+                definitions: [
+                  definition({
+                    name: "Committed replacement",
+                    definition_revision: 8,
+                    project_id: null,
+                    notification_policy: null,
+                  }),
+                ],
+              }),
+            );
+          },
+        }),
+      ),
+      Effect.provideService(AutomationRoutingIndex, routingIndex()),
+    );
+    const input = {
+      id: "daily-report",
+      kind: "cron" as const,
+      status: "ACTIVE" as const,
+      name: "Replacement",
+    };
+    const command = { operationId: "update:daily-report", expectedRevision: 7 };
+    const firstOwner = yield* createApplication;
+    const lost = yield* Effect.flip(firstOwner.definitions.update(input, command));
+    assert.strictEqual(lost.cause, lostCommandResponse);
+
+    const secondOwner = yield* createApplication;
+    const recovered = yield* secondOwner.definitions.update(input, command);
+    assert.deepStrictEqual(requests, [
+      {
+        operationId: command.operationId,
+        intent: {
+          kind: "update_definition",
+          automation_id: input.id,
+          expected_revision: 7,
+          status: "ACTIVE",
+          definition: {
+            kind: "cron",
+            project_id: null,
+            target_session_id: null,
+            notification_policy: { kind: "preserve" },
+            name: "Replacement",
+            prompt: null,
+            rrule: null,
+            model: null,
+            reasoning_effort: null,
+            service_tier: null,
+            backend_binding: { kind: "codex" },
+            cwds: null,
+            execution_environment: null,
+            local_environment_config_path: null,
+          },
+        },
+      },
+      requests[0],
+    ]);
+    assert.strictEqual(recovered?.name, "Committed replacement");
+    assert.strictEqual(recovered?.definitionRevision, 8);
+    assert.isNull(recovered?.projectId);
+    assert.isNull(recovered?.notificationPolicy);
+  }),
+);
+
+it.effect("replays Definition deletion with its observed revision and committed result", () =>
+  Effect.gen(function* () {
+    const requests: AutomationApplyInput[] = [];
+    const routing = routingIndex();
+    routing.commit({ definitions: { upsert: [definition()] } });
+    const createApplication = make.pipe(
+      Effect.provideService(
+        CoreModules,
+        coreModules({
+          read: () => Effect.die("A stable delete must not reread a deleted Definition"),
+          apply: (input) => {
+            requests.push(input);
+            if (requests.length === 1) return Effect.fail(lostCommandResponse);
+            return Effect.succeed(
+              committed({
+                definitions: [definition({ status: "DELETED", definition_revision: 8 })],
+                deleted_run_ids: ["thread:run"],
+              }),
+            );
+          },
+        }),
+      ),
+      Effect.provideService(AutomationRoutingIndex, routing),
+    );
+    const command = { operationId: "delete:daily-report", expectedRevision: 7 };
+    const firstOwner = yield* createApplication;
+    const lost = yield* Effect.flip(firstOwner.definitions.delete("daily-report", command));
+    assert.strictEqual(lost.cause, lostCommandResponse);
+
+    const secondOwner = yield* createApplication;
+    const recovered = yield* secondOwner.definitions.delete("daily-report", command);
+    assert.deepStrictEqual(requests, [
+      {
+        operationId: command.operationId,
+        intent: {
+          kind: "delete_definition",
+          automation_id: "daily-report",
+          expected_revision: 7,
+        },
+      },
+      requests[0],
+    ]);
+    assert.strictEqual(recovered.status, "deleted");
+    assert.strictEqual(recovered.item?.status, "DELETED");
+    assert.strictEqual(recovered.item?.definitionRevision, 8);
+    assert.strictEqual(recovered.deletedRunCount, 1);
+    assert.isNull(routing.activeHeartbeatAutomationId("session:source"));
+  }),
+);
+
+it.effect("requires explicit command identities for ambient Agent Definition mutations", () =>
+  Effect.gen(function* () {
+    const application = yield* make.pipe(
+      Effect.provideService(
+        CoreModules,
+        coreModules({
+          read: () => Effect.die("Unidentified Agent command reached Core read"),
+          apply: () => Effect.die("Unidentified Agent command reached Core apply"),
+        }),
+      ),
+      Effect.provideService(AutomationRoutingIndex, routingIndex()),
+    );
+    const input = { kind: "cron" as const, name: "Daily Report" };
+    const commands = [
+      application.definitions.create(input).pipe(Effect.asVoid),
+      application.definitions
+        .update({ ...input, id: "daily-report", status: "ACTIVE" })
+        .pipe(Effect.asVoid),
+      application.definitions.delete("daily-report").pipe(Effect.asVoid),
+    ];
+    const operations: string[] = [];
+    for (const command of commands) {
+      const rejected = yield* command.pipe(
+        Effect.provideService(CoreApplicationAgent, agentProvenance),
+        Effect.flip,
+      );
+      operations.push(rejected.operation);
+      assert.match(String(rejected.cause), /stable command identity/);
+    }
+    assert.deepStrictEqual(operations, [
+      "definitions.create",
+      "definitions.update",
+      "definitions.delete",
+    ]);
+  }),
+);
+
+it.effect("requires canonical Sessions for stable Heartbeat create and update commands", () =>
+  Effect.gen(function* () {
+    const application = yield* make.pipe(
+      Effect.provideService(
+        CoreModules,
+        coreModules(
+          {
+            read: () => Effect.die("Stable Heartbeat command read current Automation state"),
+            apply: () => Effect.die("Heartbeat without a Session reached Core apply"),
+          },
+          {
+            read: () => Effect.die("Stable Heartbeat command resolved a mutable Thread target"),
+            apply: () => Effect.die("Heartbeat command mutated Workspace"),
+          },
+        ),
+      ),
+      Effect.provideService(AutomationRoutingIndex, routingIndex()),
+    );
+    const input = {
+      kind: "heartbeat" as const,
+      name: "Daily Report",
+      targetThreadId: "thread:source",
+    };
+    const createError = yield* Effect.flip(
+      application.definitions.create(input, { operationId: "create:heartbeat" }),
+    );
+    const updateError = yield* Effect.flip(
+      application.definitions.update(
+        { ...input, id: "daily-report", status: "ACTIVE" },
+        { operationId: "update:heartbeat", expectedRevision: 7 },
+      ),
+    );
+    assert.strictEqual(createError.operation, "definitions.create");
+    assert.strictEqual(updateError.operation, "definitions.update");
+    assert.match(String(createError.cause), /requires its target Session/);
+    assert.match(String(updateError.cause), /requires its target Session/);
+  }),
+);
 
 it.effect("commits Definition and Run routing before mutations return", () =>
   Effect.gen(function* () {
@@ -200,11 +544,12 @@ it.effect("commits Definition and Run routing before mutations return", () =>
       kind: "heartbeat",
       name: "Daily Report",
       prompt: "Summarize the workspace.",
+      targetSessionId: "session:source",
       targetThreadId: "thread:source",
       cwds: ["/workspace"],
     });
     assert.strictEqual(created.id, "daily-report");
-    assert.strictEqual(routing.activeHeartbeatAutomationId("thread:source"), "daily-report");
+    assert.strictEqual(routing.activeHeartbeatAutomationId("session:source"), "daily-report");
 
     assert.isTrue(
       yield* application.runs.begin({
@@ -319,7 +664,7 @@ it.effect("routes occurrence reads and mutations through the exact Project scope
   Effect.gen(function* () {
     const calls: Array<{
       readonly kind: "read" | "apply";
-      readonly projectId: string | undefined;
+      readonly projectId: string | null | undefined;
       readonly input: unknown;
     }> = [];
     const application = yield* make.pipe(
@@ -386,7 +731,7 @@ it.effect("keeps Inbox and Reminder scheduler traffic on the root background lan
     const calls: Array<{
       readonly kind: "read" | "apply";
       readonly requestClass: string | undefined;
-      readonly projectId: string | undefined;
+      readonly projectId: string | null | undefined;
     }> = [];
     const application = yield* make.pipe(
       Effect.provideService(
@@ -466,5 +811,150 @@ it.effect("keeps Inbox and Reminder scheduler traffic on the root background lan
       { kind: "read", requestClass: "background", projectId: undefined },
       { kind: "apply", requestClass: "background", projectId: undefined },
     ]);
+  }),
+);
+
+it.effect("preserves an omitted notification preference and clears an explicit null", () =>
+  Effect.gen(function* () {
+    let saved = definition({ notification_policy: "failed_runs_only" });
+    const application = yield* make.pipe(
+      Effect.provideService(
+        CoreModules,
+        coreModules({
+          read: () => Effect.succeed(readSnapshot({ kind: "definition", item: saved })),
+          apply: ({ intent }) => {
+            assert.strictEqual(intent.kind, "update_definition");
+            if (intent.kind !== "update_definition") return Effect.die("unexpected intent");
+            saved = {
+              ...saved,
+              notification_policy:
+                intent.definition.notification_policy?.kind === "set"
+                  ? (intent.definition.notification_policy.value ?? null)
+                  : saved.notification_policy,
+              definition_revision: saved.definition_revision + 1,
+            };
+            return Effect.succeed(committed({ definitions: [saved] }));
+          },
+        }),
+      ),
+      Effect.provideService(AutomationRoutingIndex, routingIndex()),
+    );
+    const update = {
+      id: saved.automation_id,
+      name: saved.name,
+      prompt: saved.prompt,
+      kind: "heartbeat" as const,
+      status: "ACTIVE" as const,
+      targetSessionId: "session:source",
+      targetThreadId: "thread:source",
+    };
+    assert.strictEqual(
+      (yield* application.definitions.update(update))?.notificationPolicy,
+      "failed_runs_only",
+    );
+    assert.strictEqual(
+      (yield* application.definitions.update({ ...update, notificationPolicy: null }))
+        ?.notificationPolicy,
+      null,
+    );
+  }),
+);
+
+it.effect(
+  "resolves a selected backend Thread to its canonical heartbeat Session before saving",
+  () =>
+    Effect.gen(function* () {
+      let resolvedThread: string | null = null;
+      const application = yield* make.pipe(
+        Effect.provideService(
+          CoreModules,
+          coreModules(
+            {
+              read: () => Effect.succeed(readSnapshot({ kind: "definition", item: null })),
+              apply: ({ intent }) => {
+                if (intent.kind !== "create_definition") return Effect.die("unexpected mutation");
+                assert.strictEqual(intent.definition.target_session_id, "session:source");
+                return Effect.succeed(committed({ definitions: [definition()] }));
+              },
+            },
+            {
+              read: (query) => {
+                if (query.kind !== "thread") return Effect.die("unexpected read");
+                resolvedThread = query.thread_id;
+                return Effect.succeed({
+                  value: { kind: "thread", thread: { session_id: "session:source" } },
+                } as never);
+              },
+              apply: () => Effect.die("lookup must not mutate Workspace"),
+            },
+          ),
+        ),
+        Effect.provideService(AutomationRoutingIndex, routingIndex()),
+      );
+      const saved = yield* application.definitions.create({
+        kind: "heartbeat",
+        name: "Daily Report",
+        targetThreadId: "thread:source",
+      });
+      assert.strictEqual(resolvedThread, "thread:source");
+      assert.strictEqual(saved.targetSessionId, "session:source");
+      assert.strictEqual(saved.targetThreadId, "thread:source");
+    }),
+);
+
+it.effect("preserves Cron Project identity and uses the execution validation read", () =>
+  Effect.gen(function* () {
+    let saved = definition({
+      kind: "cron",
+      project_id: "project:chosen",
+      target_session_id: null,
+      target_thread_id: null,
+    });
+    let lastRead = "";
+    const application = yield* make.pipe(
+      Effect.provideService(
+        CoreModules,
+        coreModules({
+          read: (query) => {
+            lastRead = query.kind;
+            return Effect.succeed(readSnapshot({ kind: "definition", item: saved }));
+          },
+          apply: ({ intent }) => {
+            if (intent.kind !== "update_definition") return Effect.die("unexpected mutation");
+            saved = {
+              ...saved,
+              project_id: intent.definition.project_id,
+              definition_revision: saved.definition_revision + 1,
+            };
+            return Effect.succeed(committed({ definitions: [saved] }));
+          },
+        }),
+      ),
+      Effect.provideService(AutomationRoutingIndex, routingIndex()),
+    );
+    const update = {
+      id: saved.automation_id,
+      name: saved.name,
+      kind: "cron" as const,
+      status: "ACTIVE" as const,
+    };
+    assert.strictEqual(
+      (yield* application.definitions.update(update))?.projectId,
+      "project:chosen",
+    );
+    assert.strictEqual(
+      (yield* application.definitions.getForExecution(saved.automation_id))?.projectId,
+      "project:chosen",
+    );
+    assert.strictEqual(lastRead, "execution_definition");
+    assert.strictEqual(
+      (yield* application.definitions.update({
+        ...update,
+        projectId: null,
+        cwds: [],
+        executionEnvironment: "local",
+      }))?.projectId,
+      null,
+    );
   }),
 );

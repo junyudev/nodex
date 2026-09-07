@@ -352,6 +352,7 @@ const makePersistentForkHarness = (
             set: () => Effect.die("Unloaded source history must not synthesize a child title"),
             setRequired: () =>
               Effect.die("Unloaded source history must not synthesize a child title"),
+            syncCommittedTitle: () => Effect.die("unused"),
           }),
         ),
         Effect.provideService(

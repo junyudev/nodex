@@ -26,6 +26,13 @@ import {
 } from "./workbench-page-stage-panel";
 import { TerminalPanel } from "./workbench-terminal-panel";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
+import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
+import { readWorkbenchAgentContext } from "@/lib/workbench-agent-context";
+import type { LibraryRouteTarget } from "../../../shared/library-module";
+import type { WorkbenchSceneOwner } from "../../../shared/workbench-scene";
+import { WorkbenchLibraryResourceSurface } from "./workbench-library-resource-surface";
+import { WorkbenchDatabaseViewSurface } from "./workbench-database-view-surface";
+import { readWorkbenchReviewOpen, consumeWorkbenchReviewOpen } from "@/lib/workbench-review-open";
 
 export function WorkbenchTabProjectionPanel({
   tab,
@@ -50,6 +57,7 @@ export function WorkbenchTabProjectionPanel({
   onResolveChatSessionForThread,
   onSendPageToChat,
   onOpenCanvasStage,
+  onOpenLibraryTarget,
   onOpenFileTab,
   onEnsureDefaultDraftSessionForProject,
   onRefreshSessions,
@@ -92,6 +100,16 @@ export function WorkbenchTabProjectionPanel({
   ) => Promise<{ readonly id: string; readonly projectId: string | null }>;
   onSendPageToChat?: (input: SendPageToChatInput) => Promise<void> | void;
   onOpenCanvasStage: OpenCanvasStageHandler;
+  onOpenLibraryTarget: (
+    target: LibraryRouteTarget,
+    options: {
+      readonly owner: WorkbenchSceneOwner;
+      readonly sourceSurfaceId: string;
+      readonly targetPanelId: PanelId;
+      readonly titleSnapshot?: string;
+      readonly mode?: "durable" | "preview";
+    },
+  ) => Promise<boolean>;
   onOpenFileTab: (input: {
     path: string;
     title: string;
@@ -114,11 +132,83 @@ export function WorkbenchTabProjectionPanel({
   onOpenBrowserSettings: (sectionId: BrowserSettingsDestination) => void;
   isActivePanelTab: boolean;
 }) {
-  if (tab.kind === "db_view" && "databaseViewId" in tab.config) {
+  const workbenchOwner = useWorkbenchWindowOwner();
+  const sceneOwner = { kind: "session" as const, sessionId: activeSession.id };
+  const canonicalSurface = readWorkbenchAgentContext(workbenchOwner.read(), sceneOwner)?.tabs.find(
+    (item) => item.tabId === tab.id,
+  )?.surface;
+  if (
+    (tab.kind === "db_view" || tab.kind === "page_stage" || tab.kind === "canvas_stage") &&
+    tab.config.accessContext.kind === "library"
+  ) {
+    if (
+      !canonicalSurface ||
+      (canonicalSurface.kind !== "db_view" &&
+        canonicalSurface.kind !== "page_stage" &&
+        canonicalSurface.kind !== "canvas_stage")
+    )
+      return null;
+    return (
+      <WorkbenchLibraryResourceSurface
+        surface={{ ...canonicalSurface, state: tab.state, stateKey: tab.stateKey }}
+        owner={workbenchOwner}
+        sceneOwner={sceneOwner}
+        windowSessionId={windowSessionId}
+        active={isActivePanelTab}
+        presentedPageIds={presentedPageIds}
+        onClose={() => {
+          void onCloseTab(tab.id);
+        }}
+        onTitleChange={(title) => {
+          onUpdateTab(tab.id, { title });
+        }}
+        onOpenTarget={(target, options) => {
+          void onOpenLibraryTarget(target, {
+            owner: sceneOwner,
+            sourceSurfaceId: tab.id,
+            targetPanelId: tab.panelId,
+            ...options,
+          });
+        }}
+      />
+    );
+  }
+  if (tab.kind === "db_view") {
+    const accessContext = tab.config.accessContext;
+    if (accessContext.kind !== "project") return null;
+    const projectId = accessContext.projectId;
+    const workbenchPresentation =
+      canonicalSurface?.kind === "db_view"
+        ? { owner: workbenchOwner, sceneOwner, surface: canonicalSurface }
+        : undefined;
+    if (tab.config.target.kind === "database-default")
+      return (
+        <WorkbenchDatabaseViewSurface
+          workbenchPresentation={workbenchPresentation}
+          accessContext={accessContext}
+          target={tab.config.target}
+          presentedPageIds={presentedPageIds}
+          onOpenPage={(pageId, titleSnapshot, openMode) => {
+            void onOpenPageTab(projectId, pageId, titleSnapshot, {
+              openMode,
+              placement: { kind: "same-group", sourceSurfaceId: tab.id },
+            });
+          }}
+        />
+      );
+    const databaseViewId =
+      tab.config.target.kind === "database-view"
+        ? tab.config.target.databaseViewId
+        : projects.find((project) => project.id === projectId)?.defaultDatabaseViewId;
+    if (!databaseViewId) return <div role="status">Database View is unavailable</div>;
     return (
       <DbViewSessionTab
+        workbenchPresentation={workbenchPresentation}
         sessionId={activeSession.id}
-        tab={tab}
+        tab={{
+          ...tab,
+          config: { accessContext, target: { kind: "database-view", databaseViewId } },
+        }}
         projects={projects}
         activeSearchQuery={activeSearchQuery}
         searchByProject={searchByProject}
@@ -134,7 +224,7 @@ export function WorkbenchTabProjectionPanel({
         onSelectDatabaseView={(databaseViewId, title) => {
           onUpdateTab(tab.id, {
             title,
-            config: { projectId: tab.config.projectId, databaseViewId },
+            config: { accessContext, target: { kind: "database-view", databaseViewId } },
           });
         }}
         targetLeafId={resolveLeafIdForPanelTab(activeSession, tab.panelId, tab.id)}
@@ -143,18 +233,13 @@ export function WorkbenchTabProjectionPanel({
   }
 
   if (tab.kind === "canvas_stage") {
+    const accessContext = tab.config.accessContext;
+    if (accessContext.kind !== "project") return null;
     const surface = {
       id: tab.id,
       kind: "canvas_stage" as const,
       titleSnapshot: tab.title,
-      config: {
-        accessContext: {
-          kind: "project" as const,
-          projectId: tab.config.projectId,
-        },
-        canvasBlockId: tab.config.canvasBlockId,
-        ...(tab.config.titleSnapshot ? { titleSnapshot: tab.config.titleSnapshot } : {}),
-      },
+      config: tab.config,
       stateKey: tab.stateKey,
       state: tab.state,
     };
@@ -169,7 +254,7 @@ export function WorkbenchTabProjectionPanel({
           onUpdateTab(tab.id, { title });
         }}
         onOpenPage={({ pageId, titleSnapshot }) => {
-          void onOpenPageTab(tab.config.projectId, pageId, titleSnapshot, {
+          void onOpenPageTab(accessContext.projectId, pageId, titleSnapshot, {
             openMode: "durable",
             placement: { kind: "same-group", sourceSurfaceId: tab.id },
           });
@@ -178,18 +263,14 @@ export function WorkbenchTabProjectionPanel({
     );
   }
 
-  if (tab.kind === "page_stage" && "pageId" in tab.config && "projectId" in tab.config) {
-    const pageTab = tab as WorkbenchTabProjection & {
-      config: {
-        projectId: string;
-        pageId: string;
-        titleSnapshot?: string;
-      };
-    };
+  if (tab.kind === "page_stage") {
+    if (tab.config.accessContext.kind !== "project") return null;
+    const pageAccessProjectId = tab.config.accessContext.projectId;
+    const pageTab = tab;
     return (
       <PageStageSessionTab
         tab={pageTab}
-        project={projects.find((item) => item.id === pageTab.config.projectId) ?? null}
+        project={projects.find((item) => item.id === pageAccessProjectId) ?? null}
         closeRef={pageStageCloseRef}
         persistRef={pageStagePersistRef}
         sessionSnapshotRef={pageStageSessionSnapshotRef}
@@ -198,7 +279,7 @@ export function WorkbenchTabProjectionPanel({
           activeSession.thread ? projectSessionThreadLinkToSummary(activeSession.thread) : null
         }
         canStartThreadInSession={
-          !activeSession.thread && activeSession.projectId === pageTab.config.projectId
+          !activeSession.thread && activeSession.projectId === pageAccessProjectId
         }
         onLeavePage={onLeavePageStage}
         onClose={() => void onCloseTab(tab.id)}
@@ -219,7 +300,7 @@ export function WorkbenchTabProjectionPanel({
           pageStageHistoryModal &&
           pageStageHistoryModal.sessionId === activeSession.id &&
           pageStageHistoryModal.tabId === pageTab.id &&
-          pageStageHistoryModal.projectId === pageTab.config.projectId &&
+          pageStageHistoryModal.projectId === pageAccessProjectId &&
           pageStageHistoryModal.pageId === pageTab.config.pageId,
         )}
         onToggleHistoryPanel={onTogglePageStageHistoryModal}
@@ -260,6 +341,15 @@ export function WorkbenchTabProjectionPanel({
         threadId={activeSession.thread?.threadId ?? null}
         projectWorkspacePath={projectWorkspaceRootOrNull(project)}
         searchOpenTick={0}
+        pendingOpen={readWorkbenchReviewOpen(tab.state)}
+        onOpenConsumed={(operationId) =>
+          consumeWorkbenchReviewOpen(
+            workbenchOwner,
+            { kind: "session", sessionId: activeSession.id },
+            tab.id,
+            operationId,
+          )
+        }
       />
     );
   }

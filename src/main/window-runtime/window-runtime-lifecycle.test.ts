@@ -15,6 +15,7 @@ function primary(
     focused: false,
     kind: "primary",
     layoutRevision: 1,
+    rendererGeneration: "generation-1",
     webContentsId,
     windowId: webContentsId,
     windowSessionId: `window-session-${webContentsId}`,

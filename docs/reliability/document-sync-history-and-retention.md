@@ -216,9 +216,12 @@ cannot accept the extra early-release handoff. The original admitted attempt and
 its durable window owner remain responsible for outcome recovery and retention;
 the renderer does not build an unbounded second cleanup queue.
 
-Recipe lifecycle has its own authorized Project projection. Notifications carry
+Recipe lifecycle uses an authorized Project history projection or, for recipes
+without an actor Project, a Library projection. Release, supersession and owner
+cleanup preserve that absent actor instead of selecting an arbitrary Project.
+Library history surfaces reconcile Library repair signals. Notifications carry
 no inverse contents; each surface reconciles only the capabilities it already
-holds, in batches of at most 200. The read verifies Library, Project actor, Store
+holds, in batches of at most 200. The read verifies Library, any Project actor, Store
 epoch, recipe identity and hash. Stale snapshots cannot regress a newer observed
 state, and a snapshot must cover the exact requested capabilities. Only known
 supersession removes a reachable action automatically. A real release is a

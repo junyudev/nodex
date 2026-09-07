@@ -1,3 +1,6 @@
+import { make as makeAppCalls, CodexAppCallRejected } from "./CodexAppCallRuntime";
+import type { CodexAppCallClaim, createCodexAppCallAdmission } from "./codex-app-call-admission";
+import type { CodexServerNotification } from "./CodexApplicationProtocol";
 import type { RequestId } from "@nodex/codex-app-server-protocol";
 import type {
   CodexAppServerNotification,
@@ -111,6 +114,17 @@ export interface CodexApplicationRequestGeneration {
 }
 
 export interface CodexApplicationRequestInboxService {
+  /** Observe only canonical notifications after application Turn authority admission. */
+  readonly observeAppCallNotification: (
+    source: { readonly hostId: string; readonly generation: number },
+    notification: CodexServerNotification,
+  ) => Effect.Effect<void>;
+  /** Execute a native MCP invocation only in the exact generation that launched its bridge. */
+  readonly runAppCall: <A, E, R>(
+    source: { readonly hostId: string; readonly generation: number },
+    input: Parameters<ReturnType<typeof createCodexAppCallAdmission>["claim"]>[0],
+    operation: (claim: CodexAppCallClaim) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | CodexAppCallRejected, R>;
   /** Lossless, transport-ordered ingress for requests and notifications from every Endpoint. */
   readonly occurrences: Stream.Stream<CodexApplicationProtocolOccurrence>;
   readonly publishNotification: (input: {
@@ -160,6 +174,7 @@ export class CodexApplicationRequestInbox extends Context.Service<
 >()("nodex/main/codex-runtime/CodexApplicationRequestInbox") {}
 
 interface GenerationState {
+  readonly appCalls: Effect.Success<typeof makeAppCalls>;
   readonly failed: boolean;
   readonly lease: object;
   /** Requests retain their occurrence after FIFO dequeue until the response is settled. */
@@ -463,6 +478,7 @@ export const makeWithCapacities = (
           yield* Queue.dropping<CodexApplicationRequestSettlement>(settlementCapacity);
         const termination = yield* Deferred.make<never, CodexApplicationConsequenceFailure>();
         const processingScope = yield* Effect.scope;
+        const appCalls = yield* makeAppCalls;
         const lease = {};
         const registered = yield* SynchronizedRef.modifyEffect(state, (current) => {
           if (current.closed) {
@@ -477,6 +493,7 @@ export const makeWithCapacities = (
             lease,
             pending: new Map(),
             processingScope,
+            appCalls,
             settlements,
             termination,
           });
@@ -743,6 +760,43 @@ export const makeWithCapacities = (
         return yield* Effect.failCause(exit.cause);
       });
 
+    const observeAppCallNotification: CodexApplicationRequestInboxService["observeAppCallNotification"] =
+      (source, notification) =>
+        Effect.gen(function* () {
+          const current = yield* SynchronizedRef.get(state);
+          const active = current.generations.get(generationKey(source.hostId, source.generation));
+          if (current.closed || !active || active.failed) return;
+          if (notification.method === "turn/started") {
+            yield* active.appCalls.startTurn(
+              notification.params.threadId,
+              notification.params.turn.id,
+            );
+            return;
+          }
+          if (notification.method === "turn/completed") {
+            yield* active.appCalls.endTurn(
+              notification.params.threadId,
+              notification.params.turn.id,
+            );
+            return;
+          }
+          if (notification.method === "item/started")
+            yield* active.appCalls.observe(notification.params);
+        });
+
+    const runAppCall: CodexApplicationRequestInboxService["runAppCall"] = (
+      source,
+      input,
+      operation,
+    ) =>
+      Effect.gen(function* () {
+        const current = yield* SynchronizedRef.get(state);
+        const active = current.generations.get(generationKey(source.hostId, source.generation));
+        if (current.closed || !active || active.failed)
+          return yield* new CodexAppCallRejected({ reason: "revoked" });
+        return yield* active.appCalls.run(input, operation);
+      });
+
     const publishNotification: CodexApplicationRequestInboxService["publishNotification"] = (
       input,
     ) =>
@@ -836,6 +890,8 @@ export const makeWithCapacities = (
     );
 
     return CodexApplicationRequestInbox.of({
+      observeAppCallNotification,
+      runAppCall,
       occurrences: Stream.fromEffectRepeat(takeOccurrence),
       publishNotification,
       openGeneration,

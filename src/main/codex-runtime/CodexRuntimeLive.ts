@@ -15,6 +15,7 @@ import { CodexRequestScheduler, live as requestSchedulerLive } from "./CodexRequ
 
 export interface CodexRuntimeOptions {
   readonly local: Omit<CodexAppServerSessionOptions, "generation">;
+  readonly localSessionLayer?: CodexEndpointConfig["sessionLayer"];
   readonly requestTimeout: Duration.Input;
   readonly retryBase?: Duration.Input;
   readonly retryCap?: Duration.Input;
@@ -23,7 +24,8 @@ export interface CodexRuntimeOptions {
 
 export const localEndpointConfig = (options: CodexRuntimeOptions): CodexEndpointConfig => ({
   hostId: options.local.hostId,
-  sessionLayer: (generation) => sessionLive({ ...options.local, generation }),
+  sessionLayer:
+    options.localSessionLayer ?? ((generation) => sessionLive({ ...options.local, generation })),
   ...(options.retryBase === undefined ? {} : { retryBase: options.retryBase }),
   ...(options.retryCap === undefined ? {} : { retryCap: options.retryCap }),
   ...(options.jitter === undefined ? {} : { jitter: options.jitter }),

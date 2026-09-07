@@ -88,10 +88,10 @@ impl QueryContext<'_> {
                 row.get::<_, String>(2)?, row.get::<_, Option<String>>(3)?, row.get::<_, String>(4)?, row.get::<_, String>(5)?, row.get::<_, i64>(6)?)),
         ).optional()?.ok_or_else(|| error(StoreErrorCode::MaterializationStale, "Page has no exact current title materialization"))?;
         let rich_title = super::content::parse_rich_title(Some(rich_title))?;
-        let actor = self.etag_project()?;
+        let actor = self.project_id();
         let title_etag = crate::document::mint_document_title_etag(
             self.connection,
-            &actor,
+            actor,
             self.store_epoch,
             &document_id,
             rich_title,
@@ -204,12 +204,6 @@ impl QueryContext<'_> {
 
     fn project_id(&self) -> Option<&str> {
         self.context.project_id.as_ref().map(|id| id.0.as_str())
-    }
-    fn etag_project(&self) -> Result<String, StoreError> {
-        if let Some(project) = self.project_id() {
-            return Ok(project.to_owned());
-        }
-        super::mutation::resolve_library_actor_project_id(self.connection, self.library_id)
     }
     fn require_page(&self, id: &str) -> Result<(), StoreError> {
         if let Some(project) = self.project_id() {

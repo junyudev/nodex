@@ -26,10 +26,10 @@ enum DestinationAuthority<'a> {
 }
 
 impl DestinationAuthority<'_> {
-    fn actor_project_id(&self) -> &str {
+    fn actor_project_id(&self) -> Option<&str> {
         match self {
-            Self::ProjectBound(project_id) => project_id,
-            Self::TrustedLibrary(authority) => &authority.actor_project_id,
+            Self::ProjectBound(project_id) => Some(project_id),
+            Self::TrustedLibrary(authority) => authority.actor_project_id.as_deref(),
         }
     }
 
@@ -200,7 +200,7 @@ pub(super) fn move_page(
         Some(project_id) => DestinationAuthority::ProjectBound(project_id),
         None => DestinationAuthority::TrustedLibrary(&authority),
     };
-    let project_id = authority.actor_project_id.as_str();
+    let project_id = authority.actor_project_id.as_deref();
     let source = read_source(connection, library_id, page_id)?;
     let destination = resolve_destination(
         connection,
@@ -218,7 +218,7 @@ pub(super) fn move_page(
         }
     };
     let current_etag = match destination_authority {
-        DestinationAuthority::ProjectBound(_) => crate::database::mint_page_move_etag(
+        DestinationAuthority::ProjectBound(project_id) => crate::database::mint_page_move_etag(
             connection,
             library_id,
             project_id,
@@ -313,7 +313,9 @@ fn resolve_destination(
     let project_id = authority.actor_project_id();
     match request {
         LibraryPageWriteDestination::Library { at } => {
-            super::mutation::require_project_in_library(connection, project_id, library_id)?;
+            if let Some(project_id) = project_id {
+                super::mutation::require_project_in_library(connection, project_id, library_id)?;
+            }
             let ids = connection
                 .prepare(
                     "SELECT placement.block_id FROM library_block_placements placement \
@@ -330,6 +332,8 @@ fn resolve_destination(
         LibraryPageWriteDestination::Page { page_id, at } => {
             validate_id(page_id, "destination.page_id")?;
             if !authority.is_trusted_library() {
+                let project_id = project_id
+                    .ok_or_else(|| unauthorized("Project destination requires an actor Project"))?;
                 super::require_page_write_access(connection, library_id, project_id, page_id)?;
             }
             let (document_id, generation, head_seq) = connection
@@ -471,7 +475,9 @@ fn resolve_destination(
                 resolve_page_transfer_data_source_destination(
                     connection,
                     library_id,
-                    project_id,
+                    project_id.ok_or_else(|| {
+                        unauthorized("Project destination requires an actor Project")
+                    })?,
                     data_source_id,
                     &view_id,
                     group_key.as_deref(),

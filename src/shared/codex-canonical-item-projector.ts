@@ -16,6 +16,7 @@ import {
 } from "./codex-user-attachment-projection";
 import { projectCodexParsedCommand } from "./codex-command-action-projection";
 import { projectCodexMcpToolCall } from "./codex-mcp-tool-call";
+import { projectNativeAutomationUpdate } from "./nodex-app-tools/automation-projection";
 import { parseCodexDelegationText } from "./codex-delegation";
 import { projectCodexReasoningSummary } from "./codex-reasoning-projection";
 import {
@@ -844,6 +845,7 @@ function projectCanonicalItemViews(
           semanticKind: "mcpToolCall",
           status: item.status,
           mcpToolCall: projectCodexMcpToolCall(item, context.turnStatus),
+          automationUpdate: projectNativeAutomationUpdate(item),
         },
       ];
     case "dynamicToolCall":

@@ -178,7 +178,7 @@ fn apply_with_kind(
                     connection,
                     store_epoch,
                     library_id,
-                    &authority.actor_project_id,
+                    authority.actor_project_id.as_deref(),
                     operation_id,
                     prepared_blob_receipt_id,
                 )?;
@@ -225,7 +225,7 @@ fn apply_with_kind(
             let write = FileWriteContext {
                 connection,
                 library_id,
-                actor_id: &authority.actor_project_id,
+                actor_id: authority.actor_project_id.as_deref(),
                 turn_id,
                 operation_id,
                 now: &now,
@@ -374,7 +374,7 @@ fn apply_with_kind(
                 context,
                 operation_id,
                 effects(
-                    &authority.actor_project_id,
+                    authority.actor_project_id.as_deref(),
                     operation_kind,
                     vec![receipt],
                     created,
@@ -454,7 +454,7 @@ pub(super) fn transfer(
                 context,
                 operation_id,
                 effects(
-                    &authority.actor_project_id,
+                    authority.actor_project_id.as_deref(),
                     "transfer_page_file_entry",
                     vec![
                         receipt(source_page_id, source_revision + i64::from(!copy), !copy),
@@ -513,7 +513,7 @@ fn require_current_source(
 }
 
 fn effects(
-    actor: &str,
+    actor: Option<&str>,
     operation_kind: &'static str,
     receipts: Vec<LibraryPageFileEntryReceipt>,
     created: BTreeMap<String, i64>,
@@ -543,7 +543,7 @@ fn effects(
         page_file_entries: receipts,
         file_revisions: created,
         file_mutation: None,
-        project_id: actor.to_owned(),
+        project_id: actor.map(str::to_owned),
         operation_kind,
         change_kind: "library.changed",
         did_mutate: !affected_page_ids.is_empty(),

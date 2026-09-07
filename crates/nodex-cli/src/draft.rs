@@ -192,6 +192,7 @@ impl From<DraftEdit> for DocumentSemanticCommand {
                 old_fragment,
                 new_fragment,
                 expected_matches: None,
+                expected_etag: None,
             },
         }
     }

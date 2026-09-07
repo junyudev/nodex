@@ -53,6 +53,7 @@ pub enum AgentResourceAuthorizationReason {
     AuthorityStale,
     GrantMissing,
     ProjectReadOnly,
+    TurnReadOnly,
     GrantReadOnly,
     StructuralCapabilityRequired,
 }

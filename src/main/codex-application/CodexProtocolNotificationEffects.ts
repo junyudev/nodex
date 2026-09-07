@@ -20,6 +20,7 @@ import type { CodexConversationReducerEffect } from "../../shared/codex-conversa
 import { extractCodexThreadSpawnMetadata } from "../../shared/codex-subagent-metadata";
 import type { CodexNotificationConversationFacts } from "../../shared/codex-thread-notification";
 import {
+  type CodexHeartbeatDecision,
   hasCodexPendingContinuation,
   parseCodexHeartbeatAssistantMessage,
 } from "../../shared/codex-turn-notification";
@@ -217,6 +218,7 @@ export const make: Effect.Effect<
     function* (
       threadId: string,
       turn: Extract<CodexServerNotification, { method: "turn/completed" }>["params"]["turn"],
+      automationNotificationDecision: CodexHeartbeatDecision | null,
     ) {
       if (turn.status === "inProgress") return;
       const aggregate = conversations.current(threadId);
@@ -241,7 +243,7 @@ export const make: Effect.Effect<
           status: turn.status,
           lastAgentMessage: message,
           heartbeatAssistantMessage: parseCodexHeartbeatAssistantMessage(message),
-          automationNotificationDecision: null,
+          automationNotificationDecision,
           hasPendingContinuation: hasCodexPendingContinuation({
             terminalStatus: turn.status,
             queuedResourceLoading: false,
@@ -565,8 +567,8 @@ export const make: Effect.Effect<
     if (notification.method === "turn/completed") {
       yield* browserUse.turnEnded({ sessionId: threadId, turnId: notification.params.turn.id });
       yield* remoteHostedPip.observeCodexOccurrence({ ...input, notification });
-      yield* automation.complete(threadId, notification.params.turn);
-      yield* publishTurnCompleted(threadId, notification.params.turn);
+      const decision = yield* automation.complete(threadId, notification.params.turn);
+      yield* publishTurnCompleted(threadId, notification.params.turn, decision);
       if (notification.params.turn.status === "interrupted") {
         if (!hasTerminalQueueRecoveryEffect) {
           yield* queued.acceptTerminalOutcomeInCurrentLane({

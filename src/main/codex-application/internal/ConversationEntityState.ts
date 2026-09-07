@@ -116,6 +116,7 @@ import {
   projectCodexConversationServerRequestLifecycle,
 } from "../CodexConversationServerRequestProjection";
 import { projectCodexConversationSnapshot } from "../CodexConversationSnapshotProjection";
+import { projectCodexConversationDocument } from "../../../shared/codex-conversation-document";
 import { projectCodexConversationHistoryResidency } from "../CodexConversationHistoryResidencyProjection";
 import { projectCodexConversationHistoryItemWindows } from "../CodexConversationHistoryProjection";
 import type { CodexHydratedHistoryItemSegment } from "../CodexHistoryPageAdapter";
@@ -1085,6 +1086,7 @@ export function makeConversationEntityStateRegistry(
           observedAtMs: Date.now(),
         });
       }
+      conversation = projectCodexConversationDocument(conversation);
       const checkpoint = buildCodexThreadStreamCheckpoint({
         ownerEpoch: input.ownerEpoch,
         revision: input.revision,

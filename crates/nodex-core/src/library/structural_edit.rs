@@ -741,7 +741,8 @@ pub(super) fn reverse(
     token: &LibraryStructuralHistoryToken,
     _assets_root: &Path,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = &structural_actor_project_id(connection, context)?;
+    let actor_project_id = structural_actor_project_id(connection, context)?;
+    let project_id = actor_project_id.as_deref();
     let (recipe_json, consumed_project_id) = read_history_payload(
         connection,
         library_id,
@@ -757,7 +758,7 @@ pub(super) fn reverse(
         store_epoch,
         request_hash,
         token,
-        &consumed_project_id,
+        consumed_project_id.as_deref(),
         &recipe_json,
     )? {
         return Ok(outcome);
@@ -841,19 +842,18 @@ pub(super) fn reverse(
                     )?;
                     let changed = connection.execute(
                     "UPDATE structural_history_recipes SET state = 'consumed', consumed_at = ?1 \
-                     WHERE recipe_operation_id = ?2 AND library_id = ?3 AND project_id = ?4 \
+                     WHERE recipe_operation_id = ?2 AND library_id = ?3 AND project_id IS ?4 \
                        AND state = 'available' AND recipe_hash = ?5",
                     params![now, token.recipe_operation_id, library_id, consumed_project_id, token.recipe_hash],
                 )?;
                     if changed != 1 {
                         return Err(conflict("Structural history token was already consumed"));
                     }
-                    crate::infrastructure::local_commit::require_projection_read(
+                    require_history_projection_read(
                         connection,
                         scope.evidence(),
-                        nodex_core_contracts::LocalProjectionScope::StructuralHistory {
-                            project_id: consumed_project_id.clone(),
-                        },
+                        library_id,
+                        consumed_project_id.as_deref(),
                     )?;
                     connection.execute(
                         "UPDATE structural_cut_claims SET state = 'revoked', revision = revision + 1, \
@@ -880,7 +880,8 @@ fn capture_clipboard(
     request_hash: &str,
     selection: &LibraryStructuralSelection,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = &structural_actor_project_id(connection, context)?;
+    let actor_project_id = structural_actor_project_id(connection, context)?;
+    let project_id = actor_project_id.as_deref();
     let parent = load_and_authorize_source(connection, context, library_id, selection, false)?;
     let snapshot = capture_snapshot(connection, library_id, &parent, selection)?;
     let snapshot_json = canonical_json(&snapshot, "Structural clipboard snapshot")?;
@@ -997,7 +998,8 @@ fn delete_selection(
     reason: &LibraryStructuralDeleteReason,
     direction: LibraryStructuralDeleteDirection,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = &structural_actor_project_id(connection, context)?;
+    let actor_project_id = structural_actor_project_id(connection, context)?;
+    let project_id = actor_project_id.as_deref();
     let mut parent = load_and_authorize_source(connection, context, library_id, selection, true)?;
     let snapshot = capture_snapshot(connection, library_id, &parent, selection)?;
     let cut_bundle = match reason {
@@ -1140,7 +1142,8 @@ fn paste_clipboard(
     target: &LibraryStructuralTarget,
     assets_root: &Path,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = &structural_actor_project_id(connection, context)?;
+    let actor_project_id = structural_actor_project_id(connection, context)?;
+    let project_id = actor_project_id.as_deref();
     let authority = read_bundle(
         connection,
         library_id,
@@ -1312,7 +1315,8 @@ fn duplicate_selection(
     target: &LibraryStructuralTarget,
     assets_root: &Path,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = &structural_actor_project_id(connection, context)?;
+    let actor_project_id = structural_actor_project_id(connection, context)?;
+    let project_id = actor_project_id.as_deref();
     let source_parent =
         load_and_authorize_source(connection, context, library_id, selection, false)?;
     let snapshot = capture_snapshot(connection, library_id, &source_parent, selection)?;
@@ -1417,7 +1421,8 @@ fn move_selection(
     selection: &LibraryStructuralSelection,
     target: &LibraryStructuralTarget,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = &structural_actor_project_id(connection, context)?;
+    let actor_project_id = structural_actor_project_id(connection, context)?;
+    let project_id = actor_project_id.as_deref();
     let source_parent =
         load_and_authorize_source(connection, context, library_id, selection, true)?;
     let snapshot = capture_snapshot(connection, library_id, &source_parent, selection)?;
@@ -1546,7 +1551,8 @@ fn replace_selection(
     replacement: &LibraryStructuralReplacement,
     assets_root: &Path,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = &structural_actor_project_id(connection, context)?;
+    let actor_project_id = structural_actor_project_id(connection, context)?;
+    let project_id = actor_project_id.as_deref();
     let mut parent = load_and_authorize_source(connection, context, library_id, selection, true)?;
     let removed = capture_snapshot(connection, library_id, &parent, selection)?;
     reject_primary_databases(connection, &removed.databases)?;
@@ -1752,7 +1758,8 @@ fn turn_selection_into(
     selection: &LibraryStructuralSelection,
     target: &LibraryStructuralTurnIntoTarget,
 ) -> Result<LibraryApplyOutcome, StoreError> {
-    let project_id = &structural_actor_project_id(connection, context)?;
+    let actor_project_id = structural_actor_project_id(connection, context)?;
+    let project_id = actor_project_id.as_deref();
     let parent = load_and_authorize_source(connection, context, library_id, selection, true)?;
     let snapshot = capture_snapshot(connection, library_id, &parent, selection)?;
     validate_turn_selection(connection, &snapshot)?;
@@ -1869,7 +1876,8 @@ fn merge_block_backward(
     if source_block_id == target_block_id {
         return Err(invalid("Backward merge source and target must differ"));
     }
-    let project_id = &structural_actor_project_id(connection, context)?;
+    let actor_project_id = structural_actor_project_id(connection, context)?;
+    let project_id = actor_project_id.as_deref();
     let parent = load_and_authorize_source(connection, context, library_id, selection, true)?;
     plan_backward_merge(
         &parent.base_materialization.block_tree,
@@ -2167,7 +2175,7 @@ fn turn_active_selection(
             let commit_result = persist_parent_relocation_source_with_placeholder(
                 connection,
                 ParentDocumentWriteContext {
-                    actor_project_id: &structural_actor_project_id(connection, context)?,
+                    actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
                     store_epoch,
                     operation_id,
                     commit,
@@ -2243,7 +2251,7 @@ fn turn_active_selection(
     let host_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: &structural_actor_project_id(connection, context)?,
+            actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
             commit,
@@ -2461,7 +2469,7 @@ fn restore_turned_selection(
     let host_commit = persist_parent_relocation_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: &structural_actor_project_id(connection, context)?,
+            actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
             commit,
@@ -2504,7 +2512,7 @@ fn restore_turned_selection(
         let commit_result = persist_parent_operations_detailed_with_local_commit(
             connection,
             ParentDocumentWriteContext {
-                actor_project_id: &structural_actor_project_id(connection, context)?,
+                actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
                 store_epoch,
                 operation_id,
                 commit,
@@ -2658,7 +2666,7 @@ fn apply_backward_merge(
     let document_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: &structural_actor_project_id(connection, context)?,
+            actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
             commit,
@@ -2808,7 +2816,7 @@ fn restore_backward_merge(
     let document_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: &structural_actor_project_id(connection, context)?,
+            actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
             commit,
@@ -3077,7 +3085,8 @@ fn release_history(
             "Structural history release exceeds its token bound",
         ));
     }
-    let project_id = &structural_actor_project_id(connection, context)?;
+    let actor_project_id = structural_actor_project_id(connection, context)?;
+    let project_id = actor_project_id.as_deref();
     let unique_tokens = tokens
         .iter()
         .map(|token| (token.recipe_operation_id.as_str(), token))
@@ -3107,7 +3116,7 @@ fn release_history(
                     context.project_id.as_ref().map(|id| id.0.as_str()),
                     store_epoch
                 ],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
             )
             .optional()?
             .ok_or_else(|| invalid("Structural history token does not exist"))?;
@@ -3137,7 +3146,7 @@ fn release_history(
                 let recipe_project = &recipe_projects[token.recipe_operation_id.as_str()];
                 let changed = connection.execute(
                     "UPDATE structural_history_recipes SET state = 'consumed', consumed_at = ?1 \
-                     WHERE recipe_operation_id = ?2 AND library_id = ?3 AND project_id = ?4 \
+                     WHERE recipe_operation_id = ?2 AND library_id = ?3 AND project_id IS ?4 \
                        AND store_epoch = ?5 AND recipe_hash = ?6 AND state = 'available'",
                     params![
                         now,
@@ -3152,12 +3161,11 @@ fn release_history(
                     continue;
                 }
                 released_any = true;
-                crate::infrastructure::local_commit::require_projection_read(
+                require_history_projection_read(
                     connection,
                     scope.evidence(),
-                    nodex_core_contracts::LocalProjectionScope::StructuralHistory {
-                        project_id: recipe_project.clone(),
-                    },
+                    library_id,
+                    recipe_project.as_deref(),
                 )?;
                 connection.execute(
                     "UPDATE structural_cut_claims SET state = 'revoked', revision = revision + 1, \
@@ -3229,7 +3237,7 @@ fn apply_recipe_action(
             let content_commit = persist_parent_operations_detailed_with_local_commit(
                 connection,
                 ParentDocumentWriteContext {
-                    actor_project_id: &structural_actor_project_id(connection, context)?,
+                    actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
                     store_epoch,
                     operation_id,
                     commit,
@@ -4355,7 +4363,7 @@ fn consume_cut_claim(
 fn release_previous_clipboards(
     connection: &Connection,
     library_id: &str,
-    project_id: &str,
+    project_id: Option<&str>,
     next_bundle_id: &str,
     now: &str,
 ) -> Result<(), StoreError> {
@@ -4415,7 +4423,7 @@ pub(super) fn read_history_payload(
     requesting_project_id: Option<&str>,
     store_epoch: &str,
     token: &LibraryStructuralHistoryToken,
-) -> Result<(String, String), StoreError> {
+) -> Result<(String, Option<String>), StoreError> {
     if token.store_epoch != store_epoch {
         return Err(StoreError::new(
             StoreErrorCode::StaleStoreEpoch,
@@ -4438,7 +4446,7 @@ pub(super) fn read_history_payload(
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(2)?,
                 ))
             },
         )
@@ -4575,7 +4583,7 @@ pub(super) fn page_mention_history_result(
 
 pub(super) fn page_mention_history_effects(
     prepared: &PreparedPageMentionHistory,
-    project_id: &str,
+    project_id: Option<&str>,
     now: &str,
 ) -> MutationEffects {
     structural_effects(
@@ -4593,7 +4601,7 @@ pub(super) fn persist_page_mention_history(
     prepared: &PreparedPageMentionHistory,
     operation_id: &str,
     library_id: &str,
-    project_id: &str,
+    project_id: Option<&str>,
     store_epoch: &str,
     request_hash: &str,
     event_sequence: i64,
@@ -4628,7 +4636,7 @@ pub(super) fn persist_page_mention_history(
 fn persist_structural_mutation_ledger(
     connection: &Connection,
     operation_id: &str,
-    project_id: &str,
+    project_id: Option<&str>,
     store_epoch: &str,
     request_hash: &str,
     action: &str,
@@ -4700,7 +4708,7 @@ fn insert_history_recipe(
     connection: &Connection,
     operation_id: &str,
     library_id: &str,
-    project_id: &str,
+    project_id: Option<&str>,
     store_epoch: &str,
     recipe_hash: &str,
     recipe_payload: &history_payload::EncodedPayload,
@@ -4731,7 +4739,7 @@ pub(super) fn insert_history_payload(
     connection: &Connection,
     operation_id: &str,
     library_id: &str,
-    project_id: &str,
+    project_id: Option<&str>,
     store_epoch: &str,
     recipe_hash: &str,
     recipe_payload: &history_payload::EncodedPayload,
@@ -5002,8 +5010,26 @@ pub(super) fn read_history_states(
         .collect()
 }
 
+/// Library history has no actor Project; its repair signal carries Library authority.
+pub(super) fn require_history_projection_read(
+    connection: &Connection,
+    commit: &crate::infrastructure::local_commit::CommitContext,
+    library_id: &str,
+    project_id: Option<&str>,
+) -> Result<(), StoreError> {
+    let scope = match project_id {
+        Some(project_id) => nodex_core_contracts::LocalProjectionScope::StructuralHistory {
+            project_id: project_id.to_owned(),
+        },
+        None => nodex_core_contracts::LocalProjectionScope::Library {
+            library_id: library_id.to_owned(),
+        },
+    };
+    crate::infrastructure::local_commit::require_projection_read(connection, commit, scope)
+}
+
 fn history_release_effects(
-    project_id: &str,
+    project_id: Option<&str>,
     result: &LibraryStructuralEditResult,
     now: &str,
 ) -> MutationEffects {
@@ -5011,7 +5037,7 @@ fn history_release_effects(
         page_file_entries: Vec::new(),
         file_revisions: BTreeMap::new(),
         file_mutation: Default::default(),
-        project_id: project_id.to_owned(),
+        project_id: project_id.map(str::to_owned),
         operation_kind: "release_structural_history",
         change_kind: "library.changed",
         did_mutate: false,
@@ -5041,7 +5067,7 @@ fn history_release_effects(
 }
 
 fn structural_effects(
-    project_id: &str,
+    project_id: Option<&str>,
     operation_kind: &'static str,
     snapshots: &[&OwnershipClosureSnapshot],
     result: &LibraryStructuralEditResult,
@@ -5079,7 +5105,7 @@ fn structural_effects(
         page_file_entries: Vec::new(),
         file_revisions: BTreeMap::new(),
         file_mutation: Default::default(),
-        project_id: project_id.to_owned(),
+        project_id: project_id.map(str::to_owned),
         operation_kind,
         change_kind: "library.changed",
         did_mutate: true,
@@ -5169,7 +5195,7 @@ fn constant_time_equal(left: &[u8], right: &[u8]) -> bool {
 fn structural_actor_project_id(
     connection: &Connection,
     context: &BoundModuleContext,
-) -> Result<String, StoreError> {
+) -> Result<Option<String>, StoreError> {
     Ok(super::mutation::resolve_library_mutation_authority(
         connection,
         context,
@@ -5354,7 +5380,7 @@ fn insert_ordinary_replacement(
     let document_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: &structural_actor_project_id(connection, context)?,
+            actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
             commit,
@@ -5455,7 +5481,7 @@ fn delete_snapshot(
     let document_commit = persist_parent_operations_detailed_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: &structural_actor_project_id(connection, context)?,
+            actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
             commit,
@@ -5551,7 +5577,7 @@ fn restore_snapshot(
     let document_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: &structural_actor_project_id(connection, context)?,
+            actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
             commit,
@@ -6476,7 +6502,7 @@ fn move_active_snapshot(
         let document_commit = persist_parent_operations_detailed_with_local_commit(
             connection,
             ParentDocumentWriteContext {
-                actor_project_id: &structural_actor_project_id(connection, context)?,
+                actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
                 store_epoch,
                 operation_id,
                 commit,
@@ -6547,7 +6573,7 @@ fn move_active_snapshot(
     let source_commit = persist_parent_relocation_source_with_placeholder(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: &structural_actor_project_id(connection, context)?,
+            actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
             commit,
@@ -6581,7 +6607,7 @@ fn move_active_snapshot(
     let target_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: &structural_actor_project_id(connection, context)?,
+            actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
             commit,
@@ -6763,7 +6789,8 @@ fn clone_snapshot_into_target(
                     connection,
                     PersistYjsGenesis {
                         authority: &target_authority,
-                        actor_project_id: &structural_actor_project_id(connection, context)?,
+                        actor_project_id: structural_actor_project_id(connection, context)?
+                            .as_deref(),
                         materialization: &prepared.materialization,
                         update_id: &update_id,
                         client_session_id: "library-structural-edit",
@@ -6846,7 +6873,7 @@ fn clone_snapshot_into_target(
     let host_commit = persist_parent_operations_from_source_with_local_commit(
         connection,
         ParentDocumentWriteContext {
-            actor_project_id: &structural_actor_project_id(connection, context)?,
+            actor_project_id: structural_actor_project_id(connection, context)?.as_deref(),
             store_epoch,
             operation_id,
             commit,

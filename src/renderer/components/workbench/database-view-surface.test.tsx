@@ -46,6 +46,18 @@ import {
   beginLocalBlockDragSession,
   endLocalBlockDragSession,
 } from "./block-transfer/cross-surface-drag";
+import { createDefaultWorkbenchLayoutSnapshot } from "../../../shared/workbench-layout";
+import {
+  materializeInitialWorkbenchScene,
+  makeWorkbenchSceneKey,
+} from "../../../shared/workbench-scene";
+import {
+  createScopeHandle,
+  disposeMaitaiStore,
+  getMaitaiRootView,
+} from "@/lib/maitai/maitai-store";
+import { getWorkbenchWindowOwner } from "@/lib/workbench-window-owner";
+import { captureWorkbenchViewContent } from "@/lib/workbench-view-content";
 
 const render: typeof renderDom = (element, options) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -750,6 +762,91 @@ describe("DatabaseViewSurface", () => {
       nextCursor: null,
       projectionRevision: 1,
     }));
+  });
+
+  test("publishes the committed Board or List body and revokes its display reader on unmount", async () => {
+    const store = createMaitaiStore();
+    const sceneOwner = { kind: "project" as const, projectId: "project-1" };
+    const scene = materializeInitialWorkbenchScene(sceneOwner);
+    if (scene.primary?.kind !== "db_view") throw new Error("Expected a View");
+    const owner = getWorkbenchWindowOwner(createScopeHandle(getMaitaiRootView(store)), {
+      ...createDefaultWorkbenchLayoutSnapshot(),
+      location: sceneOwner,
+      scenesByOwnerKey: { [makeWorkbenchSceneKey(sceneOwner)]: scene },
+    });
+    owner.initialize();
+    const release = owner.registerResolvedDatabaseView(
+      sceneOwner,
+      scene.primary,
+      model.databaseViewId,
+    );
+    const binding = {
+      presentation: { owner, sceneOwner, surface: scene.primary },
+      preferencesRevision: 3,
+      preferencesPending: false,
+      loading: false,
+    };
+    const capture = () =>
+      captureWorkbenchViewContent(
+        owner,
+        {
+          kind: "capture_view",
+          sceneOwner,
+          tabId: scene.primary!.id,
+          expectedPresentationRevision: owner.read().presentationRevision,
+          purpose: "display",
+          range: "loaded",
+          offset: 0,
+          limit: 200,
+        },
+        () => true,
+      );
+    const surface = (viewModel: DatabaseViewRenderModel) => (
+      <DatabaseViewSurface
+        workbenchContent={binding}
+        model={viewModel}
+        searchQuery=""
+        onOpenPage={() => {}}
+      />
+    );
+    const screen = render(surface(boardModel()));
+    try {
+      await settleAsyncRender();
+      expect(capture()).toMatchObject({
+        status: "ready",
+        layout: "board",
+        preferencesRevision: 3,
+        coverage: {
+          loadedOccurrenceCount: 2,
+          mountedOccurrenceCount: 2,
+          viewportOccurrenceCount: 0,
+          viewportKnown: false,
+        },
+      });
+      const board = capture();
+      if (board.status !== "ready") throw new Error("Expected Board capture");
+      expect(board.occurrences.map((entry) => entry.pageId)).toEqual(["page-focused", "page-next"]);
+      await act(async () => {
+        screen.rerender(surface(model));
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(capture()).toMatchObject({
+          status: "ready",
+          layout: "list",
+          coverage: { loadedOccurrenceCount: 1 },
+        }),
+      );
+      await act(async () => {
+        screen.unmount();
+        await Promise.resolve();
+      });
+      expect(capture()).toEqual({ status: "surface_unavailable" });
+    } finally {
+      screen.unmount();
+      release();
+      disposeMaitaiStore(store);
+    }
   });
 
   test("opens related Chat activity without activating or opening the List Page", async () => {

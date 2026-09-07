@@ -15,13 +15,14 @@ import { CoreModules, type CoreModuleClients } from "./CoreModules";
 
 const definition = (input: {
   readonly automationId: string;
-  readonly targetThreadId: string;
+  readonly targetSessionId: string;
 }): AutomationRoutingDefinition => ({
   automation_id: input.automationId,
   definition_revision: 1,
   kind: "heartbeat",
   status: "ACTIVE",
-  target_thread_id: input.targetThreadId,
+  target_session_id: input.targetSessionId,
+  target_thread_id: "backend-attachment",
   name: input.automationId,
   prompt: "Check for updates",
   rrule: "FREQ=HOURLY",
@@ -98,7 +99,7 @@ it.effect("owns routing lookups and fences a stale rebuild behind a committed mu
       let phase: "initial" | "stale" = "initial";
       const committedDefinition = definition({
         automationId: "heartbeat:new",
-        targetThreadId: "thread:new-heartbeat",
+        targetSessionId: "thread:new-heartbeat",
       });
       const committedRun = run({
         automationId: "heartbeat:new",
@@ -124,7 +125,7 @@ it.effect("owns routing lookups and fences a stale rebuild behind a committed mu
                 ? definitionsSnapshot([
                     definition({
                       automationId: "heartbeat:old",
-                      targetThreadId: "thread:old-heartbeat",
+                      targetSessionId: "thread:old-heartbeat",
                     }),
                   ])
                 : runsSnapshot([

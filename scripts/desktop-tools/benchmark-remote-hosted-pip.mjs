@@ -479,6 +479,7 @@ async function runRuntimeProjectionBenchmark(root, replacementCount, taskCycleCo
 
 function fakeWindow(webContentsId) {
   const events = new EventEmitter();
+  const webContentsEvents = new EventEmitter();
   let destroyed = false;
   const window = {
     destroy: () => {
@@ -493,12 +494,21 @@ function fakeWindow(webContentsId) {
     isMaximized: () => false,
     on: events.on.bind(events),
     removeListener: events.removeListener.bind(events),
-    webContents: { id: webContentsId },
+    webContents: {
+      id: webContentsId,
+      on: webContentsEvents.on.bind(webContentsEvents),
+      removeListener: webContentsEvents.removeListener.bind(webContentsEvents),
+    },
   };
   return {
     destroyed: () => destroyed,
     listenerCount: () =>
-      events.eventNames().reduce((count, name) => count + events.listenerCount(name), 0),
+      [events, webContentsEvents].reduce(
+        (total, emitter) =>
+          total +
+          emitter.eventNames().reduce((count, name) => count + emitter.listenerCount(name), 0),
+        0,
+      ),
     window,
   };
 }

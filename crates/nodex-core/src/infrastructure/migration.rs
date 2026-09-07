@@ -211,6 +211,31 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 160,
         apply: migrate_v159_to_v160,
     },
+    MigrationStep {
+        from_revision: 160,
+        to_revision: 161,
+        apply: migrate_v160_to_v161,
+    },
+    MigrationStep {
+        from_revision: 161,
+        to_revision: 162,
+        apply: migrate_v161_to_v162,
+    },
+    MigrationStep {
+        from_revision: 162,
+        to_revision: 163,
+        apply: migrate_v162_to_v163,
+    },
+    MigrationStep {
+        from_revision: 163,
+        to_revision: 164,
+        apply: migrate_v163_to_v164,
+    },
+    MigrationStep {
+        from_revision: 164,
+        to_revision: 165,
+        apply: migrate_v164_to_v165,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2060,6 +2085,103 @@ fn migrate_v159_to_v160(
             serde_json::to_string(&evidence)
                 .map_err(|_| internal("Asset migration evidence cannot be encoded"))?
         ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v160_to_v161(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    // Historical Turns have no proven execution policy and remain read-only.
+    connection.execute_batch("ALTER TABLE nodex_agent_turn_authorities ADD COLUMN read_only INTEGER NOT NULL DEFAULT 1 CHECK (read_only IN (0, 1));")?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision, target_revision,
+           source_schema_fingerprint, target_schema_fingerprint, backup_name,
+           completed_at_unix_ms, evidence_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+            r#"{"historical_turns_read_only":true}"#
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v161_to_v162(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch("ALTER TABLE codex_scheduled_automations ADD COLUMN notification_policy TEXT CHECK (notification_policy IS NULL OR notification_policy = 'failed_runs_only');")?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision, target_revision,
+           source_schema_fingerprint, target_schema_fingerprint, backup_name,
+           completed_at_unix_ms, evidence_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            context.source_revision,
+            context.target_revision,
+            context.source_schema_fingerprint,
+            context.target_schema_fingerprint,
+            context.backup_name,
+            context.completed_at_unix_ms,
+            r#"{"automation_notification_preferences":true}"#
+        ],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v162_to_v163(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch("ALTER TABLE codex_scheduled_automations RENAME COLUMN target_thread_id TO target_session_id;
+        UPDATE codex_scheduled_automations SET
+          status = CASE WHEN status = 'ACTIVE' AND NOT EXISTS (SELECT 1 FROM project_session_threads WHERE thread_id = target_session_id) THEN 'PAUSED' ELSE status END,
+          next_run_at = CASE WHEN NOT EXISTS (SELECT 1 FROM project_session_threads WHERE thread_id = target_session_id) THEN NULL ELSE next_run_at END,
+          target_session_id = (SELECT session_id FROM project_session_threads WHERE thread_id = target_session_id)
+        WHERE kind = 'heartbeat';")?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint, context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms, r#"{"automation_session_targets":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v163_to_v164(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch("ALTER TABLE codex_scheduled_automations ADD COLUMN project_id TEXT CHECK (project_id IS NULL OR (project_id = trim(project_id) AND length(project_id) BETWEEN 1 AND 512));
+        UPDATE codex_scheduled_automations SET project_id = (
+          SELECT CASE WHEN count(*) = 1 THEN min(p.id) ELSE NULL END FROM projects p
+          WHERE p.lifecycle = 'active' AND json_array_length(cwds_json) > 0
+            AND NOT EXISTS (SELECT 1 FROM json_each(cwds_json) cwd WHERE NOT EXISTS (SELECT 1 FROM project_sources source WHERE source.project_id = p.id AND source.root = cwd.value))
+        ) WHERE kind = 'cron';
+        UPDATE codex_scheduled_automations SET status = CASE WHEN status = 'ACTIVE' THEN 'PAUSED' ELSE status END, next_run_at = NULL
+          WHERE kind = 'cron' AND project_id IS NULL AND (json_array_length(cwds_json) > 0 OR execution_environment <> 'local' OR local_environment_config_path IS NOT NULL);")?;
+    connection.execute("INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",params![context.source_revision,context.target_revision,context.source_schema_fingerprint,context.target_schema_fingerprint,context.backup_name,context.completed_at_unix_ms,r#"{"automation_project_targets":true}"#])?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v164_to_v165(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v164_to_v165.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"optional_actor_attribution":true,"relocation_library_coordinate":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -4108,6 +4230,280 @@ mod tests {
     }
 
     #[test]
+    fn projectless_actor_migration_preserves_authority_and_prevents_actor_rebinding() {
+        let mut connection = Connection::open_in_memory().expect("historical fixture");
+        connection
+            .execute_batch(include_str!("../../schema/published/v164.sql"))
+            .expect("published schema");
+        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+            &connection,
+        )
+        .expect("historical maintenance");
+        connection.execute_batch("INSERT INTO profiles(id,created_at,updated_at) VALUES ('profile','today','today'); INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES ('library','profile','today','today'); INSERT INTO projects(id,library_id,name,created,updated) VALUES ('project','library','Project','today','today');").expect("historical scope");
+        connection.execute("INSERT INTO nodex_agent_turn_authorities(thread_id,turn_id,root_thread_id,
+          actor_project_id,library_id,profile_id,store_epoch,scope,source,authority_fingerprint,
+          provenance_version,created_at,read_only) VALUES ('thread','turn','thread','project','library',
+          'profile','epoch','project','project_turn',?1,1,'today',0)", ["a".repeat(64)]).expect("historical authority");
+        connection
+            .execute(
+                "INSERT INTO managed_blobs VALUES (?1,'asset',1,'today')",
+                ["b".repeat(64)],
+            )
+            .expect("historical blob");
+        connection
+            .execute(
+                "INSERT INTO prepared_blob_receipts(receipt_id,project_id,library_id,store_epoch,
+          content_hash,byte_length,operation_id,expires_at_unix_ms,created_at,updated_at)
+          VALUES ('receipt','project','library','epoch',?1,1,'operation',100,'today','today')",
+                ["b".repeat(64)],
+            )
+            .expect("historical prepared receipt");
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v164_to_v165(
+                transaction,
+                &MigrationContext {
+                    source_revision: 164,
+                    target_revision: 165,
+                    source_schema_fingerprint: published_format(164)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(165)?.schema_fingerprint,
+                    backup_name: "fixture".into(),
+                    completed_at_unix_ms: 1,
+                },
+            )
+        })
+        .expect("optional actor migration");
+        validate_schema_identity(&connection, 165).expect("published target");
+        let retained = connection.query_row("SELECT actor_project_id,authority_fingerprint,read_only FROM nodex_agent_turn_authorities", [], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?,row.get::<_,bool>(2)?))).expect("retained authority");
+        assert_eq!(retained, ("project".into(), "a".repeat(64), false));
+        assert!(connection.execute("UPDATE prepared_blob_receipts SET project_id=NULL,state='consumed',consumed_commit_seq=1", []).is_err());
+        connection
+            .execute(
+                "UPDATE prepared_blob_receipts SET state='consumed',consumed_commit_seq=1",
+                [],
+            )
+            .expect("original actor can consume");
+        let insert = "INSERT INTO nodex_agent_turn_authorities(thread_id,turn_id,root_thread_id,
+          actor_project_id,library_id,profile_id,store_epoch,scope,source,permission_profile_id,
+          authority_fingerprint,provenance_version,created_at) VALUES ('projectless',?1,'projectless',NULL,
+          'library','profile','epoch',?2,?3,?4,?5,1,'today')";
+        assert!(
+            connection
+                .execute(
+                    insert,
+                    params![
+                        "invalid",
+                        "project",
+                        "project_turn",
+                        Option::<String>::None,
+                        "c".repeat(64)
+                    ]
+                )
+                .is_err()
+        );
+        connection
+            .execute(
+                insert,
+                params![
+                    "valid",
+                    "library",
+                    "builtin_full_access",
+                    ":danger-full-access",
+                    "c".repeat(64)
+                ],
+            )
+            .expect("real absent actor");
+        assert!(connection.execute("UPDATE nodex_agent_turn_authorities SET actor_project_id='project' WHERE thread_id='projectless'", []).is_err());
+        connection.execute("INSERT INTO prepared_blob_receipts(receipt_id,project_id,library_id,store_epoch,
+          content_hash,byte_length,operation_id,expires_at_unix_ms,created_at,updated_at)
+          VALUES ('projectless-receipt',NULL,'library','epoch',?1,1,'null-operation',100,'today','today')", ["b".repeat(64)]).expect("projectless receipt");
+        assert!(connection.execute("UPDATE prepared_blob_receipts SET project_id='project',state='consumed',consumed_commit_seq=2 WHERE receipt_id='projectless-receipt'", []).is_err());
+        connection.execute("UPDATE prepared_blob_receipts SET state='consumed',consumed_commit_seq=2 WHERE receipt_id='projectless-receipt'", []).expect("absent actor remains absent on consumption");
+    }
+
+    #[test]
+    fn historical_cron_targets_require_an_unambiguous_active_project() {
+        let mut connection = Connection::open_in_memory().expect("migration fixture");
+        connection
+            .execute_batch(include_str!("../../schema/published/v164.sql"))
+            .expect("published fixture schema");
+        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+            &connection,
+        )
+        .expect("historical fixture maintenance");
+        connection.execute_batch(r#"ALTER TABLE codex_scheduled_automations DROP COLUMN project_id; PRAGMA user_version = 163;
+          INSERT INTO projects(id,name,created,updated) VALUES ('a','A','today','today'),('b','B','today','today');
+          INSERT INTO project_sources(project_id,root,root_key,"order",created,updated) VALUES ('a','/unique','/unique',0,'today','today'),('a','/shared','/shared',1,'today','today'),('b','/shared','/shared',0,'today','today');
+          INSERT INTO codex_scheduled_automations(automation_id,kind,status,name,rrule,cwds_json,execution_environment,created_at,updated_at,next_run_at) VALUES
+          ('unique','cron','ACTIVE','Unique','FREQ=DAILY','["/unique","/shared"]','local',1,1,100),
+          ('shared','cron','ACTIVE','Shared','FREQ=DAILY','["/shared"]','local',1,1,100),
+          ('foreign','cron','ACTIVE','Foreign','FREQ=DAILY','["/foreign"]','local',1,1,100),
+          ('projectless','cron','ACTIVE','Projectless','FREQ=DAILY','[]','local',1,1,100);"#).expect("historical targets");
+        validate_schema_identity(&connection, 163).expect("published predecessor");
+        with_immediate_transaction(&mut connection, |transaction| {
+            migrate_v163_to_v164(
+                transaction,
+                &MigrationContext {
+                    source_revision: 163,
+                    target_revision: 164,
+                    source_schema_fingerprint: published_format(163)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(164)?.schema_fingerprint,
+                    backup_name: "fixture".to_owned(),
+                    completed_at_unix_ms: 1_788_825_600_000,
+                },
+            )
+        })
+        .expect("Project migration");
+        validate_schema_identity(&connection, 164).expect("published target");
+        let rows = connection.prepare("SELECT automation_id,status,project_id,next_run_at FROM codex_scheduled_automations ORDER BY automation_id").expect("query").query_map([], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?,row.get::<_,Option<String>>(2)?,row.get::<_,Option<i64>>(3)?))).expect("targets").collect::<rusqlite::Result<Vec<_>>>().expect("rows");
+        assert_eq!(
+            rows,
+            vec![
+                ("foreign".to_owned(), "PAUSED".to_owned(), None, None),
+                (
+                    "projectless".to_owned(),
+                    "ACTIVE".to_owned(),
+                    None,
+                    Some(100)
+                ),
+                ("shared".to_owned(), "PAUSED".to_owned(), None, None),
+                (
+                    "unique".to_owned(),
+                    "ACTIVE".to_owned(),
+                    Some("a".to_owned()),
+                    Some(100)
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn historical_heartbeats_bind_to_sessions_and_pause_detached_targets() {
+        let mut connection = Connection::open_in_memory().expect("migration fixture");
+        connection
+            .execute_batch(include_str!("../../schema/published/v164.sql"))
+            .expect("published fixture schema");
+        connection.execute_batch(r#"ALTER TABLE codex_scheduled_automations DROP COLUMN project_id; ALTER TABLE codex_scheduled_automations RENAME COLUMN target_session_id TO target_thread_id; PRAGMA user_version = 162;
+          INSERT INTO codex_threads(thread_id,created_at,updated_at,linked_at) VALUES ('backend',1,1,'2026-09-08');
+          INSERT INTO project_sessions(id,no_thread_fallback_title,"order",created_at,updated_at) VALUES ('session','Target',0,'2026-09-08','2026-09-08');
+          INSERT INTO project_session_threads(session_id,thread_id,linked_at) VALUES ('session','backend','2026-09-08');
+          INSERT INTO codex_scheduled_automations(automation_id,kind,status,target_thread_id,name,rrule,created_at,updated_at,next_run_at) VALUES ('attached','heartbeat','ACTIVE','backend','Attached','FREQ=DAILY',1,1,100),('detached','heartbeat','ACTIVE','gone','Detached','FREQ=DAILY',1,1,100);"#).expect("historical targets");
+        validate_schema_identity(&connection, 162).expect("published predecessor");
+        with_immediate_transaction(&mut connection, |transaction| {
+            migrate_v162_to_v163(
+                transaction,
+                &MigrationContext {
+                    source_revision: 162,
+                    target_revision: 163,
+                    source_schema_fingerprint: published_format(162)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(163)?.schema_fingerprint,
+                    backup_name: "fixture".to_owned(),
+                    completed_at_unix_ms: 1_788_825_600_000,
+                },
+            )
+        })
+        .expect("Session target migration");
+        validate_schema_identity(&connection, 163).expect("published target");
+        let rows = connection.prepare("SELECT automation_id,status,target_session_id,next_run_at FROM codex_scheduled_automations ORDER BY automation_id").expect("query").query_map([], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?,row.get::<_,Option<String>>(2)?,row.get::<_,Option<i64>>(3)?))).expect("targets").collect::<rusqlite::Result<Vec<_>>>().expect("rows");
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    "attached".to_owned(),
+                    "ACTIVE".to_owned(),
+                    Some("session".to_owned()),
+                    Some(100)
+                ),
+                ("detached".to_owned(), "PAUSED".to_owned(), None, None)
+            ]
+        );
+    }
+
+    #[test]
+    fn historical_automations_gain_nullable_notification_preferences() {
+        let mut connection = Connection::open_in_memory().expect("migration fixture");
+        connection
+            .execute_batch(include_str!("../../schema/published/v164.sql"))
+            .expect("published fixture schema");
+        connection.execute_batch("ALTER TABLE codex_scheduled_automations DROP COLUMN project_id; ALTER TABLE codex_scheduled_automations RENAME COLUMN target_session_id TO target_thread_id; ALTER TABLE codex_scheduled_automations DROP COLUMN notification_policy; PRAGMA user_version = 161;").expect("predecessor");
+        validate_schema_identity(&connection, 161).expect("exact predecessor");
+        connection.execute("INSERT INTO codex_scheduled_automations(automation_id,kind,status,name,prompt,rrule,cwds_json,execution_environment,created_at,updated_at) VALUES ('daily','cron','ACTIVE','Daily','Review','FREQ=DAILY','[]','local',1,1)", []).expect("historical automation");
+        with_immediate_transaction(&mut connection, |transaction| {
+            migrate_v161_to_v162(
+                transaction,
+                &MigrationContext {
+                    source_revision: 161,
+                    target_revision: 162,
+                    source_schema_fingerprint: published_format(161)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(162)?.schema_fingerprint,
+                    backup_name: "fixture".to_owned(),
+                    completed_at_unix_ms: 1_788_825_600_000,
+                },
+            )
+        })
+        .expect("notification migration");
+        validate_schema_identity(&connection, 162).expect("published target");
+        let policy: Option<String> = connection.query_row("SELECT notification_policy FROM codex_scheduled_automations WHERE automation_id='daily'", [], |row| row.get(0)).expect("preserved automation");
+        assert_eq!(policy, None);
+        connection
+            .execute(
+                "UPDATE codex_scheduled_automations SET notification_policy='failed_runs_only'",
+                [],
+            )
+            .expect("mute successes");
+        assert!(
+            connection
+                .execute(
+                    "UPDATE codex_scheduled_automations SET notification_policy='invalid'",
+                    []
+                )
+                .is_err()
+        );
+        connection
+            .execute(
+                "UPDATE codex_scheduled_automations SET notification_policy=NULL",
+                [],
+            )
+            .expect("unmute");
+    }
+
+    #[test]
+    fn historical_turn_authority_gains_an_immutable_read_only_policy() {
+        let mut connection = Connection::open_in_memory().expect("migration fixture");
+        connection
+            .execute_batch(include_str!("../../schema/published/v164.sql"))
+            .expect("published fixture schema");
+        connection.execute_batch("ALTER TABLE codex_scheduled_automations DROP COLUMN project_id; ALTER TABLE codex_scheduled_automations RENAME COLUMN target_session_id TO target_thread_id; ALTER TABLE codex_scheduled_automations DROP COLUMN notification_policy; ALTER TABLE nodex_agent_turn_authorities DROP COLUMN read_only; PRAGMA user_version = 160;")
+            .expect("historical authority shape");
+        validate_schema_identity(&connection, 160).expect("exact predecessor");
+        connection.execute("INSERT INTO nodex_agent_turn_authorities(thread_id,turn_id,root_thread_id,
+            actor_project_id,library_id,profile_id,store_epoch,scope,source,authority_fingerprint,
+            provenance_version,created_at) VALUES ('thread','turn','thread','project','library','profile',
+            'epoch','project','project_turn',?1,1,'2026-09-08T00:00:00.000Z')", ["a".repeat(64)])
+            .expect("historical frozen authority");
+        with_immediate_transaction(&mut connection, |transaction| {
+            migrate_v160_to_v161(
+                transaction,
+                &MigrationContext {
+                    source_revision: 160,
+                    target_revision: 161,
+                    source_schema_fingerprint: published_format(160)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(161)?.schema_fingerprint,
+                    backup_name: "fixture".to_owned(),
+                    completed_at_unix_ms: 1_788_825_600_000,
+                },
+            )
+        })
+        .expect("policy migration");
+        validate_schema_identity(&connection, 161).expect("current schema identity");
+        assert!(connection.query_row("SELECT read_only FROM nodex_agent_turn_authorities WHERE thread_id='thread' AND turn_id='turn'", [], |row| row.get::<_, bool>(0)).expect("read-only default"));
+        assert!(
+            connection
+                .execute("UPDATE nodex_agent_turn_authorities SET read_only=0", [])
+                .is_err()
+        );
+    }
+
+    #[test]
     fn exact_v136_predecessor_migrates_to_current_once() {
         let directory = tempdir().expect("Profile");
         install_v136_fixture(directory.path());
@@ -4144,7 +4540,7 @@ mod tests {
             .expect("v136 migration history");
         assert_eq!(
             (source_revision, target_revision),
-            (159, CURRENT_STORE_REVISION)
+            (CURRENT_STORE_REVISION - 1, CURRENT_STORE_REVISION)
         );
         assert!(backup_name.starts_with(&format!("v136-to-v{CURRENT_STORE_REVISION}-")));
         let backup_path = directory
@@ -4359,7 +4755,7 @@ mod tests {
                 transaction,
                 crate::document::PersistYjsGenesis {
                     authority: &authority,
-                    actor_project_id: "project:file-migration",
+                    actor_project_id: Some("project:file-migration"),
                     materialization: &genesis.materialization,
                     update_id: "update:file-migration-genesis",
                     client_session_id: "migration-fixture",

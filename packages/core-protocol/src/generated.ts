@@ -553,7 +553,7 @@ export interface components {
             readonly reason: components["schemas"]["AgentResourceAuthorizationReason"];
         };
         /** @enum {string} */
-        readonly AgentResourceAuthorizationReason: "allowed" | "project_not_found" | "resource_not_found" | "resource_hierarchy_corrupt" | "library_mismatch" | "authority_stale" | "grant_missing" | "project_read_only" | "grant_read_only" | "structural_capability_required";
+        readonly AgentResourceAuthorizationReason: "allowed" | "project_not_found" | "resource_not_found" | "resource_hierarchy_corrupt" | "library_mismatch" | "authority_stale" | "grant_missing" | "project_read_only" | "turn_read_only" | "grant_read_only" | "structural_capability_required";
         /** @enum {string} */
         readonly AgentResourceConsentReason: "grant_missing" | "grant_read_only" | "library_consent_required";
         readonly AgentResourceConsentRequirement: {
@@ -867,11 +867,15 @@ export interface components {
             readonly name: string;
             /** Format: int64 */
             readonly next_run_at_ms?: number | null;
+            readonly notification_policy?: null | components["schemas"]["AutomationNotificationPolicy"];
+            readonly project_id?: string | null;
             readonly prompt: string;
             readonly reasoning_effort?: string | null;
             readonly rrule: string;
             readonly service_tier?: string | null;
             readonly status: components["schemas"]["AutomationDefinitionStatus"];
+            readonly target_session_id?: string | null;
+            /** @description Current backend attachment, projected from the target Session. */
             readonly target_thread_id?: string | null;
             /** Format: int64 */
             readonly updated_at_ms: number;
@@ -884,11 +888,13 @@ export interface components {
             readonly local_environment_config_path?: string | null;
             readonly model?: string | null;
             readonly name: string;
+            readonly notification_policy?: components["schemas"]["AutomationNotificationPreference"];
+            readonly project_id?: string | null;
             readonly prompt?: string | null;
             readonly reasoning_effort?: string | null;
             readonly rrule?: string | null;
             readonly service_tier?: string | null;
-            readonly target_thread_id?: string | null;
+            readonly target_session_id?: string | null;
         };
         /** @enum {string} */
         readonly AutomationDefinitionKind: "cron" | "heartbeat";
@@ -921,6 +927,190 @@ export interface components {
         readonly AutomationEventKind: "automation_changed";
         /** @enum {string} */
         readonly AutomationExecutionEnvironment: "local" | "worktree";
+        readonly AutomationIntent: {
+            readonly intent: components["schemas"]["AutomationIntent"];
+            /** @enum {string} */
+            readonly kind: "agent_command";
+            readonly provenance: components["schemas"]["AgentTurnProvenance"];
+        } | {
+            readonly automation_id: string;
+            readonly definition: components["schemas"]["AutomationDefinitionInput"];
+            /** @enum {string} */
+            readonly kind: "create_definition";
+        } | {
+            readonly automation_id: string;
+            readonly definition: components["schemas"]["AutomationDefinitionInput"];
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "update_definition";
+            readonly status: components["schemas"]["AutomationDefinitionStatus"];
+        } | {
+            readonly automation_id: string;
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "delete_definition";
+        } | {
+            readonly automation_id: string;
+            /** @enum {string} */
+            readonly kind: "dispatch_now";
+        } | {
+            readonly automation_id: string;
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "reschedule_definition";
+            /** Format: int64 */
+            readonly not_before_ms?: number | null;
+            /** Format: int64 */
+            readonly retry_within_ms?: number | null;
+        } | {
+            /** @enum {string} */
+            readonly kind: "claim_due";
+            /** Format: int64 */
+            readonly lease_duration_ms: number;
+            /** Format: int32 */
+            readonly limit: number;
+            readonly work_token: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "complete_lease";
+            readonly lease_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "fail_lease";
+            readonly lease_id: string;
+            readonly reason_code: string;
+            /** Format: int64 */
+            readonly retry_delay_ms?: number | null;
+        } | {
+            readonly automation_id: string;
+            /** @enum {string} */
+            readonly kind: "begin_run";
+            readonly source_cwd?: string | null;
+            readonly thread_id: string;
+            readonly thread_title?: string | null;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "replace_pending_run_thread";
+            readonly pending_thread_id: string;
+            readonly thread_id: string;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "set_run_thread_title";
+            readonly thread_id: string;
+            readonly thread_title?: string | null;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            readonly inbox_summary?: string | null;
+            readonly inbox_title?: string | null;
+            /** @enum {string} */
+            readonly kind: "complete_run_for_review";
+            readonly thread_id: string;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            readonly inbox_summary?: string | null;
+            readonly inbox_title?: string | null;
+            /** @enum {string} */
+            readonly kind: "set_run_inbox_item";
+            readonly thread_id: string;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "accept_run";
+            readonly thread_id: string;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "set_run_read_state";
+            readonly read: boolean;
+            readonly thread_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "mark_all_runs_read";
+        } | {
+            readonly archived_assistant_message?: string | null;
+            readonly archived_reason?: string | null;
+            readonly archived_user_message?: string | null;
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "archive_run";
+            readonly thread_id: string;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "unarchive_run";
+            readonly thread_id: string;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "delete_run";
+            readonly thread_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "settle_interrupted_runs";
+        } | {
+            /** @enum {string} */
+            readonly kind: "snooze_reminder";
+            /** Format: int64 */
+            readonly occurrence_start_ms: number;
+            readonly page_id: string;
+            /** Format: int32 */
+            readonly snooze_minutes: number;
+        } | {
+            /** @enum {string} */
+            readonly kind: "claim_due_reminders";
+            /** Format: int64 */
+            readonly lease_duration_ms: number;
+            /** Format: int32 */
+            readonly limit: number;
+            readonly work_token: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "complete_reminder_lease";
+            readonly lease_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "fail_reminder_lease";
+            readonly lease_id: string;
+            readonly reason_code: string;
+            /** Format: int64 */
+            readonly retry_delay_ms?: number | null;
+        } | {
+            readonly created_page_id: string;
+            /** @enum {string} */
+            readonly kind: "complete_page_occurrence";
+            /** Format: int64 */
+            readonly occurrence_start_ms: number;
+            readonly page_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "skip_page_occurrence";
+            /** Format: int64 */
+            readonly occurrence_start_ms: number;
+            readonly page_id: string;
+        } | {
+            readonly created_page_id?: string | null;
+            /** @enum {string} */
+            readonly kind: "update_page_occurrence";
+            /** Format: int64 */
+            readonly occurrence_start_ms: number;
+            readonly page_id: string;
+            readonly scope: components["schemas"]["PageOccurrenceUpdateScope"];
+            readonly updates: components["schemas"]["PageOccurrenceSchedulePatch"];
+        };
         readonly AutomationLease: {
             /** Format: int32 */
             readonly attempt: number;
@@ -941,6 +1131,16 @@ export interface components {
         };
         /** @enum {string} */
         readonly AutomationLeaseStatus: "claimed" | "completed" | "failed" | "cancelled";
+        /** @enum {string} */
+        readonly AutomationNotificationPolicy: "failed_runs_only";
+        readonly AutomationNotificationPreference: {
+            /** @enum {string} */
+            readonly kind: "preserve";
+        } | {
+            /** @enum {string} */
+            readonly kind: "set";
+            readonly value?: null | components["schemas"]["AutomationNotificationPolicy"];
+        };
         readonly AutomationReadRequest: components["schemas"]["ModuleReadRequest_AutomationRead"];
         readonly AutomationReadResponse: components["schemas"]["ResponseEnvelope_ModuleReadSnapshot_AutomationReadValue"];
         readonly AutomationRun: {
@@ -1089,11 +1289,15 @@ export interface components {
                 readonly name: string;
                 /** Format: int64 */
                 readonly next_run_at_ms?: number | null;
+                readonly notification_policy?: null | components["schemas"]["AutomationNotificationPolicy"];
+                readonly project_id?: string | null;
                 readonly prompt: string;
                 readonly reasoning_effort?: string | null;
                 readonly rrule: string;
                 readonly service_tier?: string | null;
                 readonly status: components["schemas"]["AutomationDefinitionStatus"];
+                readonly target_session_id?: string | null;
+                /** @description Current backend attachment, projected from the target Session. */
                 readonly target_thread_id?: string | null;
                 /** Format: int64 */
                 readonly updated_at_ms: number;
@@ -1486,6 +1690,25 @@ export interface components {
                 readonly primary_workspace_root?: string | null;
                 readonly sources: readonly components["schemas"]["ProjectSource"][];
                 readonly updated_at: string;
+            }[];
+            readonly next_cursor?: string | null;
+        };
+        readonly CollectionWindow_ProjectWorkspaceSessionListingItem: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly {
+                readonly direct_section_id?: string | null;
+                readonly project_name?: string | null;
+                readonly project_pinned: boolean;
+                readonly project_section_id?: string | null;
+                readonly task: components["schemas"]["ProjectWorkspaceTaskSummary"];
+            }[];
+            readonly next_cursor?: string | null;
+        };
+        readonly CollectionWindow_ProjectWorkspaceSidebarOrderEntry: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly {
+                readonly item: components["schemas"]["ProjectWorkspaceSidebarSectionItemRef"];
+                readonly title: string;
             }[];
             readonly next_cursor?: string | null;
         };
@@ -2122,9 +2345,60 @@ export interface components {
         readonly DatabaseDescriptor: {
             readonly database: components["schemas"]["DatabaseContainerRecord"];
         };
+        readonly DatabaseDisplayedViewQueryCoverage: {
+            /** @enum {string} */
+            readonly kind: "effective_complete";
+        } | {
+            /** @enum {string} */
+            readonly kind: "effective_limited";
+            /** Format: int32 */
+            readonly limit: number;
+        } | {
+            /** @enum {string} */
+            readonly kind: "observed";
+        };
+        readonly DatabaseDisplayedViewQueryResult: {
+            readonly coverage: components["schemas"]["DatabaseDisplayedViewQueryCoverage"];
+            /** Format: int64 */
+            readonly preferences_revision?: number | null;
+            readonly result: components["schemas"]["SqlResult"];
+            readonly rules_fingerprint: string;
+            /** Format: int64 */
+            readonly schema_revision: number;
+            readonly total_effective_occurrences: number;
+            /** Format: int64 */
+            readonly view_revision: number;
+        };
+        readonly DatabaseDisplayedViewSelection: {
+            /** @enum {string} */
+            readonly kind: "effective";
+            /** Format: int32 */
+            readonly limit?: number | null;
+        } | {
+            /** @enum {string} */
+            readonly kind: "observed";
+            readonly occurrences: readonly components["schemas"]["DatabaseObservedOccurrence"][];
+        };
         readonly DatabaseDuplicatePropertyOption: {
             readonly new_option_id: string;
             readonly source_option_id: string;
+        };
+        /** @description Exact durable rules and transient search captured from one displayed View. */
+        readonly DatabaseEffectiveViewCoordinate: {
+            readonly data_source_id: string;
+            readonly database_id: string;
+            /**
+             * Format: int64
+             * @description None binds shared saved rules; Some binds the Profile's committed personal preferences.
+             */
+            readonly expected_preferences_revision?: number | null;
+            /** Format: int64 */
+            readonly expected_schema_revision: number;
+            /** Format: int64 */
+            readonly expected_view_revision: number;
+            readonly preferences_override: components["schemas"]["DatabaseViewPreferencesOverrideInput"];
+            readonly search_query: string;
+            readonly view_id: string;
         };
         readonly DatabaseEvent: {
             readonly data_source_ids: readonly string[];
@@ -2529,6 +2803,35 @@ export interface components {
             readonly currency_code: components["schemas"]["DatabaseCurrencyCode"];
             /** @enum {string} */
             readonly kind: "currency";
+        };
+        readonly DatabaseObservedOccurrence: {
+            readonly ancestor_page_ids: readonly string[];
+            readonly condition: components["schemas"]["DatabaseObservedRowCondition"];
+            readonly group_path: readonly (string | null)[];
+            /** @description List surfaces retain their canonical occurrence key. Board surfaces use Page/group coordinates. */
+            readonly occurrence_key?: string | null;
+            readonly page_id: string;
+        };
+        /** @description Row conditions retain the exact displayed values without trusting renderer content. */
+        readonly DatabaseObservedRowCondition: {
+            readonly database_value_revisions: {
+                readonly [key: string]: number;
+            };
+            /** Format: int64 */
+            readonly document_generation: number;
+            /** Format: int64 */
+            readonly document_head_seq: number;
+            readonly document_id: string;
+            readonly membership_id: string;
+            /** Format: int64 */
+            readonly membership_revision: number;
+            /** Format: int64 */
+            readonly metadata_revision: number;
+            /** Format: int64 */
+            readonly parent_revision: number;
+            /** Format: int64 */
+            readonly position_revision?: number | null;
+            readonly rank_key?: string | null;
         };
         readonly DatabaseOperationOutcome: {
             /** @enum {string} */
@@ -3258,7 +3561,7 @@ export interface components {
             readonly library_id: string;
             /** @enum {string} */
             readonly module: "automation";
-            readonly project_id: string;
+            readonly project_id?: string | null;
         } | {
             readonly event: components["schemas"]["StoreAdministrationEvent"];
             readonly library_id: string;
@@ -3508,6 +3811,8 @@ export interface components {
             /** @enum {string} */
             readonly kind: "set_title";
         } | {
+            /** @description When supplied, preserves the caller's observed body revision through execution. */
+            readonly expected_etag?: string | null;
             /** Format: int32 */
             readonly expected_matches?: number | null;
             /** @enum {string} */
@@ -3671,6 +3976,25 @@ export interface components {
         readonly LauncherKind: "electron_host" | "native_cli" | "test";
         /** @enum {string} */
         readonly LibraryAccess: "read" | "read_write";
+        readonly LibraryAgentAuthorizedSurface: (components["schemas"]["LibraryAgentSurfaceMetadata"] & {
+            readonly page_id: string;
+        } & {
+            /** @enum {string} */
+            readonly kind: "page";
+        }) | (components["schemas"]["LibraryAgentSurfaceMetadata"] & {
+            readonly data_source_id: string;
+            readonly database_id: string;
+            readonly layout: components["schemas"]["DatabaseViewLayout"];
+            readonly view_id: string;
+        } & {
+            /** @enum {string} */
+            readonly kind: "database_view";
+        }) | (components["schemas"]["LibraryAgentSurfaceMetadata"] & {
+            readonly canvas_id: string;
+        } & {
+            /** @enum {string} */
+            readonly kind: "canvas";
+        });
         readonly LibraryAgentBlockTarget: {
             readonly block_id: string;
             readonly block_type: string;
@@ -3908,6 +4232,48 @@ export interface components {
             readonly block_id: string;
             /** @enum {string} */
             readonly kind: "after";
+        };
+        readonly LibraryAgentSurfaceDescription: (components["schemas"]["LibraryAgentAuthorizedSurface"] & {
+            /** @enum {string} */
+            readonly status: "authorized";
+        }) | {
+            readonly reason: components["schemas"]["LibraryAgentSurfaceRestriction"];
+            /** @enum {string} */
+            readonly status: "restricted";
+        };
+        readonly LibraryAgentSurfaceMetadata: {
+            /** @description Display context never contributes an Agent grant. */
+            readonly displayed_access_context: components["schemas"]["OwnedDocumentAccessContext"];
+            readonly library_id: string;
+            readonly title: string;
+        };
+        /** @enum {string} */
+        readonly LibraryAgentSurfaceRestriction: "consent_required" | "access_denied" | "unavailable";
+        /** @description A semantic content target, independent of the renderer's current access context. */
+        readonly LibraryAgentSurfaceTarget: {
+            /** @enum {string} */
+            readonly kind: "page";
+            readonly page_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "database_view";
+            readonly target: components["schemas"]["LibraryAgentSurfaceViewTarget"];
+        } | {
+            readonly canvas_id: string;
+            /** @enum {string} */
+            readonly kind: "canvas";
+        };
+        readonly LibraryAgentSurfaceViewTarget: {
+            /** @enum {string} */
+            readonly kind: "project_default";
+        } | {
+            readonly database_id: string;
+            /** @enum {string} */
+            readonly kind: "database_default";
+        } | {
+            /** @enum {string} */
+            readonly kind: "view";
+            readonly view_id: string;
         };
         readonly LibraryApplyRequest: components["schemas"]["ModuleApplyRequest_LibraryIntent"];
         readonly LibraryApplyResponse: components["schemas"]["ResponseEnvelope_ApplyResponse_LibraryCommitValue_LibraryReceipt"];
@@ -4323,7 +4689,7 @@ export interface components {
             /** Format: int64 */
             readonly byte_length: number;
             readonly created_at: string;
-            readonly created_by_actor_id: string;
+            readonly created_by_actor_id?: string | null;
             readonly created_by_turn_id?: string | null;
             readonly default_name: string;
             readonly file_id: string;
@@ -4479,7 +4845,7 @@ export interface components {
             readonly next_cursor?: string | null;
         };
         readonly LibraryFileVersion: {
-            readonly actor_id: string;
+            readonly actor_id?: string | null;
             readonly blob_etag: string;
             /** Format: int64 */
             readonly byte_length: number;
@@ -6038,6 +6404,11 @@ export interface components {
             /** Format: int32 */
             readonly contract_version: number;
             readonly intent: {
+                readonly intent: components["schemas"]["AutomationIntent"];
+                /** @enum {string} */
+                readonly kind: "agent_command";
+                readonly provenance: components["schemas"]["AgentTurnProvenance"];
+            } | {
                 readonly automation_id: string;
                 readonly definition: components["schemas"]["AutomationDefinitionInput"];
                 /** @enum {string} */
@@ -6571,6 +6942,11 @@ export interface components {
             /** Format: int32 */
             readonly contract_version: number;
             readonly intent: {
+                readonly intent: components["schemas"]["ProjectWorkspaceIntent"];
+                /** @enum {string} */
+                readonly kind: "agent_command";
+                readonly provenance: components["schemas"]["AgentTurnProvenance"];
+            } | {
                 readonly appearance?: null | components["schemas"]["ProjectAppearance"];
                 readonly description: string;
                 /** @enum {string} */
@@ -6649,6 +7025,23 @@ export interface components {
                 readonly placement: components["schemas"]["ProjectWorkspaceSidebarSectionItemPlacement"];
                 readonly section_id?: string | null;
             } | {
+                readonly items: readonly components["schemas"]["ProjectWorkspaceSidebarSectionOrderItem"][];
+                /** @enum {string} */
+                readonly kind: "reorder_sidebar_section_items";
+                readonly section_id: string;
+            } | {
+                readonly expected_order_revision: string;
+                readonly item_ids: readonly string[];
+                /** @enum {string} */
+                readonly kind: "reorder_builtin_sidebar_items";
+                readonly lane: components["schemas"]["ProjectWorkspaceBuiltinSidebarLane"];
+            } | {
+                readonly expected_order_revision: string;
+                /** @enum {string} */
+                readonly kind: "prioritize_builtin_sidebar_projects";
+                readonly lane: components["schemas"]["ProjectWorkspaceBuiltinSidebarLane"];
+                readonly project_ids: readonly string[];
+            } | {
                 /** @enum {string} */
                 readonly kind: "reorder_sidebar_section_sessions";
                 readonly section_id: string;
@@ -6678,6 +7071,32 @@ export interface components {
                 readonly project_id?: string | null;
                 readonly session_id: string;
                 readonly title: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "admit_session_launch";
+                readonly launch_request_hash: string;
+                readonly project_id?: string | null;
+                readonly session_id: string;
+                readonly title: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "admit_session_message";
+                readonly message_request_hash: string;
+                readonly session_id: string;
+                readonly thread_id: string;
+            } | {
+                readonly handoff_request_hash: string;
+                /** @enum {string} */
+                readonly kind: "admit_session_handoff";
+                readonly session_id: string;
+                readonly thread_id: string;
+            } | {
+                readonly fork_request_hash: string;
+                /** @enum {string} */
+                readonly kind: "admit_session_fork";
+                readonly session_id: string;
+                readonly source_session_id: string;
+                readonly source_thread_id: string;
             } | {
                 readonly initial_page_ids: readonly string[];
                 /** @enum {string} */
@@ -6855,10 +7274,11 @@ export interface components {
                 readonly roots: readonly string[];
                 readonly thread_id: string;
             } | {
-                readonly actor_project_id: string;
+                readonly actor_project_id?: string | null;
                 readonly inherited_from?: null | components["schemas"]["ProjectWorkspaceTurnCoordinate"];
                 /** @enum {string} */
                 readonly kind: "freeze_turn_authority";
+                readonly read_only: boolean;
                 readonly root_thread_id: string;
                 readonly source: components["schemas"]["ProjectWorkspaceTurnAuthoritySource"];
                 readonly thread_id: string;
@@ -7196,17 +7616,33 @@ export interface components {
             readonly contract_version: number;
             readonly read: {
                 /** @enum {string} */
+                readonly kind: "agent_definitions";
+                readonly provenance: components["schemas"]["AgentTurnProvenance"];
+                readonly search_query?: string | null;
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
+                readonly automation_id: string;
+                /** @enum {string} */
+                readonly kind: "agent_definition";
+                readonly provenance: components["schemas"]["AgentTurnProvenance"];
+            } | {
+                /** @enum {string} */
                 readonly kind: "due_work";
                 readonly lane: components["schemas"]["AutomationDueWorkLane"];
             } | {
                 readonly include_deleted?: boolean | null;
                 /** @enum {string} */
                 readonly kind: "definitions";
+                readonly search_query?: string | null;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 readonly automation_id: string;
                 /** @enum {string} */
                 readonly kind: "definition";
+            } | {
+                readonly automation_id: string;
+                /** @enum {string} */
+                readonly kind: "execution_definition";
             } | {
                 readonly automation_id?: string | null;
                 readonly include_settled?: boolean | null;
@@ -7528,6 +7964,12 @@ export interface components {
                 readonly kind: "agent_block_target";
             } | {
                 readonly authorization: components["schemas"]["AgentExecutionAuthorization"];
+                readonly displayed_access_context: components["schemas"]["OwnedDocumentAccessContext"];
+                /** @enum {string} */
+                readonly kind: "agent_surface_description";
+                readonly target: components["schemas"]["LibraryAgentSurfaceTarget"];
+            } | {
+                readonly authorization: components["schemas"]["AgentExecutionAuthorization"];
                 readonly block_types?: readonly string[] | null;
                 readonly cursor?: string | null;
                 readonly include_archived: boolean;
@@ -7759,6 +8201,11 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "projectless_permission_mode";
             } | {
+                readonly archived: boolean;
+                /** @enum {string} */
+                readonly kind: "session_window";
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
                 readonly include_archived?: boolean | null;
                 /** @enum {string} */
                 readonly kind: "task_window";
@@ -7781,6 +8228,11 @@ export interface components {
                 readonly section_id: string;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
+                /** @enum {string} */
+                readonly kind: "builtin_sidebar_order";
+                readonly lane: components["schemas"]["ProjectWorkspaceBuiltinSidebarLane"];
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
                 readonly item: components["schemas"]["ProjectWorkspaceSidebarSectionItemRef"];
                 /** @enum {string} */
                 readonly kind: "sidebar_section_placement";
@@ -7792,6 +8244,11 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "session";
+                readonly session_id: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "agent_session";
+                readonly provenance: components["schemas"]["AgentTurnProvenance"];
                 readonly session_id: string;
             } | {
                 /** @enum {string} */
@@ -7833,7 +8290,7 @@ export interface components {
                 readonly kind: "execution_context";
                 readonly thread_id: string;
             } | {
-                readonly actor_project_id: string;
+                readonly actor_project_id?: string | null;
                 /** @enum {string} */
                 readonly kind: "turn_authority";
                 readonly root_thread_id: string;
@@ -7866,6 +8323,24 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "query";
                 readonly query: components["schemas"]["SqlQuery"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "agent_schema";
+                readonly provenance: components["schemas"]["AgentTurnProvenance"];
+                readonly relation?: string | null;
+                readonly scope: components["schemas"]["SqlScope"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "agent_query";
+                readonly provenance: components["schemas"]["AgentTurnProvenance"];
+                readonly query: components["schemas"]["SqlQuery"];
+            } | {
+                readonly authorization: components["schemas"]["AgentExecutionAuthorization"];
+                readonly coordinate: components["schemas"]["DatabaseEffectiveViewCoordinate"];
+                /** @enum {string} */
+                readonly kind: "agent_displayed_view_query";
+                readonly projection_property_ids?: readonly string[] | null;
+                readonly selection: components["schemas"]["DatabaseDisplayedViewSelection"];
             };
         };
         readonly ModuleReadRequest_StoreAdministrationRead: {
@@ -8338,6 +8813,8 @@ export interface components {
         };
         /** @enum {string} */
         readonly ProjectWorkspaceBootstrapStatus: "empty" | "ready";
+        /** @enum {string} */
+        readonly ProjectWorkspaceBuiltinSidebarLane: "projects" | "pinned_projects" | "pinned_sessions";
         readonly ProjectWorkspaceDynamicToolCatalog: {
             readonly namespace: string;
             /** Format: int64 */
@@ -8358,6 +8835,368 @@ export interface components {
             readonly permission_mode?: null | components["schemas"]["CodexPermissionMode"];
             readonly project?: null | components["schemas"]["ProjectWorkspaceProject"];
             readonly thread: components["schemas"]["ProjectWorkspaceThread"];
+        };
+        readonly ProjectWorkspaceIntent: {
+            readonly intent: components["schemas"]["ProjectWorkspaceIntent"];
+            /** @enum {string} */
+            readonly kind: "agent_command";
+            readonly provenance: components["schemas"]["AgentTurnProvenance"];
+        } | {
+            readonly appearance?: null | components["schemas"]["ProjectAppearance"];
+            readonly description: string;
+            /** @enum {string} */
+            readonly kind: "create_initial_project";
+            readonly name: string;
+            readonly page_key_prefix?: string | null;
+            readonly project_id: string;
+            readonly source_roots: readonly string[];
+            readonly starter_page: components["schemas"]["ProjectWorkspaceStarterPage"];
+        } | {
+            readonly appearance?: null | components["schemas"]["ProjectAppearance"];
+            readonly description: string;
+            /** @enum {string} */
+            readonly kind: "create_project";
+            readonly name: string;
+            readonly page_key_prefix?: string | null;
+            readonly project_id: string;
+            readonly source_roots: readonly string[];
+        } | {
+            readonly appearance?: null | components["schemas"]["ProjectAppearance"];
+            readonly description?: string | null;
+            /** Format: int64 */
+            readonly expected_binding_revision: number;
+            /** @enum {string} */
+            readonly kind: "update_project";
+            readonly name?: string | null;
+            readonly project_id: string;
+            readonly source_roots?: readonly string[] | null;
+        } | {
+            /** @enum {string} */
+            readonly kind: "set_project_lifecycle";
+            readonly lifecycle: components["schemas"]["ProjectLifecycle"];
+            readonly project_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "reorder_projects";
+            readonly project_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "reorder_pinned_projects";
+            readonly project_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "set_project_pinned";
+            readonly pinned: boolean;
+            readonly project_id: string;
+        } | {
+            readonly initial_item?: null | components["schemas"]["ProjectWorkspaceSidebarSectionItemRef"];
+            /** @enum {string} */
+            readonly kind: "create_sidebar_section";
+            readonly name: string;
+            readonly section_id: string;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "rename_sidebar_section";
+            readonly name: string;
+            readonly section_id: string;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "delete_sidebar_section";
+            readonly section_id: string;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "restore_sidebar_section";
+            readonly section_id: string;
+        } | {
+            readonly item: components["schemas"]["ProjectWorkspaceSidebarSectionItemRef"];
+            /** @enum {string} */
+            readonly kind: "move_sidebar_section_item";
+            readonly placement: components["schemas"]["ProjectWorkspaceSidebarSectionItemPlacement"];
+            readonly section_id?: string | null;
+        } | {
+            readonly items: readonly components["schemas"]["ProjectWorkspaceSidebarSectionOrderItem"][];
+            /** @enum {string} */
+            readonly kind: "reorder_sidebar_section_items";
+            readonly section_id: string;
+        } | {
+            readonly expected_order_revision: string;
+            readonly item_ids: readonly string[];
+            /** @enum {string} */
+            readonly kind: "reorder_builtin_sidebar_items";
+            readonly lane: components["schemas"]["ProjectWorkspaceBuiltinSidebarLane"];
+        } | {
+            readonly expected_order_revision: string;
+            /** @enum {string} */
+            readonly kind: "prioritize_builtin_sidebar_projects";
+            readonly lane: components["schemas"]["ProjectWorkspaceBuiltinSidebarLane"];
+            readonly project_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "reorder_sidebar_section_sessions";
+            readonly section_id: string;
+            readonly session_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "reorder_sidebar_sections";
+            readonly section_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "archive_sidebar_section_sessions";
+            readonly replacement_session_id?: string | null;
+            readonly section_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "upsert_sidebar_section_host_link";
+            readonly link: components["schemas"]["ProjectWorkspaceSidebarSectionHostLink"];
+        } | {
+            readonly host_id: string;
+            /** @enum {string} */
+            readonly kind: "delete_sidebar_section_host_link";
+            readonly section_id: string;
+        } | {
+            readonly initial_page_ids: readonly string[];
+            /** @enum {string} */
+            readonly kind: "create_session";
+            readonly project_id?: string | null;
+            readonly session_id: string;
+            readonly title: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "admit_session_launch";
+            readonly launch_request_hash: string;
+            readonly project_id?: string | null;
+            readonly session_id: string;
+            readonly title: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "admit_session_message";
+            readonly message_request_hash: string;
+            readonly session_id: string;
+            readonly thread_id: string;
+        } | {
+            readonly handoff_request_hash: string;
+            /** @enum {string} */
+            readonly kind: "admit_session_handoff";
+            readonly session_id: string;
+            readonly thread_id: string;
+        } | {
+            readonly fork_request_hash: string;
+            /** @enum {string} */
+            readonly kind: "admit_session_fork";
+            readonly session_id: string;
+            readonly source_session_id: string;
+            readonly source_thread_id: string;
+        } | {
+            readonly initial_page_ids: readonly string[];
+            /** @enum {string} */
+            readonly kind: "create_session_in_sidebar_section";
+            readonly section_id: string;
+            readonly session_id: string;
+            readonly title: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "ensure_default_draft_session";
+            readonly project_id?: string | null;
+            readonly session_id: string;
+            readonly title: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "delete_session";
+            readonly session_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "move_session";
+            readonly project_id?: string | null;
+            readonly session_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "reorder_sessions";
+            readonly project_id?: string | null;
+            readonly session_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "reorder_pinned_sessions";
+            readonly project_id?: string | null;
+            readonly session_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "upsert_thread";
+            readonly patch: components["schemas"]["ProjectWorkspaceThreadPatch"];
+            readonly thread_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "update_thread";
+            readonly patch: components["schemas"]["ProjectWorkspaceThreadPatch"];
+            readonly thread_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "set_thread_execution_location";
+            readonly location: components["schemas"]["ProjectWorkspaceThreadExecutionLocation"];
+            readonly thread_id: string;
+        } | {
+            readonly backend_binding: components["schemas"]["AgentBackendBinding"];
+            readonly backend_session_id: string;
+            /** @enum {string} */
+            readonly kind: "bind_thread_backend_session";
+            readonly thread_id: string;
+        } | {
+            readonly backend_binding: components["schemas"]["AgentBackendBinding"];
+            /** @enum {string} */
+            readonly kind: "clear_thread_backend_session";
+            readonly thread_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "delete_thread";
+            readonly thread_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "retain_thread_assets";
+            readonly prepared_blob_receipt_ids: readonly string[];
+            readonly thread_id: string;
+        } | {
+            readonly entries: readonly components["schemas"]["ProjectWorkspaceQueuedFollowUpEntry"][];
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "commit_queued_follow_up_ledger";
+            readonly prepared_blob_receipt_ids: readonly string[];
+            readonly thread_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "observe_app_server_thread_window";
+            readonly sweep_id: string;
+            readonly thread_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "reconcile_app_server_thread_sweep";
+            /** Format: int32 */
+            readonly limit?: number | null;
+            readonly sweep_id: string;
+        } | {
+            readonly complete: boolean;
+            readonly continuation?: string | null;
+            /** @enum {string} */
+            readonly kind: "observe_subagent_discovery_page";
+            readonly observations: readonly components["schemas"]["ProjectWorkspaceSubagentObservation"][];
+            readonly page_identity: string;
+            readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
+        } | {
+            readonly evidence_kind: components["schemas"]["ProjectWorkspaceSubagentStatusEvidenceKind"];
+            /** @enum {string} */
+            readonly kind: "observe_subagent_status_evidence";
+            /** Format: int64 */
+            readonly observed_at_ms: number;
+            readonly precondition?: null | components["schemas"]["ProjectWorkspaceSubagentStatusEvidencePrecondition"];
+            /** Format: int64 */
+            readonly source_revision: number;
+            readonly status: components["schemas"]["ProjectWorkspaceSubagentStatus"];
+            readonly thread_id: string;
+            readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
+        } | {
+            readonly evidence_kind: components["schemas"]["ProjectWorkspaceSubagentStatusEvidenceKind"];
+            /** Format: int64 */
+            readonly generation: number;
+            readonly host_id: string;
+            /** @enum {string} */
+            readonly kind: "buffer_subagent_status_evidence";
+            /** Format: int64 */
+            readonly observed_at_ms: number;
+            readonly source_epoch: string;
+            /** Format: int64 */
+            readonly source_revision: number;
+            readonly status: components["schemas"]["ProjectWorkspaceSubagentStatus"];
+            readonly thread_id: string;
+        } | {
+            readonly action: components["schemas"]["ProjectWorkspaceSubagentLifecycleAction"];
+            /** @enum {string} */
+            readonly kind: "begin_subagent_lifecycle";
+            readonly lifecycle_operation_id: string;
+            readonly universe: components["schemas"]["ProjectWorkspaceSubagentUniverse"];
+        } | {
+            /** @enum {string} */
+            readonly kind: "observe_subagent_lifecycle_outcomes";
+            readonly lifecycle_operation_id: string;
+            readonly observations: readonly components["schemas"]["ProjectWorkspaceSubagentLifecycleObservation"][];
+        } | {
+            readonly archived: boolean;
+            /** @enum {string} */
+            readonly kind: "set_thread_archived";
+            readonly thread_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "set_thread_pinned";
+            readonly pinned: boolean;
+            readonly placement?: null | components["schemas"]["ProjectWorkspaceThreadPlacement"];
+            readonly thread_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "reorder_pinned_threads";
+            readonly thread_ids: readonly string[];
+        } | {
+            /** @enum {string} */
+            readonly kind: "move_thread";
+            readonly metadata: components["schemas"]["ProjectWorkspaceThreadMoveMetadataPatch"];
+            readonly placement: components["schemas"]["ProjectWorkspaceThreadPlacement"];
+            readonly project_access_grant?: null | components["schemas"]["ProjectWorkspaceThreadMoveProjectAccessGrant"];
+            readonly runtime_workspace_roots?: readonly string[] | null;
+            readonly source: components["schemas"]["ProjectWorkspaceThreadLane"];
+            readonly target: components["schemas"]["ProjectWorkspaceThreadLane"];
+            readonly thread_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "set_thread_unread";
+            readonly thread_id: string;
+            readonly unread: boolean;
+        } | {
+            readonly catalogs: readonly components["schemas"]["ProjectWorkspaceDynamicToolCatalog"][];
+            /** @enum {string} */
+            readonly kind: "replace_thread_dynamic_tool_catalogs";
+            readonly thread_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "merge_thread_writable_roots";
+            readonly roots: readonly string[];
+            readonly thread_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "replace_thread_writable_roots";
+            readonly roots: readonly string[];
+            readonly thread_id: string;
+        } | {
+            readonly actor_project_id?: string | null;
+            readonly inherited_from?: null | components["schemas"]["ProjectWorkspaceTurnCoordinate"];
+            /** @enum {string} */
+            readonly kind: "freeze_turn_authority";
+            readonly read_only: boolean;
+            readonly root_thread_id: string;
+            readonly source: components["schemas"]["ProjectWorkspaceTurnAuthoritySource"];
+            readonly thread_id: string;
+            readonly turn_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "upsert_background_process";
+            readonly preserve_started_at?: boolean | null;
+            readonly process: components["schemas"]["ProjectWorkspaceBackgroundProcess"];
+        } | {
+            /** @enum {string} */
+            readonly kind: "set_project_permission_mode";
+            readonly mode: components["schemas"]["CodexPermissionMode"];
+            readonly project_id: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "set_projectless_permission_mode";
+            readonly mode: components["schemas"]["CodexPermissionMode"];
+        } | {
+            readonly intent: components["schemas"]["ProjectSessionIntent"];
+            /** @enum {string} */
+            readonly kind: "mutate_session";
+            readonly session_id: string;
         };
         readonly ProjectWorkspaceManagedWorktreeConsumer: {
             readonly archived: boolean;
@@ -8554,6 +9393,14 @@ export interface components {
         readonly ProjectWorkspaceSidebarSectionKind: "pinned" | "pages" | "projects" | "chats" | "custom";
         /** @enum {string} */
         readonly ProjectWorkspaceSidebarSectionLifecycle: "active" | "deleted";
+        /** @description An observed direct placement, supplied in its requested final order. */
+        readonly ProjectWorkspaceSidebarSectionOrderItem: {
+            /** Format: int64 */
+            readonly expected_rank_key: number;
+            /** Format: int64 */
+            readonly expected_revision: number;
+            readonly placement_id: string;
+        };
         readonly ProjectWorkspaceStarterPage: {
             readonly document_id: string;
             readonly nfm: string;
@@ -8842,7 +9689,7 @@ export interface components {
             readonly updated_at: number;
         };
         readonly ProjectWorkspaceTurnAuthority: {
-            readonly actor_project_id: string;
+            readonly actor_project_id?: string | null;
             readonly library_id: string;
             readonly root_thread_id: string;
             readonly scope: components["schemas"]["ProjectWorkspaceTurnAuthorityScope"];
@@ -8859,6 +9706,8 @@ export interface components {
              */
             readonly frozen_at_ms?: number | null;
             readonly persisted: boolean;
+            /** @description Immutable execution constraint, independent of resource scope. */
+            readonly read_only: boolean;
         };
         /** @enum {string} */
         readonly ProjectWorkspaceTurnAuthorityScope: "project" | "library";
@@ -9786,6 +10635,10 @@ export interface components {
                     readonly kind: "agent_block_target";
                     readonly value?: null | components["schemas"]["LibraryAgentBlockTarget"];
                 } | {
+                    /** @enum {string} */
+                    readonly kind: "agent_surface_description";
+                    readonly value: components["schemas"]["LibraryAgentSurfaceDescription"];
+                } | {
                     readonly has_more: boolean;
                     readonly items: readonly components["schemas"]["LibraryAgentSearchResult"][];
                     /** @enum {string} */
@@ -9992,6 +10845,10 @@ export interface components {
                     readonly mode?: null | components["schemas"]["CodexPermissionMode"];
                 } | {
                     /** @enum {string} */
+                    readonly kind: "session_window";
+                    readonly sessions: components["schemas"]["CollectionWindow_ProjectWorkspaceSessionListingItem"];
+                } | {
+                    /** @enum {string} */
                     readonly kind: "task_window";
                     readonly tasks: components["schemas"]["CollectionWindow_ProjectWorkspaceTaskSummary"];
                 } | {
@@ -10007,6 +10864,11 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "sidebar_section_item_window";
                 } | {
+                    readonly items: components["schemas"]["CollectionWindow_ProjectWorkspaceSidebarOrderEntry"];
+                    /** @enum {string} */
+                    readonly kind: "builtin_sidebar_order";
+                    readonly order_revision: string;
+                } | {
                     /** @enum {string} */
                     readonly kind: "sidebar_section_placement";
                     readonly section_id?: string | null;
@@ -10018,6 +10880,11 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "session";
                     readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "agent_session";
+                    readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];
+                    readonly thread?: null | components["schemas"]["ProjectWorkspaceThread"];
                 } | {
                     /** @enum {string} */
                     readonly kind: "thread";
@@ -10093,6 +10960,10 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "query";
                     readonly value: components["schemas"]["SqlResult"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "displayed_view_query";
+                    readonly value: components["schemas"]["DatabaseDisplayedViewQueryResult"];
                 };
             };
             /** @enum {string} */

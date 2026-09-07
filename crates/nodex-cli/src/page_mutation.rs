@@ -318,6 +318,7 @@ impl SemanticWrite {
                     old_fragment: hunk.old_fragment.clone(),
                     new_fragment: hunk.new_fragment.clone(),
                     expected_matches: None,
+                    expected_etag: None,
                 })
                 .collect(),
             Self::Insert { fragment, anchor } => vec![DocumentSemanticCommand::InsertBody {

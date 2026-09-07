@@ -93,6 +93,9 @@ export function makeScheduledAutomation(
   return {
     id: "automation-alpha",
     definitionRevision: 1,
+    projectId: null,
+    targetSessionId: null,
+    notificationPolicy: null,
     kind: "heartbeat",
     status: "ACTIVE",
     targetThreadId: "thread-alpha",
@@ -261,8 +264,8 @@ export type SessionTabFixtureConfiguration =
   | Exclude<WorkbenchProjectionTabConfiguration, { kind: "db_view" }>
   | {
       kind: "db_view";
-      config: Omit<WorkbenchProjectionDbViewTabConfig, "databaseViewId"> & {
-        databaseViewId?: string;
+      config: Omit<WorkbenchProjectionDbViewTabConfig, "target"> & {
+        target?: WorkbenchProjectionDbViewTabConfig["target"];
       };
     };
 export type SessionTabFixture<
@@ -281,13 +284,19 @@ export type SessionFixtureOverrides = Omit<Partial<ProjectSession>, "tabs"> & {
 };
 
 export function fillDbViewFixtureConfig(
-  config: Omit<WorkbenchProjectionDbViewTabConfig, "databaseViewId"> & {
-    databaseViewId?: string;
+  config: Omit<WorkbenchProjectionDbViewTabConfig, "target"> & {
+    target?: WorkbenchProjectionDbViewTabConfig["target"];
   },
 ): WorkbenchProjectionDbViewTabConfig {
+  if (config.target) return { ...config, target: config.target };
+  if (config.accessContext.kind === "library")
+    throw new Error("Library View fixture requires a target");
   return {
     ...config,
-    databaseViewId: config.databaseViewId ?? `database-view:${config.projectId}:primary-board`,
+    target: {
+      kind: "database-view",
+      databaseViewId: `database-view:${config.accessContext.projectId}:primary-board`,
+    },
   };
 }
 
@@ -435,7 +444,7 @@ export function makeSession(overrides: SessionFixtureOverrides = {}): ProjectSes
             projectId,
             kind: "db_view",
             title: "DB View",
-            config: { projectId },
+            config: { accessContext: { kind: "project", projectId: projectId } },
           }),
         ];
   const tabs = (rawTabs ?? defaultTabs).map((tab, index) =>

@@ -16,7 +16,7 @@ import {
   testLayer,
 } from "./NodexAgentAuthorizationRuntime";
 
-const authority: FrozenNodexAgentTurnAuthority = {
+const authority = {
   threadId: "thread-child",
   turnId: "turn-child",
   rootThreadId: "thread-root",
@@ -24,9 +24,10 @@ const authority: FrozenNodexAgentTurnAuthority = {
   libraryId: "library-1",
   storeEpoch: "store-1",
   frozenAtMs: 1_785_491_085_000,
+  readOnly: false,
   scope: "project",
   source: "project_turn",
-};
+} satisfies FrozenNodexAgentTurnAuthority;
 
 function authorizationInput(
   overrides: Partial<AuthorizeNodexAgentAccessInput> = {},

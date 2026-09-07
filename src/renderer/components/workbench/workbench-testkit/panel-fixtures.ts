@@ -70,7 +70,7 @@ export function makeTestWorkbenchTab(
         kind: input.kind,
         browserTabId: null,
         config: {
-          projectId: input.projectId ?? "project-1",
+          accessContext: { kind: "project", projectId: input.projectId ?? "project-1" },
           pageId: input.pageId,
         },
       };

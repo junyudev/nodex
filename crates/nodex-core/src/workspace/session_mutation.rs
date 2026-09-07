@@ -7,9 +7,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::ProjectWorkspaceApplyOutcome;
-use super::mutation::{
-    WorkspaceMutationEffects, finish_mutation, project_session_scope, workspace_event_anchor,
-};
+use super::mutation::{WorkspaceMutationEffects, finish_mutation, project_session_scope};
 use super::thread::{finish_thread_mutation, upsert_thread_records};
 
 const MAX_ID_LENGTH: usize = 512;
@@ -283,19 +281,11 @@ fn set_session_pinned(
             "DELETE FROM workspace_sidebar_section_items WHERE session_id = ?1",
             [session_id],
         )?;
-        authority
-            .pinned
-            .then_some(authority.pinned_order)
-            .flatten()
-            .or(connection
-                .query_row(
-                    "SELECT MAX(pinned_order) FROM project_sessions \
-                     WHERE project_id IS ?1 AND pinned = 1 AND archived = 0",
-                    params![authority.project_id],
-                    |row| row.get::<_, Option<i64>>(0),
-                )?
-                .map(|order| order + 1)
-                .or(Some(0)))
+        if authority.pinned && authority.pinned_order.is_some() {
+            authority.pinned_order
+        } else {
+            Some(super::sidebar_pins::next_order(connection)?)
+        }
     } else {
         None
     };
@@ -307,6 +297,7 @@ fn set_session_pinned(
     if changed != 1 {
         return Err(corrupt("Project Session disappeared during pin update"));
     }
+    super::sidebar_pins::sync_thread_projection(connection, session_id, &now)?;
     finish_session_mutation(
         connection,
         library_id,
@@ -317,7 +308,7 @@ fn set_session_pinned(
         "set_session_pinned",
         session_id,
         authority,
-        Vec::new(),
+        authority.thread_id.iter().cloned().collect(),
         SessionInvalidationKind::SummaryAndDetail,
         now,
     )
@@ -520,6 +511,9 @@ fn link_thread(
         ));
     }
     let now = sqlite_now(connection)?;
+    if let Some(previous_thread_id) = authority.thread_id.as_deref().filter(|id| *id != thread_id) {
+        super::sidebar_pins::clear_thread_projection(connection, previous_thread_id)?;
+    }
     connection.execute(
         "INSERT INTO project_session_threads(session_id, thread_id, linked_at) \
          VALUES (?1, ?2, ?3) ON CONFLICT(session_id) DO UPDATE SET \
@@ -536,6 +530,7 @@ fn link_thread(
            updated_at = ?2 WHERE id = ?3",
         params![unread, now, session_id],
     )?;
+    super::sidebar_pins::sync_thread_projection(connection, session_id, &now)?;
     let mut thread_ids = authority.thread_id.iter().cloned().collect::<BTreeSet<_>>();
     thread_ids.insert(thread_id.to_owned());
     let mut project_ids = upsert_effects
@@ -592,6 +587,7 @@ fn unlink_thread(
     if changed != 1 {
         return Err(corrupt("Project Session Thread link disappeared"));
     }
+    super::sidebar_pins::clear_thread_projection(connection, thread_id)?;
     let now = sqlite_now(connection)?;
     touch_session(connection, session_id, &now)?;
     finish_session_mutation(
@@ -613,7 +609,7 @@ fn unlink_thread(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn finish_session_mutation(
     connection: &Connection,
-    library_id: &str,
+    _library_id: &str,
     context: &BoundModuleContext,
     store_epoch: &str,
     operation_id: &str,
@@ -626,10 +622,7 @@ pub(super) fn finish_session_mutation(
     committed_at: String,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     let project_ids = authority.project_id.iter().cloned().collect::<Vec<_>>();
-    let change_project_id = authority
-        .project_id
-        .clone()
-        .map_or_else(|| workspace_event_anchor(connection, library_id), Ok)?;
+    let change_project_id = authority.project_id.clone();
     finish_mutation(
         connection,
         context,

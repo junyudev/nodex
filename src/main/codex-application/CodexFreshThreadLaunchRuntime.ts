@@ -20,12 +20,14 @@ import type {
 import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
 import { CodexThreadLaunchCompletion } from "./CodexThreadLaunchCompletion";
 import { CodexTurnCommands } from "./CodexTurnCommands";
+import type { CodexTurnPresentationClaim } from "./CodexTurnPresentation";
 
 export type CodexFreshThreadLaunchTurnStartParams = TurnStartParams & {
   readonly attachments: readonly CodexLiveFileAttachment[];
 };
 
 export interface CodexFreshThreadLaunch {
+  readonly presentationClaim?: CodexTurnPresentationClaim;
   readonly launchId: string;
   readonly rendererClientId: string;
   readonly projectId: string | null;
@@ -40,6 +42,7 @@ export interface CodexFreshThreadLaunch {
   >;
   readonly turnStartParams: CodexFreshThreadLaunchTurnStartParams;
   readonly verifiedBuiltinFullAccess: boolean;
+  readonly executionReadOnly: boolean;
   readonly goalObjective: string;
   readonly rawGoalDraft: CodexThreadGoalDraftInput | null;
   readonly heartbeatAutomation: CodexThreadStartForSessionInput["heartbeatAutomation"];
@@ -190,11 +193,13 @@ export const make: Effect.Effect<
     const { attachments: _attachments, ...request } = launch.turnStartParams;
     return turns
       .acceptPreparedRendererTurn({
+        ...(launch.presentationClaim ? { presentationClaim: launch.presentationClaim } : {}),
         threadId: launch.threadId,
         projectId: launch.projectId,
         request,
         clientUserMessageId: launch.clientUserMessageId,
         verifiedBuiltinFullAccess: launch.verifiedBuiltinFullAccess,
+        executionReadOnly: launch.executionReadOnly,
         startedAtMs: launch.startedAt,
       })
       .pipe(

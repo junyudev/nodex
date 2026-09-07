@@ -1185,6 +1185,8 @@ mod api {
         api::administration_apply,
     ),
     components(schemas(
+        ProjectWorkspaceIntent,
+        AutomationIntent,
         RuntimeDescriptor,
         CoreCompatibilityManifest,
         CoreClientRequirements,

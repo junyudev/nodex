@@ -69,13 +69,15 @@ export class CodexThreadHandoffRuntime extends Context.Service<
     ) => Effect.Effect<readonly CodexThreadHandoffJournalEntry[], CodexThreadHandoffRuntimeError>;
     readonly launch: (
       input: CodexLaunchThreadHandoffInput,
-    ) => Effect.Effect<CodexAppHandoffOperation>;
-    readonly get: (operationId: string) => Effect.Effect<CodexAppHandoffOperation | null>;
+    ) => Effect.Effect<CodexAppHandoffOperation, CodexThreadHandoffRuntimeError>;
+    readonly get: (
+      operationId: string,
+    ) => Effect.Effect<CodexAppHandoffOperation | null, CodexThreadHandoffRuntimeError>;
     readonly waitForRevision: (
       operationId: string,
       afterRevision: number | null,
       waitMs: number,
-    ) => Effect.Effect<CodexAppHandoffOperation | null>;
+    ) => Effect.Effect<CodexAppHandoffOperation | null, CodexThreadHandoffRuntimeError>;
   }
 >()("nodex/main/codex-application/CodexThreadHandoffRuntime") {}
 
@@ -904,10 +906,35 @@ export const make = (options: {
         return recovered;
       });
 
-    const get = (operationId: string) =>
-      SubscriptionRef.get(statuses).pipe(
-        Effect.map((current) => current.operations.get(operationId) ?? null),
-      );
+    const get = Effect.fn("CodexThreadHandoffRuntime.get")(function* (operationId: string) {
+      const existing = (yield* SubscriptionRef.get(statuses)).operations.get(operationId);
+      if (existing) return existing;
+      const entry = yield* getJournal(operationId);
+      if (!entry) return null;
+      const destinationHostId =
+        entry.destination?.hostId ?? entry.requestedDestinationHostId ?? entry.source.hostId;
+      const host = yield* executionHosts.get(destinationHostId);
+      return yield* SubscriptionRef.modify(statuses, (current) => {
+        // Live progress may have arrived while storage or host lookup was pending.
+        const latest = current.operations.get(operationId);
+        if (latest) return [latest, current];
+        const operation = buildOperationFromJournal({
+          entry,
+          detail: null,
+          existing: undefined,
+          destinationHostDisplayName: host?.descriptor.displayName ?? destinationHostId,
+        });
+        return [
+          operation,
+          {
+            revision: current.revision + 1,
+            operations: retainStatusOperations(
+              new Map(current.operations).set(operationId, operation).values(),
+            ),
+          },
+        ];
+      });
+    });
     const waitForRevision = (operationId: string, afterRevision: number | null, waitMs: number) =>
       Effect.gen(function* () {
         const existing = yield* get(operationId);

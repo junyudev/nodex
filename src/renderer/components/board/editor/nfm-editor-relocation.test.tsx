@@ -1,13 +1,59 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import { render } from "@/test/dom";
+import { act } from "@testing-library/react";
 import {
   prepareNfmEditorForMutation,
+  prepareNfmEditorObservation,
   prepareNfmEditorStructuralMutation,
   runNfmEditorFocusPreservingMutation,
   type NfmEditorMutationRuntime,
 } from "./nfm-editor-relocation";
 
 describe("NfmEditor mutation preparation", () => {
+  test("observes a saved head without interrupting composition or drag and restores its own focus", async () => {
+    const view = render(
+      <div data-testid="surface-editor">
+        <div contentEditable data-testid="editor-content" />
+      </div>,
+    );
+    const container = view.getByTestId("surface-editor");
+    const content = view.getByTestId("editor-content");
+    const editor = {
+      prosemirrorView: { composing: true, dragging: null as unknown, root: document },
+      isFocused: () => document.activeElement === content,
+      isWithinEditor: (element: Element) => container.contains(element),
+      blur: vi.fn(() => content.blur()),
+      focus: () => content.focus(),
+    };
+    const fence = {
+      documentId: "document",
+      storeEpoch: "epoch",
+      generation: 1,
+      expectedHeadSeq: 9,
+    };
+    const flushAndFence = vi.fn(async () => fence);
+    await act(async () => {
+      content.focus();
+      await expect(
+        prepareNfmEditorObservation(editor, container, { flushAndFence }, {}),
+      ).rejects.toThrow();
+      editor.prosemirrorView.composing = false;
+      editor.prosemirrorView.dragging = { slice: "user-drag" };
+      await expect(
+        prepareNfmEditorObservation(editor, container, { flushAndFence }, {}),
+      ).rejects.toThrow();
+      expect(editor.blur).not.toHaveBeenCalled();
+      expect(flushAndFence).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(content);
+      editor.prosemirrorView.dragging = null;
+      await expect(
+        prepareNfmEditorObservation(editor, container, { flushAndFence }, {}),
+      ).resolves.toEqual(fence);
+      expect(document.activeElement).toBe(content);
+    });
+    expect(flushAndFence).toHaveBeenCalledTimes(1);
+  });
+
   test("fences a retained Document without touching an unmounted editor view", async () => {
     const head = {
       documentId: "retained-document",

@@ -43,6 +43,7 @@ const REQUIRED_INPUT_PATHS = [
   "packages/codex-app-server-protocol",
   "packages/core-protocol",
   "packages/effect-codex-app-server",
+  "packages/nodex-app-tools-mcp",
   "resources",
   "scripts",
   "src",
@@ -523,6 +524,22 @@ function runProductionBuild(): void {
       "--format=cjs",
       "--target=node20",
       "--outfile=out/main/remote-worktree-worker.cjs",
+    ],
+    { cwd: repositoryRoot, stdio: "inherit" },
+  );
+  // The application MCP process uses bundled Node outside Electron, so its
+  // entrypoint must contain its complete JavaScript dependency closure.
+  execFileSync(
+    "pnpm",
+    [
+      "exec",
+      "esbuild",
+      "packages/nodex-app-tools-mcp/src/main.ts",
+      "--bundle",
+      "--platform=node",
+      "--format=esm",
+      "--target=node24",
+      "--outfile=out/main/app-tools/server.mjs",
     ],
     { cwd: repositoryRoot, stdio: "inherit" },
   );

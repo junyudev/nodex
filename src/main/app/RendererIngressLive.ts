@@ -1,5 +1,6 @@
 import * as CodexThreadHandoffIpc from "../ipc/handlers/CodexThreadHandoffIpc";
 import * as Layer from "effect/Layer";
+import * as WorkbenchAgentIpc from "../ipc/handlers/WorkbenchAgentIpc";
 import * as AppUpdateIpc from "../ipc/handlers/AppUpdateIpc";
 import * as ApplicationLifecycleIpc from "../ipc/handlers/ApplicationLifecycleIpc";
 import * as ApplicationSyncIpc from "../ipc/handlers/ApplicationSyncIpc";
@@ -50,6 +51,7 @@ const terminalIngress = TerminalIpc.live.pipe(Layer.provideMerge(TerminalProject
 
 /** Electron callback ingress that translates platform events into typed application capabilities. */
 export const live = Layer.mergeAll(
+  WorkbenchAgentIpc.live,
   AppUpdateIpc.live,
   AvatarOverlayIpc.live,
   SessionPolicyRuntime.live,

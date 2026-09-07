@@ -31,7 +31,7 @@ pub(crate) fn get_recovery_artifact(
 }
 
 pub(crate) struct StaleYjsUpdate<'a> {
-    pub(crate) actor_project_id: &'a str,
+    pub(crate) actor_project_id: Option<&'a str>,
     pub(crate) store_epoch: &'a str,
     pub(crate) client_session_id: &'a str,
     pub(crate) generation: i64,
@@ -187,7 +187,7 @@ fn read_artifact(
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
                     row.get::<_, i64>(4)?,
@@ -204,7 +204,7 @@ fn read_artifact(
     };
     let touched = serde_json::from_str::<Vec<String>>(&stored.5)
         .map_err(|_| corrupt("Stored recovery artifact touched Block IDs are invalid"))?;
-    let exact = stored.1 == input.actor_project_id
+    let exact = stored.1.as_deref() == input.actor_project_id
         && stored.2 == input.store_epoch
         && stored.3 == input.client_session_id
         && stored.4 == input.base_head_seq

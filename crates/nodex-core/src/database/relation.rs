@@ -1526,6 +1526,37 @@ pub(crate) fn validate_view_filter_read_access(
     Err(not_found("Database View is unavailable"))
 }
 
+pub(crate) fn validate_agent_view_filter_read_access(
+    connection: &Connection,
+    context: &nodex_core_contracts::BoundModuleContext,
+    library_id: &str,
+    authorization: &nodex_core_contracts::agent::AgentExecutionAuthorization,
+    data_source_id: &str,
+    filter: &DatabaseViewFilter,
+) -> Result<(), StoreError> {
+    let mut targets = BTreeSet::new();
+    collect_relation_filter_targets(connection, data_source_id, filter, 1, &mut 0, &mut targets)?;
+    let page_ids = targets
+        .into_iter()
+        .map(|(_, page_id)| page_id)
+        .collect::<Vec<_>>();
+    let authorized = crate::library::agent_authorization::authorized_page_ids(
+        connection,
+        context,
+        library_id,
+        authorization,
+        &page_ids,
+    )?;
+    if page_ids.iter().all(|page_id| authorized.contains(page_id)) {
+        return Ok(());
+    }
+    Err(StoreError::new(
+        StoreErrorCode::Unauthorized,
+        "Displayed View filter references an unavailable resource",
+        false,
+    ))
+}
+
 fn collect_relation_filter_targets(
     connection: &Connection,
     data_source_id: &str,
@@ -1561,7 +1592,10 @@ fn collect_relation_filter_targets(
     };
     if !matches!(
         operator,
-        DatabaseViewFilterOperator::Contains | DatabaseViewFilterOperator::NotContains
+        DatabaseViewFilterOperator::RelationContains
+            | DatabaseViewFilterOperator::RelationDoesNotContain
+            | DatabaseViewFilterOperator::Contains
+            | DatabaseViewFilterOperator::NotContains
     ) {
         return Ok(());
     }
@@ -1581,13 +1615,22 @@ fn collect_relation_filter_targets(
     let Some(target_data_source_id) = target_data_source_id else {
         return Ok(());
     };
-    let page_id = value
+    let operand = value
         .as_ref()
         .and_then(Option::as_ref)
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
         .ok_or_else(|| corrupt("Relation Property filter operand is invalid"))?;
-    targets.insert((target_data_source_id, page_id.to_owned()));
+    let operands = match operand {
+        Value::Array(values) => values.as_slice(),
+        Value::String(_) => std::slice::from_ref(operand),
+        _ => return Err(corrupt("Relation Property filter operand is invalid")),
+    };
+    for value in operands {
+        let page_id = value
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| corrupt("Relation Property filter operand is invalid"))?;
+        targets.insert((target_data_source_id.clone(), page_id.to_owned()));
+    }
     Ok(())
 }
 
@@ -1678,19 +1721,36 @@ mod tests {
                    'project:reader', 'database', 'database:secret', 'active');",
             )
             .expect("Relation authorization rows");
-        let filter = DatabaseViewFilter::Clause {
+        let filters = [
+            (DatabaseViewFilterOperator::Contains, json!("page:secret")),
+            (
+                DatabaseViewFilterOperator::NotContains,
+                json!("page:secret"),
+            ),
+            (
+                DatabaseViewFilterOperator::RelationContains,
+                json!(["page:secret"]),
+            ),
+            (
+                DatabaseViewFilterOperator::RelationDoesNotContain,
+                json!(["page:secret"]),
+            ),
+        ]
+        .map(|(operator, value)| DatabaseViewFilter::Clause {
             property_id: "p_blocked0".to_owned(),
-            operator: DatabaseViewFilterOperator::Contains,
-            value: Some(Some(json!("page:secret"))),
-        };
-        validate_view_filter_read_access(
-            &connection,
-            "library:one",
-            Some("project:reader"),
-            "source:tasks",
-            &filter,
-        )
-        .expect("authorized filter operand");
+            operator,
+            value: Some(Some(value)),
+        });
+        for filter in &filters {
+            validate_view_filter_read_access(
+                &connection,
+                "library:one",
+                Some("project:reader"),
+                "source:tasks",
+                filter,
+            )
+            .expect("authorized filter operand");
+        }
 
         connection
             .execute(
@@ -1698,14 +1758,16 @@ mod tests {
                 [],
             )
             .expect("revoke target access");
-        let error = validate_view_filter_read_access(
-            &connection,
-            "library:one",
-            Some("project:reader"),
-            "source:tasks",
-            &filter,
-        )
-        .expect_err("stale View filter cannot retain a restricted Page identity");
-        assert_eq!(error.code, StoreErrorCode::NotFound);
+        for filter in &filters {
+            let error = validate_view_filter_read_access(
+                &connection,
+                "library:one",
+                Some("project:reader"),
+                "source:tasks",
+                filter,
+            )
+            .expect_err("stale View filter cannot retain a restricted Page identity");
+            assert_eq!(error.code, StoreErrorCode::NotFound);
+        }
     }
 }

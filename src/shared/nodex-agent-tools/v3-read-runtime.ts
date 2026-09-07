@@ -30,7 +30,7 @@ export type NodexAgentV3ReadRequest =
   | {
       readonly tool: "fetch";
       readonly callId?: string;
-      readonly projectId: string;
+      readonly projectId: string | null;
       readonly authority?: FrozenNodexAgentTurnAuthority;
       readonly resourceAccess?: NodexAgentResourceAccessOverlay;
       readonly input: z.infer<typeof FetchV3InputSchema>;
@@ -38,7 +38,7 @@ export type NodexAgentV3ReadRequest =
   | {
       readonly tool: "search";
       readonly callId?: string;
-      readonly projectId: string;
+      readonly projectId: string | null;
       readonly authority?: FrozenNodexAgentTurnAuthority;
       readonly resourceAccess?: NodexAgentResourceAccessOverlay;
       readonly input: z.infer<typeof SearchV3InputSchema>;
@@ -46,7 +46,7 @@ export type NodexAgentV3ReadRequest =
   | {
       readonly tool: "query_database_view";
       readonly callId?: string;
-      readonly projectId: string;
+      readonly projectId: string | null;
       readonly authority?: FrozenNodexAgentTurnAuthority;
       readonly resourceAccess?: NodexAgentResourceAccessOverlay;
       readonly input: z.infer<typeof QueryDatabaseViewV3InputSchema>;
@@ -54,7 +54,7 @@ export type NodexAgentV3ReadRequest =
   | {
       readonly tool: "query_data_source";
       readonly callId?: string;
-      readonly projectId: string;
+      readonly projectId: string | null;
       readonly authority?: FrozenNodexAgentTurnAuthority;
       readonly resourceAccess?: NodexAgentResourceAccessOverlay;
       readonly input: z.infer<typeof QueryDataSourceV3InputSchema>;

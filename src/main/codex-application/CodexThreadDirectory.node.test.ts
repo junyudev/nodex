@@ -1,3 +1,4 @@
+import { buildCodexThreadConfig } from "../codex/codex-thread-config";
 import type { Thread, Turn } from "@nodex/codex-app-server-protocol/v2";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -189,6 +190,10 @@ const makeCore = (threads: Map<string, CoreThread>): CoreModules["Service"] => {
         threads.set(intent.thread_id, { ...existing, dynamic_tool_catalogs: intent.catalogs });
       } else if (intent.kind === "replace_thread_writable_roots" && existing) {
         threads.set(intent.thread_id, { ...existing, writable_roots: intent.roots });
+      } else if (intent.kind === "mutate_session" && intent.intent.kind === "link_thread") {
+        const thread = threads.get(intent.intent.thread_id)!;
+        assert.strictEqual(intent.intent.expected_project_id, thread.project_id);
+        threads.set(intent.intent.thread_id, { ...thread, session_id: intent.session_id });
       } else {
         throw new Error("Unexpected Core intent");
       }
@@ -200,10 +205,11 @@ const makeCore = (threads: Map<string, CoreThread>): CoreModules["Service"] => {
 const makeGateway = (
   requestOnHost: RequestOnHost,
   requestForThread?: RequestForThread,
+  localHostId = "local",
 ): CodexGateway["Service"] => {
   const unsupported = () => Effect.die(new Error("Unsupported Gateway operation"));
   return CodexGateway.of({
-    localHostId: "local",
+    localHostId,
     requestRawOnHost: unsupported,
     requestRawForThread: unsupported,
     events: Stream.empty,
@@ -747,6 +753,7 @@ it.effect("accepts a metadata-only fork shell with inherited durable authority",
 
       const accepted = yield* directory.acceptForkResult({
         sourceThreadId: "thread-source",
+        destinationSessionId: "reserved-fork",
         response: {
           thread: {
             ...appThread("thread-child"),
@@ -772,6 +779,7 @@ it.effect("accepts a metadata-only fork shell with inherited durable authority",
       });
 
       const persisted = threads.get("thread-child");
+      assert.strictEqual(accepted.durable.sessionId, "reserved-fork");
       assert.strictEqual(accepted.durable.projectId, "project-fork");
       assert.strictEqual(accepted.durable.forkedFromId, "thread-source");
       assert.strictEqual(accepted.durable.executionHostId, "remote-fork");
@@ -1171,138 +1179,149 @@ it.effect("keeps legacy tail reads metadata-only instead of loading unbounded hi
   ),
 );
 
-it.effect("resumes paginated Threads metadata-first and hydrates one bounded tail page", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const threads = new Map([["thread-a", coreThread("thread-a")]]);
-      const core = makeCore(threads);
-      const conversations = makeConversations();
-      const eventHub = CodexApplicationEventHub.of({
-        events: Stream.empty,
-        publish: () => undefined,
-      });
-      const projection = yield* makeConversationProjection.pipe(
-        Effect.provideService(ConversationEntityMap, conversations),
-        Effect.provideService(
-          CodexRendererConversationRegistry,
-          makeCodexRendererConversationRegistryState(),
-        ),
-        Effect.provideService(CodexApplicationEventHub, eventHub),
-        Effect.provideService(CoreModules, core),
-      );
-      const resumeRequests: Array<{ readonly params: unknown; readonly scheduling: unknown }> = [];
-      const gateway = makeGateway(((hostId, method, params, scheduling) => {
-        assert.strictEqual(hostId, "remote-a");
-        assert.strictEqual(method, "thread/resume");
-        resumeRequests.push({ params, scheduling });
-        return Effect.succeed({
-          thread: appThread("thread-a"),
-          model: "gpt-test",
-          modelProvider: "openai",
-          serviceTier: null,
-          cwd: "/repo",
-          runtimeWorkspaceRoots: ["/repo"],
-          instructionSources: [],
-          approvalPolicy: "on-request",
-          approvalsReviewer: "user",
-          sandbox: { type: "readOnly", networkAccess: false },
-          activePermissionProfile: null,
-          reasoningEffort: "high",
-          multiAgentMode: "explicitRequestOnly",
-          turnsBackwardsCursor: "turns:tail",
-          itemsBackwardsCursor: "items:tail",
-        } as never);
-      }) as RequestOnHost);
-      const pageInputs: unknown[] = [];
-      const tailTurn: Turn = {
-        id: "turn-tail",
-        items: [],
-        itemsView: "summary",
-        status: "completed",
-        error: null,
-        startedAt: null,
-        completedAt: null,
-        durationMs: null,
-      };
-      const historyPages = CodexHistoryPageAdapter.of({
-        loadTurnPage: (input) => {
-          pageInputs.push(input);
-          return Effect.succeed({
-            turns: [tailTurn],
-            nextCursor: "turns:older",
-            backwardsCursor: "turns:newer",
-            loadedItemCount: 0,
-            itemSegmentsByTurnId: { [tailTurn.id]: [] },
-            itemsPaginationByTurnId: {
-              [tailTurn.id]: {
-                olderCursor: "items:older",
-                isLoadingOlder: false,
-                hasLoadedOldest: false,
-                oldestUserInput: [{ type: "text", text: "opening prompt", text_elements: [] }],
-                openingUserMessageId: "item-opening",
-                itemsView: "summary",
+it.effect.each([true, false])(
+  "resumes metadata-first and hydrates one bounded tail page (native bridge: %s)",
+  (nativeMcp) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const threads = new Map([["thread-a", coreThread("thread-a")]]);
+        const core = makeCore(threads);
+        const conversations = makeConversations();
+        const eventHub = CodexApplicationEventHub.of({
+          events: Stream.empty,
+          publish: () => undefined,
+        });
+        const projection = yield* makeConversationProjection.pipe(
+          Effect.provideService(ConversationEntityMap, conversations),
+          Effect.provideService(
+            CodexRendererConversationRegistry,
+            makeCodexRendererConversationRegistryState(),
+          ),
+          Effect.provideService(CodexApplicationEventHub, eventHub),
+          Effect.provideService(CoreModules, core),
+        );
+        const resumeRequests: Array<{ readonly params: unknown; readonly scheduling: unknown }> =
+          [];
+        const gateway = makeGateway(
+          ((hostId, method, params, scheduling) => {
+            assert.strictEqual(hostId, "remote-a");
+            assert.strictEqual(method, "thread/resume");
+            resumeRequests.push({ params, scheduling });
+            return Effect.succeed({
+              thread: appThread("thread-a"),
+              model: "gpt-test",
+              modelProvider: "openai",
+              serviceTier: null,
+              cwd: "/repo",
+              runtimeWorkspaceRoots: ["/repo"],
+              instructionSources: [],
+              approvalPolicy: "on-request",
+              approvalsReviewer: "user",
+              sandbox: { type: "readOnly", networkAccess: false },
+              activePermissionProfile: null,
+              reasoningEffort: "high",
+              multiAgentMode: "explicitRequestOnly",
+              turnsBackwardsCursor: "turns:tail",
+              itemsBackwardsCursor: "items:tail",
+            } as never);
+          }) as RequestOnHost,
+          undefined,
+          nativeMcp ? "remote-a" : "local",
+        );
+        const pageInputs: unknown[] = [];
+        const tailTurn: Turn = {
+          id: "turn-tail",
+          items: [],
+          itemsView: "summary",
+          status: "completed",
+          error: null,
+          startedAt: null,
+          completedAt: null,
+          durationMs: null,
+        };
+        const historyPages = CodexHistoryPageAdapter.of({
+          loadTurnPage: (input) => {
+            pageInputs.push(input);
+            return Effect.succeed({
+              turns: [tailTurn],
+              nextCursor: "turns:older",
+              backwardsCursor: "turns:newer",
+              loadedItemCount: 0,
+              itemSegmentsByTurnId: { [tailTurn.id]: [] },
+              itemsPaginationByTurnId: {
+                [tailTurn.id]: {
+                  olderCursor: "items:older",
+                  isLoadingOlder: false,
+                  hasLoadedOldest: false,
+                  oldestUserInput: [{ type: "text", text: "opening prompt", text_elements: [] }],
+                  openingUserMessageId: "item-opening",
+                  itemsView: "summary",
+                },
               },
+            });
+          },
+          loadTurnItemsPage: () => Effect.die("unused"),
+        });
+        const directory = yield* makeDirectory.pipe(
+          Effect.provideService(CodexApplicationEventHub, eventHub),
+          Effect.provideService(CodexConversationProjection, projection),
+          Effect.provideService(CodexGateway, gateway),
+          Effect.provideService(CodexHistoryPageAdapter, historyPages),
+          Effect.provideService(
+            CodexAppServerCapabilities,
+            CodexAppServerCapabilities.of({
+              forHost: () => Effect.succeed(capabilitySnapshot),
+              forThread: () => Effect.succeed(capabilitySnapshot),
+              isCurrent: () => Effect.succeed(true),
+            }),
+          ),
+          Effect.provideService(ConversationEntityMap, conversations),
+          Effect.provideService(CoreModules, core),
+        );
+
+        const resolved = yield* directory.resolve({ threadId: "thread-a", fidelity: "live" });
+
+        assert.deepEqual(resumeRequests, [
+          {
+            params: {
+              threadId: "thread-a",
+              excludeTurns: true,
+              config: buildCodexThreadConfig({ nativeMcp }),
             },
-          });
-        },
-        loadTurnItemsPage: () => Effect.die("unused"),
-      });
-      const directory = yield* makeDirectory.pipe(
-        Effect.provideService(CodexApplicationEventHub, eventHub),
-        Effect.provideService(CodexConversationProjection, projection),
-        Effect.provideService(CodexGateway, gateway),
-        Effect.provideService(CodexHistoryPageAdapter, historyPages),
-        Effect.provideService(
-          CodexAppServerCapabilities,
-          CodexAppServerCapabilities.of({
-            forHost: () => Effect.succeed(capabilitySnapshot),
-            forThread: () => Effect.succeed(capabilitySnapshot),
-            isCurrent: () => Effect.succeed(true),
-          }),
-        ),
-        Effect.provideService(ConversationEntityMap, conversations),
-        Effect.provideService(CoreModules, core),
-      );
-
-      const resolved = yield* directory.resolve({ threadId: "thread-a", fidelity: "live" });
-
-      assert.deepEqual(resumeRequests, [
-        {
-          params: { threadId: "thread-a", excludeTurns: true },
-          scheduling: { expectedHostId: "remote-a", expectedGeneration: 1 },
-        },
-      ]);
-      assert.deepEqual(pageInputs, [
-        {
-          capability: capabilitySnapshot,
-          threadId: "thread-a",
-          cursor: "turns:tail",
-          initialItemsCursor: "items:tail",
-          purpose: "initial",
-        },
-      ]);
-      assert.deepEqual(resolved?.snapshot?.turnPagination, {
-        olderCursor: "turns:older",
-        backwardsCursor: "turns:newer",
-        oldestLoadedTurnId: "turn-tail",
-        isLoadingOlder: false,
-        hasLoadedOldest: false,
-        loadedTurnCount: 1,
-        itemsView: "summary",
-      });
-      assert.deepEqual(resolved?.canonical?.turns[0]?.sidecar.params.input, [
-        { type: "text", text: "opening prompt", text_elements: [] },
-      ]);
-      assert.deepEqual(conversations.current("thread-a")?.readTurnItemsPagination("turn-tail"), {
-        olderCursor: "items:older",
-        isLoadingOlder: false,
-        hasLoadedOldest: false,
-        oldestUserInput: [{ type: "text", text: "opening prompt", text_elements: [] }],
-        openingUserMessageId: "item-opening",
-        itemsView: "summary",
-      });
-    }),
-  ),
+            scheduling: { expectedHostId: "remote-a", expectedGeneration: 1 },
+          },
+        ]);
+        assert.deepEqual(pageInputs, [
+          {
+            capability: capabilitySnapshot,
+            threadId: "thread-a",
+            cursor: "turns:tail",
+            initialItemsCursor: "items:tail",
+            purpose: "initial",
+          },
+        ]);
+        assert.deepEqual(resolved?.snapshot?.turnPagination, {
+          olderCursor: "turns:older",
+          backwardsCursor: "turns:newer",
+          oldestLoadedTurnId: "turn-tail",
+          isLoadingOlder: false,
+          hasLoadedOldest: false,
+          loadedTurnCount: 1,
+          itemsView: "summary",
+        });
+        assert.deepEqual(resolved?.canonical?.turns[0]?.sidecar.params.input, [
+          { type: "text", text: "opening prompt", text_elements: [] },
+        ]);
+        assert.deepEqual(conversations.current("thread-a")?.readTurnItemsPagination("turn-tail"), {
+          olderCursor: "items:older",
+          isLoadingOlder: false,
+          hasLoadedOldest: false,
+          oldestUserInput: [{ type: "text", text: "opening prompt", text_elements: [] }],
+          openingUserMessageId: "item-opening",
+          itemsView: "summary",
+        });
+      }),
+    ),
 );
 
 it.effect("resumes through an unversioned host without replacing resident history", () =>
@@ -1413,6 +1432,7 @@ it.effect("resumes through an unversioned host without replacing resident histor
             threadId: "thread-a",
             excludeTurns: true,
             initialTurnsPage: { limit: 5, itemsView: "full", sortDirection: "desc" },
+            config: buildCodexThreadConfig({ nativeMcp: false }),
           },
           scheduling: { expectedHostId: "remote-a", expectedGeneration: 2 },
         },

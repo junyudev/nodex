@@ -69,7 +69,7 @@ struct CreatePreflight {
     destination: LibraryPageCopyDestination,
     destination_document: Option<LibraryAgentDocumentHead>,
     destination_database_id: Option<String>,
-    actor_project_id: String,
+    actor_project_id: Option<String>,
     destination_authority_hash: String,
     pages: Vec<PreparedPage>,
     batch_documents: Option<PreparedAgentPageDocumentBatch>,
@@ -709,7 +709,7 @@ fn apply_pages(
             connection,
             scope.evidence(),
             library_id,
-            &preflight.actor_project_id,
+            preflight.actor_project_id.as_deref(),
             &page.page_operation_id,
             store_epoch,
             &page.page_id,
@@ -743,7 +743,7 @@ fn apply_pages(
             LibraryPageCopyDestination::Library { .. } => {
                 super::mutation::insert_creator_resource_grant(
                     connection,
-                    &preflight.actor_project_id,
+                    preflight.actor_project_id.as_deref(),
                     library_id,
                     "page",
                     &page.page_id,
@@ -755,7 +755,7 @@ fn apply_pages(
                 let placement = place_staged_page_in_data_source_prevalidated(
                     connection,
                     library_id,
-                    &preflight.actor_project_id,
+                    preflight.actor_project_id.as_deref(),
                     &page.page_id,
                     &destination,
                     StagedPagePlacementRevisions {
@@ -811,7 +811,7 @@ fn apply_pages(
                 let placement = transfer_existing_page_for_agent_move_prevalidated(
                     connection,
                     library_id,
-                    &preflight.actor_project_id,
+                    preflight.actor_project_id.as_deref(),
                     &page.page_id,
                     1,
                     0,
@@ -844,7 +844,7 @@ fn apply_pages(
             .then(|| {
                 mint_etags(
                     connection,
-                    &context_project_id(context)?,
+                    context_project_id(context)?.as_deref(),
                     store_epoch,
                     &staged.document_id,
                     &staged.materialization,
@@ -871,8 +871,7 @@ fn apply_pages(
         context
             .project_id
             .as_ref()
-            .map(|project_id| project_id.0.as_str())
-            .ok_or_else(|| unauthorized("Agent Page create requires a bound Project"))?,
+            .map(|project_id| project_id.0.as_str()),
         operation_id,
         store_epoch,
         preflight
@@ -975,7 +974,7 @@ fn compile_resolved_preflight(
         &destination,
         &document_heads,
         &destination_database_id,
-        &actor_project_id,
+        actor_project_id.as_deref(),
     ))?;
     let mut pages = Vec::with_capacity(request.pages.len());
     let mut created_roots = Vec::new();
@@ -1091,7 +1090,7 @@ fn compile_resolved_preflight(
         authorization_fingerprint,
         store_epoch,
         &destination,
-        &actor_project_id,
+        actor_project_id.as_deref(),
         &document_heads,
         pages
             .iter()
@@ -1148,7 +1147,7 @@ fn revalidate_preflight(
         destination,
         document_heads,
         destination_database_id,
-        &actor_project_id,
+        actor_project_id.as_deref(),
     ))?;
     if destination_authority_hash != preflight.destination_authority_hash
         || actor_project_id != preflight.actor_project_id
@@ -1344,7 +1343,7 @@ fn agent_actor(authorization: &AgentExecutionAuthorization) -> serde_json::Value
 
 fn mint_etags(
     connection: &Connection,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     store_epoch: &str,
     document_id: &str,
     materialization: &DocumentMaterialization,
@@ -1477,12 +1476,11 @@ fn allocation_id(operation_id: &str, role: &str) -> String {
     )
 }
 
-fn context_project_id(context: &BoundModuleContext) -> Result<String, StoreError> {
-    context
+fn context_project_id(context: &BoundModuleContext) -> Result<Option<String>, StoreError> {
+    Ok(context
         .project_id
         .as_ref()
-        .map(|project_id| project_id.0.clone())
-        .ok_or_else(|| unauthorized("Agent Page creation requires an actor Project"))
+        .map(|project_id| project_id.0.clone()))
 }
 
 fn request_hash(
@@ -1543,10 +1541,6 @@ fn reused() -> StoreError {
 
 fn invalid(message: impl Into<String>) -> StoreError {
     StoreError::new(StoreErrorCode::InvalidInput, message, false)
-}
-
-fn unauthorized(message: impl Into<String>) -> StoreError {
-    StoreError::new(StoreErrorCode::Unauthorized, message, false)
 }
 
 fn corrupt(message: impl Into<String>) -> StoreError {

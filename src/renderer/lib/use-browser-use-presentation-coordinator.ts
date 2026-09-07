@@ -43,7 +43,9 @@ interface BrowserUsePresentationCoordinatorInput {
     "findById" | "prefetch" | "resolveScene" | "select"
   >;
   readonly controller: WorkbenchPanelController;
-  readonly createSessionViewTab: (input: WorkbenchTabCreateInput) => WorkbenchTabProjection | null;
+  readonly createSessionViewTab: (
+    input: WorkbenchTabCreateInput,
+  ) => Promise<WorkbenchTabProjection | null>;
   readonly pinPreviewTab: (panelId: PanelId, tabId: string, leafId?: string) => Promise<void>;
   readonly setActivePanelCollapsed: (panelId: PanelId, collapsed: boolean) => Promise<unknown>;
   readonly setActivePanelTab: (
@@ -161,7 +163,7 @@ export function useBrowserUsePresentationCoordinator({
       const snapshot =
         runtime.state.tabs.find((tab) => matchesBrowserSidebarTabIdentity(tab, request)) ?? null;
       const targetLeafId = resolveSessionPanelActiveLeafId(activeSession, "right");
-      const created = createSessionViewTab(
+      const created = await createSessionViewTab(
         buildBrowserUseWorkbenchTabCreateInput({
           request,
           sessionId: activeSession.id,
@@ -346,7 +348,7 @@ export function useBrowserUsePresentationCoordinator({
         if (findWorkbenchBrowserTabByRuntimeId(activeSession.tabs, identity.browserTabId)) {
           return;
         }
-        createSessionViewTab({
+        void createSessionViewTab({
           ...buildBrowserUseWorkbenchTabCreateInput({
             request: {
               ...identity,

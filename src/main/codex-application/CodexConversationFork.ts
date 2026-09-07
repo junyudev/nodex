@@ -17,7 +17,7 @@ import type {
   CodexConversationSnapshot,
   ProjectSession,
 } from "../../shared/types";
-import { buildCodexThreadConfigOverrides } from "../codex/codex-thread-capabilities";
+import { buildCodexThreadConfig } from "../codex/codex-thread-config";
 import {
   CodexAppServerCapabilities,
   type CodexAppServerCapabilitySnapshot,
@@ -40,6 +40,8 @@ type GatewayThreadForkParams = ClientRequestParamsByMethod["thread/fork"];
 
 export interface CodexConversationForkInput {
   readonly sourceThreadId: string;
+  /** An already reserved destination Session; ordinary UI forks create one on acceptance. */
+  readonly destinationSessionId?: string;
   readonly lastTurnId?: string | null;
   readonly threadSource: NonNullable<ThreadForkParams["threadSource"]>;
   readonly ownerClientId?: string | null;
@@ -203,7 +205,7 @@ export const make: Effect.Effect<
       excludeTurns: true,
       config: {
         ...(profile?.reasoningEffort ? { model_reasoning_effort: profile.reasoningEffort } : {}),
-        ...buildCodexThreadConfigOverrides(),
+        ...buildCodexThreadConfig({ nativeMcp: capability.hostId === gateway.localHostId }),
       },
     } satisfies ThreadForkParams;
     if (!(yield* capabilities.isCurrent(capability).pipe(Effect.orElseSucceed(() => false)))) {
@@ -285,6 +287,7 @@ export const make: Effect.Effect<
       .acceptForkResult({
         sourceThreadId,
         response,
+        ...(input.destinationSessionId ? { destinationSessionId: input.destinationSessionId } : {}),
         ...(input.target ? { target: input.target } : {}),
       })
       .pipe(Effect.mapError((cause) => error("materialize", sourceThreadId, cause)));

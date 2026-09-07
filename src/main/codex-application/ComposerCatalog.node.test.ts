@@ -295,3 +295,67 @@ it.effect(
       yield* Scope.close(scope, Exit.void);
     }),
 );
+
+it.effect("uninstalls only an unambiguous user plugin and verifies the installed inventory", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const removed: string[] = [];
+      let unavailable = false;
+      const plugins = [
+        { id: "same@one", name: "Same", installed: true },
+        { id: "same@two", name: "Same", installed: true },
+        { id: "browser@openai-bundled", name: "Browser", installed: true },
+      ];
+      const request = ((method: string, params: unknown) =>
+        Effect.sync(() => {
+          if (method === "plugin/installed")
+            return {
+              marketplaces: [
+                {
+                  name: "test",
+                  path: null,
+                  interface: null,
+                  plugins: plugins.filter((plugin) => !removed.includes(plugin.id)),
+                },
+              ],
+              marketplaceLoadErrors: unavailable ? [{ message: "unavailable" }] : [],
+            };
+          if (method === "plugin/uninstall") {
+            removed.push((params as { pluginId: string }).pluginId);
+            return {};
+          }
+          throw new Error(`Unexpected method ${method}`);
+        })) as CodexGateway["Service"]["requestLocal"];
+      const context = yield* Layer.build(
+        composerCatalogLive.pipe(Layer.provide(Layer.succeed(CodexGateway, makeGateway(request)))),
+      );
+      const catalog = Context.get(context, ComposerCatalog);
+      const input = { plugin: "Same", cwds: [], isCurrent: Effect.succeed(true) };
+      assert.strictEqual((yield* catalog.uninstallPlugin(input)).status, "selection_required");
+      assert.strictEqual(
+        (yield* catalog.uninstallPlugin({ ...input, plugin: "Browser" })).status,
+        "protected",
+      );
+      assert.strictEqual(
+        (yield* catalog.uninstallPlugin({
+          ...input,
+          plugin: "same@one",
+          isCurrent: Effect.succeed(false),
+        })).status,
+        "cancelled",
+      );
+      assert.deepStrictEqual(removed, []);
+      assert.deepStrictEqual(yield* catalog.uninstallPlugin({ ...input, plugin: "same@one" }), {
+        status: "uninstalled",
+        pluginId: "same@one",
+      });
+      assert.strictEqual(
+        (yield* catalog.uninstallPlugin({ ...input, plugin: "same@one" })).status,
+        "not_installed",
+      );
+      unavailable = true;
+      assert.strictEqual((yield* catalog.uninstallPlugin(input)).status, "inventory_unavailable");
+      assert.deepStrictEqual(removed, ["same@one"]);
+    }),
+  ),
+);

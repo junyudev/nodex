@@ -1011,10 +1011,11 @@ mod tests {
                     operation_id: "operation:database-agent-turn".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
+                        read_only: false,
                         thread_id: "thread:database-agent".to_owned(),
                         turn_id: "turn:database-agent".to_owned(),
                         root_thread_id: "thread:database-agent".to_owned(),
-                        actor_project_id: "project-1".to_owned(),
+                        actor_project_id: Some("project-1".to_owned()),
                         source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
                         inherited_from: None,
                     },
@@ -1028,7 +1029,7 @@ mod tests {
                     thread_id: "thread:database-agent".to_owned(),
                     turn_id: "turn:database-agent".to_owned(),
                     root_thread_id: "thread:database-agent".to_owned(),
-                    actor_project_id: "project-1".to_owned(),
+                    actor_project_id: Some("project-1".to_owned()),
                     library_id: "library-1".to_owned(),
                     store_epoch: "epoch-1".to_owned(),
                     scope: ProjectWorkspaceTurnAuthorityScope::Project,
@@ -2110,7 +2111,7 @@ mod tests {
                     read: DatabaseRead::ViewWindow {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: SECOND_VIEW_ID.to_owned(),
-                            preferences_override: preferences_override(
+                            preferences_override: Box::new(preferences_override(
                                 DatabaseViewPresentationOverrideInput {
                                     group: Some(DatabaseViewGroupOverrideInput::None),
                                     subgroup: None,
@@ -2119,7 +2120,7 @@ mod tests {
                                     hierarchy: None,
                                     display: None,
                                 },
-                            ),
+                            )),
                         },
                         window: Default::default(),
                         group_scope: None,
@@ -3784,7 +3785,7 @@ mod tests {
                     read: DatabaseRead::ViewWindow {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
-                            preferences_override: DatabaseViewPreferencesOverrideInput {
+                            preferences_override: Box::new(DatabaseViewPreferencesOverrideInput {
                                 rules_override: DatabaseViewRulesOverrideInput {
                                     advanced_filter: Some(
                                         nodex_core_contracts::database::DatabaseViewAdvancedFilterOverrideInput::Filter {
@@ -3801,7 +3802,7 @@ mod tests {
                                     ..Default::default()
                                 },
                                 ..Default::default()
-                            },
+                            }),
                         },
                         window: Default::default(),
                         group_scope: None,
@@ -3900,10 +3901,10 @@ mod tests {
                     read: DatabaseRead::ViewWindow {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
-                            preferences_override: DatabaseViewPreferencesOverrideInput {
+                            preferences_override: Box::new(DatabaseViewPreferencesOverrideInput {
                                 rules_override: stored.rules_override,
                                 presentation_override: stored.presentation_override,
-                            },
+                            }),
                         },
                         window: Default::default(),
                         group_scope: None,
@@ -6469,12 +6470,12 @@ mod tests {
                     read: DatabaseRead::ListWindow {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
-                            preferences_override: preferences_override(
+                            preferences_override: Box::new(preferences_override(
                                 DatabaseViewPresentationOverrideInput {
                                     group_direction: Some(DatabaseViewSortDirectionInput::Desc),
                                     ..Default::default()
                                 },
-                            ),
+                            )),
                         },
                         window: CollectionWindowRequest {
                             after: None,
@@ -7366,6 +7367,11 @@ mod tests {
             panic!("Relation filtered View");
         };
         assert_eq!(filtered.rows.items.len(), 1);
+        // Relation previews loaded outside the visible fields still carry their write condition.
+        assert_eq!(
+            filtered.rows.items[0].database_value_revisions["p_blocked0"],
+            1
+        );
         let preview = &filtered.rows.items[0].database_values["p_blocked0"]["value"];
         assert_eq!(preview["total_count"], 5);
         assert_eq!(preview["targets"].as_array().map(Vec::len), Some(3));
@@ -8259,7 +8265,7 @@ mod tests {
                         read: DatabaseRead::ViewWindow {
                             target: DatabaseViewReadTarget::PresentedView {
                                 view_id: VIEW_ID.to_owned(),
-                                preferences_override: preferences_override(
+                                preferences_override: Box::new(preferences_override(
                                     DatabaseViewPresentationOverrideInput {
                                         group: Some(DatabaseViewGroupOverrideInput::None),
                                         subgroup: None,
@@ -8271,7 +8277,7 @@ mod tests {
                                         hierarchy: None,
                                         display: None,
                                     },
-                                ),
+                                )),
                             },
                             window: Default::default(),
                             group_scope: None,
@@ -8387,7 +8393,7 @@ mod tests {
                     read: DatabaseRead::ViewGroups {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
-                            preferences_override: presentation_override.clone(),
+                            preferences_override: Box::new(presentation_override.clone()),
                         },
                     },
                 },
@@ -8433,7 +8439,7 @@ mod tests {
                     read: DatabaseRead::ViewWindow {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
-                            preferences_override: presentation_override.clone(),
+                            preferences_override: Box::new(presentation_override.clone()),
                         },
                         window: Default::default(),
                         group_scope: Some(DatabaseGroupScope::Path {
@@ -8513,7 +8519,7 @@ mod tests {
                     read: DatabaseRead::ViewGroups {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
-                            preferences_override: bounded_override,
+                            preferences_override: Box::new(bounded_override),
                         },
                     },
                 },
@@ -8542,7 +8548,7 @@ mod tests {
                     read: DatabaseRead::ViewGroups {
                         target: DatabaseViewReadTarget::PresentedView {
                             view_id: VIEW_ID.to_owned(),
-                            preferences_override: invalid_override,
+                            preferences_override: Box::new(invalid_override),
                         },
                     },
                 },

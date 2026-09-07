@@ -1,6 +1,6 @@
 use rusqlite::{Connection, TransactionBehavior, params};
 
-use nodex_core_contracts::{BoundModuleContext, ProjectId};
+use nodex_core_contracts::BoundModuleContext;
 
 use crate::infrastructure::document_repository::{DocumentReadiness, DocumentSyncEngine};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
@@ -160,17 +160,7 @@ pub(crate) fn finalize_idle_document_revisions(
             transaction.commit()?;
             continue;
         }
-        let actor_context = match context.project_id.as_ref() {
-            Some(_) => context.clone(),
-            None => BoundModuleContext {
-                editor_history_owner: None,
-                project_id: Some(ProjectId(crate::library::resolve_library_actor_project_id(
-                    &transaction,
-                    &authority.head.library_id,
-                )?)),
-                ..context.clone()
-            },
-        };
+        let actor_context = context.clone();
         let already_covered = transaction.query_row(
             "SELECT EXISTS(SELECT 1 FROM document_versions \
              WHERE document_id = ?1 AND generation = ?2 AND base_head_seq = ?3)",
@@ -439,7 +429,7 @@ mod tests {
                     connection,
                     PersistYjsGenesis {
                         authority: &authority,
-                        actor_project_id: "project:revision-maintenance",
+                        actor_project_id: Some("project:revision-maintenance"),
                         materialization: &genesis.materialization,
                         update_id: "genesis:revision-maintenance",
                         client_session_id: "client:revision-maintenance",

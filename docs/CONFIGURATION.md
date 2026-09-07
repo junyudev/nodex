@@ -18,6 +18,16 @@ Profile home resolves in this order:
 3. `server.home` in `~/.nodex/config.toml`;
 4. the default `~/.nodex` home.
 
+## Workspace document dependencies
+
+Packaged macOS builds include managed document dependencies; no Profile setting or system
+Python installation is required. Native application MCP reports the verified runtime paths
+through `load_workspace_dependencies`. Development checkouts stage their architecture with
+`vp run materialize:workspace-runtime:mac:arm64` or
+`vp run materialize:workspace-runtime:mac:x64`, then restart Desktop if the capability was
+already checked. Runtime selection does not search `PATH` or user Python environments.
+See [the distribution and verification contract](../resources/workspace-runtime/README.md).
+
 ## ACP Agent instances
 
 ACP Agent instances are Profile-local, explicit local-code authorizations. The current Claude

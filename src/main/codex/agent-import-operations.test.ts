@@ -1,3 +1,4 @@
+import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -155,6 +156,9 @@ describe("agent import config policy", () => {
                 excludeTurns: true,
                 path: sourcePath,
                 threadId: "source-thread",
+                config: expect.objectContaining({
+                  "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name),
+                }),
               }),
               scheduling: {
                 expectedGeneration: 7,

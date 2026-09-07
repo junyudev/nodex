@@ -26,12 +26,12 @@ describe("project session Page Stage config", () => {
   test("persists only Page identity, access context, and a title snapshot", () => {
     expect(
       parseWorkbenchProjectionTabConfig("page_stage", {
-        projectId: "alpha",
+        accessContext: { kind: "project", projectId: "alpha" },
         pageId: "nested",
         titleSnapshot: "Nested",
       }),
     ).toEqual({
-      projectId: "alpha",
+      accessContext: { kind: "project", projectId: "alpha" },
       pageId: "nested",
       titleSnapshot: "Nested",
     });
@@ -40,7 +40,7 @@ describe("project session Page Stage config", () => {
   test("rejects interaction-derived ancestor trails at the durable boundary", () => {
     expect(() =>
       parseWorkbenchProjectionTabConfig("page_stage", {
-        projectId: "alpha",
+        accessContext: { kind: "project", projectId: "alpha" },
         pageId: "nested",
         ancestors: [
           {
@@ -58,12 +58,12 @@ describe("project session Canvas Stage config", () => {
   test("persists only public Canvas identity, access context, and title fallback", () => {
     expect(
       parseWorkbenchProjectionTabConfig("canvas_stage", {
-        projectId: "alpha",
+        accessContext: { kind: "project", projectId: "alpha" },
         canvasBlockId: "canvas:one",
         titleSnapshot: "Sketch",
       }),
     ).toEqual({
-      projectId: "alpha",
+      accessContext: { kind: "project", projectId: "alpha" },
       canvasBlockId: "canvas:one",
       titleSnapshot: "Sketch",
     });
@@ -72,12 +72,12 @@ describe("project session Canvas Stage config", () => {
   test("rejects missing Canvas identity and private Document identity", () => {
     expect(() =>
       parseWorkbenchProjectionTabConfig("canvas_stage", {
-        projectId: "alpha",
+        accessContext: { kind: "project", projectId: "alpha" },
       }),
     ).toThrow();
     expect(() =>
       parseWorkbenchProjectionTabConfig("canvas_stage", {
-        projectId: "alpha",
+        accessContext: { kind: "project", projectId: "alpha" },
         canvasBlockId: "canvas:one",
         documentId: "document:private",
       }),

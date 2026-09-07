@@ -1,13 +1,16 @@
-import { useCallback, useMemo } from "react";
+import { captureCodexTurnPresentation } from "@/lib/codex-turn-presentation";
+import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
+import { useCallback, useEffect, useEffectEvent, useMemo } from "react";
 import {
   useCodexAppServerManagerForConversationId,
   useCodexConversationValue,
 } from "../local-conversation-store";
 import { ReviewDiffPanel } from "@/components/workbench/review-diff-panel";
 import type { CodexConversationSnapshot } from "@/lib/types";
-import { useScopedAtomValue } from "@/lib/maitai";
+import { useScopedAtomValue, useSetScopedAtom } from "@/lib/maitai";
 import {
   reviewRouteStateAtom,
+  prepareReviewOpenAtom,
   type ResolvedTurnDiffReview,
   type ReviewSelectedTurnIdentity,
 } from "@/features/review/model/review-view-state";
@@ -20,11 +23,15 @@ import {
   normalizeTurnDiffPatchBatches,
 } from "@/features/local-conversation/projection/projectless-output-scope";
 import { recordReviewRuntimeEvent } from "@/features/review/testing/review-runtime-probe";
+import type { WorkbenchPendingReviewOpen } from "../../../../shared/nodex-app-tools/workbench-reveal";
+import { workbenchReviewOpenIntent } from "@/lib/workbench-review-open";
 
 interface ConnectedReviewDiffPanelProps {
   threadId: string | null;
   projectWorkspacePath?: string | null;
   searchOpenTick: number;
+  pendingOpen?: WorkbenchPendingReviewOpen | null;
+  onOpenConsumed?: (operationId: string) => void;
 }
 
 function refreshSelectedTurnDiffTarget(
@@ -123,9 +130,20 @@ export function ConnectedReviewDiffPanel({
   threadId,
   projectWorkspacePath,
   searchOpenTick,
+  pendingOpen,
+  onOpenConsumed,
 }: ConnectedReviewDiffPanelProps) {
   recordReviewRuntimeEvent({ type: "connected-render" });
   const reviewRouteState = useScopedAtomValue(reviewRouteStateAtom);
+  const prepareOpen = useSetScopedAtom(prepareReviewOpenAtom);
+  const consumeOpen = useEffectEvent(() => {
+    if (!pendingOpen || pendingOpen.intent.threadId !== threadId) return;
+    prepareOpen(workbenchReviewOpenIntent(pendingOpen));
+    onOpenConsumed?.(pendingOpen.operationId);
+  });
+  useEffect(() => {
+    consumeOpen();
+  }, [pendingOpen?.operationId, threadId]);
   const transcriptThreadId = reviewRouteState.transcriptThreadId ?? threadId;
   const reviewProjectionSelector = useMemo(createReviewConversationProjectionSelector, []);
   const conversationProjection = useCodexConversationValue(
@@ -144,9 +162,16 @@ export function ConnectedReviewDiffPanel({
     areSelectedTurnDiffTargetsEqual,
   );
   const manager = useCodexAppServerManagerForConversationId(transcriptThreadId);
+  const workbenchOwner = useWorkbenchWindowOwner();
   const startThreadPrompt = useCallback(
-    (targetThreadId: string, prompt: string) => manager.startTurn(targetThreadId, prompt),
-    [manager],
+    async (targetThreadId: string, prompt: string) => {
+      const presentationTicket = await captureCodexTurnPresentation(workbenchOwner, {
+        kind: "thread",
+        threadId: targetThreadId,
+      });
+      return manager.startTurn(targetThreadId, prompt, undefined, presentationTicket);
+    },
+    [manager, workbenchOwner],
   );
 
   return (

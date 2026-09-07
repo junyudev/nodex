@@ -37,6 +37,8 @@ import type { OpenPageInNewChatInput, SendPageToChatInput } from "@/lib/page-cha
 import { useDatabaseViewMutationHistory } from "./database-view-mutation-history";
 import type { DatabaseViewPageActionPort } from "./database-view-page-actions";
 import type { DatabaseViewPageOpenHandler } from "./database-view-page-open";
+import { useWorkbenchDatabaseViewPresentation } from "@/lib/use-workbench-database-view-presentation";
+import type { WorkbenchDatabaseViewPresentationRegistration } from "@/lib/workbench-database-view-presentation";
 
 type DatabaseReadTarget = { readonly databaseViewId: string } | { readonly databaseId: string };
 
@@ -176,6 +178,7 @@ const mergeWindows = (
 };
 
 export function WorkbenchDatabaseViewSurface({
+  workbenchPresentation,
   accessContext,
   target,
   onOpenPage,
@@ -186,6 +189,7 @@ export function WorkbenchDatabaseViewSurface({
   onOpenRelatedChat,
   onSendPageToChat,
 }: {
+  readonly workbenchPresentation?: WorkbenchDatabaseViewPresentationRegistration;
   readonly accessContext: ContentAccessContext;
   readonly target: DatabaseSurfaceTarget;
   readonly onOpenPage: DatabaseViewPageOpenHandler;
@@ -283,6 +287,10 @@ export function WorkbenchDatabaseViewSurface({
   const model = useMemo(
     () => (mergedWindow ? buildDatabaseViewWindowRenderModel(mergedWindow) : undefined),
     [mergedWindow],
+  );
+  useWorkbenchDatabaseViewPresentation(
+    workbenchPresentation,
+    !query.isPending ? (model?.databaseViewId ?? null) : null,
   );
   const mutationHistory = useDatabaseViewMutationHistory(model);
   useEffect(() => {
@@ -512,6 +520,16 @@ export function WorkbenchDatabaseViewSurface({
           </div>
         ) : model ? (
           <DatabaseViewTabSurface
+            workbenchContent={
+              workbenchPresentation
+                ? {
+                    presentation: workbenchPresentation,
+                    preferencesRevision: null,
+                    preferencesPending: false,
+                    loading: query.isFetching,
+                  }
+                : undefined
+            }
             model={model}
             canonicalReadGeneration={queryClient.getQueryState(queryKey)?.dataUpdateCount ?? 0}
             groupPagination={groupPagination}

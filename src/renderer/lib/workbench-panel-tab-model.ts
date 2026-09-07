@@ -83,7 +83,7 @@ export interface AutomationPanelTab {
   automationPanel: true;
   id: string;
   sessionId: string;
-  projectId: string;
+  projectId: string | null;
   panelId: "right";
   leafId?: string;
   title: string;

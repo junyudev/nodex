@@ -27,6 +27,14 @@ export type WorkbenchSessionRenderProjection = ProjectSession & {
   tabs: WorkbenchTabProjection[];
 };
 
+/** Panel projection can describe a restored Scene before its exact Session detail is hydrated. */
+export type WorkbenchSessionPanelProjection = Pick<
+  WorkbenchSessionRenderProjection,
+  "id" | "panels" | "tabs"
+> & {
+  readonly projectId?: string | null;
+};
+
 export function projectSessionSummaryToDomain(
   summary: ProjectSessionSummary,
   current?: ProjectSession,

@@ -479,7 +479,11 @@ export function ThreadToolSurfaceBlock({
   const { settings } = useCodexThreadSettings();
   const item = block.entry;
   const threadDetailLevel = resolveCodexThreadDetailLevel(settings.detailLevel);
-  if (item.semanticKind === "mcpToolCall" && threadDetailLevel === "STEPS_PROSE") {
+  if (
+    item.semanticKind === "mcpToolCall" &&
+    threadDetailLevel === "STEPS_PROSE" &&
+    item.automationUpdate?.source !== "nativeMcp"
+  ) {
     return null;
   }
 

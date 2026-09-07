@@ -6,8 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Local agent tasks can discover Projects, create, fork, and move Sessions, send follow-ups, manage scheduled tasks, observe task progress, read and edit authorized content, open files at a line and targeted Review sources, navigate Sessions, use bundled document dependencies, arrange tabs, and organize the Sidebar through native application tools that respect the Turn's permissions, including verified Full access for tasks without a Project.
 - Local Full access Agent tasks can now work with Nodex through the bundled CLI, with automatic task context, command help organized by task, complete write examples, direct text streams, bare resource IDs, SQL reads across Page bodies, properties, saved Views and Files, ranked Page search, atomic schema/View configuration with saved filters, Property batches that preserve the original read versions, atomic Page creation batches, and file-based drafts that preserve Block identities and reject conflicting edits without replacing the whole Page.
-
 - Page and Canvas unsaved edits can now be reviewed, restored or saved as a separate copy, with reversible discard, automatic confirmation of already saved drafts, and recovery across restarts and windows.
 - New tasks can run through enabled local ACP Agents with durable session recovery, negotiated controls, bounded transcripts, cancellation, and explicit local-code trust settings, while Codex remains the full-fidelity default backend.
 - Added custom Sidebar Sections for organizing Projects and chats in one durable mixed order, with drag-and-drop, context menus, bulk archive, Undoable deletion, agent tools, and multi-host Codex synchronization.
@@ -39,9 +39,7 @@ All notable changes to this project will be documented in this file.
 - Fixed reordered or replaced Blocks retaining another Block's toggle hints or control actions.
 - Fixed local images failing to decode or export in the installed app, and code blocks failing to highlight when their language uses a display label or alias.
 - Fixed retained Documents without an owner blocking automatic Page history checkpoints.
-
 - Fixed Page, Canvas, and manual version saves failing in Profiles used for more than a week.
-
 - Fixed Page and Canvas sync getting stuck after a lost subscription; structural edits now have cancellable save waits, and rejected or uncertain edits remain available as explicit recovery exports with accurate local-save status.
 - Fixed copying or cutting nested Blocks losing their hierarchy when pasted, including consecutive Images and copies that export File references as local paths.
 - Fixed delayed editor pastes inserting at a moved cursor; paste now retains its original position and cancels if that position disappears.
@@ -64,9 +62,6 @@ All notable changes to this project will be documented in this file.
 - PDF files now render natively inside Files with selectable text, safe links, page navigation, fit-width and percentage zoom, and bounded offscreen work instead of depending on Chromium's embedded PDF frame.
 - Fixed Core-backed views intermittently timing out during larger searches or maintenance; interactive work keeps reserved capacity, Full Page search avoids pathological SQLite query plans and preserves multi-term evidence, stale searches cancel silently end to end, and slow requests return typed Core outcomes instead of arbitrary transport failures.
 - Fixed background retention and automation work making the sidebar or Pages fail with Core deadlines on slower Macs; maintenance now yields in bounded slices, background work cannot starve interactive requests, the sidebar preserves its last known state during transient failures, and Page opens retry brief Core contention before asking the user to retry.
-
-### Security
-
 - Hardened imported and pasted rich documents against resource exhaustion by bounding table dimensions and replacing backtracking Markdown block parsing with linear scans.
 
 ## [0.2.2] - 2026-08-18

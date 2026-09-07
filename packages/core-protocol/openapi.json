@@ -2175,6 +2175,7 @@
           "authority_stale",
           "grant_missing",
           "project_read_only",
+          "turn_read_only",
           "grant_read_only",
           "structural_capability_required"
         ]
@@ -3650,6 +3651,22 @@
             ],
             "format": "int64"
           },
+          "notification_policy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AutomationNotificationPolicy"
+              }
+            ]
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "prompt": {
             "type": "string"
           },
@@ -3671,11 +3688,18 @@
           "status": {
             "$ref": "#/components/schemas/AutomationDefinitionStatus"
           },
-          "target_thread_id": {
+          "target_session_id": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "target_thread_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Current backend attachment, projected from the target Session."
           },
           "updated_at_ms": {
             "type": "integer",
@@ -3730,6 +3754,15 @@
           "name": {
             "type": "string"
           },
+          "notification_policy": {
+            "$ref": "#/components/schemas/AutomationNotificationPreference"
+          },
+          "project_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "prompt": {
             "type": [
               "string",
@@ -3754,7 +3787,7 @@
               "null"
             ]
           },
-          "target_thread_id": {
+          "target_session_id": {
             "type": [
               "string",
               "null"
@@ -3890,6 +3923,761 @@
           "worktree"
         ]
       },
+      "AutomationIntent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "provenance",
+              "intent",
+              "kind"
+            ],
+            "properties": {
+              "intent": {
+                "$ref": "#/components/schemas/AutomationIntent"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "agent_command"
+                ]
+              },
+              "provenance": {
+                "$ref": "#/components/schemas/AgentTurnProvenance"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "automation_id",
+              "definition",
+              "kind"
+            ],
+            "properties": {
+              "automation_id": {
+                "type": "string"
+              },
+              "definition": {
+                "$ref": "#/components/schemas/AutomationDefinitionInput"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create_definition"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "automation_id",
+              "expected_revision",
+              "status",
+              "definition",
+              "kind"
+            ],
+            "properties": {
+              "automation_id": {
+                "type": "string"
+              },
+              "definition": {
+                "$ref": "#/components/schemas/AutomationDefinitionInput"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "update_definition"
+                ]
+              },
+              "status": {
+                "$ref": "#/components/schemas/AutomationDefinitionStatus"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "automation_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "automation_id": {
+                "type": "string"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delete_definition"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "automation_id",
+              "kind"
+            ],
+            "properties": {
+              "automation_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "dispatch_now"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "automation_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "automation_id": {
+                "type": "string"
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reschedule_definition"
+                ]
+              },
+              "not_before_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              },
+              "retry_within_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "work_token",
+              "limit",
+              "lease_duration_ms",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "claim_due"
+                ]
+              },
+              "lease_duration_ms": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "work_token": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "lease_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "complete_lease"
+                ]
+              },
+              "lease_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "lease_id",
+              "reason_code",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "fail_lease"
+                ]
+              },
+              "lease_id": {
+                "type": "string"
+              },
+              "reason_code": {
+                "type": "string"
+              },
+              "retry_delay_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "automation_id",
+              "kind"
+            ],
+            "properties": {
+              "automation_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "begin_run"
+                ]
+              },
+              "source_cwd": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              },
+              "thread_title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "pending_thread_id",
+              "thread_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "replace_pending_run_thread"
+                ]
+              },
+              "pending_thread_id": {
+                "type": "string"
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_run_thread_title"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              },
+              "thread_title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "inbox_summary": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "inbox_title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "complete_run_for_review"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "inbox_summary": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "inbox_title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_run_inbox_item"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "accept_run"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "expected_revision",
+              "read",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_run_read_state"
+                ]
+              },
+              "read": {
+                "type": "boolean"
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "mark_all_runs_read"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "archived_assistant_message": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "archived_reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "archived_user_message": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "archive_run"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "unarchive_run"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delete_run"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "settle_interrupted_runs"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_id",
+              "occurrence_start_ms",
+              "snooze_minutes",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "snooze_reminder"
+                ]
+              },
+              "occurrence_start_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "page_id": {
+                "type": "string"
+              },
+              "snooze_minutes": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "work_token",
+              "limit",
+              "lease_duration_ms",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "claim_due_reminders"
+                ]
+              },
+              "lease_duration_ms": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "work_token": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "lease_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "complete_reminder_lease"
+                ]
+              },
+              "lease_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "lease_id",
+              "reason_code",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "fail_reminder_lease"
+                ]
+              },
+              "lease_id": {
+                "type": "string"
+              },
+              "reason_code": {
+                "type": "string"
+              },
+              "retry_delay_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_id",
+              "occurrence_start_ms",
+              "created_page_id",
+              "kind"
+            ],
+            "properties": {
+              "created_page_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "complete_page_occurrence"
+                ]
+              },
+              "occurrence_start_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "page_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_id",
+              "occurrence_start_ms",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "skip_page_occurrence"
+                ]
+              },
+              "occurrence_start_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "page_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "page_id",
+              "occurrence_start_ms",
+              "scope",
+              "updates",
+              "kind"
+            ],
+            "properties": {
+              "created_page_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "update_page_occurrence"
+                ]
+              },
+              "occurrence_start_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "page_id": {
+                "type": "string"
+              },
+              "scope": {
+                "$ref": "#/components/schemas/PageOccurrenceUpdateScope"
+              },
+              "updates": {
+                "$ref": "#/components/schemas/PageOccurrenceSchedulePatch"
+              }
+            }
+          }
+        ]
+      },
       "AutomationLease": {
         "type": "object",
         "required": [
@@ -3957,6 +4745,54 @@
           "completed",
           "failed",
           "cancelled"
+        ]
+      },
+      "AutomationNotificationPolicy": {
+        "type": "string",
+        "enum": [
+          "failed_runs_only"
+        ]
+      },
+      "AutomationNotificationPreference": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "preserve"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set"
+                ]
+              },
+              "value": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AutomationNotificationPolicy"
+                  }
+                ]
+              }
+            }
+          }
         ]
       },
       "AutomationReadRequest": {
@@ -4540,6 +5376,22 @@
                   ],
                   "format": "int64"
                 },
+                "notification_policy": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AutomationNotificationPolicy"
+                    }
+                  ]
+                },
+                "project_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "prompt": {
                   "type": "string"
                 },
@@ -4561,11 +5413,18 @@
                 "status": {
                   "$ref": "#/components/schemas/AutomationDefinitionStatus"
                 },
-                "target_thread_id": {
+                "target_session_id": {
                   "type": [
                     "string",
                     "null"
                   ]
+                },
+                "target_thread_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Current backend attachment, projected from the target Session."
                 },
                 "updated_at_ms": {
                   "type": "integer",
@@ -6105,6 +6964,97 @@
                   }
                 },
                 "updated_at": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CollectionWindow_ProjectWorkspaceSessionListingItem": {
+        "type": "object",
+        "required": [
+          "items",
+          "authority"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Profile-wide Session discovery metadata; transcript access is authorized separately.",
+              "required": [
+                "task",
+                "project_pinned"
+              ],
+              "properties": {
+                "direct_section_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "project_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "project_pinned": {
+                  "type": "boolean"
+                },
+                "project_section_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "task": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceTaskSummary"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "CollectionWindow_ProjectWorkspaceSidebarOrderEntry": {
+        "type": "object",
+        "required": [
+          "items",
+          "authority"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "item",
+                "title"
+              ],
+              "properties": {
+                "item": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
+                },
+                "title": {
                   "type": "string"
                 }
               }
@@ -8589,6 +9539,147 @@
           }
         }
       },
+      "DatabaseDisplayedViewQueryCoverage": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "effective_complete"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "limit",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "effective_limited"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "observed"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "DatabaseDisplayedViewQueryResult": {
+        "type": "object",
+        "required": [
+          "result",
+          "rules_fingerprint",
+          "view_revision",
+          "schema_revision",
+          "coverage",
+          "total_effective_occurrences"
+        ],
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/DatabaseDisplayedViewQueryCoverage"
+          },
+          "preferences_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "result": {
+            "$ref": "#/components/schemas/SqlResult"
+          },
+          "rules_fingerprint": {
+            "type": "string"
+          },
+          "schema_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_effective_occurrences": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "view_revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DatabaseDisplayedViewSelection": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "No limit means a complete result or a budget failure, never implicit truncation.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "effective"
+                ]
+              },
+              "limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "occurrences",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "observed"
+                ]
+              },
+              "occurrences": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DatabaseObservedOccurrence"
+                }
+              }
+            }
+          }
+        ]
+      },
       "DatabaseDuplicatePropertyOption": {
         "type": "object",
         "required": [
@@ -8603,6 +9694,53 @@
             "type": "string"
           }
         }
+      },
+      "DatabaseEffectiveViewCoordinate": {
+        "type": "object",
+        "description": "Exact durable rules and transient search captured from one displayed View.",
+        "required": [
+          "database_id",
+          "data_source_id",
+          "view_id",
+          "expected_view_revision",
+          "expected_schema_revision",
+          "preferences_override",
+          "search_query"
+        ],
+        "properties": {
+          "data_source_id": {
+            "type": "string"
+          },
+          "database_id": {
+            "type": "string"
+          },
+          "expected_preferences_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "None binds shared saved rules; Some binds the Profile's committed personal preferences."
+          },
+          "expected_schema_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expected_view_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "preferences_override": {
+            "$ref": "#/components/schemas/DatabaseViewPreferencesOverrideInput"
+          },
+          "search_query": {
+            "type": "string"
+          },
+          "view_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "DatabaseEvent": {
         "type": "object",
@@ -10137,6 +11275,112 @@
             }
           }
         ]
+      },
+      "DatabaseObservedOccurrence": {
+        "type": "object",
+        "required": [
+          "page_id",
+          "group_path",
+          "ancestor_page_ids",
+          "condition"
+        ],
+        "properties": {
+          "ancestor_page_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "condition": {
+            "$ref": "#/components/schemas/DatabaseObservedRowCondition"
+          },
+          "group_path": {
+            "type": "array",
+            "items": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "occurrence_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "List surfaces retain their canonical occurrence key. Board surfaces use Page/group coordinates."
+          },
+          "page_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DatabaseObservedRowCondition": {
+        "type": "object",
+        "description": "Row conditions retain the exact displayed values without trusting renderer content.",
+        "required": [
+          "metadata_revision",
+          "parent_revision",
+          "document_id",
+          "document_generation",
+          "document_head_seq",
+          "membership_id",
+          "membership_revision",
+          "database_value_revisions"
+        ],
+        "properties": {
+          "database_value_revisions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "document_generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "document_head_seq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "membership_id": {
+            "type": "string"
+          },
+          "membership_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "metadata_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "parent_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "position_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "rank_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "DatabaseOperationOutcome": {
         "oneOf": [
@@ -13082,7 +14326,6 @@
             "type": "object",
             "required": [
               "library_id",
-              "project_id",
               "event",
               "module"
             ],
@@ -13100,7 +14343,10 @@
                 ]
               },
               "project_id": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             }
           },
@@ -14154,6 +15400,13 @@
               "kind"
             ],
             "properties": {
+              "expected_etag": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "When supplied, preserves the caller's observed body revision through execution."
+              },
               "expected_matches": {
                 "type": [
                   "integer",
@@ -14748,6 +16001,118 @@
         "enum": [
           "read",
           "read_write"
+        ]
+      },
+      "LibraryAgentAuthorizedSurface": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LibraryAgentSurfaceMetadata"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "page_id"
+                ],
+                "properties": {
+                  "page_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "page"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LibraryAgentSurfaceMetadata"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "database_id",
+                  "data_source_id",
+                  "view_id",
+                  "layout"
+                ],
+                "properties": {
+                  "data_source_id": {
+                    "type": "string"
+                  },
+                  "database_id": {
+                    "type": "string"
+                  },
+                  "layout": {
+                    "$ref": "#/components/schemas/DatabaseViewLayout"
+                  },
+                  "view_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "database_view"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LibraryAgentSurfaceMetadata"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "canvas_id"
+                ],
+                "properties": {
+                  "canvas_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "canvas"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
         ]
       },
       "LibraryAgentBlockTarget": {
@@ -15869,6 +17234,190 @@
                 "enum": [
                   "after"
                 ]
+              }
+            }
+          }
+        ]
+      },
+      "LibraryAgentSurfaceDescription": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LibraryAgentAuthorizedSurface"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "authorized"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "required": [
+              "reason",
+              "status"
+            ],
+            "properties": {
+              "reason": {
+                "$ref": "#/components/schemas/LibraryAgentSurfaceRestriction"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "restricted"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "LibraryAgentSurfaceMetadata": {
+        "type": "object",
+        "required": [
+          "title",
+          "library_id",
+          "displayed_access_context"
+        ],
+        "properties": {
+          "displayed_access_context": {
+            "$ref": "#/components/schemas/OwnedDocumentAccessContext",
+            "description": "Display context never contributes an Agent grant."
+          },
+          "library_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "LibraryAgentSurfaceRestriction": {
+        "type": "string",
+        "enum": [
+          "consent_required",
+          "access_denied",
+          "unavailable"
+        ]
+      },
+      "LibraryAgentSurfaceTarget": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "page_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "page"
+                ]
+              },
+              "page_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "target",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "database_view"
+                ]
+              },
+              "target": {
+                "$ref": "#/components/schemas/LibraryAgentSurfaceViewTarget"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "canvas_id",
+              "kind"
+            ],
+            "properties": {
+              "canvas_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "canvas"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "A semantic content target, independent of the renderer's current access context."
+      },
+      "LibraryAgentSurfaceViewTarget": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "project_default"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "database_id",
+              "kind"
+            ],
+            "properties": {
+              "database_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "database_default"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "view_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "view"
+                ]
+              },
+              "view_id": {
+                "type": "string"
               }
             }
           }
@@ -17601,7 +19150,6 @@
           "mime_type",
           "byte_length",
           "blob_etag",
-          "created_by_actor_id",
           "created_at",
           "updated_at"
         ],
@@ -17618,7 +19166,10 @@
             "type": "string"
           },
           "created_by_actor_id": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "created_by_turn_id": {
             "type": [
@@ -18214,13 +19765,15 @@
           "mime_type",
           "byte_length",
           "blob_etag",
-          "actor_id",
           "operation_id",
           "occurred_at"
         ],
         "properties": {
           "actor_id": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "blob_etag": {
             "type": "string"
@@ -24816,6 +26369,28 @@
               {
                 "type": "object",
                 "required": [
+                  "provenance",
+                  "intent",
+                  "kind"
+                ],
+                "properties": {
+                  "intent": {
+                    "$ref": "#/components/schemas/AutomationIntent"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_command"
+                    ]
+                  },
+                  "provenance": {
+                    "$ref": "#/components/schemas/AgentTurnProvenance"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "automation_id",
                   "definition",
                   "kind"
@@ -26996,6 +28571,29 @@
             "oneOf": [
               {
                 "type": "object",
+                "description": "A Turn-authorized application command. Core admits only organization intents.",
+                "required": [
+                  "provenance",
+                  "intent",
+                  "kind"
+                ],
+                "properties": {
+                  "intent": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceIntent"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_command"
+                    ]
+                  },
+                  "provenance": {
+                    "$ref": "#/components/schemas/AgentTurnProvenance"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "required": [
                   "project_id",
                   "name",
@@ -27373,6 +28971,89 @@
                 "type": "object",
                 "required": [
                   "section_id",
+                  "items",
+                  "kind"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionOrderItem"
+                    }
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "reorder_sidebar_section_items"
+                    ]
+                  },
+                  "section_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "lane",
+                  "expected_order_revision",
+                  "item_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "expected_order_revision": {
+                    "type": "string"
+                  },
+                  "item_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "reorder_builtin_sidebar_items"
+                    ]
+                  },
+                  "lane": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceBuiltinSidebarLane"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "lane",
+                  "expected_order_revision",
+                  "project_ids",
+                  "kind"
+                ],
+                "properties": {
+                  "expected_order_revision": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "prioritize_builtin_sidebar_projects"
+                    ]
+                  },
+                  "lane": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceBuiltinSidebarLane"
+                  },
+                  "project_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "section_id",
                   "session_ids",
                   "kind"
                 ],
@@ -27510,6 +29191,124 @@
                     "type": "string"
                   },
                   "title": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Reserves one host launch with Session creation. Only a fresh receipt admits execution;\nreplay must reconcile the Session binding without launching another backend Thread.",
+                "required": [
+                  "session_id",
+                  "title",
+                  "launch_request_hash",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "admit_session_launch"
+                    ]
+                  },
+                  "launch_request_hash": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Reserves one message dispatch to an exact existing Session binding.\nA duplicate receipt must never dispatch the message again.",
+                "required": [
+                  "session_id",
+                  "thread_id",
+                  "message_request_hash",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "admit_session_message"
+                    ]
+                  },
+                  "message_request_hash": {
+                    "type": "string"
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Reserves one handoff of an exact existing Session binding.\nReplays observe the retained operation and never toggle the location again.",
+                "required": [
+                  "session_id",
+                  "thread_id",
+                  "handoff_request_hash",
+                  "kind"
+                ],
+                "properties": {
+                  "handoff_request_hash": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "admit_session_handoff"
+                    ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Reserves the destination Session for one fork of an authorized source binding.",
+                "required": [
+                  "source_session_id",
+                  "source_thread_id",
+                  "session_id",
+                  "fork_request_hash",
+                  "kind"
+                ],
+                "properties": {
+                  "fork_request_hash": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "admit_session_fork"
+                    ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  },
+                  "source_session_id": {
+                    "type": "string"
+                  },
+                  "source_thread_id": {
                     "type": "string"
                   }
                 }
@@ -28336,13 +30135,16 @@
                   "thread_id",
                   "turn_id",
                   "root_thread_id",
-                  "actor_project_id",
                   "source",
+                  "read_only",
                   "kind"
                 ],
                 "properties": {
                   "actor_project_id": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "inherited_from": {
                     "oneOf": [
@@ -28359,6 +30161,9 @@
                     "enum": [
                       "freeze_turn_authority"
                     ]
+                  },
+                  "read_only": {
+                    "type": "boolean"
                   },
                   "root_thread_id": {
                     "type": "string"
@@ -29728,6 +31533,56 @@
               {
                 "type": "object",
                 "required": [
+                  "provenance",
+                  "window",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_definitions"
+                    ]
+                  },
+                  "provenance": {
+                    "$ref": "#/components/schemas/AgentTurnProvenance"
+                  },
+                  "search_query": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "provenance",
+                  "automation_id",
+                  "kind"
+                ],
+                "properties": {
+                  "automation_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_definition"
+                    ]
+                  },
+                  "provenance": {
+                    "$ref": "#/components/schemas/AgentTurnProvenance"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "lane",
                   "kind"
                 ],
@@ -29762,6 +31617,12 @@
                       "definitions"
                     ]
                   },
+                  "search_query": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "window": {
                     "$ref": "#/components/schemas/CollectionWindowRequest"
                   }
@@ -29781,6 +31642,24 @@
                     "type": "string",
                     "enum": [
                       "definition"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "automation_id",
+                  "kind"
+                ],
+                "properties": {
+                  "automation_id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "execution_definition"
                     ]
                   }
                 }
@@ -31242,6 +33121,32 @@
                 "type": "object",
                 "required": [
                   "authorization",
+                  "displayed_access_context",
+                  "target",
+                  "kind"
+                ],
+                "properties": {
+                  "authorization": {
+                    "$ref": "#/components/schemas/AgentExecutionAuthorization"
+                  },
+                  "displayed_access_context": {
+                    "$ref": "#/components/schemas/OwnedDocumentAccessContext"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_surface_description"
+                    ]
+                  },
+                  "target": {
+                    "$ref": "#/components/schemas/LibraryAgentSurfaceTarget"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "authorization",
                   "query",
                   "target",
                   "scope",
@@ -32321,6 +34226,28 @@
               {
                 "type": "object",
                 "required": [
+                  "archived",
+                  "window",
+                  "kind"
+                ],
+                "properties": {
+                  "archived": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "session_window"
+                    ]
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "window",
                   "kind"
                 ],
@@ -32427,6 +34354,28 @@
               {
                 "type": "object",
                 "required": [
+                  "lane",
+                  "window",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "builtin_sidebar_order"
+                    ]
+                  },
+                  "lane": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceBuiltinSidebarLane"
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
                   "item",
                   "kind"
                 ],
@@ -32476,6 +34425,28 @@
                     "enum": [
                       "session"
                     ]
+                  },
+                  "session_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "provenance",
+                  "session_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_session"
+                    ]
+                  },
+                  "provenance": {
+                    "$ref": "#/components/schemas/AgentTurnProvenance"
                   },
                   "session_id": {
                     "type": "string"
@@ -32662,12 +34633,14 @@
                   "thread_id",
                   "turn_id",
                   "root_thread_id",
-                  "actor_project_id",
                   "kind"
                 ],
                 "properties": {
                   "actor_project_id": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "kind": {
                     "type": "string",
@@ -32805,6 +34778,93 @@
                   },
                   "query": {
                     "$ref": "#/components/schemas/SqlQuery"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Agent SQL uses the calling Project's durable resource grants.",
+                "required": [
+                  "provenance",
+                  "scope",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_schema"
+                    ]
+                  },
+                  "provenance": {
+                    "$ref": "#/components/schemas/AgentTurnProvenance"
+                  },
+                  "relation": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/SqlScope"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "provenance",
+                  "query",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_query"
+                    ]
+                  },
+                  "provenance": {
+                    "$ref": "#/components/schemas/AgentTurnProvenance"
+                  },
+                  "query": {
+                    "$ref": "#/components/schemas/SqlQuery"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "A fixed effective-View projection, independently authorized from public SQL bindings.",
+                "required": [
+                  "authorization",
+                  "coordinate",
+                  "selection",
+                  "kind"
+                ],
+                "properties": {
+                  "authorization": {
+                    "$ref": "#/components/schemas/AgentExecutionAuthorization"
+                  },
+                  "coordinate": {
+                    "$ref": "#/components/schemas/DatabaseEffectiveViewCoordinate"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_displayed_view_query"
+                    ]
+                  },
+                  "projection_property_ids": {
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "selection": {
+                    "$ref": "#/components/schemas/DatabaseDisplayedViewSelection"
                   }
                 }
               }
@@ -34303,6 +36363,14 @@
           "ready"
         ]
       },
+      "ProjectWorkspaceBuiltinSidebarLane": {
+        "type": "string",
+        "enum": [
+          "projects",
+          "pinned_projects",
+          "pinned_sessions"
+        ]
+      },
       "ProjectWorkspaceDynamicToolCatalog": {
         "type": "object",
         "required": [
@@ -34411,6 +36479,1706 @@
             "$ref": "#/components/schemas/ProjectWorkspaceThread"
           }
         }
+      },
+      "ProjectWorkspaceIntent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "A Turn-authorized application command. Core admits only organization intents.",
+            "required": [
+              "provenance",
+              "intent",
+              "kind"
+            ],
+            "properties": {
+              "intent": {
+                "$ref": "#/components/schemas/ProjectWorkspaceIntent"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "agent_command"
+                ]
+              },
+              "provenance": {
+                "$ref": "#/components/schemas/AgentTurnProvenance"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "project_id",
+              "name",
+              "description",
+              "source_roots",
+              "starter_page",
+              "kind"
+            ],
+            "properties": {
+              "appearance": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectAppearance"
+                  }
+                ]
+              },
+              "description": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create_initial_project"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "page_key_prefix": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "project_id": {
+                "type": "string"
+              },
+              "source_roots": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "starter_page": {
+                "$ref": "#/components/schemas/ProjectWorkspaceStarterPage"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "project_id",
+              "name",
+              "description",
+              "source_roots",
+              "kind"
+            ],
+            "properties": {
+              "appearance": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectAppearance"
+                  }
+                ]
+              },
+              "description": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create_project"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "page_key_prefix": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "project_id": {
+                "type": "string"
+              },
+              "source_roots": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "project_id",
+              "expected_binding_revision",
+              "kind"
+            ],
+            "properties": {
+              "appearance": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectAppearance"
+                  }
+                ]
+              },
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "expected_binding_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "update_project"
+                ]
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "project_id": {
+                "type": "string"
+              },
+              "source_roots": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "project_id",
+              "lifecycle",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_project_lifecycle"
+                ]
+              },
+              "lifecycle": {
+                "$ref": "#/components/schemas/ProjectLifecycle"
+              },
+              "project_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "project_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reorder_projects"
+                ]
+              },
+              "project_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "project_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reorder_pinned_projects"
+                ]
+              },
+              "project_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "project_id",
+              "pinned",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_project_pinned"
+                ]
+              },
+              "pinned": {
+                "type": "boolean"
+              },
+              "project_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "section_id",
+              "name",
+              "kind"
+            ],
+            "properties": {
+              "initial_item": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create_sidebar_section"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "section_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "section_id",
+              "name",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "rename_sidebar_section"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "section_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "section_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delete_sidebar_section"
+                ]
+              },
+              "section_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "section_id",
+              "expected_revision",
+              "kind"
+            ],
+            "properties": {
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "restore_sidebar_section"
+                ]
+              },
+              "section_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "item",
+              "placement",
+              "kind"
+            ],
+            "properties": {
+              "item": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemRef"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "move_sidebar_section_item"
+                ]
+              },
+              "placement": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionItemPlacement"
+              },
+              "section_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "section_id",
+              "items",
+              "kind"
+            ],
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionOrderItem"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reorder_sidebar_section_items"
+                ]
+              },
+              "section_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "lane",
+              "expected_order_revision",
+              "item_ids",
+              "kind"
+            ],
+            "properties": {
+              "expected_order_revision": {
+                "type": "string"
+              },
+              "item_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reorder_builtin_sidebar_items"
+                ]
+              },
+              "lane": {
+                "$ref": "#/components/schemas/ProjectWorkspaceBuiltinSidebarLane"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "lane",
+              "expected_order_revision",
+              "project_ids",
+              "kind"
+            ],
+            "properties": {
+              "expected_order_revision": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "prioritize_builtin_sidebar_projects"
+                ]
+              },
+              "lane": {
+                "$ref": "#/components/schemas/ProjectWorkspaceBuiltinSidebarLane"
+              },
+              "project_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "section_id",
+              "session_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reorder_sidebar_section_sessions"
+                ]
+              },
+              "section_id": {
+                "type": "string"
+              },
+              "session_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "section_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reorder_sidebar_sections"
+                ]
+              },
+              "section_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "section_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "archive_sidebar_section_sessions"
+                ]
+              },
+              "replacement_session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "section_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "link",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "upsert_sidebar_section_host_link"
+                ]
+              },
+              "link": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSidebarSectionHostLink"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "section_id",
+              "host_id",
+              "kind"
+            ],
+            "properties": {
+              "host_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delete_sidebar_section_host_link"
+                ]
+              },
+              "section_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "title",
+              "initial_page_ids",
+              "kind"
+            ],
+            "properties": {
+              "initial_page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create_session"
+                ]
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Reserves one host launch with Session creation. Only a fresh receipt admits execution;\nreplay must reconcile the Session binding without launching another backend Thread.",
+            "required": [
+              "session_id",
+              "title",
+              "launch_request_hash",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "admit_session_launch"
+                ]
+              },
+              "launch_request_hash": {
+                "type": "string"
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Reserves one message dispatch to an exact existing Session binding.\nA duplicate receipt must never dispatch the message again.",
+            "required": [
+              "session_id",
+              "thread_id",
+              "message_request_hash",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "admit_session_message"
+                ]
+              },
+              "message_request_hash": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Reserves one handoff of an exact existing Session binding.\nReplays observe the retained operation and never toggle the location again.",
+            "required": [
+              "session_id",
+              "thread_id",
+              "handoff_request_hash",
+              "kind"
+            ],
+            "properties": {
+              "handoff_request_hash": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "admit_session_handoff"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Reserves the destination Session for one fork of an authorized source binding.",
+            "required": [
+              "source_session_id",
+              "source_thread_id",
+              "session_id",
+              "fork_request_hash",
+              "kind"
+            ],
+            "properties": {
+              "fork_request_hash": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "admit_session_fork"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "source_session_id": {
+                "type": "string"
+              },
+              "source_thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "section_id",
+              "title",
+              "initial_page_ids",
+              "kind"
+            ],
+            "properties": {
+              "initial_page_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "create_session_in_sidebar_section"
+                ]
+              },
+              "section_id": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "title",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ensure_default_draft_session"
+                ]
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delete_session"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "move_session"
+                ]
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reorder_sessions"
+                ]
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "session_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reorder_pinned_sessions"
+                ]
+              },
+              "project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "session_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "patch",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "upsert_thread"
+                ]
+              },
+              "patch": {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadPatch"
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "patch",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "update_thread"
+                ]
+              },
+              "patch": {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadPatch"
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "location",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_thread_execution_location"
+                ]
+              },
+              "location": {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadExecutionLocation"
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "backend_binding",
+              "backend_session_id",
+              "kind"
+            ],
+            "properties": {
+              "backend_binding": {
+                "$ref": "#/components/schemas/AgentBackendBinding"
+              },
+              "backend_session_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "bind_thread_backend_session"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "backend_binding",
+              "kind"
+            ],
+            "properties": {
+              "backend_binding": {
+                "$ref": "#/components/schemas/AgentBackendBinding"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "clear_thread_backend_session"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delete_thread"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "prepared_blob_receipt_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "retain_thread_assets"
+                ]
+              },
+              "prepared_blob_receipt_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "expected_revision",
+              "entries",
+              "prepared_blob_receipt_ids",
+              "kind"
+            ],
+            "properties": {
+              "entries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceQueuedFollowUpEntry"
+                }
+              },
+              "expected_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "commit_queued_follow_up_ledger"
+                ]
+              },
+              "prepared_blob_receipt_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sweep_id",
+              "thread_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "observe_app_server_thread_window"
+                ]
+              },
+              "sweep_id": {
+                "type": "string"
+              },
+              "thread_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "sweep_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reconcile_app_server_thread_sweep"
+                ]
+              },
+              "limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              },
+              "sweep_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "universe",
+              "page_identity",
+              "observations",
+              "complete",
+              "kind"
+            ],
+            "properties": {
+              "complete": {
+                "type": "boolean"
+              },
+              "continuation": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "observe_subagent_discovery_page"
+                ]
+              },
+              "observations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceSubagentObservation"
+                }
+              },
+              "page_identity": {
+                "type": "string"
+              },
+              "universe": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSubagentUniverse"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "universe",
+              "thread_id",
+              "status",
+              "evidence_kind",
+              "source_revision",
+              "observed_at_ms",
+              "kind"
+            ],
+            "properties": {
+              "evidence_kind": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidenceKind"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "observe_subagent_status_evidence"
+                ]
+              },
+              "observed_at_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "precondition": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidencePrecondition"
+                  }
+                ]
+              },
+              "source_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "status": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatus"
+              },
+              "thread_id": {
+                "type": "string"
+              },
+              "universe": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSubagentUniverse"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "host_id",
+              "source_epoch",
+              "generation",
+              "thread_id",
+              "status",
+              "evidence_kind",
+              "source_revision",
+              "observed_at_ms",
+              "kind"
+            ],
+            "properties": {
+              "evidence_kind": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatusEvidenceKind"
+              },
+              "generation": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "host_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "buffer_subagent_status_evidence"
+                ]
+              },
+              "observed_at_ms": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "source_epoch": {
+                "type": "string"
+              },
+              "source_revision": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "status": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSubagentStatus"
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "universe",
+              "lifecycle_operation_id",
+              "action",
+              "kind"
+            ],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSubagentLifecycleAction"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "begin_subagent_lifecycle"
+                ]
+              },
+              "lifecycle_operation_id": {
+                "type": "string"
+              },
+              "universe": {
+                "$ref": "#/components/schemas/ProjectWorkspaceSubagentUniverse"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "lifecycle_operation_id",
+              "observations",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "observe_subagent_lifecycle_outcomes"
+                ]
+              },
+              "lifecycle_operation_id": {
+                "type": "string"
+              },
+              "observations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceSubagentLifecycleObservation"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "archived",
+              "kind"
+            ],
+            "properties": {
+              "archived": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_thread_archived"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "pinned",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_thread_pinned"
+                ]
+              },
+              "pinned": {
+                "type": "boolean"
+              },
+              "placement": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceThreadPlacement"
+                  }
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_ids",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "reorder_pinned_threads"
+                ]
+              },
+              "thread_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "source",
+              "target",
+              "placement",
+              "metadata",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "move_thread"
+                ]
+              },
+              "metadata": {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadMoveMetadataPatch"
+              },
+              "placement": {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadPlacement"
+              },
+              "project_access_grant": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceThreadMoveProjectAccessGrant"
+                  }
+                ]
+              },
+              "runtime_workspace_roots": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
+              "source": {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadLane"
+              },
+              "target": {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadLane"
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "unread",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_thread_unread"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              },
+              "unread": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "catalogs",
+              "kind"
+            ],
+            "properties": {
+              "catalogs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProjectWorkspaceDynamicToolCatalog"
+                }
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "replace_thread_dynamic_tool_catalogs"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "roots",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "merge_thread_writable_roots"
+                ]
+              },
+              "roots": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "roots",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "replace_thread_writable_roots"
+                ]
+              },
+              "roots": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "thread_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "turn_id",
+              "root_thread_id",
+              "source",
+              "read_only",
+              "kind"
+            ],
+            "properties": {
+              "actor_project_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "inherited_from": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceTurnCoordinate"
+                  }
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "freeze_turn_authority"
+                ]
+              },
+              "read_only": {
+                "type": "boolean"
+              },
+              "root_thread_id": {
+                "type": "string"
+              },
+              "source": {
+                "$ref": "#/components/schemas/ProjectWorkspaceTurnAuthoritySource"
+              },
+              "thread_id": {
+                "type": "string"
+              },
+              "turn_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "process",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "upsert_background_process"
+                ]
+              },
+              "preserve_started_at": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "process": {
+                "$ref": "#/components/schemas/ProjectWorkspaceBackgroundProcess"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "project_id",
+              "mode",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_project_permission_mode"
+                ]
+              },
+              "mode": {
+                "$ref": "#/components/schemas/CodexPermissionMode"
+              },
+              "project_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "mode",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_projectless_permission_mode"
+                ]
+              },
+              "mode": {
+                "$ref": "#/components/schemas/CodexPermissionMode"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "session_id",
+              "intent",
+              "kind"
+            ],
+            "properties": {
+              "intent": {
+                "$ref": "#/components/schemas/ProjectSessionIntent"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "mutate_session"
+                ]
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          }
+        ]
       },
       "ProjectWorkspaceManagedWorktreeConsumer": {
         "type": "object",
@@ -35174,6 +38942,28 @@
           "active",
           "deleted"
         ]
+      },
+      "ProjectWorkspaceSidebarSectionOrderItem": {
+        "type": "object",
+        "description": "An observed direct placement, supplied in its requested final order.",
+        "required": [
+          "placement_id",
+          "expected_revision",
+          "expected_rank_key"
+        ],
+        "properties": {
+          "expected_rank_key": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "placement_id": {
+            "type": "string"
+          }
+        }
       },
       "ProjectWorkspaceStarterPage": {
         "type": "object",
@@ -36431,7 +40221,6 @@
           "thread_id",
           "turn_id",
           "root_thread_id",
-          "actor_project_id",
           "library_id",
           "store_epoch",
           "scope",
@@ -36439,7 +40228,10 @@
         ],
         "properties": {
           "actor_project_id": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "library_id": {
             "type": "string"
@@ -36467,7 +40259,8 @@
       "ProjectWorkspaceTurnAuthorityResolution": {
         "type": "object",
         "required": [
-          "persisted"
+          "persisted",
+          "read_only"
         ],
         "properties": {
           "authority": {
@@ -36490,6 +40283,10 @@
           },
           "persisted": {
             "type": "boolean"
+          },
+          "read_only": {
+            "type": "boolean",
+            "description": "Immutable execution constraint, independent of resource scope."
           }
         }
       },
@@ -41340,6 +45137,24 @@
                       {
                         "type": "object",
                         "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "agent_surface_description"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/LibraryAgentSurfaceDescription"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "items",
                           "has_more",
                           "kind"
@@ -42320,6 +46135,24 @@
                       {
                         "type": "object",
                         "required": [
+                          "sessions",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "session_window"
+                            ]
+                          },
+                          "sessions": {
+                            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceSessionListingItem"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "tasks",
                           "kind"
                         ],
@@ -42392,6 +46225,28 @@
                       {
                         "type": "object",
                         "required": [
+                          "order_revision",
+                          "items",
+                          "kind"
+                        ],
+                        "properties": {
+                          "items": {
+                            "$ref": "#/components/schemas/CollectionWindow_ProjectWorkspaceSidebarOrderEntry"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "builtin_sidebar_order"
+                            ]
+                          },
+                          "order_revision": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "kind"
                         ],
                         "properties": {
@@ -42442,6 +46297,34 @@
                           },
                           "session": {
                             "$ref": "#/components/schemas/ProjectWorkspaceSessionSummary"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "session",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "agent_session"
+                            ]
+                          },
+                          "session": {
+                            "$ref": "#/components/schemas/ProjectWorkspaceSessionSummary"
+                          },
+                          "thread": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/components/schemas/ProjectWorkspaceThread"
+                              }
+                            ]
                           }
                         }
                       },
@@ -42785,6 +46668,24 @@
                           },
                           "value": {
                             "$ref": "#/components/schemas/SqlResult"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "value",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "displayed_view_query"
+                            ]
+                          },
+                          "value": {
+                            "$ref": "#/components/schemas/DatabaseDisplayedViewQueryResult"
                           }
                         }
                       }

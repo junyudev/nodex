@@ -28,7 +28,7 @@ pub(super) fn select_sql() -> String {
 pub(super) struct FileWriteContext<'a> {
     pub(super) connection: &'a Connection,
     pub(super) library_id: &'a str,
-    pub(super) actor_id: &'a str,
+    pub(super) actor_id: Option<&'a str>,
     pub(super) turn_id: Option<&'a str>,
     pub(super) operation_id: &'a str,
     pub(super) now: &'a str,
@@ -518,7 +518,7 @@ mod tests {
                 action(&FileWriteContext {
                     connection: transaction,
                     library_id: "library-1",
-                    actor_id: "project-1",
+                    actor_id: Some("project-1"),
                     turn_id: None,
                     operation_id: operation,
                     now: NOW,

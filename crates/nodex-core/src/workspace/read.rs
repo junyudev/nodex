@@ -50,12 +50,26 @@ struct SessionRow {
 
 pub(super) fn read(
     connection: &Connection,
+    context: &nodex_core_contracts::BoundModuleContext,
     library_id: &str,
     commit_head: i64,
     assets_root: &Path,
     request: ProjectWorkspaceRead,
 ) -> Result<ProjectWorkspaceReadValue, StoreError> {
     match request {
+        ProjectWorkspaceRead::BuiltinSidebarOrder { lane, window } => {
+            let (order_revision, items) = super::sidebar_builtin::read_order(
+                connection,
+                library_id,
+                commit_head,
+                lane,
+                &window,
+            )?;
+            Ok(ProjectWorkspaceReadValue::BuiltinSidebarOrder {
+                order_revision,
+                items,
+            })
+        }
         ProjectWorkspaceRead::ProjectBootstrap => {
             let project_count = connection.query_row(
                 "SELECT count(*) FROM projects WHERE library_id = ?1",
@@ -141,6 +155,17 @@ pub(super) fn read(
                 mode: read_projectless_permission_mode(connection)?,
             })
         }
+        ProjectWorkspaceRead::SessionWindow { archived, window } => {
+            Ok(ProjectWorkspaceReadValue::SessionWindow {
+                sessions: super::session_listing::read_session_window(
+                    connection,
+                    library_id,
+                    commit_head,
+                    archived,
+                    &window,
+                )?,
+            })
+        }
         ProjectWorkspaceRead::TaskWindow {
             project_id,
             include_archived,
@@ -217,6 +242,36 @@ pub(super) fn read(
                 .ok_or_else(|| not_found("Project Session is unavailable"))?;
             Ok(ProjectWorkspaceReadValue::Session {
                 session: session_summary(row),
+            })
+        }
+        ProjectWorkspaceRead::AgentSession {
+            provenance,
+            session_id,
+        } => {
+            super::agent_command::admit_read_caller(connection, library_id, context, &provenance)?;
+            validate_id("session_id", &session_id)?;
+            let row = read_session(connection, library_id, &session_id)?
+                .ok_or_else(|| not_found("Project Session is unavailable"))?;
+            if provenance.authority.scope
+                != nodex_core_contracts::workspace::ProjectWorkspaceTurnAuthorityScope::Library
+                && row.project_id.as_deref() != provenance.authority.actor_project_id.as_deref()
+            {
+                return Err(StoreError::new(
+                    StoreErrorCode::Unauthorized,
+                    "Session transcript is outside the Turn's authorized Project",
+                    false,
+                ));
+            }
+            let thread = row
+                .thread_id
+                .as_deref()
+                .map(|thread_id| read_thread(connection, library_id, thread_id))
+                .transpose()?
+                .flatten()
+                .map(Box::new);
+            Ok(ProjectWorkspaceReadValue::AgentSession {
+                session: session_summary(row),
+                thread,
             })
         }
         ProjectWorkspaceRead::Thread { thread_id } => {
@@ -336,7 +391,7 @@ pub(super) fn read(
                 &thread_id,
                 &turn_id,
                 &root_thread_id,
-                &actor_project_id,
+                actor_project_id.as_deref(),
             )?,
         }),
         ProjectWorkspaceRead::BackgroundProcessWindow { thread_id, window } => {

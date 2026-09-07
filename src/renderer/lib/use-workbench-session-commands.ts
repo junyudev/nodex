@@ -91,7 +91,9 @@ interface WorkbenchSessionCommandsInput {
   readonly controller: WorkbenchPanelController;
   readonly lifecycle: PanelLifecycle;
   readonly panelOpeners: PanelOpeners;
-  readonly createSessionViewTab: (input: WorkbenchTabCreateInput) => WorkbenchTabProjection | null;
+  readonly createSessionViewTab: (
+    input: WorkbenchTabCreateInput,
+  ) => Promise<WorkbenchTabProjection | null>;
   readonly sceneNavigator: WorkbenchSceneNavigator;
   readonly codexControl: ReturnType<typeof useCodexAppServerControl>;
   readonly processManagerConversationsById: ReturnType<typeof useConversationSubset>;
@@ -359,6 +361,7 @@ export function useWorkbenchSessionCommands({
         return;
       }
 
+      const submittedPresentation = workbenchCodexControl.captureSubmissionPresentation();
       const operation = (async () => {
         await sendPageToChatWithRelation(input, {
           loadPageContext: loadPagePromptContext,
@@ -368,20 +371,28 @@ export function useWorkbenchSessionCommands({
             (await sessionCatalog.ensureDefaultDraft(projectId)).domain,
           linkPage: linkPageToChat,
           startTurn: async ({ projectId, threadId, context }) => {
-            await workbenchCodexControl.startTurn(threadId, context.promptInput.text, {
-              projectId,
-              promptInput: context.promptInput,
-            });
+            await workbenchCodexControl.startTurn(
+              threadId,
+              context.promptInput.text,
+              {
+                projectId,
+                promptInput: context.promptInput,
+              },
+              submittedPresentation,
+            );
           },
           startThread: async ({ projectId, sessionId, context }) =>
-            await workbenchCodexControl.startThreadForSession({
-              firstSubmission: createCodexFirstSubmissionIdentity(),
-              projectId,
-              sessionId,
-              prompt: context.promptInput.text,
-              promptInput: context.promptInput,
-              runInTarget: "localProject",
-            }),
+            await workbenchCodexControl.startThreadForSession(
+              {
+                firstSubmission: createCodexFirstSubmissionIdentity(),
+                projectId,
+                sessionId,
+                prompt: context.promptInput.text,
+                promptInput: context.promptInput,
+                runInTarget: "localProject",
+              },
+              submittedPresentation,
+            ),
           refreshSessions: async (projectId) => {
             await refreshProjectSessions(projectId);
           },
@@ -480,17 +491,21 @@ export function useWorkbenchSessionCommands({
         throw new Error("No project is available for scheduled task personalization.");
       }
 
+      const submittedPresentation = workbenchCodexControl.captureSubmissionPresentation();
       const session = await ensureDefaultDraftSessionForProject(targetProject.id);
       setSettingsPath(null);
       setAutomationsPath(null);
-      const result = await workbenchCodexControl.startThreadForSession({
-        firstSubmission: createCodexFirstSubmissionIdentity(),
-        projectId: targetProject.id,
-        sessionId: session.id,
-        prompt,
-        runInTarget: "localProject",
-        collaborationMode: "default",
-      });
+      const result = await workbenchCodexControl.startThreadForSession(
+        {
+          firstSubmission: createCodexFirstSubmissionIdentity(),
+          projectId: targetProject.id,
+          sessionId: session.id,
+          prompt,
+          runInTarget: "localProject",
+          collaborationMode: "default",
+        },
+        submittedPresentation,
+      );
       if (result.kind !== "started") {
         throw new Error("Scheduled task personalization unexpectedly started in a worktree");
       }
@@ -659,7 +674,7 @@ export function useWorkbenchSessionCommands({
         ...draft,
       };
 
-      const createdTab = createSessionViewTab(createInput);
+      const createdTab = await createSessionViewTab(createInput);
       if (!createdTab) return false;
       await ensureActivePanelOpenWithoutRefresh(panelId);
       return true;

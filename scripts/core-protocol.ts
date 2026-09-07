@@ -1,8 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { extractCoreJsonSchema } from "./core-json-schema";
+
+const runtimeSchemaNames = ["SqlQuery", "SqlScope"] as const;
 
 type Command = "generate" | "verify";
 
@@ -18,6 +22,7 @@ interface GeneratedArtifacts {
   readonly openApi: string;
   readonly types: string;
   readonly requirements: string;
+  readonly schemas: Readonly<Record<string, string>>;
 }
 
 function run(command: string, args: readonly string[], cwd = repositoryRoot): void {
@@ -32,6 +37,8 @@ function generateArtifacts(directory: string): GeneratedArtifacts {
   const types = join(directory, "generated.ts");
   const requirements = join(directory, "compatibility.generated.ts");
 
+  // Every generated read must declare its response budget policy.
+  run("cargo", ["test", "--quiet", "-p", "nodex-core-contracts", "--lib", "collection_audit"]);
   run("cargo", [
     "run",
     "--quiet",
@@ -51,7 +58,20 @@ function generateArtifacts(directory: string): GeneratedArtifacts {
     codegenPackageRoot,
   );
 
-  return { openApi, types, requirements };
+  const document = JSON.parse(readFileSync(openApi, "utf8")) as {
+    components: { schemas: Record<string, unknown> };
+  };
+  const schemas = Object.fromEntries(
+    runtimeSchemaNames.map((name) => {
+      const path = join(directory, `${name}.schema.json`);
+      writeFileSync(
+        path,
+        `${JSON.stringify(extractCoreJsonSchema(document.components.schemas, name), null, 2)}\n`,
+      );
+      return [name, path];
+    }),
+  );
+  return { openApi, types, requirements, schemas };
 }
 
 function assertSame(expectedPath: string, actualPath: string): void {
@@ -72,6 +92,10 @@ export function generateProtocol(): void {
     copyFileSync(artifacts.openApi, committedOpenApi);
     copyFileSync(artifacts.types, committedTypes);
     copyFileSync(artifacts.requirements, committedRequirements);
+    const schemasDirectory = join(packageRoot, "runtime-schemas");
+    mkdirSync(schemasDirectory, { recursive: true });
+    for (const [name, path] of Object.entries(artifacts.schemas))
+      copyFileSync(path, join(schemasDirectory, `${name}.schema.json`));
   } finally {
     rmSync(staging, { recursive: true, force: true });
   }
@@ -84,6 +108,8 @@ export function verifyProtocol(): void {
     assertSame(committedOpenApi, artifacts.openApi);
     assertSame(committedTypes, artifacts.types);
     assertSame(committedRequirements, artifacts.requirements);
+    for (const [name, path] of Object.entries(artifacts.schemas))
+      assertSame(join(packageRoot, "runtime-schemas", `${name}.schema.json`), path);
     run("cargo", [
       "test",
       "--quiet",

@@ -1,3 +1,7 @@
+import type {
+  NodexAgentPreparedPageUpdate,
+  NodexAgentPageUpdateCommandResult,
+} from "../../shared/nodex-agent-tools/v3-write-runtime";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -5,10 +9,6 @@ import * as Ref from "effect/Ref";
 import * as RcMap from "effect/RcMap";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
-import type {
-  DocumentMutationRequest,
-  DocumentOperationCommandResult,
-} from "../../shared/block-documents/document-operations";
 import type {
   CompleteNodexAgentPageUpdateRequest,
   CompleteNodexAgentPageUpdateResult,
@@ -35,7 +35,12 @@ import { NESTED_MARKDOWN_AGENT_GUIDE } from "../../shared/nfm/agent-guide";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import type { CoreGenerationClient } from "../core-client/core-generation-client";
 import type { NativeNodexAgentCore } from "../core-client/native-nodex-agent-core";
-import { readNativeFetch } from "../core-client/native-nodex-agent-fetch";
+import {
+  readNativeFetch,
+  readNativeFetchObservation,
+  type NativeNodexAgentFetchObservation,
+  type NativeNodexAgentFetchRequest,
+} from "../core-client/native-nodex-agent-fetch";
 import type {
   NativeNodexAgentMutationTransition,
   NodexAgentMutationEnvelope,
@@ -116,7 +121,7 @@ export type NodexAgentPreparationResult =
     };
 
 export type NodexAgentApplicationCommand =
-  | { readonly kind: "document_mutation"; readonly request: DocumentMutationRequest }
+  | { readonly kind: "document_mutation"; readonly request: NodexAgentPreparedPageUpdate }
   | {
       readonly kind: "create_pages";
       readonly command: NodexAgentCreatePagesCommand;
@@ -128,7 +133,7 @@ export type NodexAgentApplicationCommand =
 export type NodexAgentApplicationResult =
   | {
       readonly kind: "document_mutation";
-      readonly value: DocumentOperationCommandResult;
+      readonly value: NodexAgentPageUpdateCommandResult;
     }
   | { readonly kind: "create_pages"; readonly value: ExecuteNodexAgentCreatePagesResult }
   | { readonly kind: "duplicate_page"; readonly value: ExecuteNodexAgentDuplicatePageResult }
@@ -140,6 +145,9 @@ export class NodexAgentApplication extends Context.Service<
     readonly read: (
       request: NodexAgentV3ReadRequest,
     ) => NodexAgentEffect<NodexAgentMutationEnvelope<NodexAgentV3ReadCommandResult>>;
+    readonly readPageObservation: (
+      request: NativeNodexAgentFetchRequest,
+    ) => NodexAgentEffect<NativeNodexAgentFetchObservation>;
     readonly prepare: (
       preparation: NodexAgentPreparation,
     ) => NodexAgentEffect<NodexAgentPreparationResult>;
@@ -418,6 +426,10 @@ export const live: Layer.Layer<
       });
 
     return NodexAgentApplication.of({
+      readPageObservation: (request) =>
+        useNative("nodexAgent.readPageObservation", (runtime, signal) =>
+          readNativeFetchObservation(request, runtime, signal),
+        ),
       read: (request) =>
         assertOpen.pipe(
           Effect.andThen(

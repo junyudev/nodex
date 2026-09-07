@@ -83,6 +83,7 @@ it.effect("gates app discovery and coalesces concurrent status reads", () =>
     const account = CodexAccount.of({
       snapshot: accountSnapshot,
       refresh: unsupported(),
+      readUsageLimits: unsupported(),
       consumeRateLimitResetCredit: unsupported,
       startLogin: unsupported,
       cancelLogin: unsupported,

@@ -237,7 +237,7 @@ describe("workbench session shell / sidebar-core", () => {
           projectId: "alpha",
           kind: "db_view",
           title: "DB View",
-          config: { projectId: "alpha" },
+          config: { accessContext: { kind: "project", projectId: "alpha" } },
         },
       ],
       rightLayout: makePanelLayout(["session:alpha:work:db"], "session:alpha:work:db"),

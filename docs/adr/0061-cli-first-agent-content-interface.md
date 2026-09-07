@@ -3,6 +3,7 @@
 Status: Accepted
 Date: 2026-09-06
 Supersedes: ADR 0016's default dynamic-tool entrypoint and CLI read-validator omission
+Partially superseded by: [ADR 0064](0064-native-application-mcp.md) for native application MCP and dynamic execution retirement
 
 ## Context
 

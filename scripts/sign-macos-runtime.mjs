@@ -1,6 +1,15 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { lstatSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 import { signAsync } from "@electron/osx-sign";
@@ -10,6 +19,8 @@ const nativeManifestRelativePath = "Contents/Resources/bin/rust-core-runtime.jso
 const browserManifestRelativePath =
   "Contents/Resources/browser-runtime/browser-runtime-manifest.json";
 const sparkleManifestRelativePath = "Contents/Resources/native/sparkle-runtime.json";
+const workspaceManifestRelativePath =
+  "Contents/Resources/workspace-runtime/workspace-runtime-manifest.json";
 const sparkleOwnedRelativePaths = [
   "Contents/Resources/native/nodex-sparkle.node",
   "Contents/Frameworks/Sparkle.framework",
@@ -49,9 +60,67 @@ const writeManifestAtomically = (manifestPath, manifest) => {
   renameSync(temporaryPath, manifestPath);
 };
 
+/** Signing changes Python and extension bytes; reseal them before the outer app signature. */
+export const refreshSignedWorkspaceRuntimeManifest = (appPath) => {
+  const manifestPath = path.join(appPath, workspaceManifestRelativePath);
+  const root = path.dirname(manifestPath);
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  if (
+    manifest.schemaVersion !== 1 ||
+    manifest.targetPlatform !== "darwin" ||
+    !["arm64", "x64"].includes(manifest.targetArch) ||
+    !Array.isArray(manifest.artifacts) ||
+    !manifest.artifacts.length
+  )
+    throw new Error(`Invalid workspace runtime manifest: ${manifestPath}`);
+  const paths = new Set();
+  const artifacts = manifest.artifacts.map((entry) => {
+    if (
+      typeof entry.path !== "string" ||
+      entry.path.includes("\\") ||
+      entry.path.includes("\0") ||
+      entry.path.split("/").some((segment) => !segment || segment === "." || segment === "..") ||
+      paths.has(entry.path)
+    )
+      throw new Error("Invalid workspace artifact path");
+    paths.add(entry.path);
+    const absolute = path.join(root, entry.path);
+    let parent = path.dirname(absolute);
+    while (parent !== root) {
+      const stats = lstatSync(parent);
+      if (!stats.isDirectory() || stats.isSymbolicLink())
+        throw new Error("Invalid workspace artifact directory");
+      parent = path.dirname(parent);
+    }
+    const stats = lstatSync(absolute);
+    if (!stats.isFile() || stats.isSymbolicLink()) throw new Error("Invalid workspace artifact");
+    return { ...entry, size: stats.size, sha256: sha256File(absolute) };
+  });
+  if (!paths.has(manifest.pythonExecutable))
+    throw new Error("Workspace Python entrypoint is missing");
+  writeManifestAtomically(manifestPath, { ...manifest, artifacts });
+};
+
 const isInside = (parentPath, candidatePath) => {
   const relativePath = path.relative(parentPath, candidatePath);
   return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+};
+
+/** Package data remains covered by the outer seal; only Mach-O code needs a nested signature. */
+export const isWorkspaceRuntimeData = (appPath, filePath) => {
+  const root = path.join(appPath, "Contents/Resources/workspace-runtime");
+  if (!isInside(root, filePath) || !lstatSync(filePath).isFile()) return false;
+  const descriptor = openSync(filePath, "r");
+  try {
+    const header = Buffer.alloc(4);
+    if (readSync(descriptor, header, 0, 4, 0) !== 4) return true;
+    return ![
+      0xfeedface, 0xfeedfacf, 0xcafebabe, 0xcafebabf, 0xcefaedfe, 0xcffaedfe, 0xbebafeca,
+      0xbfbafeca,
+    ].includes(header.readUInt32BE());
+  } finally {
+    closeSync(descriptor);
+  }
 };
 
 const matchesIgnore = (ignore, filePath) => {
@@ -421,12 +490,14 @@ export const sign = async (options) => {
       isSparkleOwnedCode(signOptions.app, filePath) ||
       isPreservedBrowserRuntimeVendorCode(signOptions.app, filePath) ||
       isPreservedCodexRuntimeVendorCode(signOptions.app, filePath) ||
+      isWorkspaceRuntimeData(signOptions.app, filePath) ||
       matchesIgnore(baseIgnore, filePath),
   });
 
   refreshSignedNativeRuntimeManifest(signOptions.app);
   refreshSignedBrowserRuntimeManifest(signOptions.app);
   refreshSignedSparkleRuntimeManifest(signOptions.app);
+  refreshSignedWorkspaceRuntimeManifest(signOptions.app);
   writePackagedBuildProvenance(signOptions.app);
 
   await signWithRetry({

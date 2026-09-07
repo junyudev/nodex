@@ -346,7 +346,10 @@ export const make: Effect.Effect<
           },
         });
       }
-      const heartbeatAutomationId = automationRouting.activeHeartbeatAutomationId(threadId);
+      const thread = yield* workspace.getThread(threadId);
+      const heartbeatAutomationId = thread?.sessionId
+        ? automationRouting.activeHeartbeatAutomationId(thread.sessionId)
+        : null;
       if (!heartbeatAutomationId) return;
       const deleted = yield* automation.definitions.delete(heartbeatAutomationId);
       if (!deleted.success) return;

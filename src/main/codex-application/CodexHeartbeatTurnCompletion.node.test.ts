@@ -128,3 +128,74 @@ it.effect("ends an active completion wait when the Main Scope closes", () =>
     assert.strictEqual((yield* Fiber.join(closed)).reason, "runtime-closed");
   }),
 );
+
+it.effect("attributes an early completion only to the admitted automation turn", () =>
+  Effect.gen(function* () {
+    const requested = yield* Deferred.make<void>();
+    const response = yield* Deferred.make<ClientRequestResponsesByMethod["turn/start"]>();
+    const runtime = yield* make({
+      events: Stream.empty,
+      resolveHost: () => Effect.succeed("local"),
+      request: () =>
+        Deferred.succeed(requested, undefined).pipe(Effect.andThen(Deferred.await(response))),
+    });
+    const started = yield* Effect.forkChild(runtime.start(turnStartParams, "failed_runs_only"));
+    yield* Deferred.await(requested);
+    const early = yield* Effect.forkChild(
+      runtime.notificationDecision("thread-1", "automation-turn", "completed"),
+    );
+    yield* Effect.yieldNow;
+    yield* Deferred.succeed(response, { turn: turn("automation-turn", "inProgress") });
+    yield* Fiber.join(started);
+    assert.deepEqual(yield* Fiber.join(early), { decision: "DONT_NOTIFY" });
+    assert.strictEqual(
+      yield* runtime.notificationDecision("thread-1", "manual-turn", "completed"),
+      null,
+    );
+    assert.strictEqual(
+      yield* runtime.notificationDecision("thread-other", "automation-turn", "completed"),
+      null,
+    );
+    assert.strictEqual(
+      (yield* runtime.notificationDecision("thread-1", "automation-turn", "failed"))?.decision,
+      "NOTIFY",
+    );
+  }),
+);
+
+it.effect("releases notification attribution when a pending launch is interrupted", () =>
+  Effect.gen(function* () {
+    const requested = yield* Deferred.make<void>();
+    const runtime = yield* make({
+      events: Stream.empty,
+      resolveHost: () => Effect.succeed("local"),
+      request: () => Deferred.succeed(requested, undefined).pipe(Effect.andThen(Effect.never)),
+    });
+    const started = yield* Effect.forkChild(runtime.start(turnStartParams, "failed_runs_only"));
+    yield* Deferred.await(requested);
+    const decision = yield* Effect.forkChild(
+      runtime.notificationDecision("thread-1", "unaccepted-turn", "completed"),
+    );
+    yield* Effect.yieldNow;
+    yield* Fiber.interrupt(started);
+    assert.strictEqual(yield* Fiber.join(decision), null);
+  }),
+);
+
+it.effect("distinguishes an unmuted heartbeat from an unrelated manual turn", () =>
+  Effect.gen(function* () {
+    const runtime = yield* make({
+      events: Stream.empty,
+      resolveHost: () => Effect.succeed("local"),
+      request: () => Effect.succeed({ turn: turn("heartbeat", "inProgress") }),
+    });
+    yield* runtime.start(turnStartParams, null);
+    assert.deepEqual(yield* runtime.notificationDecision("thread-1", "heartbeat", "completed"), {
+      decision: null,
+    });
+    assert.strictEqual(
+      yield* runtime.notificationDecision("thread-1", "manual", "completed"),
+      null,
+    );
+  }),
+);

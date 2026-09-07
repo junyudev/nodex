@@ -300,3 +300,16 @@ it.effect("captures browser state before publishing a pending worktree fork", ()
     });
   }),
 );
+
+it.effect("retains a reserved destination through direct and pending worktree forks", () =>
+  Effect.gen(function* () {
+    for (const target of ["local", "newWorktree"] as const) {
+      const fixture = makeHarness();
+      const forks = yield* fixture.capability;
+      yield* forks.fork({ sessionId, destinationSessionId: "reserved-child", input: { target } });
+      if (target === "local")
+        assert.strictEqual(fixture.directForks[0]?.destinationSessionId, "reserved-child");
+      else assert.propertyVal(fixture.pendingRequests[0], "projectSessionId", "reserved-child");
+    }
+  }),
+);

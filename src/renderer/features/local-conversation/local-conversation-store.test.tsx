@@ -20,6 +20,10 @@ import type {
   CodexThreadSummary,
   CodexThreadHistoryEditResult,
 } from "../../lib/types";
+import type { CodexThreadOwnerStreamStatePublishInput } from "../../../shared/types";
+import type { ServerNotification } from "@nodex/codex-app-server-protocol";
+import serverNotificationJsonSchema from "@nodex/codex-app-server-protocol/runtime-schemas/ServerNotification.schema.json";
+import { createGeneratedCodexSchema } from "../../../shared/generated-codex-schema";
 import type {
   ThreadGoal,
   ThreadSettings,
@@ -31,6 +35,12 @@ import {
   applyCodexConversationStateUpdates,
   buildCodexConversationStateUpdates,
 } from "../../../shared/codex-conversation-patches";
+import { projectCodexConversationDocument } from "../../../shared/codex-conversation-document";
+import {
+  advanceRendererDeliveryAssembler,
+  createRendererDeliveryAssemblerState,
+  encodeRendererDelivery,
+} from "../../../shared/renderer-delivery-transport";
 import {
   buildCodexThreadStreamCheckpoint,
   hashCodexConversationReplica,
@@ -543,6 +553,23 @@ function buildTestCheckpoint(
   ownerEpoch = 1,
 ) {
   return buildCodexThreadStreamCheckpoint({ ownerEpoch, revision, conversation });
+}
+
+function relayRendererPayload<T>(payload: T): T {
+  const dispatch = encodeRendererDelivery({
+    target: { targetId: "renderer-follower", generation: 1 },
+    transferId: "follower-document",
+    payload,
+  });
+  const envelope = dispatch.envelopes[0];
+  if (envelope?.kind !== "inline") throw new Error("Expected an inline follower payload");
+  const received = advanceRendererDeliveryAssembler(
+    createRendererDeliveryAssemblerState(),
+    // jsdom's Node TextEncoder creates bytes in a different realm than its Uint8Array.
+    { ...envelope, payloadUtf8: Uint8Array.from(envelope.payloadUtf8) },
+  );
+  if (received.kind !== "complete") throw new Error("The follower relay did not complete");
+  return received.delivery.payload as T;
 }
 
 type TestThreadStreamDispatch = (
@@ -8627,6 +8654,17 @@ describe("local-conversation-store", () => {
     const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
     resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
 
+    // Generated wire timestamps are JSON numbers, including fields typed bigint by ts-rs.
+    const notificationSchema = createGeneratedCodexSchema<ServerNotification>(
+      serverNotificationJsonSchema,
+    );
+    const decodeHook = (value: unknown) => {
+      const notification = notificationSchema.parse(value);
+      if (notification.method !== "hook/started" && notification.method !== "hook/completed") {
+        throw new Error("Expected a Hook lifecycle notification");
+      }
+      return notification;
+    };
     const manager = new CodexAppServerManager("default");
     try {
       const baseConversation: CodexConversationSnapshot = {
@@ -8655,12 +8693,13 @@ describe("local-conversation-store", () => {
         sourceClientId: null,
       });
       await manager.requestThreadStreamResume("thread-1");
+      const beforeHooks = projectCodexConversationDocument(manager.readConversation("thread-1")!);
       invokeRecords = [];
 
       dispatchCodexAppServerMessage("thread-owner-notification", {
         hostId: "default",
         sequence: 1,
-        notification: {
+        notification: decodeHook({
           method: "hook/started",
           params: {
             threadId: "thread-1",
@@ -8673,21 +8712,21 @@ describe("local-conversation-store", () => {
               scope: "turn",
               sourcePath: "/workspace/.codex/hook.json",
               source: "project",
-              displayOrder: 1n,
+              displayOrder: 1,
               status: "running",
               statusMessage: "Preparing context",
-              startedAt: 10n,
+              startedAt: 10,
               completedAt: null,
               durationMs: null,
               entries: [{ kind: "context", text: "Added AGENTS.md" }],
             },
           },
-        },
+        }),
       });
       dispatchCodexAppServerMessage("thread-owner-notification", {
         hostId: "default",
         sequence: 2,
-        notification: {
+        notification: decodeHook({
           method: "hook/completed",
           params: {
             threadId: "thread-1",
@@ -8700,16 +8739,16 @@ describe("local-conversation-store", () => {
               scope: "turn",
               sourcePath: "/workspace/.codex/hook.json",
               source: "project",
-              displayOrder: 1n,
+              displayOrder: 1,
               status: "completed",
               statusMessage: "Preparing context",
-              startedAt: 10n,
-              completedAt: 20n,
-              durationMs: 10n,
+              startedAt: 10,
+              completedAt: 20,
+              durationMs: 10,
               entries: [{ kind: "context", text: "Added AGENTS.md" }],
             },
           },
-        },
+        }),
       });
       await flushAsyncWork();
 
@@ -8741,6 +8780,21 @@ describe("local-conversation-store", () => {
       expect(lastPublish?.change?.type).toBe("patches");
       expect(lastPublish?.change?.baseRevision).toBe(2);
       expect(lastPublish?.change?.revision).toBe(3);
+      let follower = relayRendererPayload(beforeHooks);
+      for (const record of publishRecords) {
+        const publication = record.args[0] as CodexThreadOwnerStreamStatePublishInput;
+        const received = relayRendererPayload(publication.change);
+        if (received.type !== "patches") throw new Error("Expected a Hook lifecycle patch");
+        follower = applyCodexConversationStateUpdates(follower, received.patches);
+        expect(hashCodexConversationReplica(follower)).toBe(publication.checkpoint.canonicalHash);
+      }
+      const shared = projectCodexConversationDocument(conversation!);
+      const receivedSnapshot = relayRendererPayload(shared);
+      expect(receivedSnapshot.turns).toEqual(follower.turns);
+      expect(hashCodexConversationReplica(receivedSnapshot)).toBe(
+        hashCodexConversationReplica(shared),
+      );
+      expect(receivedSnapshot.turns[0]?.hookRuns?.[0]?.run.startedAt).toBe(10);
     } finally {
       resumeThreadResult = null;
       manager.destroy();
@@ -12920,24 +12974,37 @@ describe("local-conversation-store", () => {
       });
 
       followerActionResult = { turnId: "turn-new" };
-      const startResult = await manager.startTurn("thread-1", "Continue", {
-        permissionMode: "auto",
-      });
+      const presentationTicket = { ticketId: "01991e60-b800-7000-8000-000000000011" };
+      const startResult = await manager.startTurn(
+        "thread-1",
+        "Continue",
+        {
+          permissionMode: "auto",
+        },
+        presentationTicket,
+      );
       let routed = latestFollowerAction();
       expect((startResult as { turnId?: string } | null)?.turnId).toBe("turn-new");
       expect(routed?.conversationId).toBe("thread-1");
       expect(routed?.action?.type).toBe("startTurn");
       expect(routed?.action?.prompt).toBe("Continue");
+      expect(routed?.action?.presentationTicket).toEqual(presentationTicket);
 
       followerActionResult = { turnId: "turn-1" };
       const steerResult = await manager.steerTurn({
         threadId: "thread-1",
         expectedTurnId: "turn-1",
         prompt: "  keep going  ",
+        presentationTicket,
       });
       routed = latestFollowerAction();
       const steerInput = routed?.action?.input as
-        | { threadId?: string; expectedTurnId?: string; prompt?: string }
+        | {
+            threadId?: string;
+            expectedTurnId?: string;
+            prompt?: string;
+            presentationTicket?: { ticketId: string };
+          }
         | undefined;
       expect(steerResult?.turnId).toBe("turn-1");
       expect(routed?.conversationId).toBe("thread-1");
@@ -12945,6 +13012,7 @@ describe("local-conversation-store", () => {
       expect(steerInput?.threadId).toBe("thread-1");
       expect(steerInput?.expectedTurnId).toBe("turn-1");
       expect(steerInput?.prompt).toBe("keep going");
+      expect(steerInput?.presentationTicket).toEqual(presentationTicket);
 
       followerActionResult = {
         model: "gpt-5.4-codex",
@@ -20111,6 +20179,75 @@ describe("local-conversation-store", () => {
 
     expect(textContent(container)).toBe("0");
     expect(invokeCalls.filter((call) => call === "codex:threads:list")).toEqual([]);
+  });
+
+  test("applies a relayed completed snapshot and an optional-field removal on a follower", async () => {
+    const {
+      __resetLocalConversationStoreForTests,
+      LocalConversationProvider,
+      readLocalConversation,
+    } = await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    render(createElement(LocalConversationProvider, null, createElement("div")));
+    await settleAsyncRender();
+
+    const before = projectCodexConversationDocument({
+      ...buildConversation("thread-1", "project-1"),
+      turns: [
+        {
+          threadId: "thread-1",
+          turnId: "turn-boot",
+          status: "completed",
+          errorMessage: "A prior failure",
+          diff: undefined,
+          itemIds: ["answer-boot"],
+          items: [
+            {
+              threadId: "thread-1",
+              turnId: "turn-boot",
+              itemId: "answer-boot",
+              type: "agentMessage",
+              kind: "assistantMessage",
+              markdownText: "BOOT_OK",
+              createdAt: 0,
+              updatedAt: 0,
+            },
+          ],
+        },
+      ],
+    });
+    const next = projectCodexConversationDocument({
+      ...before,
+      turns: [{ ...before.turns[0]!, errorMessage: undefined }],
+    });
+    const checkpoint = buildTestCheckpoint(before, 1);
+    const deliver = async (change: CodexThreadStreamStateChange) => {
+      const message: CodexHostMessage = {
+        type: "threadStreamStateChanged",
+        hostId: "default",
+        conversationId: "thread-1",
+        change,
+        version: change.revision,
+        sourceClientId: "renderer-owner",
+        checkpoint: change.type === "snapshot" ? checkpoint : buildTestCheckpoint(next, 2),
+        baseCheckpoint: change.type === "snapshot" ? null : checkpoint,
+      };
+      await act(async () => {
+        hostMessageListener?.(relayRendererPayload(message));
+        await Promise.resolve();
+      });
+      await settleAsyncRender();
+    };
+
+    await deliver({ type: "snapshot", revision: 1, conversationState: before });
+    expect(readLocalConversation("thread-1")?.turns[0]?.items[0]?.markdownText).toBe("BOOT_OK");
+    await deliver({
+      type: "patches",
+      baseRevision: 1,
+      revision: 2,
+      patches: buildCodexConversationStateUpdates(before, next),
+    });
+    expect(readLocalConversation("thread-1")?.turns).toEqual(next.turns);
   });
 
   test("normalizes incoming conversation snapshots before storing them", async () => {

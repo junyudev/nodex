@@ -1,3 +1,6 @@
+import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
+import { resolveCodexPermissionState } from "../codex/codex-permission-resolver";
+import type { ClientRequestParamsByMethod } from "@nodex/effect-codex-app-server/rpc";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
@@ -17,7 +20,6 @@ import { CodexRendererConversationRegistry } from "../codex-application/CodexRen
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
 import { ThreadCreationRuntime } from "../codex-application/ThreadCreationRuntime";
 import { transparentThreadCreationRuntime } from "../codex-application/ThreadCreationRuntime.test-support";
-import { CodexThreadSettingsRuntime } from "../codex-application/CodexThreadSettingsRuntime";
 import { CodexThreadTitlePersistence } from "../codex-application/CodexThreadTitlePersistence";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
@@ -89,26 +91,32 @@ const buildExecutionContext = (
     readonly desktopTools?: DesktopToolRuntime["Service"];
     readonly directory?: CodexThreadDirectory["Service"];
     readonly gateway?: CodexGateway["Service"];
+    readonly git?: CodexGitProbe["Service"];
+    readonly permissions?: CodexPermissions["Service"];
+    readonly turns?: CodexTurnCommands["Service"];
+    readonly titles?: CodexThreadTitlePersistence["Service"];
     readonly historyPages?: CodexHistoryPageAdapter["Service"];
     readonly rendererConversations?: CodexRendererConversationRegistry["Service"];
     readonly workspace?: ProjectWorkspace["Service"];
   } = {},
 ) =>
   Layer.buildWithScope(
-    live({ runtimeStateHome: "/tmp/nodex-test", runtimeVersion: "test" }).pipe(
+    live({ runtimeStateHome: "/tmp/nodex-test" }).pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.succeed(
             AutomationApplication,
             input.automation ?? ({} as AutomationApplication["Service"]),
           ),
-          Layer.succeed(CodexApplicationEventHub, {} as CodexApplicationEventHub["Service"]),
+          Layer.succeed(CodexApplicationEventHub, {
+            publish: () => undefined,
+          } as unknown as CodexApplicationEventHub["Service"]),
           Layer.succeed(CodexAppServerCapabilities, input.capabilities ?? capabilities),
           Layer.succeed(
             CodexGateway,
             input.gateway ?? ({ localHostId: "local" } as CodexGateway["Service"]),
           ),
-          Layer.succeed(CodexGitProbe, {} as CodexGitProbe["Service"]),
+          Layer.succeed(CodexGitProbe, input.git ?? ({} as CodexGitProbe["Service"])),
           Layer.succeed(
             CodexHeartbeatTurnCompletion,
             {} as CodexHeartbeatTurnCompletion["Service"],
@@ -117,7 +125,7 @@ const buildExecutionContext = (
             CodexHistoryPageAdapter,
             input.historyPages ?? ({} as CodexHistoryPageAdapter["Service"]),
           ),
-          Layer.succeed(CodexPermissions, {} as CodexPermissions["Service"]),
+          Layer.succeed(CodexPermissions, input.permissions ?? ({} as CodexPermissions["Service"])),
           Layer.succeed(
             CodexRendererConversationRegistry,
             input.rendererConversations ?? ({} as CodexRendererConversationRegistry["Service"]),
@@ -127,10 +135,12 @@ const buildExecutionContext = (
             input.directory ?? ({} as CodexThreadDirectory["Service"]),
           ),
           Layer.succeed(ThreadCreationRuntime, transparentThreadCreationRuntime),
-          Layer.succeed(CodexThreadSettingsRuntime, {} as CodexThreadSettingsRuntime["Service"]),
-          Layer.succeed(CodexThreadTitlePersistence, {} as CodexThreadTitlePersistence["Service"]),
+          Layer.succeed(
+            CodexThreadTitlePersistence,
+            input.titles ?? ({} as CodexThreadTitlePersistence["Service"]),
+          ),
           Layer.succeed(CodexTurnAuthority, {} as CodexTurnAuthority["Service"]),
-          Layer.succeed(CodexTurnCommands, {} as CodexTurnCommands["Service"]),
+          Layer.succeed(CodexTurnCommands, input.turns ?? ({} as CodexTurnCommands["Service"])),
           Layer.succeed(ComposerCatalog, input.composer ?? ({} as ComposerCatalog["Service"])),
           Layer.succeed(
             CodexConversations,
@@ -154,17 +164,16 @@ const buildExecutionContext = (
             {} as ManagedWorktreeRetentionRuntime["Service"],
           ),
           Layer.succeed(ManagedWorktreeRuntime, {} as ManagedWorktreeRuntime["Service"]),
-          Layer.succeed(
-            ProjectWorkspace,
-            input.workspace ??
-              ({
-                getThread: (threadId: string) =>
-                  Effect.succeed({
-                    threadId,
-                    backendBinding: { kind: "codex" },
-                  } as never),
-              } as unknown as ProjectWorkspace["Service"]),
-          ),
+          Layer.succeed(ProjectWorkspace, {
+            getProjectSession: () =>
+              Effect.succeed({ archived: false, thread: { threadId: "thread-heartbeat" } }),
+            getThread: (threadId: string) =>
+              Effect.succeed({
+                threadId,
+                backendBinding: { kind: "codex" },
+              } as never),
+            ...input.workspace,
+          } as unknown as ProjectWorkspace["Service"]),
         ),
       ),
     ),
@@ -197,56 +206,75 @@ describe("Automation archive projection", () => {
   });
 });
 
-it.effect("run-now enters the scoped execution capability after runtime readiness", () =>
-  Effect.gen(function* () {
-    let gatewayReady = 0;
-    const scope = yield* Scope.make();
-    const definition = {
-      id: "automation-run-now",
-      definitionRevision: 1,
-      kind: "cron",
-      status: "ACTIVE",
-      targetThreadId: null,
-      name: "Run now",
-      prompt: "Run.",
-      rrule: "FREQ=DAILY",
-      model: null,
-      reasoningEffort: null,
-      serviceTier: null,
-      backendBinding: { kind: "codex" },
-      cwds: [],
-      executionEnvironment: "local",
-      localEnvironmentConfigPath: null,
-      nextRunAt: null,
-      lastRunAt: null,
-      createdAt: 1,
-      updatedAt: 1,
-    } as const;
-    const context = yield* buildExecutionContext(scope, {
-      automation: {
-        definitions: { get: () => Effect.succeed(definition) },
-      } as unknown as AutomationApplication["Service"],
-      gateway: {
-        localHostId: "local",
-        awaitReady: () =>
-          Effect.sync(() => {
-            gatewayReady += 1;
-          }),
-      } as unknown as CodexGateway["Service"],
-    });
+it.effect(
+  "run-now revalidates its definition after runtime readiness and rejects a changed target",
+  () =>
+    Effect.gen(function* () {
+      let gatewayReady = 0;
+      const scope = yield* Scope.make();
+      const definition = {
+        id: "automation-run-now",
+        definitionRevision: 1,
+        projectId: null,
+        targetSessionId: null,
+        notificationPolicy: null,
+        kind: "cron",
+        status: "ACTIVE",
+        targetThreadId: null,
+        name: "Run now",
+        prompt: "Run.",
+        rrule: "FREQ=DAILY",
+        model: null,
+        reasoningEffort: null,
+        serviceTier: null,
+        backendBinding: { kind: "codex" },
+        cwds: [],
+        executionEnvironment: "local",
+        localEnvironmentConfigPath: null,
+        nextRunAt: null,
+        lastRunAt: null,
+        createdAt: 1,
+        updatedAt: 1,
+      } as const;
+      const context = yield* buildExecutionContext(scope, {
+        automation: {
+          definitions: {
+            get: () => Effect.succeed(definition),
+            getForExecution: () =>
+              Effect.sync(() => {
+                assert.strictEqual(gatewayReady, 1);
+                return { ...definition, definitionRevision: 2 };
+              }),
+          },
+        } as unknown as AutomationApplication["Service"],
+        gateway: {
+          localHostId: "local",
+          awaitReady: () =>
+            Effect.sync(() => {
+              gatewayReady += 1;
+            }),
+        } as unknown as CodexGateway["Service"],
+      });
 
-    yield* Context.get(context, AutomationExecution).runNow({ id: definition.id });
-    assert.strictEqual(gatewayReady, 1);
-    yield* Scope.close(scope, Exit.void);
-  }),
+      const exit = yield* Effect.exit(
+        Context.get(context, AutomationExecution).runNow({ id: definition.id }),
+      );
+      assert.isTrue(Exit.isFailure(exit));
+      assert.match(String(exit), /Automation changed before execution/);
+      assert.strictEqual(gatewayReady, 1);
+      yield* Scope.close(scope, Exit.void);
+    }),
 );
 
 const heartbeatDefinition = {
   id: "automation-heartbeat",
   definitionRevision: 1,
+  projectId: null,
+  targetSessionId: "session-heartbeat",
+  notificationPolicy: null,
   kind: "heartbeat",
   status: "ACTIVE",
-  targetThreadId: "thread-heartbeat",
+  targetThreadId: "obsolete-backend",
   name: "Heartbeat",
   prompt: "Continue.",
   rrule: "FREQ=MINUTELY",
@@ -262,6 +290,81 @@ const heartbeatDefinition = {
   createdAt: 1,
   updatedAt: 1,
 } as const satisfies CodexScheduledAutomation;
+
+it.effect("starts cron runs with the native catalog and no dynamic registration", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const definition: CodexScheduledAutomation = {
+      ...heartbeatDefinition,
+      id: "automation-cron",
+      kind: "cron",
+      projectId: "project-a",
+      targetSessionId: null,
+      targetThreadId: null,
+      cwds: ["/workspace"],
+    };
+    const starts: ClientRequestParamsByMethod["thread/start"][] = [];
+    const accepted: string[] = [];
+    const context = yield* buildExecutionContext(scope, {
+      automation: {
+        definitions: { getForExecution: () => Effect.succeed(definition) },
+        runs: {
+          begin: () => Effect.succeed(false),
+          replacePendingThread: () => Effect.succeed(true),
+          setThreadTitle: () => Effect.void,
+        },
+      } as unknown as AutomationApplication["Service"],
+      composer: { listModels: Effect.succeed([]) } as unknown as ComposerCatalog["Service"],
+      desktopTools: {
+        threadConfig: Effect.succeed({ "mcp_servers.nodex_app.enabled_tools": ["retired_tool"] }),
+      } as unknown as DesktopToolRuntime["Service"],
+      git: { readPath: () => Effect.succeed(null) } as unknown as CodexGitProbe["Service"],
+      permissions: {
+        resolveAutomation: () =>
+          Effect.succeed(
+            resolveCodexPermissionState({
+              config: { sandbox_mode: "workspace-write", approval_policy: "on-request" } as never,
+              origins: {},
+              requirements: null,
+              defaultUserConfigPath: "/runtime/config.toml",
+              workspaceRoots: ["/workspace"],
+            }),
+          ),
+      } as unknown as CodexPermissions["Service"],
+      gateway: {
+        localHostId: "local",
+        awaitReady: () => Effect.void,
+        requestLocal: (_method: string, params: ClientRequestParamsByMethod["thread/start"]) =>
+          Effect.sync(() => {
+            assert.strictEqual(_method, "thread/start");
+            starts.push(params);
+            return { thread: { id: "thread-cron", cwd: "/workspace" }, cwd: "/workspace" };
+          }),
+      } as unknown as CodexGateway["Service"],
+      directory: {
+        acceptStandaloneStart: () => Effect.succeed({ durable: { threadId: "thread-cron" } }),
+      } as unknown as CodexThreadDirectory["Service"],
+      titles: { set: () => Effect.void } as unknown as CodexThreadTitlePersistence["Service"],
+      turns: {
+        startAutomation: (threadId: string) => Effect.sync(() => accepted.push(threadId)),
+      } as unknown as CodexTurnCommands["Service"],
+    });
+
+    yield* Context.get(context, AutomationExecution).executeClaimed(definition, {
+      now: 1_000_000,
+      reason: "scheduled",
+    });
+
+    assert.strictEqual(starts.length, 1);
+    assert.deepEqual(starts[0]?.dynamicTools, []);
+    assert.deepEqual(
+      starts[0]?.config?.["mcp_servers.nodex_app.enabled_tools"],
+      appToolCatalog.map((tool) => tool.name),
+    );
+    assert.deepEqual(accepted, ["thread-cron"]);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
 
 const heartbeatContext = {
   now: 1_000_000,
@@ -420,6 +523,7 @@ it.effect("does not observe heartbeat metadata returned by a replaced host gener
     let observed = 0;
     const methods: string[] = [];
     const scheduling: unknown[] = [];
+    const requests: unknown[] = [];
     const context = yield* buildExecutionContext(scope, {
       capabilities: CodexAppServerCapabilities.of({
         forHost: () => Effect.succeed(capability),
@@ -439,6 +543,7 @@ it.effect("does not observe heartbeat metadata returned by a replaced host gener
         awaitReady: () => Effect.void,
         requestOnHost: (_hostId: string, method: string, _params: unknown, options?: unknown) =>
           Effect.sync(() => {
+            requests.push(_params);
             methods.push(method);
             scheduling.push(options);
             current = false;
@@ -456,6 +561,7 @@ it.effect("does not observe heartbeat metadata returned by a replaced host gener
 
     assert.isTrue(Exit.isFailure(exit));
     assert.deepStrictEqual(methods, ["thread/read"]);
+    assert.deepStrictEqual(requests, [{ threadId: "thread-heartbeat", includeTurns: false }]);
     assert.deepStrictEqual(scheduling, [{ expectedHostId: "local", expectedGeneration: 1 }]);
     assert.strictEqual(observed, 0);
     yield* Scope.close(scope, Exit.void);
@@ -494,7 +600,15 @@ it.effect("does not accept heartbeat resume metadata from a replaced host genera
           Effect.sync(() => {
             methods.push(method);
             scheduling.push(options);
-            if (method === "thread/resume") current = false;
+            if (method === "thread/resume") {
+              assert.deepEqual(
+                (_params as { config: Record<string, unknown> }).config[
+                  "mcp_servers.nodex_app.enabled_tools"
+                ],
+                appToolCatalog.map((tool) => tool.name),
+              );
+              current = false;
+            }
             return method === "thread/read"
               ? { thread: { id: "thread-heartbeat", path: "/tmp/rollout.jsonl" } }
               : { thread: { id: "thread-heartbeat" } };

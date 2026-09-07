@@ -14,7 +14,7 @@ import {
 } from "../../shared/codex-pending-worktree";
 import { createCodexTextUserInput } from "../../shared/codex-prompt-preparation";
 import type { CodexCanonicalWorktreeInitItem, CodexPreparedPrompt } from "../../shared/types";
-import { buildCodexThreadConfigOverrides } from "../codex/codex-thread-capabilities";
+import { buildCodexThreadConfig } from "../codex/codex-thread-config";
 import { rewriteExecutionWorkspaceRoots } from "../codex/codex-execution-workspace-roots";
 import { projectCodexPendingWorktreeLaunchLocation } from "../codex/codex-pending-worktree-request";
 import {
@@ -29,12 +29,14 @@ import { requireExactThreadStartProfile } from "./codex-thread-start-profile";
 import { CodexClientThreadIdentity } from "./CodexClientThreadIdentity";
 import { CodexConversationFork } from "./CodexConversationFork";
 import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
+import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
 import { CodexThreadLaunchCompletion } from "./CodexThreadLaunchCompletion";
 import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
 import { CodexTurnCommands } from "./CodexTurnCommands";
+import { CodexTurnPresentation } from "./CodexTurnPresentation";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
 
@@ -99,11 +101,13 @@ export const make: Effect.Effect<
   | CodexAppServerCapabilities
   | CodexGateway
   | CodexThreadDirectory
+  | CodexSidebarSyncRuntime
   | CodexThreadGoalRuntime
   | CodexThreadLaunchCompletion
   | ThreadCreationRuntime
   | CodexThreadTitlePersistence
   | CodexTurnCommands
+  | CodexTurnPresentation
   | BrowserUseRuntime
   | DesktopToolRuntime
   | ManagedWorktreeRuntime
@@ -122,9 +126,11 @@ export const make: Effect.Effect<
   const threadStarts = yield* ThreadCreationRuntime;
   const titles = yield* CodexThreadTitlePersistence;
   const turns = yield* CodexTurnCommands;
+  const presentation = yield* CodexTurnPresentation;
   const browserUse = yield* BrowserUseRuntime;
   const managedWorktrees = yield* ManagedWorktreeRuntime;
   const workspace = yield* ProjectWorkspace;
+  const sidebar = yield* CodexSidebarSyncRuntime;
 
   const fail = (operation: string, entry: CodexPendingWorktreeEntry, cause: unknown) =>
     new CodexConversationCreationError({ operation, pendingWorktreeId: entry.id, cause });
@@ -150,9 +156,14 @@ export const make: Effect.Effect<
         .pipe(Effect.catchCause(warn("promote-side-panel")));
     }
     if (entry.isPinned) {
-      yield* workspace
-        .setThreadPinned(threadId, true, entry.pinnedBeforeThreadId)
-        .pipe(Effect.catchCause(warn("pin-thread")));
+      yield* sidebar.ensureSession(threadId).pipe(
+        Effect.flatMap((session) =>
+          session
+            ? workspace.setThreadPinned(threadId, true, entry.pinnedBeforeThreadId)
+            : Effect.void,
+        ),
+        Effect.catchCause(warn("pin-thread")),
+      );
     }
     if (!includeWorktreeInit || !entry.worktreeGitRoot) return;
     yield* managedWorktrees
@@ -198,6 +209,7 @@ export const make: Effect.Effect<
     const forked = yield* conversationFork
       .fork({
         sourceThreadId: entry.sourceConversationId,
+        ...(entry.projectSessionId ? { destinationSessionId: entry.projectSessionId } : {}),
         lastTurnId: entry.targetTurnId ?? null,
         threadSource: entry.threadSource ?? "user",
         target: {
@@ -242,16 +254,20 @@ export const make: Effect.Effect<
     const request: ThreadStartParams = {
       cwd: location.cwd,
       runtimeWorkspaceRoots: [...location.workspaceRoots],
-      model: executionProfile?.modelId ?? params.collaborationMode?.settings.model ?? null,
+      model:
+        executionProfile?.modelId ??
+        params.model ??
+        params.collaborationMode?.settings.model ??
+        null,
       serviceTier: executionProfile ? executionProfile.serviceTier : params.serviceTier,
       baseInstructions: params.baseInstructions ?? null,
       developerInstructions: params.additionalDeveloperInstructions ?? null,
       threadSource: params.threadSource,
       historyMode: "paginated",
+      dynamicTools: [],
       config: {
         ...(desktopToolConfig ?? {}),
-        ...buildCodexThreadConfigOverrides(),
-        ...(params.configOverrides ?? {}),
+        ...buildCodexThreadConfig({ nativeMcp: true, overrides: params.configOverrides }),
         ...((executionProfile?.reasoningEffort ?? params.reasoningEffort)
           ? {
               model_reasoning_effort: executionProfile?.reasoningEffort ?? params.reasoningEffort,
@@ -306,10 +322,25 @@ export const make: Effect.Effect<
       const prompt = materializedGoal
         ? `/goal ${materializedGoal.objective}`
         : extractCodexUserRequestSection(entry.prompt);
+      const presentationClaim = entry.projectSessionId
+        ? presentation.lookupSubmission(
+            {
+              kind: "session",
+              sessionId: entry.projectSessionId,
+              launchId: entry.firstSubmission.launchId,
+            },
+            entry.firstSubmission.clientUserMessageId,
+          )
+        : undefined;
       const turn = yield* turns.start(threadId, prompt, {
+        presentationClaim,
         clientUserMessageId: entry.firstSubmission.clientUserMessageId,
         preparedPrompt: preparedPrompt(entry, prompt),
-        model: executionProfile?.modelId ?? params.collaborationMode?.settings.model ?? undefined,
+        model:
+          executionProfile?.modelId ??
+          params.model ??
+          params.collaborationMode?.settings.model ??
+          undefined,
         serviceTier: executionProfile ? executionProfile.serviceTier : params.serviceTier,
         reasoningEffort: executionProfile?.reasoningEffort ?? params.reasoningEffort ?? undefined,
         collaborationMode: collaborationMode(params.collaborationMode),

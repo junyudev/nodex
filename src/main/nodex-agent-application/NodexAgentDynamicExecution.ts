@@ -25,7 +25,7 @@ import {
   fail,
   NodexAgentDynamicToolFailure,
   prepareAuthorizedWrite,
-  projectRequired,
+  actorProject,
   toolFailure,
   withExecutionTimeout,
   type NodexAgentDynamicExecutionContext,
@@ -242,7 +242,7 @@ function duplicatePagePreview(
 }
 
 function createPagesFootprint(
-  projectId: string,
+  projectId: string | null,
   command: NodexAgentCreatePagesCommand,
 ): NodexAgentAuthorizationFootprint {
   return authorizationFootprint({
@@ -262,7 +262,7 @@ function createPagesFootprint(
 }
 
 function pageUpdateFootprint(
-  projectId: string,
+  projectId: string | null,
   tool: "update_page" | "advanced_update_page",
   input: PageUpdateInput,
   effects: AgentDocumentEditEffects,
@@ -296,7 +296,7 @@ function pageUpdateFootprint(
 }
 
 function movePagesFootprint(
-  projectId: string,
+  projectId: string | null,
   command: NodexAgentMovePagesCommand,
 ): NodexAgentAuthorizationFootprint {
   return authorizationFootprint({
@@ -319,7 +319,7 @@ function movePagesFootprint(
 }
 
 function duplicatePageFootprint(
-  projectId: string,
+  projectId: string | null,
   command: NodexAgentDuplicatePageCommand,
 ): NodexAgentAuthorizationFootprint {
   return authorizationFootprint({
@@ -361,7 +361,7 @@ const executePageUpdate = (
   NodexAgentApplicationFailure | NodexAgentDynamicToolFailure
 > =>
   Effect.gen(function* () {
-    const projectId = projectRequired(context);
+    const projectId = actorProject(context);
     const prepared = yield* prepareAuthorizedWrite(context, {
       intents: [
         {
@@ -482,7 +482,7 @@ export const executeNodexAgentV3Tool = (
         const result = (yield* application.read({
           tool,
           callId: context.callId,
-          projectId: projectRequired(context),
+          projectId: actorProject(context),
           authority: context.authority ?? undefined,
           ...(resourceAccess ? { resourceAccess } : {}),
           input: parsed,
@@ -507,7 +507,7 @@ export const executeNodexAgentV3Tool = (
         const result = (yield* application.read({
           tool,
           callId: context.callId,
-          projectId: projectRequired(context),
+          projectId: actorProject(context),
           authority: context.authority ?? undefined,
           ...(resourceAccess ? { resourceAccess } : {}),
           input: parsed,
@@ -557,7 +557,7 @@ export const executeNodexAgentV3Tool = (
         const result = (yield* application.read({
           tool,
           callId: context.callId,
-          projectId: projectRequired(context),
+          projectId: actorProject(context),
           authority: context.authority ?? undefined,
           ...(resourceAccess ? { resourceAccess } : {}),
           input: parsed as never,
@@ -568,7 +568,7 @@ export const executeNodexAgentV3Tool = (
       }
       case "create_pages": {
         const parsed = input as NodexAgentV3ToolInput<"create_pages">;
-        const projectId = projectRequired(context);
+        const projectId = actorProject(context);
         const prepared = yield* prepareAuthorizedWrite(context, {
           intents: [destinationIntent(parsed.destination, context.authority?.libraryId ?? "")],
           prepare: (resourceAccess) =>
@@ -637,7 +637,7 @@ export const executeNodexAgentV3Tool = (
         );
       case "move_pages": {
         const parsed = input as NodexAgentV3ToolInput<"move_pages">;
-        const projectId = projectRequired(context);
+        const projectId = actorProject(context);
         const prepared = yield* prepareAuthorizedWrite(context, {
           intents: [
             ...parsed.pageIds.map((pageId) => ({
@@ -692,7 +692,7 @@ export const executeNodexAgentV3Tool = (
       }
       case "duplicate_page": {
         const parsed = input as NodexAgentV3ToolInput<"duplicate_page">;
-        const projectId = projectRequired(context);
+        const projectId = actorProject(context);
         const prepared = yield* prepareAuthorizedWrite(context, {
           intents: [
             { target: { kind: "page", pageId: parsed.pageId }, action: "read" },

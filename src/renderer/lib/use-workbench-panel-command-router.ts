@@ -93,7 +93,9 @@ interface WorkbenchPanelCommandRouterInput {
   readonly lifecycle: PanelLifecycle;
   readonly panelOpeners: PanelOpeners;
   readonly sessionCommands: SessionCommands;
-  readonly createSessionViewTab: (input: WorkbenchTabCreateInput) => WorkbenchTabProjection | null;
+  readonly createSessionViewTab: (
+    input: WorkbenchTabCreateInput,
+  ) => Promise<WorkbenchTabProjection | null>;
   readonly resolveProjectDefaultDatabaseViewId: (projectId: string | null) => string | null;
   readonly openPageStage: (
     projectId: string,
@@ -113,7 +115,9 @@ function findDbViewTabForProject(
   return (
     session.tabs.find(
       (tab) =>
-        tab.kind === "db_view" && "projectId" in tab.config && tab.config.projectId === projectId,
+        tab.kind === "db_view" &&
+        tab.config.accessContext.kind === "project" &&
+        tab.config.accessContext.projectId === projectId,
     ) ?? null
   );
 }
@@ -127,10 +131,10 @@ function findDbViewTabForDatabaseView(
     session.tabs.find(
       (tab) =>
         tab.kind === "db_view" &&
-        "projectId" in tab.config &&
-        tab.config.projectId === projectId &&
-        "databaseViewId" in tab.config &&
-        tab.config.databaseViewId === databaseViewId,
+        tab.config.accessContext.kind === "project" &&
+        tab.config.accessContext.projectId === projectId &&
+        tab.config.target.kind === "database-view" &&
+        tab.config.target.databaseViewId === databaseViewId,
     ) ?? null
   );
 }
@@ -191,7 +195,7 @@ export function useWorkbenchPanelCommandRouter({
         sourceTab.kind === "browser" && "projectId" in sourceTab.config
           ? sourceTab.config
           : { projectId: sessionProjectId };
-      const created = createSessionViewTab({
+      const created = await createSessionViewTab({
         sessionId: activeSession.id,
         panelId,
         presentation: openRequest?.background ? "background" : "activate",
@@ -324,13 +328,16 @@ export function useWorkbenchPanelCommandRouter({
         return;
       }
 
-      createSessionViewTab({
+      await createSessionViewTab({
         sessionId: activeSession.id,
         panelId,
         targetLeafId: leafId,
         kind: "db_view",
         title: "DB View",
-        config: { projectId, databaseViewId },
+        config: {
+          accessContext: { kind: "project", projectId },
+          target: { kind: "database-view", databaseViewId },
+        },
       });
       await ensureActivePanelOpenWithoutRefresh(panelId);
     },
@@ -354,7 +361,8 @@ export function useWorkbenchPanelCommandRouter({
           tab.panelId === panelId &&
           "pageId" in tab.config &&
           tab.config.pageId === destination.pageId &&
-          tab.config.projectId === destination.projectId,
+          tab.config.accessContext.kind === "project" &&
+          tab.config.accessContext.projectId === destination.projectId,
       );
       if (existing) {
         const existingLeafId = resolveLeafIdForPanelTab(activeSession, panelId, existing.id);
@@ -373,20 +381,21 @@ export function useWorkbenchPanelCommandRouter({
         matchingPreviewTab?.kind === "page_stage" &&
         "pageId" in matchingPreviewTab.config &&
         matchingPreviewTab.config.pageId === destination.pageId &&
-        matchingPreviewTab.config.projectId === destination.projectId
+        matchingPreviewTab.config.accessContext.kind === "project" &&
+        matchingPreviewTab.config.accessContext.projectId === destination.projectId
       ) {
         await pinPreviewTab(panelId, matchingPreviewTab.id, leafId);
         return;
       }
 
-      createSessionViewTab({
+      await createSessionViewTab({
         sessionId: activeSession.id,
         panelId,
         targetLeafId: leafId,
         kind: "page_stage",
         title: destination.titleSnapshot || destination.pageId,
         config: {
-          projectId: destination.projectId,
+          accessContext: { kind: "project", projectId: destination.projectId },
           pageId: destination.pageId,
           titleSnapshot: destination.titleSnapshot || destination.pageId,
         },
@@ -463,13 +472,16 @@ export function useWorkbenchPanelCommandRouter({
         });
         return true;
       }
-      createSessionViewTab({
+      await createSessionViewTab({
         sessionId: activeSession.id,
         panelId: targetPanelId,
         ...(targetLeafId ? { targetLeafId } : {}),
         kind: "db_view",
         title: "DB View",
-        config: { projectId, databaseViewId },
+        config: {
+          accessContext: { kind: "project", projectId },
+          target: { kind: "database-view", databaseViewId },
+        },
       });
       await ensureActivePanelOpenWithoutRefresh(targetPanelId);
       return true;

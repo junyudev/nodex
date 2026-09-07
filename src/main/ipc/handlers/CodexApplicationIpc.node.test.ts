@@ -44,6 +44,7 @@ it.effect("registers application channels directly against their owning modules"
     const account = CodexAccount.of({
       snapshot: accountSnapshot,
       refresh: Effect.succeed(emptyAccountSnapshot()),
+      readUsageLimits: Effect.die("unused"),
       consumeRateLimitResetCredit: () => Effect.die("unused"),
       startLogin: () => Effect.die("unused"),
       cancelLogin: () => Effect.die("unused"),
@@ -70,6 +71,7 @@ it.effect("registers application channels directly against their owning modules"
       listCollaborationModes: Effect.succeed([]),
       listPlugins: () => Effect.succeed([]),
       activatePlugin: () => Effect.void,
+      uninstallPlugin: () => Effect.die("unused"),
       listSkills: () => Effect.succeed([]),
       listHooks: () => Effect.succeed({ data: [] }),
       updateHooksState: () => Effect.void,

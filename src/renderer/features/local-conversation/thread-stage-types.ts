@@ -1,3 +1,4 @@
+import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
 import type { ReactNode } from "react";
 import type { ThreadGoal, FeedbackUploadParams } from "@nodex/codex-app-server-protocol/v2";
 import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
@@ -131,6 +132,7 @@ export interface ThreadSummaryPanelScheduledAutomationRow {
 }
 
 export interface ThreadSummaryPanelScheduledAutomationOpenInput {
+  proposalId?: string;
   automationId?: string | null;
   createInput?: CodexScheduledAutomationCreateInput | null;
   mode?: "open" | "suggested-create" | "suggested-update";
@@ -287,7 +289,9 @@ export interface ThreadStageActions {
   onPermissionModeChange: (mode: CodexPermissionMode) => void | Promise<void>;
   onQueueingEnabledChange: (enabled: boolean) => void;
   onOpenSubagentsPanel?: () => void | Promise<void>;
+  onCaptureSubmissionPresentation?: () => WorkbenchSubmitPresentation;
   onStartThreadForSession?: (input: {
+    submittedPresentation?: WorkbenchSubmitPresentation;
     projectId: string | null;
     sessionId: string;
     projectDraftId?: string;
@@ -312,6 +316,7 @@ export interface ThreadStageActions {
   onSendPrompt: (
     prompt: string,
     opts?: {
+      submittedPresentation?: WorkbenchSubmitPresentation;
       collaborationMode?: CodexCollaborationModeKind;
       promptInput?: CodexPromptInput;
       model?: string;

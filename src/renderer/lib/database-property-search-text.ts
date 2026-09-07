@@ -3,6 +3,11 @@ import {
   type DatabaseJsonValue,
   type DatabasePropertyOption,
 } from "../../shared/database-kernel";
+import type {
+  DataSourcePageRowV2,
+  DataSourcePropertyRecordV2,
+} from "../../shared/database-module-v2";
+import { readRelationValuePreview } from "./data-source-relation-value";
 
 interface DatabasePropertyValueSearchContext {
   readonly optionBacked?: boolean;
@@ -14,6 +19,11 @@ export const databasePropertyValueSearchText = (
   value: DatabaseJsonValue,
   context: DatabasePropertyValueSearchContext = {},
 ): string => {
+  const relation = readRelationValuePreview(value);
+  if (relation)
+    return relation.targets
+      .flatMap((target) => (target.kind === "visible" ? [target.title] : []))
+      .join(" ");
   if (!context.optionBacked) return stableStringifyDatabaseJson(value);
 
   const selectedIds = new Set(
@@ -31,3 +41,23 @@ export const databasePropertyValueSearchText = (
     ...new Set([...selectedIds].map((optionId) => labelsById.get(optionId) ?? "Unknown option")),
   ].join(" ");
 };
+
+/** Board and List search the same authorized labels, including relation titles. */
+export function databaseRowPropertySearchText(
+  row: DataSourcePageRowV2,
+  properties: readonly DataSourcePropertyRecordV2[],
+  optionRegistries: Readonly<Record<string, readonly DatabasePropertyOption[]>>,
+): string {
+  const propertyById = new Map(
+    properties.map((property) => [String(property.propertyId), property] as const),
+  );
+  return Object.values(row.values)
+    .map((entry) => {
+      const property = propertyById.get(entry.propertyId);
+      return databasePropertyValueSearchText(entry.value, {
+        optionBacked: property?.valueType === "select" || property?.valueType === "multi_select",
+        options: optionRegistries[entry.propertyId],
+      });
+    })
+    .join(" ");
+}

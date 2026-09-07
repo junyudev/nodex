@@ -27,12 +27,18 @@ flowchart LR
     Scene --> Catalog["Main-persisted Window Session catalog"]
 ```
 
-The CLI is the default Agent content Interface. Its Native CLI authorization
-uses selected Project access; experimental dynamic tools retain separate verified
-Turn authorization behind a default-off development gate. Per-Turn host connection
+The CLI is the default shell Agent content Interface. Its Native CLI authorization
+uses selected Project access. Native application MCP provides live Workbench context,
+application operations and content operations under separately verified Turn authority.
+Both Interfaces share Core semantics. Per-Turn host connection
 context selects the Skill and a task-bound shell entrypoint for the current
 executable, Profile, and Project without becoming an authorization proxy. See [Agent Interface Behavior](product-specs/agent-interface-behavior.md)
-and [ADR 0061](adr/0061-cli-first-agent-content-interface.md).
+and [ADR 0064](adr/0064-native-application-mcp.md).
+
+The Main-owned Workspace Dependency Runtime exposes verified host document dependencies.
+Its Node Adapter validates the packaged distribution; it owns no Project content or user
+environment and does not install dependencies during application-tool discovery. Distribution
+and execution-path contracts live in [the workspace runtime documentation](../resources/workspace-runtime/README.md).
 
 The principal dependency rule is inward ownership:
 
@@ -78,6 +84,8 @@ Project                              execution context
 One Profile owns one Library. Library owns durable content; Project owns execution context and access to content. Archiving or deleting a Project never owns, moves, or deletes Library content.
 
 Blocks, Documents, owner registries, search/asset projections, and top-level placement are physically Library-scoped. A Project coordinate retained by a receipt, change log, automation record, recovery artifact, or delivery packet names actor/execution/delivery provenance, not content ownership. `library_block_placements` is the sole root-order authority; runtime mutations do not dual-write a Project-local placement graph.
+
+Projectless execution retains a null actor Project. Resource authorization and event delivery follow the affected Library resources independently of that actor coordinate; content location never supplies a fallback execution identity.
 
 Every active Page has exactly one `library | page | data_source` parent. Page ownership forms an acyclic forest. References, mentions, backlinks, relations, and Views are non-owning and do not expand authorization. Page ID is Block ID; Document identity remains independent.
 
@@ -242,6 +250,15 @@ one cached Effect, and a `FiberHandle` starts or interrupts foreground polling.
 The native Adapter owns only helper execution, screen metadata, and Electron
 capture calls; it has no scheduler or application state. Renderer IPC borrows
 the runtime and never owns a second cache or scheduler.
+
+Native application MCP invocation admission belongs to the exact Codex Endpoint generation's
+request inbox Scope. Only canonical protocol notifications admitted after Turn authority capture
+can establish invocation identity; MCP metadata must match the observed Thread, Turn, call, tool,
+and arguments. Turn completion and generation closure revoke active claims. This identity boundary
+does not grant data access or mutation consent: Core authority and operation policy remain required.
+Application tool interpretation crosses a bounded, lossless invocation inbox, separating transport
+resource acquisition from semantic application dependencies. Withdrawing a caller interrupts its
+interpreter; duplicate delivery cannot execute a ticket twice. The inbox owns no content authority.
 
 Remote Hosted PiP is one Main-owned, revisioned Effect Module. Generated Codex notifications enter
 through the existing per-Thread causal consequence path, and local connection retirement fences the
@@ -472,10 +489,10 @@ later admission. Each worker entry snapshots its inherited environment and platf
 constructs the same runtime in its own root Scope. There is no cached Promise, AbortController
 registry, manual `close()`, or environment cache shared across a process or Scope.
 
-Nodex Agent dynamic tools receive their Core-backed registry explicitly from the Main composition
-root. The protocol validator remains a pure helper and can report stale catalogs before a registry
-is available, but production execution never discovers authority through a module setter or
-import-time active-service slot.
+Native application tools receive their semantic services explicitly from the Main composition
+root. The shared content contract validator remains a pure helper; production execution never
+discovers authority through a module setter or import-time active-service slot. Historical dynamic
+results remain presentation data and cannot reactivate retired local execution entrypoints.
 
 Promise, callback, EventEmitter, AbortSignal, and synchronous IPC shapes are allowed only at explicit external Adapter seams. Application Modules expose Effect values, typed state, and Stream/PubSub observation; renderer, preload, shared contracts, and generated wire protocols remain Effect-free. Synchronous preload contracts use a separate scoped pure adapter because Electron requires a result before an Effect fiber can run. [ADR 0048](adr/0048-effect-main-application-kernel.md) defines the completed Main application-kernel topology and frontier; the [external frontier ledger](effect-external-frontiers.md) records the permitted adapter categories and their constraints.
 
@@ -873,7 +890,7 @@ A Window Session owns one restorable Workbench layout with owner-scoped Scenes. 
 
 Live Scene changes are pure renderer transitions. Main persists validated, revisioned snapshots and manages open/closed window lifecycle and restore policy. Core stores no panel tree, tab geometry, active surface, or BrowserWindow attachment.
 
-`WindowRuntime` owns one live physical-window registry and publishes a bounded typed snapshot plus lifecycle Stream. Primary entries alone attach to the durable Window Session catalog and retain the existing application-window authorization/broadcast semantics; explicitly registered auxiliary entries share lifecycle and focus ordering without acquiring a Window Session or entering restore state. The active Session projection is derived from the persisted Workbench location, including Settings and Automations return locations, rather than from the renderer document URL.
+`WindowRuntime` owns one live physical-window registry and publishes a bounded typed snapshot plus lifecycle Stream. Primary entries alone attach to the durable Window Session catalog and retain the existing application-window authorization/broadcast semantics; explicitly registered auxiliary entries share lifecycle and focus ordering without acquiring a Window Session or entering restore state. Each committed main-frame document receives a fresh renderer generation, revoked at navigation start, renderer loss, or window release. This identity fences live presentation requests independently of the durable Window Session. The active Session projection is derived from the persisted Workbench location, including Settings and Automations return locations, rather than from the renderer document URL.
 
 Surface descriptors contain stable resource or runtime references, not live Query observers, Documents, editors, Browser WebContents, PTYs, DOM nodes, or Promises. Browser and Terminal lifetimes remain with their Main-owned aggregates when a React surface unmounts.
 
@@ -910,7 +927,12 @@ returned. Core re-plans inside the writer transaction before applying the
 claim, so idle polling and stale ticks neither create semantic commits nor turn
 Main's clock into a second due-work authority. Core remains the durable
 definition and lease authority. `AutomationRoutingIndex` owns the synchronous routing
-projection from Codex Thread IDs to all runs and active heartbeat definitions.
+projection from Codex Thread IDs to runs and stable Session IDs to active heartbeat definitions.
+Heartbeat definitions own a Session target; their current backend Thread is a Workspace projection,
+resolved again at execution rather than persisted as automation identity.
+Cron definitions own an optional Project identity; Core validates selected sources
+against that Project, and execution places the new Session in the same Project.
+Projectless runs receive independent workspaces.
 A complete cursor-paginated background read, including archived runs, atomically
 rebuilds that projection. A newer committed mutation fences a stale read and
 forces a new canonical rebuild; successful definition/run mutations apply their
@@ -958,8 +980,11 @@ for its lifetime. Library and Database expose internal authorized projection sea
 that borrow that same observation; Document and File semantics remain with their
 domain owners. User expressions run against lazy read-only virtual relations in
 an isolated transient database, never against private Store tables. Query owns
-execution budgets and cancellation; domain owners retain visibility and value
-rules. The SQLite callback bridge is isolated in `nodex-sqlite-query`, while Core
+execution budgets and cancellation. Agent admission verifies frozen Turn provenance within
+that observation and preserves the bound Project's resource universe. Exact displayed-View
+observations use the same Query execution boundary with Database-owned effective
+occurrences and target-specific Turn authorization; they do not widen public SQL
+relations. Domain owners retain visibility and value rules. The SQLite callback bridge is isolated in `nodex-sqlite-query`, while Core
 retains its unsafe-code prohibition. Configuration scripts remain atomic Database
 intents. [ADR 0063](adr/0063-sql-first-content-observations.md) records this boundary;
 public scope and semantics belong to [Agent CLI queries](product-specs/agent-cli-queries.md).

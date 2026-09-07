@@ -8,11 +8,29 @@ import type {
 import { FetchV6OutputSchema } from "../../shared/nodex-agent-tools/v6-schemas";
 import { serializeInlineMarkdownTitle } from "../../shared/nfm/agent-title";
 import { extractPlainText } from "../../shared/nfm/extract-text";
-import type { NativeNodexAgentCore } from "./native-nodex-agent-core";
+import { nativeAgentClient, type NativeNodexAgentCore } from "./native-nodex-agent-core";
 import { toCoreAgentExecutionAuthorization } from "./core-agent-execution-authorization";
 import { mapNativeNodexAgentCoreError } from "./native-nodex-agent-page-update";
 
-type FetchRequest = Extract<NodexAgentV3ReadRequest, { readonly tool: "fetch" }>;
+export type NativeNodexAgentFetchRequest = Extract<
+  NodexAgentV3ReadRequest,
+  { readonly tool: "fetch" }
+>;
+type FetchSuccess = Extract<NodexAgentV3ReadCommandResult, { readonly tool: "fetch" }>;
+export type NativeNodexAgentFetchObservation =
+  | Extract<NodexAgentV3ReadCommandResult, { readonly ok: false }>
+  | (FetchSuccess & {
+      readonly validators: { readonly title: string | null; readonly body: string | null };
+      readonly document: {
+        readonly documentId: string;
+        readonly ownerPageId: string;
+        readonly targetBlockId: string;
+        readonly storeEpoch: string;
+        readonly generation: number;
+        readonly headSeq: number;
+        readonly commitHead: number;
+      };
+    });
 type CorePageDetail = components["schemas"]["LibraryPageDetail"];
 
 const record = (value: unknown): Readonly<Record<string, unknown>> | null =>
@@ -82,10 +100,30 @@ const dataSource = (detail: CorePageDetail) => {
 };
 
 export async function readNativeFetch(
-  request: FetchRequest,
+  request: NativeNodexAgentFetchRequest,
   runtime: NativeNodexAgentCore,
   signal?: AbortSignal,
 ): Promise<NodexAgentV3ReadCommandResult> {
+  const observation = await readFetchObservation(request, runtime, signal, false);
+  if (!observation.ok) return observation;
+  return { ok: true, tool: "fetch", output: observation.output };
+}
+
+/** Retains the same canonical read's fence for exact live Document observations. */
+export function readNativeFetchObservation(
+  request: NativeNodexAgentFetchRequest,
+  runtime: NativeNodexAgentCore,
+  signal?: AbortSignal,
+): Promise<NativeNodexAgentFetchObservation> {
+  return readFetchObservation(request, runtime, signal, true);
+}
+
+async function readFetchObservation(
+  request: NativeNodexAgentFetchRequest,
+  runtime: NativeNodexAgentCore,
+  signal: AbortSignal | undefined,
+  prepareValidators: boolean,
+): Promise<NativeNodexAgentFetchObservation> {
   if (!request.authority) {
     return {
       ok: false,
@@ -98,7 +136,7 @@ export async function readNativeFetch(
     };
   }
   try {
-    const client = runtime.clientForProject(request.projectId);
+    const client = nativeAgentClient(runtime, request.projectId);
     const authorization = toCoreAgentExecutionAuthorization(
       runtime.identity.profileId,
       request.authority,
@@ -134,8 +172,11 @@ export async function readNativeFetch(
     }
     const detail = target.owner_page;
     const preparesTitle =
-      request.input.prepareFor?.some((entry) => entry.kind === "title") ?? false;
-    const preparesBody = request.input.prepareFor?.some((entry) => entry.kind === "body") ?? false;
+      prepareValidators ||
+      (request.input.prepareFor?.some((entry) => entry.kind === "title") ?? false);
+    const preparesBody =
+      prepareValidators ||
+      (request.input.prepareFor?.some((entry) => entry.kind === "body") ?? false);
     const blockGuards = (request.input.prepareFor ?? []).flatMap((entry) => {
       if (entry.kind !== "block_update" && entry.kind !== "block_delete") return [];
       return entry.blockIds.map((blockId) => ({
@@ -168,7 +209,8 @@ export async function readNativeFetch(
       snapshot.document_id !== target.document_id ||
       snapshot.owner_block_id !== target.owner_page_id ||
       snapshot.target_block_id !== target.block_id ||
-      snapshot.generation !== target.document_generation
+      snapshot.generation !== target.document_generation ||
+      snapshotRead.store_epoch !== request.authority.storeEpoch
     ) {
       throw new Error("Core Agent fetch authorities diverged");
     }
@@ -214,6 +256,16 @@ export async function readNativeFetch(
     return {
       ok: true,
       tool: "fetch",
+      validators: { title: snapshot.title_etag ?? null, body: snapshot.body_etag ?? null },
+      document: {
+        documentId: snapshot.document_id,
+        ownerPageId: snapshot.owner_block_id,
+        targetBlockId: snapshot.target_block_id,
+        storeEpoch: snapshotRead.store_epoch,
+        generation: snapshot.generation,
+        headSeq: snapshot.head_seq,
+        commitHead: snapshotRead.commit_head,
+      },
       output: FetchV6OutputSchema.parse({
         data: {
           resource: {

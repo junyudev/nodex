@@ -97,7 +97,7 @@ pub(super) struct PageCopyPlanPreview {
 }
 
 pub(super) struct PageCopyExecution {
-    pub(super) actor_project_id: String,
+    pub(super) actor_project_id: Option<String>,
     pub(super) parent_key: String,
     pub(super) affected_page_ids: Vec<String>,
     pub(super) affected_database_ids: Vec<String>,
@@ -127,7 +127,7 @@ struct ExplicitRootIdentity<'a> {
 
 pub(crate) struct OccurrencePageCloneInput<'a> {
     pub(crate) commit_context: &'a CommitContext,
-    pub(crate) actor_project_id: &'a str,
+    pub(crate) actor_project_id: Option<&'a str>,
     pub(crate) operation_id: &'a str,
     pub(crate) source_page_id: &'a str,
     pub(crate) new_page_id: &'a str,
@@ -333,9 +333,10 @@ pub(super) fn execute_page_copy(
     let requesting_project_id = context
         .project_id
         .as_ref()
-        .map(|project_id| project_id.0.as_str())
-        .ok_or_else(|| unauthorized("Page copy requires a bound Project"))?;
+        .map(|project_id| project_id.0.as_str());
     if !access_prevalidated {
+        let requesting_project_id = requesting_project_id
+            .ok_or_else(|| unauthorized("Project Page copy requires an actor Project"))?;
         super::history::require_page_read_access(
             connection,
             library_id,
@@ -397,7 +398,13 @@ pub(super) fn execute_page_copy(
             &parent,
         )?
     } else {
-        resolve_write_parent(connection, library_id, requesting_project_id, &parent)?
+        resolve_write_parent(
+            connection,
+            library_id,
+            requesting_project_id
+                .ok_or_else(|| unauthorized("Project Page copy requires an actor Project"))?,
+            &parent,
+        )?
     };
     if matches!(parent_document_mode, PageCopyParentDocumentMode::Defer)
         && resolved_parent.document.is_none()
@@ -419,7 +426,8 @@ pub(super) fn execute_page_copy(
             validate_page_copy_data_source_destination(
                 connection,
                 library_id,
-                requesting_project_id,
+                requesting_project_id
+                    .ok_or_else(|| unauthorized("Project Page copy requires an actor Project"))?,
                 &destination.data_source_id,
                 destination.expected_data_source_revision,
             )?
@@ -512,7 +520,9 @@ pub(super) fn execute_page_copy(
                 place_copied_page_in_data_source(
                     connection,
                     library_id,
-                    requesting_project_id,
+                    requesting_project_id.ok_or_else(|| {
+                        unauthorized("Project Page copy requires an actor Project")
+                    })?,
                     source_page_id,
                     &target_page_id,
                     destination,
@@ -746,8 +756,8 @@ pub(crate) fn clone_page_for_occurrence(
     let resolved_parent = super::mutation::ResolvedWriteParent {
         parent_key: format!("library:{library_id}"),
         page_id: None,
-        actor_project_id: input.actor_project_id.to_owned(),
-        creator_project_id: Some(input.actor_project_id.to_owned()),
+        actor_project_id: input.actor_project_id.map(str::to_owned),
+        creator_project_id: input.actor_project_id.map(str::to_owned),
         document: None,
         before_block_id: None,
     };
@@ -984,7 +994,7 @@ pub(crate) fn clone_page_for_occurrence(
 fn persist_copy_documents(
     connection: &Connection,
     commit_context: &CommitContext,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     plan: &CopyPlan,
     store_epoch: &str,
     operation_id: &str,
@@ -1812,10 +1822,11 @@ mod tests {
                     operation_id: "operation:freeze-agent-move-turn".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
+                        read_only: false,
                         thread_id: "thread:agent-move".to_owned(),
                         turn_id: "turn:agent-move".to_owned(),
                         root_thread_id: "thread:agent-move".to_owned(),
-                        actor_project_id: "project-1".to_owned(),
+                        actor_project_id: Some("project-1".to_owned()),
                         source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
                         inherited_from: None,
                     },
@@ -1826,7 +1837,7 @@ mod tests {
             thread_id: "thread:agent-move".to_owned(),
             turn_id: "turn:agent-move".to_owned(),
             root_thread_id: "thread:agent-move".to_owned(),
-            actor_project_id: "project-1".to_owned(),
+            actor_project_id: Some("project-1".to_owned()),
             library_id: "library-1".to_owned(),
             store_epoch: "epoch-1".to_owned(),
             scope: ProjectWorkspaceTurnAuthorityScope::Project,
@@ -1845,7 +1856,7 @@ mod tests {
                 turn_id: Some(turn.turn_id.clone()),
                 call_id: Some("call:agent-move".to_owned()),
                 root_thread_id: turn.root_thread_id,
-                actor_project_id: turn.actor_project_id,
+                actor_project_id: turn.actor_project_id.expect("Project consent fixture"),
                 library_id: turn.library_id,
                 store_epoch: turn.store_epoch,
                 grants: granted_page_ids
@@ -2033,10 +2044,11 @@ mod tests {
                     operation_id: "operation:freeze-agent-copy-turn".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
+                        read_only: false,
                         thread_id: "thread:agent-copy".to_owned(),
                         turn_id: "turn:agent-copy".to_owned(),
                         root_thread_id: "thread:agent-copy".to_owned(),
-                        actor_project_id: "project-1".to_owned(),
+                        actor_project_id: Some("project-1".to_owned()),
                         source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
                         inherited_from: None,
                     },
@@ -2048,7 +2060,7 @@ mod tests {
             thread_id: "thread:agent-copy".to_owned(),
             turn_id: "turn:agent-copy".to_owned(),
             root_thread_id: "thread:agent-copy".to_owned(),
-            actor_project_id: "project-1".to_owned(),
+            actor_project_id: Some("project-1".to_owned()),
             library_id: "library-1".to_owned(),
             store_epoch: "epoch-1".to_owned(),
             scope: ProjectWorkspaceTurnAuthorityScope::Project,
@@ -2067,7 +2079,10 @@ mod tests {
                 turn_id: Some(authority.turn_id.clone()),
                 call_id: Some("call:agent-copy".to_owned()),
                 root_thread_id: authority.root_thread_id.clone(),
-                actor_project_id: authority.actor_project_id.clone(),
+                actor_project_id: authority
+                    .actor_project_id
+                    .clone()
+                    .expect("Project consent fixture"),
                 library_id: authority.library_id.clone(),
                 store_epoch: authority.store_epoch.clone(),
                 grants: vec![
@@ -2312,10 +2327,11 @@ mod tests {
                     operation_id: "operation:freeze-agent-create-turn".to_owned(),
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: ProjectWorkspaceIntent::FreezeTurnAuthority {
+                        read_only: false,
                         thread_id: "thread:agent-create".to_owned(),
                         turn_id: "turn:agent-create".to_owned(),
                         root_thread_id: "thread:agent-create".to_owned(),
-                        actor_project_id: "project-1".to_owned(),
+                        actor_project_id: Some("project-1".to_owned()),
                         source: ProjectWorkspaceTurnAuthoritySource::ProjectTurn,
                         inherited_from: None,
                     },
@@ -2326,7 +2342,7 @@ mod tests {
             thread_id: "thread:agent-create".to_owned(),
             turn_id: "turn:agent-create".to_owned(),
             root_thread_id: "thread:agent-create".to_owned(),
-            actor_project_id: "project-1".to_owned(),
+            actor_project_id: Some("project-1".to_owned()),
             library_id: "library-1".to_owned(),
             store_epoch: "epoch-1".to_owned(),
             scope: ProjectWorkspaceTurnAuthorityScope::Project,
@@ -2345,7 +2361,10 @@ mod tests {
                 turn_id: Some(turn.turn_id.clone()),
                 call_id: Some("call:agent-create".to_owned()),
                 root_thread_id: turn.root_thread_id.clone(),
-                actor_project_id: turn.actor_project_id.clone(),
+                actor_project_id: turn
+                    .actor_project_id
+                    .clone()
+                    .expect("Project consent fixture"),
                 library_id: turn.library_id.clone(),
                 store_epoch: turn.store_epoch.clone(),
                 grants: vec![AgentResourceGrantSpec {

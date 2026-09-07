@@ -1,4 +1,7 @@
+import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
 import { assert, it } from "@effect/vitest";
+import * as Context from "effect/Context";
+import * as Layer from "effect/Layer";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -18,7 +21,10 @@ import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
-import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
+import {
+  ProjectRuntimeLifecycleRuntime,
+  live as projectLifecycleLive,
+} from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
 import { CodexFreshThreadLaunchRuntime } from "./CodexFreshThreadLaunchRuntime";
@@ -26,7 +32,7 @@ import { CodexPendingWorktreeRuntime } from "./CodexPendingWorktreeRuntime";
 import { make, type CodexSessionThreadLaunchContext } from "./CodexSessionThreadLaunch";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexThreadLaunchCompletion } from "./CodexThreadLaunchCompletion";
-import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
+import { ThreadCreationRuntime, make as makeThreadCreationRuntime } from "./ThreadCreationRuntime";
 import { transparentThreadCreationRuntime } from "./ThreadCreationRuntime.test-support";
 import { CodexTurnCommands, type CodexTurnStartOverrides } from "./CodexTurnCommands";
 import { CodexTurnPreparation } from "./CodexTurnPreparation";
@@ -75,10 +81,13 @@ const harness = (
     readonly promoteFails?: boolean;
     readonly responseOverrides?: Readonly<Record<string, unknown>>;
     readonly prepareAgentConfig?: CodexAgentConfigRuntime["Service"]["prepare"];
+    readonly projectLifecycle?: ProjectRuntimeLifecycleRuntime["Service"];
+    readonly threadCreation?: ThreadCreationRuntime["Service"];
   } = {},
 ) => {
   const events: string[] = [];
   const threadStartParams: Array<Record<string, unknown>> = [];
+  const threadNames: Array<Record<string, unknown>> = [];
   const firstTurnOverrides: CodexTurnStartOverrides[] = [];
   const preparationInputs: Parameters<CodexTurnPreparation["Service"]["start"]>[0][] = [];
   const freshLaunches: Parameters<CodexFreshThreadLaunchRuntime["Service"]["register"]>[0][] = [];
@@ -95,6 +104,10 @@ const harness = (
   const gateway = CodexGateway.of({
     localHostId: "local",
     requestLocal: ((method: string, params: Record<string, unknown>, scheduling: unknown) => {
+      if (method === "thread/name/set") {
+        threadNames.push(params);
+        return Effect.succeed({});
+      }
       requestScheduling.push(scheduling);
       if (method === "thread/delete") {
         events.push(`delete:${params.threadId}`);
@@ -158,7 +171,15 @@ const harness = (
   } as unknown as CodexThreadDirectory["Service"]);
   const turns = CodexTurnCommands.of({
     start: (threadId: string, _prompt: string, overrides?: CodexTurnStartOverrides) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
+        if (options.threadCreation)
+          assert.isFalse(options.threadCreation.defer("local", capability.generation, threadId));
+        if (options.projectLifecycle) {
+          const owned = yield* options.projectLifecycle
+            .runExclusive("project-a", Effect.void)
+            .pipe(Effect.forkIn(scope));
+          yield* Fiber.join(owned);
+        }
         events.push(`turn:${threadId}`);
         firstTurnOverrides.push(overrides ?? {});
         return { threadId, turnId: "turn-a", status: "inProgress", itemIds: [] } as const;
@@ -176,6 +197,7 @@ const harness = (
             preparationInput.overrides?.clientUserMessageId ??
             "unexpected-generated-message-id",
           verifiedBuiltinFullAccess: false,
+          executionReadOnly: false,
         } as never;
       }),
   } as unknown as CodexTurnPreparation["Service"]);
@@ -194,6 +216,7 @@ const harness = (
     requestScheduling,
     browserPromotions,
     threadStartParams,
+    threadNames,
     effect: make.pipe(
       Effect.provideService(
         CodexAppServerCapabilities,
@@ -243,10 +266,14 @@ const harness = (
       Effect.provideService(CodexThreadDirectory, directory),
       Effect.provideService(CodexTurnCommands, turns),
       Effect.provideService(CodexThreadLaunchCompletion, completion),
-      Effect.provideService(ThreadCreationRuntime, transparentThreadCreationRuntime),
+      Effect.provideService(
+        ThreadCreationRuntime,
+        options.threadCreation ?? transparentThreadCreationRuntime,
+      ),
       Effect.provideService(
         ProjectRuntimeLifecycleRuntime,
-        ProjectRuntimeLifecycleRuntime.of({ runExclusive: (_projectId, operation) => operation }),
+        options.projectLifecycle ??
+          ProjectRuntimeLifecycleRuntime.of({ runExclusive: (_projectId, operation) => operation }),
       ),
       Effect.provideService(
         CodexPendingWorktreeRuntime,
@@ -279,7 +306,8 @@ it.effect("commits the Session link before admitting its first Turn", () =>
     const test = harness(scope);
     const service = yield* test.effect;
 
-    const result = yield* service.start(input(), context);
+    const result = yield* service.start({ ...input(), threadName: "Chosen title" }, context);
+    assert.deepStrictEqual(test.threadNames, [{ threadId: "thread-1", name: "Chosen title" }]);
 
     assert.strictEqual(result.kind, "started");
     assert.deepEqual(test.events, [
@@ -385,9 +413,14 @@ it.effect("uses one execution profile for renderer-owned Thread and first-Turn p
     });
     const service = yield* test.effect;
 
+    const presentationClaim = {
+      ticketId: "origin-ticket",
+      submissionId: firstSubmission.clientUserMessageId,
+    };
     const result = yield* service.start(conflictingLaunchInput(), {
       ...context,
       ownerClientId: "renderer-a",
+      presentationClaim,
     });
 
     assert.strictEqual(result.kind, "started");
@@ -400,12 +433,14 @@ it.effect("uses one execution profile for renderer-owned Thread and first-Turn p
       developerInstructions: null,
       threadSource: "user",
       historyMode: "paginated",
+      dynamicTools: [],
       config: {
         "features.js_repl": false,
         "mcp_servers.node_repl": { command: "/runtime/node" },
         "features.apply_patch_streaming_events": true,
         "features.concurrent_reasoning_summaries": true,
         "features.thread_tools": true,
+        "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name),
         model_reasoning_effort: "max",
       },
     });
@@ -423,6 +458,9 @@ it.effect("uses one execution profile for renderer-owned Thread and first-Turn p
       test.freshLaunches[0]?.clientUserMessageId,
       firstSubmission.clientUserMessageId,
     );
+    assert.strictEqual(test.freshLaunches[0]?.presentationClaim, presentationClaim);
+    if (result.kind !== "started") throw new Error("Expected materialized first Turn");
+    assert.isFalse(Object.hasOwn(result.freshLaunch ?? {}, "presentationClaim"));
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -624,6 +662,8 @@ it.effect("freezes Project authority into managed-worktree launches", () =>
         ...input(),
         runInTarget: "newWorktree",
         permissionMode: "guardian-approvals",
+        model: "gpt-5.6-sol",
+        reasoningEffort: "high",
       },
       context,
     );
@@ -638,6 +678,8 @@ it.effect("freezes Project authority into managed-worktree launches", () =>
       pendingCoreUpdate: false,
     });
     assert.strictEqual(request.startConversationParamsInput.agentMode, "guardian-approvals");
+    assert.strictEqual(request.startConversationParamsInput.model, "gpt-5.6-sol");
+    assert.strictEqual(request.startConversationParamsInput.reasoningEffort, "high");
     yield* Scope.close(scope, Exit.void);
   }),
 );
@@ -663,4 +705,29 @@ it.effect("serializes a Session and compensates a Thread rejected before linking
     assert.deepEqual(test.events, ["start:1", "delete:thread-1", "start:2", "delete:thread-2"]);
     yield* Scope.close(scope, Exit.void);
   }),
+);
+
+it.live(
+  "releases Project creation admission before the Conversation owner starts its first Turn",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const scope = yield* Effect.scope;
+        const lifecycle = Context.get(
+          yield* Layer.build(projectLifecycleLive),
+          ProjectRuntimeLifecycleRuntime,
+        );
+        const creation = yield* makeThreadCreationRuntime;
+        const fixture = harness(scope, { projectLifecycle: lifecycle, threadCreation: creation });
+        const service = yield* fixture.effect;
+        const result = yield* service.start(input(), context).pipe(Effect.timeout("2 seconds"));
+        assert.strictEqual(result.kind, "started");
+        assert.deepStrictEqual(fixture.events, [
+          "start:1",
+          "commit:thread-1",
+          "turn:thread-1",
+          "complete:thread-1",
+        ]);
+      }),
+    ),
 );

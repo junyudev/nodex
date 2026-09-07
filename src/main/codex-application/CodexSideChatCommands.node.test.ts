@@ -1,3 +1,4 @@
+import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -106,6 +107,7 @@ const requestFailure = (method: string): CodexRuntimeError =>
   });
 
 interface SideChatHarnessOptions {
+  readonly localHostId?: string;
   readonly hostResolution?: Effect.Effect<string, CodexRuntimeError>;
   readonly inject?: Effect.Effect<unknown, CodexRuntimeError>;
   readonly initialTurn?: Effect.Effect<void, CodexRuntimeError>;
@@ -143,7 +145,7 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
     const directoryFidelities: string[] = [];
 
     const gateway = CodexGateway.of({
-      localHostId: "local",
+      localHostId: options.localHostId ?? "local",
       requestRawOnHost: () => Effect.die(new Error("Unsupported raw host request")),
       requestOnHost: ((
         hostId: string,
@@ -359,52 +361,59 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
     };
   });
 
-it.effect("forks from durable parent context without requesting parent history", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    const harness = yield* makeHarness(scope);
+it.effect.each([true, false])(
+  "forks from durable parent context without requesting history (native bridge: %s)",
+  (nativeMcp) =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const harness = yield* makeHarness(scope, {
+        localHostId: nativeMcp ? remoteHostId : "local",
+      });
 
-    const result = yield* harness.commands.start({ parentThreadId });
-    const fork = harness.requests.find((request) => request.method === "thread/fork");
-    assert.isDefined(fork);
-    const params = fork.params as unknown as ThreadForkParams;
+      const result = yield* harness.commands.start({ parentThreadId });
+      const fork = harness.requests.find((request) => request.method === "thread/fork");
+      assert.isDefined(fork);
+      const params = fork.params as unknown as ThreadForkParams;
 
-    assert.strictEqual(result.threadId, sideThreadId);
-    assert.deepEqual(harness.directoryFidelities, ["durable"]);
-    assert.strictEqual(harness.parentHistoryRequestCount(), 0);
-    assert.strictEqual(fork.hostId, remoteHostId);
-    assert.strictEqual(params.threadId, parentThreadId);
-    assert.strictEqual(params.cwd, "/workspace");
-    assert.strictEqual(params.model, "gpt-parent");
-    assert.isUndefined(params.modelProvider);
-    assert.strictEqual(params.serviceTier, "priority");
-    assert.strictEqual(params.ephemeral, true);
-    assert.strictEqual(params.excludeTurns, true);
-    assert.deepEqual(params.runtimeWorkspaceRoots, ["/workspace", "/shared"]);
-    assert.strictEqual(params.approvalPolicy, "on-request");
-    assert.strictEqual(params.approvalsReviewer, "user");
-    assert.strictEqual(params.permissions, ":workspace");
-    assert.isUndefined(params.sandbox);
-    assert.strictEqual(params.developerInstructions, SIDE_CHAT_DEVELOPER_INSTRUCTIONS);
-    assert.deepEqual(params.config, {
-      model_reasoning_effort: "high",
-      "features.apply_patch_streaming_events": true,
-      "features.concurrent_reasoning_summaries": true,
-      "features.thread_tools": true,
-    });
-    assert.deepEqual(
-      harness.requests.map((request) => request.method),
-      ["thread/fork", "thread/inject_items"],
-    );
-    assert.deepEqual(
-      harness.requests.map((request) => request.scheduling),
-      [
-        { expectedHostId: remoteHostId, expectedGeneration: 1 },
-        { expectedHostId: remoteHostId, expectedGeneration: 1 },
-      ],
-    );
-    yield* Scope.close(scope, Exit.void);
-  }),
+      assert.strictEqual(result.threadId, sideThreadId);
+      assert.deepEqual(harness.directoryFidelities, ["durable"]);
+      assert.strictEqual(harness.parentHistoryRequestCount(), 0);
+      assert.strictEqual(fork.hostId, remoteHostId);
+      assert.strictEqual(params.threadId, parentThreadId);
+      assert.strictEqual(params.cwd, "/workspace");
+      assert.strictEqual(params.model, "gpt-parent");
+      assert.isUndefined(params.modelProvider);
+      assert.strictEqual(params.serviceTier, "priority");
+      assert.strictEqual(params.ephemeral, true);
+      assert.strictEqual(params.excludeTurns, true);
+      assert.deepEqual(params.runtimeWorkspaceRoots, ["/workspace", "/shared"]);
+      assert.strictEqual(params.approvalPolicy, "on-request");
+      assert.strictEqual(params.approvalsReviewer, "user");
+      assert.strictEqual(params.permissions, ":workspace");
+      assert.isUndefined(params.sandbox);
+      assert.strictEqual(params.developerInstructions, SIDE_CHAT_DEVELOPER_INSTRUCTIONS);
+      assert.deepEqual(params.config, {
+        model_reasoning_effort: "high",
+        "features.apply_patch_streaming_events": true,
+        "features.concurrent_reasoning_summaries": true,
+        "features.thread_tools": true,
+        ...(nativeMcp
+          ? { "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name) }
+          : {}),
+      });
+      assert.deepEqual(
+        harness.requests.map((request) => request.method),
+        ["thread/fork", "thread/inject_items"],
+      );
+      assert.deepEqual(
+        harness.requests.map((request) => request.scheduling),
+        [
+          { expectedHostId: remoteHostId, expectedGeneration: 1 },
+          { expectedHostId: remoteHostId, expectedGeneration: 1 },
+        ],
+      );
+      yield* Scope.close(scope, Exit.void);
+    }),
 );
 
 it.effect("rejects an ACP parent before any Codex side-chat request", () =>

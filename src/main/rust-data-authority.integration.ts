@@ -987,6 +987,7 @@ describe("Electron native data authority", () => {
                   libraryId: authorityRuntime.rootClient.handshake.library_id,
                   storeEpoch: authorityRuntime.rootClient.handshake.store_epoch,
                   frozenAtMs: 1_785_491_085_000,
+                  readOnly: false,
                   scope: "project",
                   source: "project_turn",
                 },
@@ -1600,7 +1601,11 @@ describe("Electron native data authority", () => {
               threadId: "thread:electron-session",
               projectId: project.id,
             });
-            const authorityLaunch = yield* turnAuthority.begin("thread:electron-session", false);
+            const authorityLaunch = yield* turnAuthority.begin(
+              "thread:electron-session",
+              false,
+              false,
+            );
             yield* turnAuthority.bind(
               "thread:electron-session",
               authorityLaunch,
@@ -1937,6 +1942,7 @@ describe("Electron native data authority", () => {
           const definition = yield* automation.definitions.create({
             kind: "cron",
             name: "Electron Automation Application",
+            projectId,
             prompt: "Exercise the native Automation boundary.",
             rrule: "FREQ=DAILY;BYHOUR=9",
             cwds: [nodexHome],

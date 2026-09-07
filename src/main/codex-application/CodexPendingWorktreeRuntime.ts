@@ -48,6 +48,7 @@ import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexConversationCreation } from "./CodexConversationCreation";
+import { CodexTurnPresentation } from "./CodexTurnPresentation";
 import { CodexGitProbe } from "./CodexGitProbe";
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
@@ -166,6 +167,7 @@ export const make: Effect.Effect<
   | CodexApplicationEventHub
   | CodexAttachments
   | CodexConversationCreation
+  | CodexTurnPresentation
   | CodexGateway
   | CodexGitProbe
   | ExecutionHostRuntime
@@ -176,6 +178,7 @@ export const make: Effect.Effect<
   const applicationEvents = yield* CodexApplicationEventHub;
   const attachments = yield* CodexAttachments;
   const conversationCreation = yield* CodexConversationCreation;
+  const presentation = yield* CodexTurnPresentation;
   const gateway = yield* CodexGateway;
   const git = yield* CodexGitProbe;
   const executionHosts = yield* ExecutionHostRuntime;
@@ -664,6 +667,21 @@ export const make: Effect.Effect<
     return allocated.result;
   });
 
+  const releaseSubmission = (pendingWorktreeId: string) => {
+    const entry = state.entriesById.get(pendingWorktreeId);
+    if (entry?.launchMode !== "start-conversation" || !entry.projectSessionId) return;
+    presentation.releaseClaim(
+      presentation.lookupSubmission(
+        {
+          kind: "session",
+          sessionId: entry.projectSessionId,
+          launchId: entry.firstSubmission.launchId,
+        },
+        entry.firstSubmission.clientUserMessageId,
+      ),
+    );
+  };
+
   return CodexPendingWorktreeRuntime.of({
     list: () => snapshot,
     resolveThread: (clientThreadId) => resolveCodexPendingWorktreeThread(state, clientThreadId),
@@ -730,12 +748,14 @@ export const make: Effect.Effect<
       Effect.sync(() => {
         rejectLocalLaunch(pendingWorktreeId, "Pending worktree launch canceled");
         interruptLaunch(pendingWorktreeId);
+        releaseSubmission(pendingWorktreeId);
         dispatch({ type: "cancel", pendingWorktreeId });
       }),
     dismiss: (pendingWorktreeId) =>
       Effect.sync(() => {
         rejectLocalLaunch(pendingWorktreeId, "Pending worktree launch dismissed");
         interruptLaunch(pendingWorktreeId);
+        releaseSubmission(pendingWorktreeId);
         dispatch({ type: "dismiss", pendingWorktreeId });
       }),
     rename: (pendingWorktreeId, label) =>

@@ -573,7 +573,7 @@ mod tests {
                 let event_sequence = append_change_log(
                     scope.connection(),
                     NewChangeLogEntry {
-                        project_id: "project:durable-mutation",
+                        project_id: Some("project:durable-mutation"),
                         store_epoch,
                         kind: "database.changed",
                         operation_id: Some(operation_id),

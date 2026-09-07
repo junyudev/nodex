@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { CodexTurnPresentationTicket } from "../../shared/nodex-app-tools/turn-presentation";
+import { CodexTurnPresentation } from "./CodexTurnPresentation";
 import type { ProjectWorkspaceIntent } from "../core-client/types";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -88,6 +90,7 @@ export class CodexQueuedFollowUpsError extends Schema.TaggedError<CodexQueuedFol
 ) {}
 
 export interface CodexQueuedFollowUpEnqueueInput {
+  readonly presentationTicket?: CodexTurnPresentationTicket;
   readonly threadId: string;
   readonly prompt: string;
   readonly collaborationMode?: CodexCollaborationModeKind | null;
@@ -268,6 +271,7 @@ export const make: Effect.Effect<
   | CodexInputAssets
   | CodexRendererConversationRegistry
   | CodexTurnCommands
+  | CodexTurnPresentation
   | ConversationEntityMap
   | CoreModules
   | RendererClientRuntime
@@ -279,6 +283,14 @@ export const make: Effect.Effect<
   const rendererConversations = yield* CodexRendererConversationRegistry;
   const rendererClients = yield* RendererClientRuntime;
   const turns = yield* CodexTurnCommands;
+  const presentation = yield* CodexTurnPresentation;
+  const reconcilePresentations = (threadId: string) =>
+    presentation.reconcileQueued(
+      threadId,
+      current(threadId)
+        ?.readQueuedFollowUpProjection()
+        .entries.map((row) => row.clientUserMessageId) ?? [],
+    );
   const conversationProjection = yield* CodexConversationProjection;
   const dispatchIntents = yield* Queue.bounded<string>(MAIN_RELIABLE_COMMAND_CAPACITY);
   const dispatches = yield* FiberMap.make<string, void, CodexQueuedFollowUpsError>();
@@ -686,6 +698,10 @@ export const make: Effect.Effect<
       summary: delivery.row.summary,
       promptInput: delivery.row.promptInput,
       clientUserMessageId: delivery.row.clientUserMessageId,
+      presentationClaim: presentation.readQueued(
+        delivery.row.threadId,
+        delivery.row.clientUserMessageId,
+      ),
     };
     if (delivery.activeTurnId) {
       return turns
@@ -802,6 +818,7 @@ export const make: Effect.Effect<
           ? recoverInterruptedCodexQueuedFollowUps(state, durableRows)
           : recoverEndedCodexQueuedFollowUps(state, durableRows),
       );
+      reconcilePresentations(input.threadId);
     }).pipe(Effect.mapError((cause) => queueError("terminal", input.threadId, cause)));
 
   return CodexQueuedFollowUps.of({
@@ -852,9 +869,21 @@ export const make: Effect.Effect<
               payloadRef: null,
             })
             .pipe(Effect.mapError((cause) => queueError("enqueue", threadId, cause)));
+          const presentationClaim = input.presentationTicket
+            ? yield* presentation
+                .claim(
+                  input.presentationTicket,
+                  { kind: "thread", threadId },
+                  row.clientUserMessageId,
+                )
+                .pipe(Effect.mapError((cause) => queueError("enqueue", threadId, cause)))
+            : undefined;
           yield* commitTransitionInCurrentLane(threadId, "enqueue", (state) =>
             enqueueCodexQueuedFollowUp(state, row),
+          ).pipe(
+            Effect.tapError(() => Effect.sync(() => presentation.releaseClaim(presentationClaim))),
           );
+          presentation.retainQueued(presentationClaim);
           yield* requestDispatch(threadId);
           return row.followUpId;
         }),
@@ -869,11 +898,18 @@ export const make: Effect.Effect<
         Effect.gen(function* () {
           const projection = yield* loadInCurrentLane(normalizedThreadId);
           if (projection.inFlightFollowUpId === normalizedFollowUpId) return false;
+          const removed = projection.entries.find(
+            (entry) => entry.followUpId === normalizedFollowUpId,
+          );
           const result = yield* commitTransitionInCurrentLane(
             normalizedThreadId,
             "remove",
             (state) => completeCodexQueuedFollowUp(state, normalizedFollowUpId),
           );
+          if (result.changed && removed)
+            presentation.releaseClaim(
+              presentation.readQueued(normalizedThreadId, removed.clientUserMessageId),
+            );
           return result.changed;
         }),
       );
@@ -916,11 +952,30 @@ export const make: Effect.Effect<
               summary: input.summary === undefined ? previous.summary : input.summary,
             })
             .pipe(Effect.mapError((cause) => queueError("replace", normalizedThreadId, cause)));
+          const previousClaim = presentation.readQueued(
+            normalizedThreadId,
+            previous.clientUserMessageId,
+          );
+          const presentationClaim = input.presentationTicket
+            ? yield* presentation
+                .claim(
+                  input.presentationTicket,
+                  { kind: "thread", threadId: normalizedThreadId },
+                  replacement.clientUserMessageId,
+                )
+                .pipe(Effect.mapError((cause) => queueError("replace", normalizedThreadId, cause)))
+            : undefined;
           const result = yield* commitTransitionInCurrentLane(
             normalizedThreadId,
             "replace",
             (state) => replaceCodexQueuedFollowUp(state, replacement),
+          ).pipe(
+            Effect.tapError(() => Effect.sync(() => presentation.releaseClaim(presentationClaim))),
           );
+          if (result.changed) {
+            presentation.releaseClaim(previousClaim);
+            presentation.retainQueued(presentationClaim);
+          } else presentation.releaseClaim(presentationClaim);
           return result.changed;
         }),
       );
@@ -971,6 +1026,12 @@ export const make: Effect.Effect<
             "resolve-after-fresh-start",
             transition,
           );
+          if (result.changed && resolution === "clear") {
+            for (const row of currentProjection.entries)
+              presentation.releaseClaim(
+                presentation.readQueued(normalized, row.clientUserMessageId),
+              );
+          }
           return result.changed;
         }),
       );
@@ -994,6 +1055,7 @@ export const make: Effect.Effect<
         Effect.tap(() =>
           Effect.sync(() => {
             hydratedGenerationByThread.delete(normalizeId(threadId));
+            presentation.reconcileQueued(normalizeId(threadId), []);
           }),
         ),
       ),

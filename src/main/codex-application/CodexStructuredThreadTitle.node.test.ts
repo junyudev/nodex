@@ -176,6 +176,8 @@ it.effect("buffers an exact-host title completion that arrives before turn/start
     );
     assert.strictEqual(threadStartRequests[0]?.ephemeral, true);
     assert.strictEqual(threadStartRequests[0]?.threadSource, "system");
+    assert.deepEqual(threadStartRequests[0]?.dynamicTools, []);
+    assert.deepEqual(threadStartRequests[0]?.config?.["mcp_servers.nodex_app.enabled_tools"], []);
     assert.strictEqual(threadStartRequests[0]?.serviceName, "source-service");
     assert.strictEqual(turnStartRequests[0]?.threadId, "thread-title-1");
     assert.strictEqual(turnStartRequests[0]?.permissions, ":read-only");

@@ -93,7 +93,9 @@ interface WorkbenchSessionSceneProps {
 function hasProjectDbView(session: ProjectSession, projectId: string): boolean {
   return session.tabs.some(
     (tab) =>
-      tab.kind === "db_view" && "projectId" in tab.config && tab.config.projectId === projectId,
+      tab.kind === "db_view" &&
+      tab.config.accessContext.kind === "project" &&
+      tab.config.accessContext.projectId === projectId,
   );
 }
 

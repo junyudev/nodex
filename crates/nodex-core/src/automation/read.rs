@@ -2,7 +2,7 @@ use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::automation::{
     AutomationDefinition, AutomationDefinitionKind, AutomationDefinitionStatus,
     AutomationDueWorkLane, AutomationExecutionEnvironment, AutomationLease, AutomationLeaseStatus,
-    AutomationRead, AutomationReadValue,
+    AutomationNotificationPolicy, AutomationRead, AutomationReadValue,
 };
 use nodex_core_contracts::collection::{
     CollectionWindow, CollectionWindowAuthority, CollectionWindowRequest,
@@ -25,7 +25,61 @@ pub(super) fn read(
     context: &BoundModuleContext,
     request: AutomationRead,
 ) -> Result<AutomationReadValue, StoreError> {
+    if matches!(context.adapter, nodex_core_contracts::AdapterKind::Agent)
+        && !matches!(
+            &request,
+            AutomationRead::AgentDefinition { .. } | AutomationRead::AgentDefinitions { .. }
+        )
+    {
+        return Err(unauthorized(
+            "Agent Automation reads require Turn provenance",
+        ));
+    }
     match request {
+        AutomationRead::AgentDefinitions {
+            provenance,
+            search_query,
+            window,
+        } => {
+            super::agent_command::admit_read(connection, library_id, context, &provenance)?;
+            let project_id = (provenance.authority.scope
+                != nodex_core_contracts::workspace::ProjectWorkspaceTurnAuthorityScope::Library)
+                .then_some(provenance.authority.actor_project_id.as_deref())
+                .flatten();
+            Ok(AutomationReadValue::Definitions {
+                window: read_definition_window(
+                    connection,
+                    library_id,
+                    commit_head,
+                    DefinitionWindowQuery {
+                        include_deleted: false,
+                        project_id,
+                        search_query: search_query.as_deref(),
+                    },
+                    &window,
+                )?,
+            })
+        }
+        AutomationRead::AgentDefinition {
+            provenance,
+            automation_id,
+        } => {
+            super::agent_command::admit_read(connection, library_id, context, &provenance)?;
+            validate_id("automation_id", &automation_id)?;
+            let item = read_definition(connection, &automation_id)?;
+            if let Some(definition) = &item {
+                super::agent_command::require_target(
+                    connection,
+                    &provenance,
+                    definition.kind,
+                    definition.project_id.as_deref(),
+                    definition.target_session_id.as_deref(),
+                )?;
+            }
+            Ok(AutomationReadValue::Definition {
+                item: item.map(Box::new),
+            })
+        }
         AutomationRead::DueWork { lane } => Ok(AutomationReadValue::DueWork {
             plan: match lane {
                 AutomationDueWorkLane::Definitions => {
@@ -38,13 +92,18 @@ pub(super) fn read(
         }),
         AutomationRead::Definitions {
             include_deleted,
+            search_query,
             window,
         } => Ok(AutomationReadValue::Definitions {
             window: read_definition_window(
                 connection,
                 library_id,
                 commit_head,
-                include_deleted.unwrap_or(false),
+                DefinitionWindowQuery {
+                    include_deleted: include_deleted.unwrap_or(false),
+                    project_id: None,
+                    search_query: search_query.as_deref(),
+                },
                 &window,
             )?,
         }),
@@ -52,6 +111,24 @@ pub(super) fn read(
             validate_id("automation_id", &automation_id)?;
             Ok(AutomationReadValue::Definition {
                 item: read_definition(connection, &automation_id)?.map(Box::new),
+            })
+        }
+        AutomationRead::ExecutionDefinition { automation_id } => {
+            validate_id("automation_id", &automation_id)?;
+            let item = read_definition(connection, &automation_id)?;
+            if let Some(definition) = &item
+                && definition.kind == AutomationDefinitionKind::Cron
+            {
+                super::mutation::validate_cron_project_target(
+                    connection,
+                    definition.project_id.as_deref(),
+                    &definition.cwds,
+                    definition.execution_environment,
+                    definition.local_environment_config_path.as_deref(),
+                )?;
+            }
+            Ok(AutomationReadValue::Definition {
+                item: item.map(Box::new),
             })
         }
         AutomationRead::Leases {
@@ -155,15 +232,33 @@ pub(super) fn read(
     }
 }
 
+struct DefinitionWindowQuery<'a> {
+    include_deleted: bool,
+    project_id: Option<&'a str>,
+    search_query: Option<&'a str>,
+}
+
 fn read_definition_window(
     connection: &Connection,
     library_id: &str,
     commit_head: i64,
-    include_deleted: bool,
+    query: DefinitionWindowQuery<'_>,
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<AutomationDefinition>, StoreError> {
     let normalized = normalize_request(request)?;
-    let fingerprint = cursor::query_fingerprint(&("automation_definitions_v1", include_deleted))?;
+    let search_query = query
+        .search_query
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if search_query.is_some_and(|value| value.len() > 512) {
+        return Err(invalid("Automation search query is too long"));
+    }
+    let fingerprint = cursor::query_fingerprint(&(
+        "automation_definitions_v2",
+        query.include_deleted,
+        query.project_id,
+        search_query,
+    ))?;
     let subject = CollectionCursorSubject {
         kind: "automation_definitions",
         library_id,
@@ -191,24 +286,33 @@ fn read_definition_window(
         })
         .transpose()?;
     let mut statement = connection.prepare(
-        "SELECT automation_id, definition_revision, kind, status, target_thread_id, name, \
+        "SELECT automation_id, definition_revision, kind, status, target_session_id, name, \
                 prompt, rrule, model, reasoning_effort, service_tier, cwds_json, \
                 agent_backend_kind, agent_backend_definition_id, \
                 agent_backend_instance_config_id, execution_environment, \
-                local_environment_config_path, next_run_at, last_run_at, created_at, updated_at \
+                local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
+                (SELECT thread_id FROM project_session_threads WHERE session_id = codex_scheduled_automations.target_session_id), project_id \
          FROM codex_scheduled_automations \
          WHERE (?1 OR status <> 'DELETED') \
            AND (?2 IS NULL OR created_at > ?2 OR (created_at = ?2 AND automation_id > ?3)) \
+           AND (?5 IS NULL OR (kind = 'cron' AND project_id = ?5) \
+                OR (kind = 'heartbeat' AND EXISTS (SELECT 1 FROM project_sessions s \
+                    WHERE s.id = target_session_id AND s.project_id = ?5))) \
+           AND (?6 IS NULL OR instr(lower(name), lower(?6)) > 0 \
+                OR instr(lower(prompt), lower(?6)) > 0 \
+                OR instr(lower(automation_id), lower(?6)) > 0) \
          ORDER BY created_at, automation_id LIMIT ?4",
     )?;
     let rows = statement
         .query_map(
             params![
-                include_deleted,
+                query.include_deleted,
                 after.as_ref().map(|value| value.0),
                 after.as_ref().map(|value| value.1.as_str()),
                 i64::try_from(normalized.first + 1)
                     .map_err(|_| invalid("Automation definition window size is invalid"))?,
+                query.project_id,
+                search_query,
             ],
             definition_from_row,
         )?
@@ -249,11 +353,12 @@ pub(super) fn read_definition(
 ) -> Result<Option<AutomationDefinition>, StoreError> {
     let definition = connection
         .query_row(
-            "SELECT automation_id, definition_revision, kind, status, target_thread_id, name, \
+            "SELECT automation_id, definition_revision, kind, status, target_session_id, name, \
                     prompt, rrule, model, reasoning_effort, service_tier, cwds_json, \
                     agent_backend_kind, agent_backend_definition_id, \
                     agent_backend_instance_config_id, execution_environment, \
-                    local_environment_config_path, next_run_at, last_run_at, created_at, updated_at \
+                    local_environment_config_path, next_run_at, last_run_at, created_at, updated_at, notification_policy, \
+                (SELECT thread_id FROM project_session_threads WHERE session_id = codex_scheduled_automations.target_session_id), project_id \
              FROM codex_scheduled_automations WHERE automation_id = ?1",
             [automation_id],
             definition_from_row,
@@ -275,7 +380,18 @@ fn definition_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<AutomationDe
         definition_revision: row.get(1)?,
         kind,
         status,
-        target_thread_id: row.get(4)?,
+        project_id: row.get(23)?,
+        target_session_id: row.get(4)?,
+        target_thread_id: row.get(22)?,
+        notification_policy: match row.get::<_, Option<String>>(21)?.as_deref() {
+            None => None,
+            Some("failed_runs_only") => Some(AutomationNotificationPolicy::FailedRunsOnly),
+            Some(_) => {
+                return Err(rusqlite_conversion(
+                    "Scheduled Automation notification policy is invalid".into(),
+                ));
+            }
+        },
         name: row.get(5)?,
         prompt: row.get(6)?,
         rrule: row.get(7)?,

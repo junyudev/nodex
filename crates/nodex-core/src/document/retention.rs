@@ -2143,7 +2143,7 @@ mod tests {
                         connection,
                         PersistYjsGenesis {
                             authority: &authority,
-                            actor_project_id: PROJECT_ID,
+                            actor_project_id: Some(PROJECT_ID),
                             materialization: &genesis.materialization,
                             update_id: "genesis:owned-page",
                             client_session_id: "client:retention-test",
@@ -2217,7 +2217,7 @@ mod tests {
                                 connection,
                                 PersistYjsGenesis {
                                     authority: &authority,
-                                    actor_project_id: PROJECT_ID,
+                                    actor_project_id: Some(PROJECT_ID),
                                     materialization: &genesis.materialization,
                                     update_id: &update_id,
                                     client_session_id: "client:retention-pressure",

@@ -190,7 +190,7 @@ struct ReconciledDocumentBlocks {
 
 pub(crate) struct PersistYjsCommit<'a> {
     pub authority: &'a DocumentAuthorityRow,
-    pub actor_project_id: &'a str,
+    pub actor_project_id: Option<&'a str>,
     pub base_materialization: &'a DocumentMaterialization,
     pub materialization: &'a DocumentMaterialization,
     pub update_id: &'a str,
@@ -211,7 +211,7 @@ pub(crate) struct PersistYjsCommit<'a> {
 
 pub(crate) struct PersistYjsGenesis<'a> {
     pub authority: &'a DocumentAuthorityRow,
-    pub actor_project_id: &'a str,
+    pub actor_project_id: Option<&'a str>,
     pub materialization: &'a DocumentMaterialization,
     pub update_id: &'a str,
     pub client_session_id: &'a str,
@@ -1859,7 +1859,7 @@ fn page_file_reference_change(
 fn validate_page_file_placements(
     connection: &Connection,
     authority: &DocumentAuthorityRow,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     base_materialization: Option<&DocumentMaterialization>,
     materialization: &DocumentMaterialization,
     authorized_file_ids: &[String],
@@ -1915,21 +1915,24 @@ fn validate_page_file_placements(
                 "Page Document references an unavailable File".to_owned(),
             ));
         }
-        if authorized.contains(file_id)
-            || crate::library::file_grant_authorization_proof(
+        if authorized.contains(file_id) {
+            continue;
+        }
+        if let Some(project_id) = actor_project_id
+            && (crate::library::file_grant_authorization_proof(
                 connection,
                 &authority.head.library_id,
-                actor_project_id,
+                project_id,
                 file_id,
                 false,
             )?
             .is_some()
-            || project_can_read_existing_file_placement(
-                connection,
-                &authority.head.library_id,
-                actor_project_id,
-                file_id,
-            )?
+                || project_can_read_existing_file_placement(
+                    connection,
+                    &authority.head.library_id,
+                    project_id,
+                    file_id,
+                )?)
         {
             continue;
         }
@@ -2214,7 +2217,7 @@ fn insert_library_search_unit(
 fn validate_document_references(
     connection: &Connection,
     library_id: &str,
-    actor_project_id: &str,
+    actor_project_id: Option<&str>,
     references: &[BlockDocumentReference],
     base_references: &[BlockDocumentReference],
 ) -> Result<(), StoreError> {
@@ -2603,17 +2606,17 @@ mod reference_tests {
             let references = [BlockDocumentReference::DatabaseView {
                 source_block_id: "occurrence".to_owned(), database_view_id: "view".to_owned(), display_hint: None,
             }];
-            validate_document_references(connection, "library", "project", &references, &[])
+            validate_document_references(connection, "library", Some("project"), &references, &[])
                 .expect("active View target");
-            assert!(validate_document_references(connection, "other-library", "project", &references, &[]).is_err());
+            assert!(validate_document_references(connection, "other-library", Some("project"), &references, &[]).is_err());
             // Exercise each independently retained storage authority: deleting
             // a Database does not need to rewrite every View or source row.
             for table in ["blocks", "database_containers", "data_sources", "database_views"] {
                 connection.execute(&format!("UPDATE {table} SET lifecycle = 'deleted'"), [])?;
-                let error = validate_document_references(connection, "library", "project", &references, &[])
+                let error = validate_document_references(connection, "library", Some("project"), &references, &[])
                     .expect_err("new reference must not target a deleted authority");
                 assert_eq!(error.code, StoreErrorCode::InvalidInput);
-                validate_document_references(connection, "library", "project", &references, &references)
+                validate_document_references(connection, "library", Some("project"), &references, &references)
                     .expect("existing reference survives target deletion");
                 connection.execute(&format!("UPDATE {table} SET lifecycle = 'active'"), [])?;
             }
@@ -2630,16 +2633,32 @@ mod reference_tests {
             .read_default(|connection| {
                 for reference in missing_references("source", "missing") {
                     let base = vec![reference.clone()];
-                    validate_document_references(connection, "library", "project", &base, &base)
-                        .expect("retaining an existing occurrence needs no target");
-                    validate_document_references(connection, "library", "project", &[], &base)
-                        .expect("removing an unavailable occurrence");
+                    validate_document_references(
+                        connection,
+                        "library",
+                        Some("project"),
+                        &base,
+                        &base,
+                    )
+                    .expect("retaining an existing occurrence needs no target");
+                    validate_document_references(
+                        connection,
+                        "library",
+                        Some("project"),
+                        &[],
+                        &base,
+                    )
+                    .expect("removing an unavailable occurrence");
                     for (next, prior) in [
                         (base.clone(), Vec::new()),
                         (vec![reference.clone(), reference.clone()], base.clone()),
                     ] {
                         let error = validate_document_references(
-                            connection, "library", "project", &next, &prior,
+                            connection,
+                            "library",
+                            Some("project"),
+                            &next,
+                            &prior,
                         )
                         .expect_err("genesis and additional occurrences require a valid target");
                         assert_eq!(error.code, StoreErrorCode::InvalidInput);
@@ -2657,7 +2676,7 @@ mod reference_tests {
                             validate_document_references(
                                 connection,
                                 "library",
-                                "project",
+                                Some("project"),
                                 &[candidate],
                                 &base
                             )

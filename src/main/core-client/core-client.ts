@@ -59,6 +59,9 @@ import type {
   DatabaseRead,
   DatabaseReadResponse,
   DatabaseReadSnapshot,
+  QueryRead,
+  QueryReadResponse,
+  QueryReadSnapshot,
   LibraryApplyInput,
   LibraryApplyResponse,
   LibraryApplyResult,
@@ -103,6 +106,7 @@ const contractVersion = (module: ModuleName): number => {
 const MODULE_CONTRACT_VERSIONS = {
   library: contractVersion("library"),
   database: contractVersion("database"),
+  query: contractVersion("query"),
   ownedDocument: contractVersion("owned_document"),
   projectWorkspace: contractVersion("project_workspace"),
   automation: contractVersion("automation"),
@@ -371,6 +375,18 @@ export class CoreClient implements CoreClientPort {
       return snapshot.value.impact;
     }
     throw new Error("Core returned an invalid Projection impact authorization result");
+  }
+
+  async queryRead(read: QueryRead, options: CoreRequestOptions = {}): Promise<QueryReadSnapshot> {
+    const response = await this.#transport.requestJson<QueryReadResponse>(
+      "POST",
+      "/core/v1/modules/query/read",
+      { contract_version: MODULE_CONTRACT_VERSIONS.query, read },
+      this.#databaseHeaders(),
+      options,
+    );
+    if (response.status === "ok") return response.payload;
+    throw new CoreModuleResponseError(response.payload);
   }
 
   async databaseRead(

@@ -1,3 +1,9 @@
+import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
+import { CodexTurnPresentation } from "./CodexTurnPresentation";
+import {
+  makeTestTurnPresentation,
+  testSubmitPresentation,
+} from "./CodexTurnPresentation.test-support";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -21,6 +27,7 @@ import { CodexClientThreadIdentity } from "./CodexClientThreadIdentity";
 import { make } from "./CodexConversationCreation";
 import { CodexConversationFork } from "./CodexConversationFork";
 import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
+import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { CodexThreadGoalRuntime } from "./CodexThreadGoalRuntime";
 import { CodexThreadLaunchCompletion } from "./CodexThreadLaunchCompletion";
@@ -85,181 +92,255 @@ const request = (): Extract<
   pinnedBeforeThreadId: null,
 });
 
-it.effect("keeps an accepted first Turn when later launch metadata fails", () =>
-  Effect.gen(function* () {
-    const requests: Array<{ readonly method: string; readonly scheduling: unknown }> = [];
-    const threadStartParams: Record<string, unknown>[] = [];
-    const acceptedCapabilities: CodexAppServerCapabilitySnapshot[] = [];
-    const firstTurnOverrides: Record<string, unknown>[] = [];
-    const launchEvents: string[] = [];
-    const unsupported = () => Effect.die(new Error("unused"));
-    const capability = createCodexAppServerCapabilitySnapshot({
-      hostId: "local",
-      generation: 17,
-      userAgent: "codex-app-server/0.145.0-alpha.15",
-    });
-    const gateway = CodexGateway.of({
-      localHostId: "local",
-      events: Stream.empty,
-      requestLocal: (method: string, params: unknown, scheduling: unknown) =>
-        Effect.sync(() => {
-          requests.push({ method, scheduling });
-          if (method === "thread/start") {
-            const requestParams = params as Record<string, unknown>;
-            threadStartParams.push(requestParams);
-            return {
-              thread: { id: "thread-created", historyMode: "paginated", turns: [] },
-              model: requestParams.model,
-              modelProvider: requestParams.modelProvider,
-              reasoningEffort: (requestParams.config as Record<string, unknown> | undefined)
-                ?.model_reasoning_effort,
-              serviceTier:
-                requestParams.serviceTier === null ? "default" : requestParams.serviceTier,
-            };
-          }
-          return {};
-        }) as never,
-      requestRawOnHost: unsupported,
-      requestRawForThread: unsupported,
-      requestOnHost: unsupported,
-      requestForThread: unsupported,
-      notifyLocal: unsupported,
-      connection: unsupported,
-      connectionChanges: () => Stream.empty,
-      awaitReady: () => Effect.void,
-      reconcileHost: unsupported,
-      removeHost: unsupported,
-      restartHost: unsupported,
-    });
-    const service = yield* make.pipe(
-      Effect.provideService(
-        CodexAppServerCapabilities,
-        CodexAppServerCapabilities.of({
-          forHost: () => Effect.succeed(capability),
-          forThread: () => Effect.succeed(capability),
-          isCurrent: () => Effect.succeed(true),
-        }),
-      ),
-      Effect.provideService(
-        CodexAttachments,
-        CodexAttachments.of({
-          materializeGoal: unsupported,
-          cleanupGoalSources: () => Effect.void,
-          cleanupMaterializedGoal: () => Effect.void,
-        } as unknown as CodexAttachments["Service"]),
-      ),
-      Effect.provideService(
-        CodexClientThreadIdentity,
-        CodexClientThreadIdentity.of({
-          remember: () => Effect.sync(() => launchEvents.push("identity:remembered")),
-          forget: () => Effect.void,
-        } as unknown as CodexClientThreadIdentity["Service"]),
-      ),
-      Effect.provideService(
-        CodexConversationFork,
-        CodexConversationFork.of({ fork: unsupported } as never),
-      ),
-      Effect.provideService(
-        CodexForkSidePanelTransfer,
-        CodexForkSidePanelTransfer.of({ promotePending: unsupported } as never),
-      ),
-      Effect.provideService(CodexGateway, gateway),
-      Effect.provideService(
-        DesktopToolRuntime,
-        DesktopToolRuntime.of({
-          threadConfig: Effect.succeed({
-            "features.js_repl": false,
-            "mcp_servers.node_repl": { command: "/runtime/node" },
-          }),
-        } as unknown as DesktopToolRuntime["Service"]),
-      ),
-      Effect.provideService(
-        CodexThreadDirectory,
-        CodexThreadDirectory.of({
-          acceptStandaloneStart: (
-            input: Parameters<CodexThreadDirectory["Service"]["acceptStandaloneStart"]>[0],
-          ) =>
+it.effect.each([
+  { withProfile: true, pinned: false, withOrigin: false },
+  { withProfile: false, pinned: false, withOrigin: false },
+  { withProfile: true, pinned: true, withOrigin: false },
+  { withProfile: true, pinned: false, withOrigin: true },
+])(
+  "preserves the model, accepted first Turn, and Session pin during pending launch (%j)",
+  ({ withProfile, pinned, withOrigin }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const presentation = yield* makeTestTurnPresentation;
+        const requests: Array<{ readonly method: string; readonly scheduling: unknown }> = [];
+        const threadStartParams: Record<string, unknown>[] = [];
+        const acceptedCapabilities: CodexAppServerCapabilitySnapshot[] = [];
+        const firstTurnOverrides: Record<string, unknown>[] = [];
+        const launchEvents: string[] = [];
+        const unsupported = () => Effect.die(new Error("unused"));
+        const capability = createCodexAppServerCapabilitySnapshot({
+          hostId: "local",
+          generation: 17,
+          userAgent: "codex-app-server/0.145.0-alpha.15",
+        });
+        const gateway = CodexGateway.of({
+          localHostId: "local",
+          events: Stream.empty,
+          requestLocal: (method: string, params: unknown, scheduling: unknown) =>
             Effect.sync(() => {
-              acceptedCapabilities.push(input.capability);
-              return { summary: { threadId: "thread-created" } } as never;
+              requests.push({ method, scheduling });
+              if (method === "thread/start") {
+                const requestParams = params as Record<string, unknown>;
+                threadStartParams.push(requestParams);
+                return {
+                  thread: { id: "thread-created", historyMode: "paginated", turns: [] },
+                  model: requestParams.model,
+                  modelProvider: requestParams.modelProvider,
+                  reasoningEffort: (requestParams.config as Record<string, unknown> | undefined)
+                    ?.model_reasoning_effort,
+                  serviceTier:
+                    requestParams.serviceTier === null ? "default" : requestParams.serviceTier,
+                };
+              }
+              return {};
+            }) as never,
+          requestRawOnHost: unsupported,
+          requestRawForThread: unsupported,
+          requestOnHost: unsupported,
+          requestForThread: unsupported,
+          notifyLocal: unsupported,
+          connection: unsupported,
+          connectionChanges: () => Stream.empty,
+          awaitReady: () => Effect.void,
+          reconcileHost: unsupported,
+          removeHost: unsupported,
+          restartHost: unsupported,
+        });
+        const service = yield* make.pipe(
+          Effect.provideService(CodexTurnPresentation, presentation),
+          Effect.provideService(
+            CodexAppServerCapabilities,
+            CodexAppServerCapabilities.of({
+              forHost: () => Effect.succeed(capability),
+              forThread: () => Effect.succeed(capability),
+              isCurrent: () => Effect.succeed(true),
             }),
-        } as never),
-      ),
-      Effect.provideService(
-        CodexThreadGoalRuntime,
-        CodexThreadGoalRuntime.of({ set: unsupported } as never),
-      ),
-      Effect.provideService(
-        CodexThreadLaunchCompletion,
-        CodexThreadLaunchCompletion.of({ accepted: unsupported } as never),
-      ),
-      Effect.provideService(ThreadCreationRuntime, transparentThreadCreationRuntime),
-      Effect.provideService(
-        CodexThreadTitlePersistence,
-        CodexThreadTitlePersistence.of({ set: unsupported } as never),
-      ),
-      Effect.provideService(
-        CodexTurnCommands,
-        CodexTurnCommands.of({
-          start: (_threadId: string, _prompt: string, overrides?: CodexTurnStartOptions) =>
-            Effect.sync(() => {
-              launchEvents.push("turn:accepted");
-              firstTurnOverrides.push((overrides ?? {}) as Record<string, unknown>);
-              return { id: "turn-1" } as never;
-            }),
-        } as never),
-      ),
-      Effect.provideService(
-        BrowserUseRuntime,
-        BrowserUseRuntime.of({ promoteRoute: unsupported } as never),
-      ),
-      Effect.provideService(ManagedWorktreeRuntime, ManagedWorktreeRuntime.of({} as never)),
-      Effect.provideService(ProjectWorkspace, ProjectWorkspace.of({} as never)),
-    );
+          ),
+          Effect.provideService(
+            CodexAttachments,
+            CodexAttachments.of({
+              materializeGoal: unsupported,
+              cleanupGoalSources: () => Effect.void,
+              cleanupMaterializedGoal: () => Effect.void,
+            } as unknown as CodexAttachments["Service"]),
+          ),
+          Effect.provideService(
+            CodexClientThreadIdentity,
+            CodexClientThreadIdentity.of({
+              remember: () => Effect.sync(() => launchEvents.push("identity:remembered")),
+              forget: () => Effect.void,
+            } as unknown as CodexClientThreadIdentity["Service"]),
+          ),
+          Effect.provideService(
+            CodexConversationFork,
+            CodexConversationFork.of({ fork: unsupported } as never),
+          ),
+          Effect.provideService(
+            CodexForkSidePanelTransfer,
+            CodexForkSidePanelTransfer.of({ promotePending: unsupported } as never),
+          ),
+          Effect.provideService(CodexGateway, gateway),
+          Effect.provideService(
+            DesktopToolRuntime,
+            DesktopToolRuntime.of({
+              threadConfig: Effect.succeed({
+                "features.js_repl": false,
+                "mcp_servers.node_repl": { command: "/runtime/node" },
+              }),
+            } as unknown as DesktopToolRuntime["Service"]),
+          ),
+          Effect.provideService(
+            CodexThreadDirectory,
+            CodexThreadDirectory.of({
+              acceptSessionStart: (
+                input: Parameters<CodexThreadDirectory["Service"]["acceptSessionStart"]>[0],
+              ) =>
+                Effect.sync(() => {
+                  acceptedCapabilities.push(input.capability);
+                  return { summary: { threadId: "thread-created" } } as never;
+                }),
+              acceptStandaloneStart: (
+                input: Parameters<CodexThreadDirectory["Service"]["acceptStandaloneStart"]>[0],
+              ) =>
+                Effect.sync(() => {
+                  acceptedCapabilities.push(input.capability);
+                  return { summary: { threadId: "thread-created" } } as never;
+                }),
+            } as never),
+          ),
+          Effect.provideService(
+            CodexThreadGoalRuntime,
+            CodexThreadGoalRuntime.of({ set: unsupported } as never),
+          ),
+          Effect.provideService(
+            CodexThreadLaunchCompletion,
+            CodexThreadLaunchCompletion.of({ accepted: () => Effect.void } as never),
+          ),
+          Effect.provideService(ThreadCreationRuntime, transparentThreadCreationRuntime),
+          Effect.provideService(
+            CodexThreadTitlePersistence,
+            CodexThreadTitlePersistence.of({ set: unsupported } as never),
+          ),
+          Effect.provideService(
+            CodexTurnCommands,
+            CodexTurnCommands.of({
+              start: (_threadId: string, _prompt: string, overrides?: CodexTurnStartOptions) =>
+                Effect.sync(() => {
+                  launchEvents.push("turn:accepted");
+                  firstTurnOverrides.push((overrides ?? {}) as Record<string, unknown>);
+                  return { id: "turn-1" } as never;
+                }),
+            } as never),
+          ),
+          Effect.provideService(
+            BrowserUseRuntime,
+            BrowserUseRuntime.of({ promoteRoute: unsupported } as never),
+          ),
+          Effect.provideService(ManagedWorktreeRuntime, ManagedWorktreeRuntime.of({} as never)),
+          Effect.provideService(
+            CodexSidebarSyncRuntime,
+            CodexSidebarSyncRuntime.of({
+              ensureSession: (threadId: string) =>
+                Effect.sync(() => {
+                  assert.strictEqual(threadId, "thread-created");
+                  launchEvents.push("session:ensured");
+                  return { id: "session-created" } as never;
+                }),
+            } as never),
+          ),
+          Effect.provideService(
+            ProjectWorkspace,
+            ProjectWorkspace.of({
+              setThreadPinned: (
+                threadId: string,
+                isPinned: boolean,
+                beforeThreadId: string | null,
+              ) =>
+                Effect.sync(() => {
+                  assert.deepEqual(
+                    [threadId, isPinned, beforeThreadId],
+                    ["thread-created", true, "thread-before"],
+                  );
+                  launchEvents.push("pin:applied");
+                }),
+            } as never),
+          ),
+        );
 
-    const pending = request();
-    const executionProfile: CodexExecutionProfile = {
-      modelId: "gpt-5.6-luna",
-      reasoningEffort: "max",
-      serviceTier: null,
-    };
-    const startConversationParamsInput: CodexPendingStartConversationParamsInput = {
-      ...pending.startConversationParamsInput,
-      executionProfile,
-      serviceTier: "fast",
-    };
-    assert.deepEqual(
-      yield* service.launchPending(
-        {
-          ...pending,
-          startConversationParamsInput,
-        },
-        "/worktree",
-        false,
-      ),
-      {
-        threadId: "thread-created",
-      },
-    );
-    assert.deepEqual(requests, [
-      {
-        method: "thread/start",
-        scheduling: { expectedHostId: "local", expectedGeneration: 17 },
-      },
-    ]);
-    assert.strictEqual(threadStartParams[0]?.serviceTier, null);
-    assert.strictEqual(threadStartParams[0]?.historyMode, "paginated");
-    assert.isUndefined(threadStartParams[0]?.allowProviderModelFallback);
-    assert.deepEqual(threadStartParams[0]?.config, {
-      "features.js_repl": false,
-      "mcp_servers.node_repl": { command: "/runtime/node" },
-      "features.apply_patch_streaming_events": true,
-      "features.concurrent_reasoning_summaries": true,
-      "features.thread_tools": true,
-      model_reasoning_effort: "max",
-    });
-    assert.strictEqual(firstTurnOverrides[0]?.serviceTier, null);
-    assert.deepEqual(acceptedCapabilities, [capability]);
-    assert.deepEqual(launchEvents, ["turn:accepted", "identity:remembered"]);
-  }),
+        const pending = request();
+        const target = {
+          kind: "session",
+          sessionId: "session-pending",
+          launchId: pending.firstSubmission.launchId,
+        } as const;
+        const ticket = withOrigin
+          ? yield* presentation.capture(11, { target, presentation: testSubmitPresentation })
+          : undefined;
+        const expectedClaim = ticket
+          ? yield* presentation.claim(ticket, target, pending.firstSubmission.clientUserMessageId)
+          : undefined;
+        const executionProfile: CodexExecutionProfile = {
+          modelId: "gpt-5.6-luna",
+          reasoningEffort: "max",
+          serviceTier: null,
+        };
+        const startConversationParamsInput: CodexPendingStartConversationParamsInput = {
+          ...pending.startConversationParamsInput,
+          executionProfile: withProfile ? executionProfile : null,
+          model: "gpt-5.6-sol",
+          reasoningEffort: "max",
+          serviceTier: withProfile ? "fast" : null,
+        };
+        assert.deepEqual(
+          yield* service.launchPending(
+            {
+              ...pending,
+              projectSessionId: withOrigin ? target.sessionId : null,
+              isPinned: pinned,
+              pinnedBeforeThreadId: "thread-before",
+              startConversationParamsInput,
+            },
+            "/worktree",
+            false,
+          ),
+          {
+            threadId: "thread-created",
+          },
+        );
+        assert.deepEqual(requests, [
+          {
+            method: "thread/start",
+            scheduling: { expectedHostId: "local", expectedGeneration: 17 },
+          },
+        ]);
+        assert.strictEqual(threadStartParams[0]?.serviceTier, null);
+        assert.strictEqual(
+          threadStartParams[0]?.model,
+          withProfile ? "gpt-5.6-luna" : "gpt-5.6-sol",
+        );
+        assert.strictEqual(firstTurnOverrides[0]?.model, threadStartParams[0]?.model);
+        assert.strictEqual(threadStartParams[0]?.historyMode, "paginated");
+        assert.deepEqual(threadStartParams[0]?.dynamicTools, []);
+        assert.isUndefined(threadStartParams[0]?.allowProviderModelFallback);
+        assert.deepEqual(threadStartParams[0]?.config, {
+          "features.js_repl": false,
+          "mcp_servers.node_repl": { command: "/runtime/node" },
+          "features.apply_patch_streaming_events": true,
+          "features.concurrent_reasoning_summaries": true,
+          "features.thread_tools": true,
+          "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name),
+          model_reasoning_effort: "max",
+        });
+        assert.strictEqual(firstTurnOverrides[0]?.serviceTier, null);
+        assert.deepEqual(firstTurnOverrides[0]?.presentationClaim, expectedClaim);
+        assert.deepEqual(acceptedCapabilities, [capability]);
+        assert.deepEqual(
+          launchEvents,
+          pinned
+            ? ["turn:accepted", "session:ensured", "pin:applied", "identity:remembered"]
+            : ["turn:accepted", "identity:remembered"],
+        );
+      }),
+    ),
 );

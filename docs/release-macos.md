@@ -311,6 +311,13 @@ are build-time dependencies, not files for Electron's embedded Node runtime to
 load from `app.asar/node_modules`; the prepared-build gate rejects any remaining
 bare runtime load of such a package before packaging begins.
 
+The application MCP transport is bundled separately at
+`out/main/app-tools/server.mjs` and included in the prepared output inventory.
+Packaging unpacks that directory from ASAR so the bundled Node runtime can
+execute it without Electron's module loader or a development dependency tree.
+The transport bundle test exercises initialization and a complete tool call
+from a temporary directory outside the repository.
+
 Every distribution first consumes an exact-source certificate produced without
 signing secrets. The certificate binds the full commit SHA and Git tree to the
 deterministic source, browser, stress, and macOS runtime gates. Distribution

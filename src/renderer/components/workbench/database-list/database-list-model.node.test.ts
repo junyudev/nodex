@@ -9,6 +9,7 @@ import {
   buildDatabaseListProjection,
   captureDatabaseListScrollAnchor,
   computeDatabaseListVirtualWindow,
+  databaseListViewportOccurrenceKeys,
   databaseListScrollTopForOccurrence,
   databaseListMountedActiveOccurrenceKey,
   databaseListGroupKey,
@@ -81,6 +82,30 @@ const listPage = (input: {
 });
 
 describe("Database List projection", () => {
+  test("reports viewport intersections separately from mounted overscan and preserves duplicate occurrences", () => {
+    const rows = [
+      listPage({ key: "first", pageId: "same-page", groupKey: "a", depth: 0 }),
+      listPage({ key: "second", pageId: "same-page", groupKey: "b", depth: 0 }),
+      listPage({ key: "third", pageId: "third-page", groupKey: "b", depth: 0 }),
+    ];
+    const input = {
+      rows,
+      scrollTop: 44,
+      viewportHeight: 44,
+      mountedStartIndex: 0,
+      mountedEndIndex: 3,
+    };
+    expect([...databaseListViewportOccurrenceKeys(input)]).toEqual(["second"]);
+    expect([...databaseListViewportOccurrenceKeys({ ...input, scrollTop: 43 })]).toEqual([
+      "first",
+      "second",
+    ]);
+    expect([
+      ...databaseListViewportOccurrenceKeys({ ...input, scrollTop: 0, viewportHeight: 88 }),
+    ]).toEqual(["first", "second"]);
+    expect([...databaseListViewportOccurrenceKeys({ ...input, mountedEndIndex: 1 })]).toEqual([]);
+    expect([...databaseListViewportOccurrenceKeys({ ...input, viewportHeight: 0 })]).toEqual([]);
+  });
   test("never substitutes Board-derived order for an authorized Core List", () => {
     const clientRows = buildDatabaseListProjection({
       columns: [column([row("temporary-board-order")])],

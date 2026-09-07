@@ -37,22 +37,8 @@ pub(super) fn apply(
         params![owner.id, retention.surface_id],
         |row| Ok(RetainedSet { project_id: row.get(0)?, document_id: row.get(1)?, generation: row.get(2)?, revision: row.get(3)?, hash: row.get(4)?, closed: row.get(5)?, retain_document: row.get(6)? }),
     ).optional()?;
-    let actor_project_id = if retention.closed {
-        context
-            .project_id
-            .as_ref()
-            .map(|id| id.0.clone())
-            .or_else(|| current.as_ref().map(|current| current.project_id.clone()))
-            .unwrap_or_default()
-    } else {
-        super::super::mutation::resolve_library_mutation_authority(
-            connection,
-            context,
-            &context.library_id.0,
-        )?
-        .actor_project_id
-    };
-    let project_id = actor_project_id.as_str();
+    let actor_project_id = context.project_id.as_ref().map(|id| id.0.clone());
+    let project_id = actor_project_id.as_deref();
     let hash = sha256(
         &serde_json::to_vec(retention)
             .map_err(|_| invalid("History retention cannot be encoded"))?,

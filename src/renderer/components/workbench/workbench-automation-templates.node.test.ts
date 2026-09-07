@@ -31,7 +31,8 @@ describe("workbench automation templates", () => {
     const draft = createWorkbenchAutomationDraftFromTemplate(template);
 
     expect(draft.kind).toBe("cron");
-    expect(draft.executionEnvironment).toBe("worktree");
+    expect(draft.executionEnvironment).toBe("local");
+    expect(draft.projectId).toBeNull();
     expect(draft.name).toBe("Daily bug scan");
     expect(draft.prompt.includes("Scan recent commits")).toBe(true);
     expect(draft.rrule).toBe("FREQ=DAILY;BYHOUR=9;BYMINUTE=0");

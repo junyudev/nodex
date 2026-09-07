@@ -192,6 +192,19 @@ it.effect("retires the PTY on exit while retaining an inspectable terminal snaps
     assert.isNull(snapshot?.viewLease ?? null);
     assert.deepEqual(fake.releases, [200]);
     assert.strictEqual((yield* sessions.getThreadSnapshot("thread-a"))?.sessionId, "terminal-a");
+    const owners = { conversationIds: new Set(["thread-a"]), projectSessionIds: new Set<string>() };
+    assert.deepStrictEqual(
+      (yield* sessions.listSnapshotsForOwners(owners)).map((item) => item.sessionId),
+      ["terminal-a"],
+    );
+    assert.deepStrictEqual(yield* sessions.listLiveSessionsForOwners(owners), []);
+    assert.deepStrictEqual(
+      yield* sessions.listSnapshotsForOwners({
+        conversationIds: new Set(["other-thread"]),
+        projectSessionIds: new Set(),
+      }),
+      [],
+    );
     assert.deepEqual(
       yield* sessions.discardExitedSessionsForOwners({
         conversationIds: new Set(["thread-a"]),
