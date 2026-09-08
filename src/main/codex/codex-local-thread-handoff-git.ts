@@ -1,3 +1,4 @@
+import type { CodexThreadHandoffBranches } from "../../shared/codex-thread-handoff";
 import { buildWorktreeThreadSlug } from "../../shared/worktree-auto-branch";
 import { createManagedWorktree, removeManagedWorktree } from "./git-worktree-service";
 import { runCodexGitCommand, throwIfCodexRequestAborted } from "./codex-git-command";
@@ -20,8 +21,17 @@ interface HandoffGitOptions {
   readonly onProgress: (
     step: CodexWorktreeHandoffStep,
     status: CodexWorktreeHandoffStepStatus,
+    branchContext?: CodexThreadHandoffBranches,
   ) => void;
 }
+
+const withHandoffBranches = (
+  options: HandoffGitOptions,
+  branchContext: CodexThreadHandoffBranches,
+): HandoffGitOptions => ({
+  ...options,
+  onProgress: (step, status) => options.onProgress(step, status, branchContext),
+});
 
 interface StashCheckoutResult {
   readonly previousBranch: string | null;
@@ -443,7 +453,11 @@ export async function prepareLocalThreadHandoff(
         sourceWorktreeRoot: input.sourceManagedWorktreePath,
       },
       input.requestId,
-      options,
+      withHandoffBranches(options, {
+        sourceBranch,
+        localBranch: sourceBranch,
+        worktreeBranch: sourceBranch,
+      }),
     );
     return {
       direction: "to-checkout",
@@ -468,7 +482,12 @@ export async function prepareLocalThreadHandoff(
     throw new Error("No safe local checkout branch is available for this handoff.");
   }
 
-  options.onProgress("create-new-worktree", "started");
+  const progressOptions = withHandoffBranches(options, {
+    sourceBranch,
+    localBranch: localCheckoutBranch,
+    worktreeBranch: destinationBranch,
+  });
+  progressOptions.onProgress("create-new-worktree", "started");
   const created = await createManagedWorktree({
     repositoryPath: input.sourceWorkspaceRoot,
     nodexHome: input.nodexHome,
@@ -484,7 +503,7 @@ export async function prepareLocalThreadHandoff(
     signal: options.signal,
     onPathAllocated: options.onPathAllocated,
   });
-  options.onProgress("create-new-worktree", "completed");
+  progressOptions.onProgress("create-new-worktree", "completed");
   try {
     await ensureBranchAtCommit({
       branch: destinationBranch,
@@ -504,7 +523,7 @@ export async function prepareLocalThreadHandoff(
         worktreeWorkspaceRoot: created.worktreeWorkspaceRoot,
       },
       input.requestId,
-      options,
+      progressOptions,
     );
     return {
       direction: "to-worktree",

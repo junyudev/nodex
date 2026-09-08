@@ -1,3 +1,10 @@
+import {
+  createCodexThreadHandoffOperationId,
+  resolveCodexThreadHandoffStepLabel,
+  type CodexAppHandoffOperation,
+  type CodexAppHandoffStep,
+} from "../../../../../../shared/codex-thread-handoff";
+import { useThreadHandoffOperation } from "../../../../../lib/thread-handoff-runtime";
 import { useEffect, useState, type ReactNode } from "react";
 import { CalendarClock, Circle } from "@/components/shared/icons/generic-icons";
 import type { CodexDynamicToolCallView } from "../../../../../lib/types";
@@ -8,8 +15,8 @@ import {
 } from "../../../projection/tool-metadata/nodex-dynamic-tool-call-presentation";
 import { CodexShimmerText } from "../codex-shimmer-text";
 import type { ToolComponentProps } from "./get-tool-component";
-import { ThreadActivityDisclosure } from "./tool-primitives";
-import { DynamicToolCallInspector } from "./dynamic-tool-call-inspector";
+import { ThreadActivityDisclosure, ThreadRichActivityHeader } from "./tool-primitives";
+import { NodexDynamicToolChangePreview } from "./nodex-dynamic-tool-change-preview";
 import { ToolActivityIcon, semanticToolIcon } from "./tool-call-icons";
 import {
   ActivitySpinnerIcon,
@@ -20,8 +27,9 @@ import {
 } from "@/components/shared/icons";
 import {
   type CodexAppHandoffStatus,
-  type CodexAppHandoffStep,
   getDynamicToolRegistryEntry,
+  parseCodexAppHandoffArguments,
+  parseCodexAppHandoffResult,
   parseChromeTabContextTabId,
   parseCodexAppCreateThreadResult,
   resolveCodexAppHandoffRenderState,
@@ -50,9 +58,9 @@ function CodexAppCreatedThreadCard({
   result: NonNullable<ReturnType<typeof parseCodexAppCreateThreadResult>>;
 }) {
   const isPendingWorktree = "clientThreadId" in result;
-  const ariaLabel = isPendingWorktree ? "Open worktree setup" : "Open task";
-  const title = isPendingWorktree ? "Worktree task queued" : "Task created";
-  const action = isPendingWorktree ? "Open setup" : "Open task";
+  const ariaLabel = "Open chat";
+  const title = isPendingWorktree ? "Worktree chat" : "Chat created";
+  const action = "Open chat";
 
   return (
     <div className="flex max-w-full flex-col overflow-hidden rounded-lg bg-token-dropdown-background/50 text-token-foreground [--thread-resource-card-row-padding-x:0.75rem] electron:elevation-stroke extension:border extension:border-token-border extension:bg-token-input-background/50 extension:shadow-sm">
@@ -228,38 +236,52 @@ function DynamicToolRegistryLabelRow({
   variant: DynamicToolCallRenderVariant;
 }) {
   const isClickableRow = variant === "row" && onClick !== undefined;
+  const summary = (
+    <CodexShimmerText
+      active={active}
+      className={cn(
+        variant !== "summary-text" && "min-w-0 truncate",
+        isClickableRow && "group-hover:!text-token-foreground",
+      )}
+    >
+      {label}
+    </CodexShimmerText>
+  );
+
+  if (variant === "row") {
+    return (
+      <ThreadRichActivityHeader
+        className={className}
+        icon={icon}
+        summary={
+          isClickableRow ? (
+            <button
+              type="button"
+              className="group max-w-full cursor-interaction rounded-md text-left focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:outline-none"
+              onClick={onClick}
+            >
+              {summary}
+            </button>
+          ) : (
+            summary
+          )
+        }
+      />
+    );
+  }
+
   const content = (
     <>
       {variant === "summary-text" ? null : icon}
-      <CodexShimmerText
-        active={active}
-        className={cn(
-          variant !== "summary-text" && "min-w-0 truncate",
-          isClickableRow && "group-hover:!text-token-foreground",
-        )}
-      >
-        {label}
-      </CodexShimmerText>
+      {summary}
     </>
   );
   const rowClassName = cn(
     "text-size-chat min-w-0 items-center",
     variant === "summary-text" ? "inline" : "inline-flex gap-1.5",
-    variant === "row"
-      ? "text-token-conversation-summary-leading"
-      : "text-token-conversation-summary-trailing group-hover/activity-header:text-token-foreground",
-    isClickableRow &&
-      "group cursor-interaction rounded-md text-left focus-visible:ring-1 focus-visible:ring-token-focus-border focus-visible:outline-none",
+    "text-token-conversation-summary-trailing group-hover/activity-header:text-token-foreground",
     className,
   );
-
-  if (isClickableRow) {
-    return (
-      <button type="button" className={rowClassName} onClick={onClick}>
-        {content}
-      </button>
-    );
-  }
 
   return <span className={rowClassName}>{content}</span>;
 }
@@ -289,21 +311,29 @@ function HandoffProgressStepIcon({ status }: { status: HandoffProgressStepStatus
   })();
 
   return (
-    <span
-      aria-hidden="true"
-      className="flex h-4 w-4 shrink-0 items-center justify-center text-token-text-secondary"
-    >
+    <span aria-hidden="true" className="flex h-4 w-4 shrink-0 items-center justify-center">
       {icon}
     </span>
   );
 }
 
-function HandoffProgressStepRow({ step }: { step: CodexAppHandoffStep }) {
+function HandoffProgressStepRow({
+  step,
+  operation,
+}: {
+  step: CodexAppHandoffStep;
+  operation: CodexAppHandoffOperation;
+}) {
   const status = resolveHandoffProgressStepStatus(step.status);
   return (
-    <div className="flex items-center gap-2">
+    <div
+      className={cn(
+        "flex items-center gap-2",
+        status === "failed" ? "text-danger" : status === "pending" ? "text-tertiary" : "text-info",
+      )}
+    >
       <HandoffProgressStepIcon status={status} />
-      <div className="text-size-chat text-token-conversation-summary-leading">
+      <div className="text-size-chat">
         <span className="sr-only">
           {status === "running"
             ? "In progress: "
@@ -313,7 +343,7 @@ function HandoffProgressStepRow({ step }: { step: CodexAppHandoffStep }) {
                 ? "Failed: "
                 : "Pending: "}
         </span>
-        {step.label}
+        {resolveCodexThreadHandoffStepLabel(step.id, operation) ?? step.label}
       </div>
     </div>
   );
@@ -321,13 +351,29 @@ function HandoffProgressStepRow({ step }: { step: CodexAppHandoffStep }) {
 
 function CodexAppHandoffToolCall({
   call,
+  currentThreadId,
   variant = "row",
 }: {
   call: CodexDynamicToolCallView;
+  currentThreadId: string | null;
   variant?: DynamicToolCallRenderVariant;
 }) {
-  if (!resolveDynamicToolRegistryLabel(call)) return null;
-  const state = resolveCodexAppHandoffRenderState(call);
+  const args = parseCodexAppHandoffArguments(call);
+  const result = call.completed && call.success === true ? parseCodexAppHandoffResult(call) : null;
+  const operation = useThreadHandoffOperation(
+    args && currentThreadId
+      ? {
+          operationId:
+            result?.operationId ??
+            createCodexThreadHandoffOperationId(currentThreadId, call.callId),
+          requestThreadId: currentThreadId,
+          targetThreadId: args.threadId,
+          destinationHostId: args.destinationHostId,
+        }
+      : null,
+  );
+  if (!args) return null;
+  const state = resolveCodexAppHandoffRenderState(call, operation);
   const icon = (
     <AppActivityIcon className="icon-xs shrink-0 text-token-conversation-body" aria-hidden />
   );
@@ -343,45 +389,44 @@ function CodexAppHandoffToolCall({
     );
   }
 
-  const steps = state.result?.steps ?? [];
-  const canExpand = steps.length > 0;
   const summary = (
-    <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 truncate text-token-conversation-summary-leading">
-      {icon}
-      <CodexShimmerText active={state.active} className="min-w-0 truncate">
-        {state.label}
-      </CodexShimmerText>
-    </span>
+    <CodexShimmerText active={state.active} className="min-w-0 truncate">
+      {state.label}
+    </CodexShimmerText>
   );
 
   return (
     <ThreadActivityDisclosure
-      bodyClassName="pt-1 pl-5"
-      canExpand={canExpand}
-      defaultExpanded={state.activityStatus === "running" && canExpand}
+      autoExpandWhileRunning
+      indentContent={false}
+      icon={icon}
       status={state.activityStatus}
       summary={summary}
     >
-      <div className="flex flex-col gap-1">
-        {steps.map((step) => (
-          <HandoffProgressStepRow key={step.id} step={step} />
-        ))}
-      </div>
+      {operation?.steps.map((step) => (
+        <HandoffProgressStepRow key={step.id} step={step} operation={operation} />
+      ))}
     </ThreadActivityDisclosure>
   );
 }
 
 function CodexAppThreadToolCall({
   call,
+  currentThreadId,
+  isLeadingSummaryPart = true,
   onOpenThread,
   variant = "row",
 }: {
   call: CodexDynamicToolCallView;
+  currentThreadId: string | null;
+  isLeadingSummaryPart?: boolean;
   onOpenThread?: ToolComponentProps["onOpenThread"];
   variant?: DynamicToolCallRenderVariant;
 }) {
   if (call.tool === "handoff_thread") {
-    return <CodexAppHandoffToolCall call={call} variant={variant} />;
+    return (
+      <CodexAppHandoffToolCall currentThreadId={currentThreadId} call={call} variant={variant} />
+    );
   }
 
   if (
@@ -396,7 +441,7 @@ function CodexAppThreadToolCall({
     }
   }
 
-  const label = resolveDynamicToolRegistryLabel(call);
+  const label = resolveDynamicToolRegistryLabel(call, isLeadingSummaryPart);
   if (!label) return null;
   const navigationThreadId = variant === "row" ? getThreadNavigationTarget(call) : null;
   const isNavigableRow = navigationThreadId !== null;
@@ -428,12 +473,14 @@ function CodexAppThreadToolCall({
 
 function SettingsToolCall({
   call,
+  isLeadingSummaryPart = true,
   variant = "row",
 }: {
   call: CodexDynamicToolCallView;
+  isLeadingSummaryPart?: boolean;
   variant?: DynamicToolCallRenderVariant;
 }) {
-  const label = resolveDynamicToolRegistryLabel(call);
+  const label = resolveDynamicToolRegistryLabel(call, isLeadingSummaryPart);
   if (!label) return null;
 
   return (
@@ -478,19 +525,24 @@ function NodexAppToolCall({
   if (!presentation) return null;
 
   return (
-    <DynamicToolRegistryLabelRow
-      active={!call.completed}
-      icon={
-        variant === "summary-text" ? null : (
-          <ToolActivityIcon
-            descriptor={nodexPresentationIcon(presentation.icon)}
-            className="icon-xs shrink-0 text-token-conversation-body"
-          />
-        )
-      }
-      label={presentation.label}
-      variant={variant}
-    />
+    <>
+      <DynamicToolRegistryLabelRow
+        active={!call.completed}
+        icon={
+          variant === "summary-text" ? null : (
+            <ToolActivityIcon
+              descriptor={nodexPresentationIcon(presentation.icon)}
+              className="icon-xs shrink-0 text-token-conversation-body"
+            />
+          )
+        }
+        label={presentation.label}
+        variant={variant}
+      />
+      {variant === "row" && presentation.markdownChange ? (
+        <NodexDynamicToolChangePreview change={presentation.markdownChange} />
+      ) : null}
+    </>
   );
 }
 
@@ -575,20 +627,22 @@ function useChromeTabMetadata(tabId: number | null, enabled: boolean): ChromeTab
 
 function ChromeTabContextToolCall({
   call,
+  isLeadingSummaryPart = true,
   variant = "row",
 }: {
   call: CodexDynamicToolCallView;
+  isLeadingSummaryPart?: boolean;
   variant?: DynamicToolCallRenderVariant;
 }) {
   const tabId = parseChromeTabContextTabId(call);
   const metadata = useChromeTabMetadata(tabId, tabId !== null && !call.completed);
   if (tabId === null) return null;
 
-  const baseLabel = resolveDynamicToolRegistryLabel(call);
+  const baseLabel = resolveDynamicToolRegistryLabel(call, isLeadingSummaryPart);
   if (!baseLabel) return null;
   const label = metadata?.title
     ? call.completed
-      ? `Read "${metadata.title}"`
+      ? `${isLeadingSummaryPart ? "Read" : "read"} "${metadata.title}"`
       : `Reading "${metadata.title}"`
     : baseLabel;
 
@@ -612,6 +666,7 @@ function ChromeTabContextToolCall({
 
 function renderRegisteredDynamicToolCall({
   call,
+  isLeadingSummaryPart = true,
   entry,
   currentThreadId,
   onOpenSummaryScheduledAutomation,
@@ -619,6 +674,7 @@ function renderRegisteredDynamicToolCall({
   variant,
 }: {
   call: CodexDynamicToolCallView;
+  isLeadingSummaryPart?: boolean;
   entry: DynamicToolRegistryEntry;
   currentThreadId?: string | null;
   onOpenSummaryScheduledAutomation?: ToolComponentProps["onOpenSummaryScheduledAutomation"];
@@ -638,15 +694,35 @@ function renderRegisteredDynamicToolCall({
       );
     case "chromeTabContext":
       if (parseChromeTabContextTabId(call) === null) return null;
-      return <ChromeTabContextToolCall call={call} variant={variant} />;
+      return (
+        <ChromeTabContextToolCall
+          isLeadingSummaryPart={isLeadingSummaryPart}
+          call={call}
+          variant={variant}
+        />
+      );
     case "codexAppThread":
       if (!resolveDynamicToolRegistryLabel(call)) return null;
-      return <CodexAppThreadToolCall call={call} onOpenThread={onOpenThread} variant={variant} />;
+      return (
+        <CodexAppThreadToolCall
+          currentThreadId={currentThreadId ?? null}
+          isLeadingSummaryPart={isLeadingSummaryPart}
+          call={call}
+          onOpenThread={onOpenThread}
+          variant={variant}
+        />
+      );
     case "nodexApp":
       return <NodexAppToolCall call={call} variant={variant} />;
     case "settings":
       if (!resolveDynamicToolRegistryLabel(call)) return null;
-      return <SettingsToolCall call={call} variant={variant} />;
+      return (
+        <SettingsToolCall
+          isLeadingSummaryPart={isLeadingSummaryPart}
+          call={call}
+          variant={variant}
+        />
+      );
   }
 }
 
@@ -681,20 +757,28 @@ function DynamicToolFallbackLabel({
 
   if (variant !== "row") return content;
 
-  return <div className="group">{content}</div>;
+  return (
+    <ThreadRichActivityHeader
+      icon={isCodexApp ? <ToolActivityIcon descriptor={semanticToolIcon("app")} /> : null}
+      summary={<DynamicToolFallbackLabel call={call} variant="summary-text" />}
+    />
+  );
 }
 
 export function DynamicToolCallSummary({
   call,
+  isLeadingSummaryPart = true,
   variant = "summary",
 }: {
   call: CodexDynamicToolCallView;
+  isLeadingSummaryPart?: boolean;
   variant?: Exclude<DynamicToolCallRenderVariant, "row">;
 }) {
   const entry = getDynamicToolRegistryEntry(call);
   if (entry) {
     const rendered = renderRegisteredDynamicToolCall({
       call,
+      isLeadingSummaryPart,
       entry,
       currentThreadId: null,
       variant,
@@ -714,7 +798,6 @@ export function DynamicToolCall({
 
   if (!call) return null;
 
-  const nodexPresentation = resolveNodexDynamicToolCallPresentation(call);
   let content: ReactNode = null;
   const entry = getDynamicToolRegistryEntry(call);
   if (entry) {
@@ -728,9 +811,5 @@ export function DynamicToolCall({
     });
   }
 
-  return (
-    <DynamicToolCallInspector item={item} call={call} nodexPresentation={nodexPresentation}>
-      {content ?? <DynamicToolFallbackLabel call={call} />}
-    </DynamicToolCallInspector>
-  );
+  return content ?? <DynamicToolFallbackLabel call={call} />;
 }

@@ -1,3 +1,4 @@
+import * as CodexThreadHandoffIpc from "../ipc/handlers/CodexThreadHandoffIpc";
 import * as Layer from "effect/Layer";
 import * as AppUpdateIpc from "../ipc/handlers/AppUpdateIpc";
 import * as ApplicationLifecycleIpc from "../ipc/handlers/ApplicationLifecycleIpc";
@@ -76,6 +77,7 @@ export const live = Layer.mergeAll(
   AgentBackendIpc.live,
   AutomationIpc.live,
   CodexPendingWorktreeIpc.live,
+  CodexThreadHandoffIpc.live,
   CodexPromptRailIpc.live(),
   CodexWorkspaceIpc.live,
   CoreDocumentIpc.live,

@@ -2,6 +2,7 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { assert, it } from "@effect/vitest";
 import type { CodexSshExecutionHostConfig } from "../../shared/types";
@@ -122,6 +123,7 @@ const makeHarness = (input: {
   readonly failAt?: string;
   readonly initial?: readonly CodexThreadHandoffJournalEntry[];
   readonly stopGate?: Deferred.Deferred<void>;
+  readonly prepareGate?: Deferred.Deferred<void>;
 }) =>
   Effect.gen(function* () {
     const executionHosts = yield* makeExecutionHosts;
@@ -155,7 +157,24 @@ const makeHarness = (input: {
       followUp: () => record("follow-up"),
     });
     const handoff = ManagedWorktreeHandoff.of({
-      prepare: () => Effect.sync(() => input.calls.push("prepare")).pipe(Effect.as(preparation)),
+      prepare: (_entry, onProgress) =>
+        Effect.gen(function* () {
+          input.calls.push("prepare");
+          yield* (
+            onProgress?.({
+              phase: "create-new-worktree",
+              status: "running",
+              branchContext: {
+                sourceBranch: "main",
+                localBranch: "main",
+                worktreeBranch: "codex/task",
+              },
+            }) ?? Effect.void
+          );
+          yield* input.prepareGate ? Deferred.await(input.prepareGate) : Effect.void;
+          yield* onProgress?.({ phase: "create-new-worktree", status: "success" }) ?? Effect.void;
+          return preparation;
+        }),
       transferOwner: () => Effect.sync(() => input.calls.push("owner")),
       rollback: () => Effect.sync(() => input.calls.push("git:rollback")).pipe(Effect.as([])),
       cleanup: (_threadId, _preparation, outcome) =>
@@ -202,6 +221,12 @@ it.effect("rolls runtime and worktree preparation back when durable commit fails
     const runtime = yield* makeHarness({ calls, failAt: "core:destination" });
     const result = yield* start(runtime);
     assert.strictEqual(result.phase, "failed");
+    const operation = yield* runtime.get(result.operationId);
+    assert.isFalse(operation?.steps.some((step) => step.id === "transfer-owner"));
+    assert.strictEqual(
+      operation?.steps.find((step) => step.id === "switching-thread")?.status,
+      "error",
+    );
     assert.deepEqual(calls, [
       "stop",
       "prepare",
@@ -211,6 +236,83 @@ it.effect("rolls runtime and worktree preparation back when durable commit fails
       "git:rollback",
       "cleanup:rolled-back",
     ]);
+  }),
+);
+
+it.effect("streams the originating handoff through completion and restores its result", () =>
+  Effect.gen(function* () {
+    const stopGate = yield* Deferred.make<void>();
+    const prepareGate = yield* Deferred.make<void>();
+    const runtime = yield* makeHarness({ calls: [], stopGate, prepareGate });
+    const initial = yield* runtime.snapshot;
+    const input = {
+      operationId: "live-operation",
+      threadId: "thread-1",
+      requestThreadId: "caller",
+      threadTitle: "Review changes",
+      destinationHostId: null,
+      followUpPrompt: null,
+    };
+    const admitted = yield* runtime.launch(input);
+    assert.strictEqual(admitted.status, "running");
+    assert.strictEqual(admitted.destinationHostDisplayName, "This Mac");
+    assert.strictEqual(admitted.threadTitle, "Review changes");
+    assert.strictEqual(admitted.projectId, "project-1");
+    assert.deepEqual(admitted.steps, []);
+    assert.strictEqual((yield* runtime.launch(input)).operationId, admitted.operationId);
+    const terminal = yield* runtime.changes.pipe(
+      Stream.filter((snapshot) =>
+        snapshot.operations.some(
+          (operation) =>
+            operation.operationId === admitted.operationId && operation.status === "success",
+        ),
+      ),
+      Stream.runHead,
+      Effect.forkChild,
+    );
+    const preparing = yield* runtime.changes.pipe(
+      Stream.filter((snapshot) =>
+        snapshot.operations.some((operation) =>
+          operation.steps.some(
+            (step) => step.id === "create-new-worktree" && step.status === "running",
+          ),
+        ),
+      ),
+      Stream.runHead,
+      Effect.forkChild,
+    );
+    yield* Deferred.succeed(stopGate, undefined);
+    yield* Fiber.join(preparing);
+    const live = (yield* runtime.snapshot).operations[0]!;
+    assert.strictEqual(live.worktreeBranch, "codex/task");
+    assert.strictEqual(live.steps[0]?.label, "Creating a new worktree");
+    yield* Deferred.succeed(prepareGate, undefined);
+    yield* Fiber.join(terminal);
+    const snapshot = yield* runtime.snapshot;
+    assert.isAbove(snapshot.revision, initial.revision);
+    assert.lengthOf(snapshot.operations, 1);
+    const operation = snapshot.operations[0]!;
+    assert.strictEqual(operation.requestThreadId, "caller");
+    assert.strictEqual(operation.projectId, "project-1");
+    assert.strictEqual(operation.threadTitle, "Review changes");
+    assert.strictEqual(operation.direction, "local-to-worktree");
+    assert.strictEqual(operation.localBranch, "main");
+    assert.strictEqual(operation.worktreeBranch, "codex/task");
+    assert.deepEqual(
+      operation.steps.map(({ id, status }) => ({ id, status })),
+      [
+        { id: "create-new-worktree", status: "success" },
+        { id: "switching-thread", status: "success" },
+      ],
+    );
+    const journal = yield* runtime.start(input);
+    const recovered = yield* makeHarness({ calls: [], initial: [journal] });
+    yield* recovered.recover();
+    const restored = yield* recovered.get(admitted.operationId);
+    assert.strictEqual(restored?.status, "success");
+    assert.strictEqual(restored?.requestThreadId, "caller");
+    assert.strictEqual(restored?.threadTitle, "Review changes");
+    assert.deepEqual(restored?.steps, operation.steps);
   }),
 );
 

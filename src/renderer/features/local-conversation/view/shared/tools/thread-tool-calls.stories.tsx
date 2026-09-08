@@ -1,3 +1,12 @@
+import {
+  createThreadHandoffStore,
+  ThreadHandoffStoreProvider,
+} from "../../../../../lib/thread-handoff-runtime";
+import type {
+  CodexAppHandoffOperation,
+  CodexThreadHandoffSnapshot,
+} from "../../../../../../shared/codex-thread-handoff";
+import { buildThreadHandoffOperation } from "../../../../../test/thread-handoff-fixture";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -14,6 +23,10 @@ import {
   resolveCodexPatchSuccess,
 } from "../../../../../../shared/codex-file-change";
 import { normalizeCodexAppInfoLogos } from "../../../../../../shared/codex-app-info";
+import {
+  agentActivityV2FallbackCommandItem,
+  agentActivityV2MultiActionCommandItem,
+} from "../../../../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-item-family-corpus";
 import type {
   CodexAutomaticApprovalReviewRiskLevel,
   CodexAutomaticApprovalReviewStatus,
@@ -680,6 +693,57 @@ export const CommandExecution: Story = {
       description="Structured command summary, output body, and metadata for a settled command run."
     />
   ),
+};
+
+export const AutoReviewDeclinedTools: Story = {
+  render: () => {
+    const reviews = [
+      buildAutoReviewStoryItem("declined", {
+        status: "denied",
+        riskLevel: "high",
+        rationale: "The proposed action requires authorization.",
+      }),
+    ];
+    return (
+      <div className="flex flex-col gap-4">
+        <ToolCallStory
+          title="Command Declined by Auto-review"
+          description="A declined read is presented as a command awaiting explicit authorization. Expand it to inspect the original command and output."
+          item={buildCommandItem({
+            status: "declined",
+            executionStatus: "declined",
+            command: "cat private.txt",
+            parsedCmd: {
+              type: "read",
+              cmd: "cat private.txt",
+              name: "private.txt",
+              path: "private.txt",
+              isFinished: true,
+            },
+            aggregatedOutput: "Automatic approval review denied this request.",
+            exitCode: null,
+            durationMs: 5_000,
+          })}
+          automaticApprovalReviews={reviews}
+        />
+        <ToolCallStory
+          title="File Change Declined by Auto-review"
+          description="A declined file change retains the proposed diff and explains the required authorization."
+          item={{
+            ...THREAD_TOOL_CALL_STORY_ITEMS.fileChange,
+            status: "declined",
+            fileChange: {
+              changes: {
+                "src/proposed.ts": { type: "add", content: "export const proposed = true;\n" },
+              },
+              success: false,
+            },
+          }}
+          automaticApprovalReviews={reviews}
+        />
+      </div>
+    );
+  },
 };
 
 export const CommandExecutionSummarySpecials: Story = {
@@ -1901,6 +1965,27 @@ export const AgentActivityGroupExpanded: Story = {
   ),
 };
 
+export const AgentActivityGroupCommandActions: Story = {
+  render: () => (
+    <StorySurface
+      title="Command Activity Summaries"
+      description="Read, search, list, and shell summaries share one text tone; file references keep their independent hover and open actions."
+    >
+      <ConversationStorySurface>
+        <ProjectedToolActivity
+          fixture={buildThreadToolActivityProjectionFixture({
+            id: "command-activity-summaries",
+            rawItems: [agentActivityV2MultiActionCommandItem, agentActivityV2FallbackCommandItem],
+            turnStatus: "completed",
+            isLatestTurn: false,
+          })}
+          autoOpen
+        />
+      </ConversationStorySurface>
+    </StorySurface>
+  ),
+};
+
 export const AgentActivityGroupLiveFileChange: Story = {
   render: () => (
     <StorySurface
@@ -2227,33 +2312,8 @@ export const DynamicToolRegistryRenderers: Story = {
               args: { tabId: -1 },
             })}
           />
-          <DynamicToolCall
-            item={buildGenericDynamicStoryItem({
-              id: "handoff-running-steps",
-              namespace: "codex_app",
-              tool: "handoff_thread",
-              completed: true,
-              args: { threadId: "thread-story" },
-              contentText: JSON.stringify({
-                destinationHostDisplayName: "Local",
-                operationId: "handoff-running-steps",
-                status: "running",
-                steps: [
-                  {
-                    id: "resolve-thread",
-                    label: "Resolve thread",
-                    status: "success",
-                    message: null,
-                  },
-                  {
-                    id: "handoff",
-                    label: "Move thread",
-                    status: "running",
-                    message: "Preparing thread handoff.",
-                  },
-                ],
-              }),
-            })}
+          <HandoffStoryExample
+            operation={buildStoryHandoffOperation("handoff-running-steps", "running")}
           />
         </div>
       </ConversationStorySurface>
@@ -2261,93 +2321,118 @@ export const DynamicToolRegistryRenderers: Story = {
   ),
 };
 
-const HANDOFF_STORY_STATES = [
-  {
-    id: "handoff-queued",
-    status: "queued",
+function buildStoryHandoffOperation(id: string, status: CodexAppHandoffOperation["status"]) {
+  return buildThreadHandoffOperation({
+    operationId: id,
+    requestThreadId: "thread-story",
+    sourceThreadId: "thread-target-story",
+    threadId: "thread-target-story",
+    threadTitle: "Audit worktree lifecycle",
+    destinationHostDisplayName: "Build box",
+    direction: "cross-host",
+    status,
     steps: [
-      { id: "resolve-thread", label: "Resolve task", status: "queued", message: null },
-      { id: "prepare", label: "Prepare destination", status: "queued", message: null },
-    ],
-  },
-  {
-    id: "handoff-running",
-    status: "running",
-    steps: [
-      { id: "resolve-thread", label: "Resolve task", status: "success", message: null },
       {
-        id: "prepare",
-        label: "Prepare destination",
-        status: "running",
-        message: "Transferring worktree state.",
+        id: "prepare-host-transfer",
+        label: "Preparing files for transfer",
+        status: "success",
+        message: null,
+        updatedAt: 1,
       },
-      { id: "commit", label: "Commit task location", status: "queued", message: null },
-    ],
-  },
-  {
-    id: "handoff-success",
-    status: "success",
-    steps: [
-      { id: "resolve-thread", label: "Resolve task", status: "success", message: null },
-      { id: "prepare", label: "Prepare destination", status: "success", message: null },
-      { id: "commit", label: "Commit task location", status: "success", message: null },
-    ],
-  },
-  {
-    id: "handoff-warning",
-    status: "warning",
-    steps: [
-      { id: "resolve-thread", label: "Resolve task", status: "success", message: null },
-      { id: "commit", label: "Commit task location", status: "success", message: null },
       {
-        id: "cleanup",
-        label: "Clean up source",
-        status: "warning",
-        message: "Cleanup can be retried.",
+        id: "transfer-host-artifacts",
+        label: "Copying files to the destination host",
+        status: status === "running" || status === "error" ? status : "success",
+        message: null,
+        updatedAt: 2,
       },
+      ...(status === "success" || status === "warning"
+        ? [
+            {
+              id: "switching-thread",
+              label: "Moving chat to the destination worktree",
+              status,
+              message: null,
+              updatedAt: 3,
+            },
+          ]
+        : []),
     ],
-  },
-  {
-    id: "handoff-error",
-    status: "error",
-    steps: [
-      { id: "resolve-thread", label: "Resolve task", status: "success", message: null },
-      {
-        id: "prepare",
-        label: "Prepare destination",
-        status: "error",
-        message: "Destination is offline.",
+  });
+}
+
+function HandoffStoryRuntime({
+  operations,
+  children,
+}: {
+  operations: readonly CodexAppHandoffOperation[];
+  children: ReactNode;
+}) {
+  const [fixture] = useState(() => {
+    let snapshot: CodexThreadHandoffSnapshot = { revision: 1, operations };
+    let deliver: (value: CodexThreadHandoffSnapshot) => void = () => undefined;
+    const store = createThreadHandoffStore({
+      read: async () => snapshot,
+      subscribe: (listener) => {
+        deliver = listener;
+        return () => {
+          deliver = () => undefined;
+        };
       },
-      { id: "commit", label: "Commit task location", status: "queued", message: null },
-    ],
-  },
-] as const;
+    });
+    return {
+      store,
+      publish: (next: readonly CodexAppHandoffOperation[]) => {
+        snapshot = { revision: snapshot.revision + 1, operations: next };
+        deliver(snapshot);
+      },
+    };
+  });
+  useEffect(() => {
+    fixture.publish(operations);
+  }, [fixture, operations]);
+  return <ThreadHandoffStoreProvider value={fixture.store}>{children}</ThreadHandoffStoreProvider>;
+}
+
+function buildHandoffStoryItem(id: string) {
+  return buildGenericDynamicStoryItem({
+    id,
+    namespace: "codex_app",
+    tool: "handoff_thread",
+    completed: true,
+    args: { threadId: "thread-target-story" },
+    contentText: JSON.stringify({
+      destinationHostDisplayName: "Build box",
+      operationId: id,
+      status: "queued",
+      threadTitle: "Audit worktree lifecycle",
+    }),
+  });
+}
+
+function HandoffStoryExample({ operation }: { operation: CodexAppHandoffOperation }) {
+  return (
+    <HandoffStoryRuntime operations={[operation]}>
+      <DynamicToolCall item={buildHandoffStoryItem(operation.operationId)} />
+    </HandoffStoryRuntime>
+  );
+}
 
 export const HandoffProgressStates: Story = {
   render: () => (
     <StorySurface
       title="Task handoff progress"
-      description="Queued, running, completed, recoverable-warning, and failed handoffs keep one activity hierarchy and expose each operation step."
+      description="The original tool reply follows live Git progress, success, recoverable warnings, and failures from the operation owner."
     >
       <ConversationStorySurface>
         <div className="flex flex-col gap-3">
-          {HANDOFF_STORY_STATES.map((state) => (
-            <DynamicToolCall
-              key={state.id}
-              item={buildGenericDynamicStoryItem({
-                id: state.id,
-                namespace: "codex_app",
-                tool: "handoff_thread",
-                completed: true,
-                args: { threadId: "thread-story" },
-                contentText: JSON.stringify({
-                  destinationHostDisplayName: "Build box",
-                  operationId: state.id,
-                  status: state.status,
-                  steps: state.steps,
-                  threadTitle: "Audit worktree lifecycle",
-                }),
-              })}
+          <HandoffStoryRuntime operations={[]}>
+            <DynamicToolCall item={buildHandoffStoryItem("handoff-queued")} />
+          </HandoffStoryRuntime>
+          {(["running", "success", "warning", "error"] as const).map((status) => (
+            <HandoffStoryExample
+              key={status}
+              operation={buildStoryHandoffOperation(`handoff-${status}`, status)}
             />
           ))}
         </div>
@@ -2356,11 +2441,55 @@ export const HandoffProgressStates: Story = {
   ),
 };
 
+function HandoffLiveLifecycleStory() {
+  const [phase, setPhase] = useState<"waiting" | "running" | "success">("waiting");
+  const [item] = useState(() => buildHandoffStoryItem("handoff-live-lifecycle"));
+  const operations =
+    phase === "waiting" ? [] : [buildStoryHandoffOperation("handoff-live-lifecycle", phase)];
+  return (
+    <StorySurface
+      title="Live handoff lifecycle"
+      description="Publish operation steps after the initial reply, then settle the operation while retaining the same original tool call."
+    >
+      <div className="mb-3 flex gap-2">
+        <button
+          type="button"
+          className="rounded-md px-2 py-1 text-sm hover:bg-token-list-hover-background"
+          onClick={() => setPhase("running")}
+        >
+          Publish running steps
+        </button>
+        <button
+          type="button"
+          className="rounded-md px-2 py-1 text-sm hover:bg-token-list-hover-background"
+          onClick={() => setPhase("success")}
+        >
+          Complete handoff
+        </button>
+        <button
+          type="button"
+          className="rounded-md px-2 py-1 text-sm hover:bg-token-list-hover-background"
+          onClick={() => setPhase("waiting")}
+        >
+          Reset
+        </button>
+      </div>
+      <ConversationStorySurface>
+        <HandoffStoryRuntime operations={operations}>
+          <DynamicToolCall item={item} />
+        </HandoffStoryRuntime>
+      </ConversationStorySurface>
+    </StorySurface>
+  );
+}
+
+export const HandoffLiveLifecycle: Story = { render: () => <HandoffLiveLifecycleStory /> };
+
 export const DynamicToolCallFallbackRows: Story = {
   render: () => (
     <StorySurface
       title="Dynamic Tool Call Fallback Rows"
-      description="Generic dynamic tools stay compact and expose arguments, output, and exact raw protocol data on demand."
+      description="Generic dynamic tools use compact activity labels; specialised tools own their content."
     >
       <ConversationStorySurface>
         <div className="flex flex-col gap-1">
@@ -2404,7 +2533,7 @@ export const NodexDynamicToolCalls: Story = {
   render: () => (
     <StorySurface
       title="Nodex Dynamic Tool Calls"
-      description="Nodex calls keep search intent, Card targets, and destinations visible when compact; Nested Markdown edits show an inline diff before the full inspector."
+      description="Nodex calls keep search intent, Page targets, and destinations visible when compact; Nested Markdown edits retain their dedicated inline diff."
     >
       <ConversationStorySurface>
         <div className="flex flex-col gap-3">
@@ -2696,4 +2825,79 @@ export const CrossThemeLeafBodies: Story = {
       },
     },
   },
+};
+
+function buildWebMcpStoryItem(): CodexTranscriptEntry {
+  const base = buildMcpSourceStoryItem("webmcp-browser-js", { kind: "browserUse", backend: "iab" });
+  if (!base.mcpToolCall) return base;
+  return {
+    ...base,
+    mcpToolCall: {
+      ...base.mcpToolCall,
+      completed: true,
+      invocation: {
+        server: "node_repl",
+        tool: "js",
+        arguments: { title: "Search the website catalog" },
+      },
+      result: {
+        type: "success",
+        content: [{ type: "text", text: "Found three matching products." }],
+        structuredContent: null,
+        raw: {
+          content: [{ type: "text", text: "Found three matching products." }],
+          structuredContent: null,
+          _meta: {
+            "codex/toolSurface": {
+              kind: "browserUse",
+              backend: "iab",
+              screenshot: { pageUrl: "https://example.com/catalog" },
+              webMcpCalls: [
+                {
+                  kind: "listTools",
+                  name: "webmcp_list_tools",
+                  outputJson: '[{"name":"search_catalog","description":"Search products"}]',
+                },
+                {
+                  kind: "invokeTool",
+                  name: "search_catalog",
+                  title: "Search catalog",
+                  sourceHostname: "example.com",
+                  description: "Search products in the website catalog",
+                  readOnlyHint: true,
+                  inputJson: '{"query":"desk lamp"}',
+                  outputJson: '[{"name":"Arc lamp","price":49},{"name":"Task lamp","price":79}]',
+                },
+                {
+                  kind: "invokeTool",
+                  name: "get_product_reviews",
+                  sourceHostname: "example.com",
+                  inputJson: '{"productIds":[1,2,3,…',
+                  inputTruncated: true,
+                  outputJson: '{"reviews":[{"rating":5,"text":"A warm, adjustable light…',
+                  outputTruncated: true,
+                },
+                {
+                  kind: "invokeTool",
+                  name: "search_github_issues",
+                  title: "Search repository issues",
+                  sourceHostname: "github.com",
+                  inputJson: '{"query":"website catalog"}',
+                  outputJson: '{"count":4}',
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+export const WebMcpWebsiteTools: Story = {
+  render: () => (
+    <ConversationStorySurface>
+      <McpToolCall item={buildWebMcpStoryItem()} />
+    </ConversationStorySurface>
+  ),
 };

@@ -38,6 +38,7 @@ import {
   ToolErrorDetail,
 } from "./tool-primitives";
 import { ThreadExecShellContainer } from "./thread-command-shell-block";
+import { wasToolExecutionDeclinedByAutomaticReview } from "../../../projection/tool-metadata/automatic-approval-review";
 
 interface CommandToolCallProps {
   item: CodexTranscriptEntry;
@@ -59,10 +60,13 @@ interface SkillScriptSummary {
 
 interface CommandSummaryLabelInput {
   command: string;
+  elapsedLabel?: string | null;
   effectiveStatus: string | undefined;
   isExpanded: boolean;
   isTurnInProgress: boolean;
   processId: number | string | null | undefined;
+  showRawCommand?: boolean;
+  wasDeclinedByAutoReview?: boolean;
 }
 
 export interface CommandElapsedSnapshot {
@@ -79,32 +83,20 @@ function normalizePath(path: string | undefined): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
-function shouldShowCwdSubtitle(
-  commandCwd: string | undefined,
-  threadCwd: string | undefined,
-): boolean {
-  const normalizedCommandCwd = normalizePath(commandCwd);
-  const normalizedThreadCwd = normalizePath(threadCwd);
-  if (!normalizedCommandCwd || !normalizedThreadCwd) return false;
-  return normalizedCommandCwd !== normalizedThreadCwd;
-}
-
-function formatElapsedDuration(elapsedMs: number): string | null {
+export function formatCommandElapsedDuration(elapsedMs: number): string | null {
   if (!Number.isFinite(elapsedMs) || elapsedMs < 1_000) return null;
 
   const totalSeconds = Math.floor(elapsedMs / 1_000);
   const seconds = totalSeconds % 60;
   const totalMinutes = Math.floor(totalSeconds / 60);
   const minutes = totalMinutes % 60;
-  const hours = Math.floor(totalMinutes / 60);
+  const totalHours = Math.floor(totalMinutes / 60);
+  const hours = totalHours % 24;
+  const days = Math.floor(totalHours / 24);
 
-  if (hours > 0) {
-    return seconds > 0 ? `${hours}h ${minutes}m ${seconds}s` : `${hours}h ${minutes}m`;
-  }
-
-  if (minutes > 0) {
-    return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
-  }
+  if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
 
   return `${seconds}s`;
 }
@@ -133,17 +125,6 @@ export function reconcileCommandElapsedSnapshot(
   };
 }
 
-export function formatCommandMetaText(
-  elapsedLabel: string | null,
-  cwdSubtitle: string | undefined,
-): string | null {
-  const metaParts: string[] = [];
-  if (elapsedLabel) metaParts.push(`for ${elapsedLabel}`);
-  if (cwdSubtitle) metaParts.push(cwdSubtitle);
-  if (metaParts.length === 0) return null;
-  return metaParts.join(" · ");
-}
-
 function useElapsedLabel(input: {
   durationMs: number | null;
   isBackgroundTerminalRunning: boolean;
@@ -166,7 +147,7 @@ function useElapsedLabel(input: {
     input.isInProgress && startedAtMs !== null
       ? Math.max(nowMs - startedAtMs, 0)
       : Math.max(input.durationMs ?? 0, 0);
-  return formatElapsedDuration(elapsedMs);
+  return formatCommandElapsedDuration(elapsedMs);
 }
 
 function resolveCommandBasename(value: string | undefined): string | null {
@@ -252,19 +233,31 @@ function formatSkillScriptSummary(summary: SkillScriptSummary): string {
 
 export function resolveCommandSummaryLabel({
   command,
+  elapsedLabel,
   effectiveStatus,
   isExpanded,
   isTurnInProgress,
   processId,
+  showRawCommand = true,
+  wasDeclinedByAutoReview = false,
 }: CommandSummaryLabelInput): string {
   const commandText = command.trim();
   const isInProgress = effectiveStatus === "inProgress";
   const wasInterrupted = effectiveStatus === "interrupted";
+  if (wasDeclinedByAutoReview) {
+    return !isExpanded && showRawCommand && commandText.length > 0
+      ? `Command declined by auto-review: ${commandText}`
+      : "Command declined by auto-review";
+  }
+
+  const elapsed = elapsedLabel
+    ? ` ${wasInterrupted ? "after" : isInProgress ? "for" : "in"} ${elapsedLabel}`
+    : "";
 
   if (isDateCommand(commandText)) {
-    if (wasInterrupted) return "Stopped checking the current date and time";
-    if (isInProgress) return "Checking the current date and time";
-    return "Checked the current date and time";
+    if (wasInterrupted) return `Stopped checking the current date and time${elapsed}`;
+    if (isInProgress) return `Checking the current date and time${elapsed}`;
+    return `Checked the current date and time${elapsed}`;
   }
 
   const isBackgroundTerminalRunning = isInProgress && !isTurnInProgress;
@@ -287,7 +280,7 @@ export function resolveCommandSummaryLabel({
       if (commandText.length > 0) return `Started background terminal with ${commandText}`;
       return "Started background terminal";
     }
-    return "Running command";
+    return `Running command${elapsed}`;
   }
 
   if (isFinishedBackgroundTerminal) {
@@ -302,10 +295,10 @@ export function resolveCommandSummaryLabel({
   }
 
   if (!isExpanded && (skillScriptSummary || commandText.length > 0)) {
-    return wasInterrupted ? `Stopped ${commandSummary}` : `Ran ${commandSummary}`;
+    return `${wasInterrupted ? "Stopped" : "Ran"} ${commandSummary}${elapsed}`;
   }
 
-  return wasInterrupted ? "Stopped command" : "Ran command";
+  return `${wasInterrupted ? "Stopped" : "Ran"} command${elapsed}`;
 }
 
 function formatExplorationSummary(
@@ -421,52 +414,33 @@ function resolveCommandHeaderIcon(
 }
 
 function SummaryText({
-  command,
   summaryLabel,
-  elapsedLabel,
-  commandCwd,
-  threadCwd,
-  isExpanded,
   isInProgress,
 }: {
-  command: string;
   summaryLabel: string;
-  elapsedLabel: string | null;
-  commandCwd?: string;
-  threadCwd?: string;
-  isExpanded: boolean;
   isInProgress: boolean;
 }) {
-  const metaParts: string[] = [];
-  if (elapsedLabel) metaParts.push(`for ${elapsedLabel}`);
-  if (shouldShowCwdSubtitle(commandCwd, threadCwd) && commandCwd)
-    metaParts.push(`in ${commandCwd}`);
-  const activeLeadingLabel = resolveActiveCommandSummaryLeadingLabel(summaryLabel, isInProgress);
+  const activeLabel = resolveActiveCommandSummaryLabel(summaryLabel, isInProgress);
 
   return (
     <span className="min-w-0 flex-1 text-size-chat truncate text-token-foreground/40 group-hover:text-token-foreground">
-      {activeLeadingLabel ? (
+      {activeLabel ? (
         <span className="font-sans text-token-description-foreground group-hover:text-token-foreground">
-          <CodexShimmerText>{activeLeadingLabel.leading}</CodexShimmerText>
-          {activeLeadingLabel.trailing ? <span>{activeLeadingLabel.trailing}</span> : null}
+          <CodexShimmerText>{activeLabel}</CodexShimmerText>
         </span>
       ) : (
         <span className="font-sans text-token-description-foreground group-hover:text-token-foreground">
           {summaryLabel}
         </span>
       )}
-      {metaParts.length > 0 ? (
-        <span className="ml-1 text-token-foreground/30">{metaParts.join(" · ")}</span>
-      ) : null}
-      {!isExpanded ? null : <span className="sr-only">{command}</span>}
     </span>
   );
 }
 
-function resolveActiveCommandSummaryLeadingLabel(
+function resolveActiveCommandSummaryLabel(
   summaryLabel: string,
   isInProgress: boolean,
-): { leading: string; trailing: string | null } | null {
+): string | null {
   if (!isInProgress) return null;
   const activePrefixes = [
     "Checking the current date and time",
@@ -475,10 +449,7 @@ function resolveActiveCommandSummaryLeadingLabel(
     "Exploring",
   ];
   for (const prefix of activePrefixes) {
-    if (summaryLabel === prefix) return { leading: prefix, trailing: null };
-    if (summaryLabel.startsWith(`${prefix} `)) {
-      return { leading: prefix, trailing: summaryLabel.slice(prefix.length) };
-    }
+    if (summaryLabel === prefix || summaryLabel.startsWith(`${prefix} `)) return summaryLabel;
   }
   return null;
 }
@@ -527,7 +498,7 @@ function SingleExplorationActionRow({
       status={semanticActivityStatusFromLifecycle(effectiveStatus, "completed")}
       icon={summaryIcon}
       summary={
-        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 truncate text-token-conversation-summary-trailing group-hover/activity-header:text-token-foreground [&_*]:text-token-foreground/30 group-hover/activity-header:[&_*]:text-token-foreground">
+        <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 truncate">
           <CodexShimmerText active={effectiveStatus === "inProgress"} className="min-w-0 truncate">
             {label}
           </CodexShimmerText>
@@ -590,6 +561,11 @@ export function CommandToolCall({
   const effectiveStatus = resolveCommandExecutionRenderStatus({
     itemStatus: item.status,
   });
+  const wasDeclinedByAutoReview = wasToolExecutionDeclinedByAutomaticReview({
+    type: "exec",
+    entry: item,
+    automaticApprovalReviews,
+  });
   const isInProgress = effectiveStatus === "inProgress";
   const isBackgroundTerminalRunning = isInProgress && !isStreamingTurn;
   const hasApprovalReviews = automaticApprovalReviews.length > 0;
@@ -599,8 +575,10 @@ export function CommandToolCall({
     isInProgress,
     startedAtMs: item.startedAtMs ?? null,
   });
-  const commandActions = extractCommandActions(item);
-  const parsedExplorationAction = resolveParsedExplorationAction(item);
+  const commandActions = wasDeclinedByAutoReview ? [] : extractCommandActions(item);
+  const parsedExplorationAction = wasDeclinedByAutoReview
+    ? null
+    : resolveParsedExplorationAction(item);
   const isExploration =
     parsedExplorationAction !== null ||
     (commandActions.length > 0 && commandActions.every(isExplorationAction));
@@ -612,7 +590,9 @@ export function CommandToolCall({
       : "inProgress"
     : effectiveStatus;
   const isSingleSkillDefinitionRead = isSkillDefinitionReadAction(singleExplorationAction);
-  const shouldHideForProse = threadDetailLevel === "STEPS_PROSE" && !isSingleSkillDefinitionRead;
+  const hideRawCommand = threadDetailLevel === "STEPS_PROSE" && wasDeclinedByAutoReview;
+  const shouldHideForProse =
+    threadDetailLevel === "STEPS_PROSE" && !isSingleSkillDefinitionRead && !wasDeclinedByAutoReview;
   const shouldHideUnfinishedParsedAction =
     singleExplorationAction !== null &&
     explorationStatus === "inProgress" &&
@@ -621,7 +601,7 @@ export function CommandToolCall({
   const [viewState, setViewState] = useState<CommandViewState>("collapsed");
   const { elementHeightPx: bodyHeightPx, elementRef: bodyRef } = useMeasuredElementHeight();
 
-  const isExpanded = viewState === "expanded";
+  const isExpanded = !hideRawCommand && viewState === "expanded";
   if (shouldHideForProse || shouldHideUnfinishedParsedAction) return null;
   if (singleExplorationAction) {
     return (
@@ -644,10 +624,13 @@ export function CommandToolCall({
     ? formatExplorationSummary(commandActions, effectiveStatus)
     : resolveCommandSummaryLabel({
         command: displayCommand,
+        elapsedLabel,
         effectiveStatus,
         isExpanded,
         isTurnInProgress: isStreamingTurn,
         processId: item.processId,
+        showRawCommand: !hideRawCommand,
+        wasDeclinedByAutoReview,
       });
 
   const handleToggle = () => {
@@ -656,23 +639,18 @@ export function CommandToolCall({
 
   const header = (
     <ThreadRichActivityHeader
-      status={semanticActivityStatusFromLifecycle(effectiveStatus, "completed")}
-      accessory={hasApprovalReviews ? <AutomaticApprovalReviewShield /> : null}
-      disclosure={{ expanded: isExpanded, onToggle: handleToggle }}
+      accessory={
+        hasApprovalReviews && !wasDeclinedByAutoReview ? <AutomaticApprovalReviewShield /> : null
+      }
+      disclosure={hideRawCommand ? undefined : { expanded: isExpanded, onToggle: handleToggle }}
       icon={
-        <ToolActivityIcon descriptor={resolveCommandHeaderIcon(commandActions, isExploration)} />
+        wasDeclinedByAutoReview ? (
+          <AutomaticApprovalReviewShield tone="warning" />
+        ) : (
+          <ToolActivityIcon descriptor={resolveCommandHeaderIcon(commandActions, isExploration)} />
+        )
       }
-      summary={
-        <SummaryText
-          command={command}
-          summaryLabel={summaryLabel}
-          elapsedLabel={elapsedLabel}
-          commandCwd={item.cwd ?? undefined}
-          threadCwd={threadCwd}
-          isExpanded={isExpanded}
-          isInProgress={isInProgress}
-        />
-      }
+      summary={<SummaryText summaryLabel={summaryLabel} isInProgress={isInProgress} />}
       testId="command-tool-summary-toggle"
     />
   );
@@ -695,7 +673,10 @@ export function CommandToolCall({
     </div>
   ) : (
     <div className={cn("flex flex-col gap-2", automaticApprovalReviews.length === 0 && "pt-2")}>
-      <AutomaticApprovalReviewRows items={automaticApprovalReviews} />
+      <AutomaticApprovalReviewRows
+        items={automaticApprovalReviews}
+        isDeclined={wasDeclinedByAutoReview}
+      />
       <ThreadExecShellContainer
         command={command}
         output={output}
@@ -712,7 +693,7 @@ export function CommandToolCall({
     </div>
   );
   const measuredHeight = isExpanded ? bodyHeightPx : 0;
-  const isMeasuredOpen = viewState !== "collapsed";
+  const isMeasuredOpen = isExpanded;
 
   return (
     <ThreadActivityShell

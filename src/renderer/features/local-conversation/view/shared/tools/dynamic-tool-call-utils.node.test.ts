@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { buildThreadHandoffOperation } from "../../../../../test/thread-handoff-fixture";
 import type { CodexDynamicToolCallView } from "../../../../../lib/types";
 import {
   buildDynamicToolCallSummaryPartKey,
@@ -14,6 +15,7 @@ import {
   resolveCodexAppHandoffRenderState,
   resolveAutomationUpdateRenderState,
   resolveDynamicToolFallbackLabel,
+  resolveDynamicToolRegistryLabel,
   resolveDynamicToolLabel,
 } from "./dynamic-tool-call-utils";
 
@@ -92,25 +94,21 @@ describe("dynamic tool registry", () => {
     ).toBe(true);
   });
 
-  test("uses the exact task-oriented labels for registered Codex app tools", () => {
+  test("uses the registered labels for registered Codex app tools", () => {
     const cases: Array<[string, Partial<CodexDynamicToolCallView>, string]> = [
-      [
-        "fork active",
-        { tool: "fork_thread", arguments: {}, completed: false },
-        "Creating new task",
-      ],
-      ["fork complete", { tool: "fork_thread", arguments: {} }, "Created new task"],
+      ["fork active", { tool: "fork_thread", arguments: {}, completed: false }, "Forking chat"],
+      ["fork complete", { tool: "fork_thread", arguments: {} }, "Forked chat"],
       [
         "worktree fork",
         { tool: "fork_thread", arguments: { environment: { type: "worktree" } } },
-        "Created task in new worktree",
+        "Forked chat in new worktree",
       ],
-      ["list", { tool: "list_threads" }, "Listed tasks"],
-      ["read", { tool: "read_thread" }, "Read task"],
-      ["send", { tool: "send_message_to_thread" }, "Sent message to task"],
-      ["pin", { tool: "set_thread_pinned" }, "Updated task pin"],
-      ["archive", { tool: "set_thread_archived" }, "Updated task archive"],
-      ["title", { tool: "set_thread_title" }, "Renamed task"],
+      ["list", { tool: "list_threads" }, "Listed chats"],
+      ["read", { tool: "read_thread" }, "Read chat"],
+      ["send", { tool: "send_message_to_thread" }, "Sent message to chat"],
+      ["pin", { tool: "set_thread_pinned" }, "Updated chat pin"],
+      ["archive", { tool: "set_thread_archived" }, "Updated chat archive"],
+      ["title", { tool: "set_thread_title" }, "Renamed chat"],
     ];
 
     expect(
@@ -301,44 +299,38 @@ describe("dynamic tool registry", () => {
     });
 
     expect(resolveCodexAppMetaThreadToolLabel(queued)).toBe("Handing off Fix renderer to Work Mac");
-    expect(resolveCodexAppMetaThreadToolLabel(failed)).toBe(
-      "Failed to hand off Fix renderer to Work Mac",
-    );
+    expect(
+      resolveCodexAppHandoffRenderState(
+        failed,
+        buildThreadHandoffOperation({
+          status: "error",
+          threadTitle: "Fix renderer",
+          destinationHostDisplayName: "Work Mac",
+        }),
+      ).label,
+    ).toBe("Failed to hand off Fix renderer to Work Mac");
   });
 
-  test("keeps real handoff operation status and steps even when title is unavailable", () => {
-    const running = dynamicCall({
+  test("requires the complete handoff result envelope and reads steps only from the operation owner", () => {
+    const call = dynamicCall({
       tool: "handoff_thread",
-      arguments: { threadId: "thread-1" },
       contentItems: [
         {
           type: "inputText",
           text: JSON.stringify({
-            destinationHostDisplayName: "Local",
-            message: "Preparing thread handoff.",
             operationId: "operation-1",
             status: "running",
-            steps: [
-              { id: "resolve-thread", label: "Resolve thread", status: "success", message: null },
-              {
-                id: "handoff",
-                label: "Move thread",
-                status: "running",
-                message: "Preparing thread handoff.",
-              },
-            ],
+            steps: [{ id: "invented-step" }],
           }),
         },
       ],
-      completed: true,
-      success: true,
     });
-    const parsed = parseCodexAppHandoffResult(running);
-    const state = resolveCodexAppHandoffRenderState(running);
-
-    expect(parsed?.steps.length ?? 0).toBe(2);
+    expect(parseCodexAppHandoffResult(call)).toBeNull();
+    const operation = buildThreadHandoffOperation({ threadTitle: null });
+    const state = resolveCodexAppHandoffRenderState(call, operation);
     expect(state.activityStatus).toBe("running");
-    expect(state.label).toBe("Handing off task");
+    expect(state.label).toBe("Handing off chat");
+    expect(state.operation).toBe(operation);
   });
 
   test("exposes non-thread registry entries without making them thread tools", () => {
@@ -458,5 +450,29 @@ describe("dynamic tool registry", () => {
     ).join("\n");
 
     expect(text).toBe("Scheduled task update\n\nMode: update\nAutomation ID: automation-review");
+  });
+  test.each([
+    [{ completed: false, arguments: {} }, "Updating settings"],
+    [{ completed: false, arguments: { config: {} } }, "Waiting for approval"],
+    [{ completed: false, arguments: [] }, "Updating settings"],
+    [{ completed: true, success: true }, "Updated settings"],
+    [{ completed: true, success: false }, "Couldn't update settings"],
+  ])("separates settings execution and approval states: %j", (overrides, label) => {
+    expect(
+      resolveDynamicToolRegistryLabel(dynamicCall({ tool: "write_settings", ...overrides })),
+    ).toBe(label);
+  });
+
+  test.each([
+    ["read_settings", {}, "read settings"],
+    ["write_settings", {}, "updated settings"],
+    ["read_thread", { threadId: "ThreadWithCaps" }, "read chat"],
+    ["create_thread", { target: { type: "projectless" } }, "created chat"],
+    ["fork_thread", {}, "forked chat"],
+    ["get_handoff_status", { operationId: "OperationWithCaps" }, "checked handoff status"],
+  ])("selects the following form for %s without changing payload names", (tool, args, label) => {
+    expect(resolveDynamicToolRegistryLabel(dynamicCall({ tool, arguments: args }), false)).toBe(
+      label,
+    );
   });
 });

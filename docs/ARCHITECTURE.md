@@ -761,7 +761,9 @@ Long-running handoff preparation may perform reversible filesystem and host work
 lane, but its durable execution-location commit enters that lane. Persistent fork holds the same
 lane across its final Core host revalidation and generation-fenced app-server mutation. This makes
 the durable host read, fork dispatch, and handoff commit one causal order without holding a semantic
-lock across unrelated preparation I/O.
+lock across unrelated preparation I/O. The same handoff owner projects revisioned operation state
+through a trusted renderer observation Adapter; transcript consumers select their operation rather
+than authoring progress or polling from individual rows. See [Managed Worktree Lifecycle](product-specs/codex-managed-worktree-lifecycle-behavior.md).
 
 Queued follow-ups have one deep live owner. Core persists the ordered exact-revision ledger and
 content-addressed payload evidence; Main's scoped queue Module owns hydration, terminal recovery,

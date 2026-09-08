@@ -29,6 +29,7 @@ interface Calls {
   conversationForks: number;
   worktreeForks: number;
   handoffs: number;
+  handoffInputs: { operationId: string; requestThreadId?: string; threadTitle?: string }[];
 }
 
 const makeCalls = (): Calls => ({
@@ -42,6 +43,7 @@ const makeCalls = (): Calls => ({
   conversationForks: 0,
   worktreeForks: 0,
   handoffs: 0,
+  handoffInputs: [],
 });
 
 const buildTools = (backend: "codex" | "acp", calls: Calls) =>
@@ -76,7 +78,10 @@ const buildTools = (backend: "codex" | "acp", calls: Calls) =>
       resolve: () =>
         Effect.sync(() => {
           calls.directoryReads += 1;
-          return { durable: { sessionId: "session-target" } } as never;
+          return {
+            durable: { sessionId: "session-target" },
+            summary: { threadName: "Target task", threadPreview: "" },
+          } as never;
         }),
     } as unknown as CodexThreadDirectory["Service"]),
     Effect.provideService(AutomationApplication, {
@@ -138,11 +143,15 @@ const buildTools = (backend: "codex" | "acp", calls: Calls) =>
         }),
     } as unknown as CodexProjectSessionFork["Service"]),
     Effect.provideService(CodexThreadHandoffRuntime, {
-      get: () => Effect.succeed(null),
-      launch: () =>
+      get: (operationId: string) =>
+        Effect.succeed(
+          calls.handoffInputs.find((input) => input.operationId === operationId) ?? null,
+        ),
+      launch: (input: { operationId: string; requestThreadId?: string; threadTitle?: string }) =>
         Effect.sync(() => {
           calls.handoffs += 1;
-          return {} as never;
+          calls.handoffInputs.push(input);
+          return input as never;
         }),
     } as unknown as CodexThreadHandoffRuntime["Service"]),
     Effect.provideService(CodexApplicationEventHub, {
@@ -237,4 +246,21 @@ it.effect("admits a Core-owned Codex target before sending a message", () =>
     assert.strictEqual(calls.directoryReads, 1);
     assert.strictEqual(calls.turns, 1);
   }),
+);
+
+it.effect(
+  "keeps a repeated handoff call attached to one operation and its requesting conversation",
+  () =>
+    Effect.gen(function* () {
+      const calls = makeCalls();
+      const tools = yield* buildTools("codex", calls);
+      const request = call("handoff_thread", { threadId: "thread-target" });
+      const first = yield* tools.execute(request as never);
+      const second = yield* tools.execute(request as never);
+      assert.isTrue(first.success);
+      assert.deepEqual(second, first);
+      assert.strictEqual(calls.handoffs, 1);
+      assert.strictEqual(calls.handoffInputs[0]?.requestThreadId, request.threadId);
+      assert.strictEqual(calls.handoffInputs[0]?.threadTitle, "Target task");
+    }),
 );

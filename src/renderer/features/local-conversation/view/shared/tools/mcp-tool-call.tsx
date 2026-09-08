@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { PanelRightVisibleIcon } from "@/components/shared/icons";
+import { resolveCodexWebMcpActivities } from "../../../../../../shared/codex-webmcp-tool-call";
 import { LoadingPlaceholder } from "@/components/ui/loading-placeholder";
 import { NodexTooltip } from "../../../../../components/ui/tooltip";
 import type {
@@ -24,13 +25,14 @@ import {
   AutomaticApprovalReviewRows,
   AutomaticApprovalReviewShield,
 } from "../automatic-approval-review-surface";
-import { ThreadActivityHeader, ThreadActivityShell, ToolErrorDetail } from "./tool-primitives";
+import { ThreadRichActivityHeader, ThreadActivityShell, ToolErrorDetail } from "./tool-primitives";
 import { asRecord } from "./tool-call-utils";
 import { ToolActivityIcon, resolveMcpSourceIcon } from "./tool-call-icons";
 import { resolveMcpToolActivityLabel } from "./mcp-tool-call-labels";
 import { McpCapabilityViewFrame } from "./mcp-capability-view-frame";
 import { useThreadMcpApps } from "./mcp-apps-context";
 import { ToolCallCodePanel, ToolCallRawDialog } from "./tool-call-inspection";
+import { WebMcpToolActivity } from "./webmcp-tool-activity";
 import {
   buildMcpAppSidePanelInput,
   isMcpAppHtmlTooLarge,
@@ -632,8 +634,9 @@ export function McpToolCall({
   const canExpand = payload.completed || payload.result !== null;
   const isBodyExpanded = canExpand && isExpanded;
   const header = (
-    <ThreadActivityHeader
+    <ThreadRichActivityHeader
       accessory={hasApprovalReviews ? <AutomaticApprovalReviewShield /> : null}
+      icon={<ToolActivityIcon descriptor={resolveMcpSourceIcon(item, mcpApps)} />}
       disclosure={
         canExpand
           ? {
@@ -644,15 +647,15 @@ export function McpToolCall({
             }
           : undefined
       }
-    >
-      <ToolActivityIcon descriptor={resolveMcpSourceIcon(item, mcpApps)} />
-      <CodexShimmerText
-        active={!payload.completed}
-        className="text-token-conversation-summary-leading group-hover/activity-header:text-token-foreground text-size-chat min-w-0 shrink truncate"
-      >
-        {summary}
-      </CodexShimmerText>
-    </ThreadActivityHeader>
+      summary={
+        <CodexShimmerText
+          active={!payload.completed}
+          className="text-size-chat min-w-0 shrink truncate"
+        >
+          {summary}
+        </CodexShimmerText>
+      }
+    />
   );
   const body = canExpand ? (
     <motion.div
@@ -699,5 +702,18 @@ export function McpToolCall({
     </motion.div>
   ) : null;
 
-  return <ThreadActivityShell body={body} className="group" header={header} />;
+  const webMcpActivities = resolveCodexWebMcpActivities(payload);
+  return (
+    <>
+      <ThreadActivityShell body={body} className="group" header={header} />
+      {webMcpActivities.calls.map((call, index) => (
+        <div
+          key={`${payload.callId}:webmcp:${index}:${call.name}`}
+          style={{ paddingTop: "var(--conversation-grouped-item-gap, 4px)" }}
+        >
+          <WebMcpToolActivity call={call} fallbackPageUrl={webMcpActivities.fallbackPageUrl} />
+        </div>
+      ))}
+    </>
+  );
 }

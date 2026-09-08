@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vite-plus/test";
-import { fireEvent } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../../components/ui/tooltip";
 import { THREAD_SETTINGS_STORAGE_KEY } from "../../../../../lib/codex-thread-settings";
 import { render, settleAsyncRender, textContent } from "../../../../../test/dom";
@@ -157,10 +157,62 @@ describe("CommandToolCall render state", () => {
           </CodexThreadSettingsProvider>
         </TooltipProvider>,
       );
-      expect(Boolean(textContent(view.container).includes("for 2s"))).toBe(true);
+      expect(Boolean(textContent(view.container).includes("in 2s"))).toBe(true);
     } finally {
       Date.now = originalDateNow;
     }
+  });
+
+  test("renders a declined parsed read as an inspectable command with direct authorization explanation", async () => {
+    const item = buildCommandEntry({
+      command: "cat private.txt",
+      status: "declined",
+      executionStatus: "declined",
+      exitCode: null,
+      parsedCmd: {
+        type: "read",
+        cmd: "cat private.txt",
+        name: "private.txt",
+        path: "private.txt",
+        isFinished: true,
+      },
+      commandActions: [
+        { type: "read", command: "cat private.txt", name: "private.txt", path: "private.txt" },
+      ],
+      durationMs: 5_000,
+      aggregatedOutput: "Automatic approval review denied this request.",
+    });
+    const review = buildAutomaticApprovalReviewEntry({
+      rawItem: {
+        review: { status: "denied", riskLevel: "high", rationale: "Private review rationale" },
+      },
+    });
+    const { getByRole, getByText, queryByRole, queryByText } = render(
+      <TooltipProvider>
+        <CodexThreadSettingsProvider>
+          <CommandToolCall item={item} automaticApprovalReviews={[review]} />
+        </CodexThreadSettingsProvider>
+      </TooltipProvider>,
+    );
+    const trigger = getByRole("button", {
+      name: "Command declined by auto-review: cat private.txt",
+    });
+    expect(queryByRole("link", { name: "private.txt" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(trigger);
+      await Promise.resolve();
+    });
+    expect(
+      getByRole("button", { name: "Command declined by auto-review" }).getAttribute(
+        "aria-expanded",
+      ),
+    ).toBe("true");
+    expect(
+      getByText("Requires explicit authorization because this action is considered high risk"),
+    ).toBeTruthy();
+    expect(getByText("Automatic approval review denied this request.")).toBeTruthy();
+    expect(queryByRole("button", { name: "Auto-review denied high risk" })).toBeNull();
+    expect(queryByText("Private review rationale")).toBeNull();
   });
 
   test("resolves Electron command summary labels for generic, date, background, and skill-script commands", () => {
@@ -377,6 +429,36 @@ describe("CommandToolCall render state", () => {
     );
 
     expect(textContent(container)).toBe("");
+  });
+
+  test("keeps automatic-review refusals visible without raw command details in steps mode", () => {
+    localStorage.setItem(
+      THREAD_SETTINGS_STORAGE_KEY,
+      JSON.stringify({ detailLevel: "STEPS_PROSE" }),
+    );
+    const item = buildCommandEntry({
+      command: "cat private.txt",
+      status: "declined",
+      executionStatus: "declined",
+      parsedCmd: {
+        type: "read",
+        cmd: "cat private.txt",
+        name: "private.txt",
+        path: "private.txt",
+        isFinished: true,
+      },
+    });
+    const review = buildAutomaticApprovalReviewEntry({ rawItem: { review: { status: "denied" } } });
+    const { getByText, queryByText, queryByRole } = render(
+      <TooltipProvider>
+        <CodexThreadSettingsProvider>
+          <CommandToolCall item={item} automaticApprovalReviews={[review]} />
+        </CodexThreadSettingsProvider>
+      </TooltipProvider>,
+    );
+    expect(getByText("Command declined by auto-review")).toBeTruthy();
+    expect(queryByText("cat private.txt")).toBeNull();
+    expect(queryByRole("button", { name: /Command declined/ })).toBeNull();
   });
 
   test("shows in-progress skill definition reads in steps mode", () => {

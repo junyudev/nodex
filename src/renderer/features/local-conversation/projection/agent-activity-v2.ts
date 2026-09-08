@@ -25,6 +25,7 @@ import {
   resolveExplorationSkillPathInfo,
 } from "./tool-metadata/command-actions";
 import { resolveCodexFileChangeActivity } from "../../../../shared/codex-file-change-activity";
+import { wasToolExecutionDeclinedByAutomaticReview } from "./tool-metadata/automatic-approval-review";
 
 export type ThreadAgentActivityVisibility = "hidden" | ThreadAgentActivityGrouping;
 
@@ -87,7 +88,9 @@ export function classifyThreadExecPatchWebActivityItem<
     case "exec":
       return createThreadAgentActivityItem(
         removeApprovedThreadAutomaticApprovalReviews(item),
-        "groupable",
+        wasToolExecutionDeclinedByAutomaticReview({ ...item, type: "exec" })
+          ? "standalone"
+          : "groupable",
       );
     case "fileChange": {
       const activity = resolveCodexFileChangeActivity({
@@ -97,7 +100,9 @@ export function classifyThreadExecPatchWebActivityItem<
       if (activity.visibility === "suppressed") return null;
       return createThreadAgentActivityItem(
         removeApprovedThreadAutomaticApprovalReviews(item),
-        "groupable",
+        wasToolExecutionDeclinedByAutomaticReview({ ...item, type: "fileChange" })
+          ? "standalone"
+          : "groupable",
       );
     }
     case "webSearch":
@@ -117,8 +122,6 @@ export function isThreadMcpActivityStandalone(input: {
   mcpServerStatuses: ProtocolListMcpServerStatusResponse | null;
 }): boolean {
   const payload = input.item.entry.mcpToolCall;
-  if (payload.source?.kind === "computerUse") return true;
-  if (payload.invocation.server === "computer-use") return true;
 
   return (
     resolveCodexMcpAppClassification({

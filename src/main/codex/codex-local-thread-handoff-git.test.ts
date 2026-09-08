@@ -1,3 +1,4 @@
+import type { CodexThreadHandoffBranches } from "../../shared/codex-thread-handoff";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -57,6 +58,7 @@ describe("local thread handoff Git transaction", () => {
     const fixture = createRepository();
     dirtyRepository(fixture.root);
 
+    const branches: CodexThreadHandoffBranches[] = [];
     const prepared = await prepareLocalThreadHandoff(
       {
         requestId: "handoff-to-worktree",
@@ -71,10 +73,24 @@ describe("local thread handoff Git transaction", () => {
         sourceManagedWorktreePath: null,
         destinationCheckoutRoot: null,
       },
-      options(),
+      {
+        ...options(),
+        onProgress: (_step, _status, context) => {
+          if (context) branches.push(context);
+        },
+      },
     );
 
     expect(prepared.direction).toBe("to-worktree");
+    expect(branches.length).toBeGreaterThan(0);
+    expect(
+      branches.every(
+        (context) =>
+          context.sourceBranch === "feature/handoff" &&
+          context.localBranch === "main" &&
+          context.worktreeBranch === "feature/handoff",
+      ),
+    ).toBe(true);
     expect(git(fixture.root, "branch", "--show-current")).toBe("main");
     expect(git(fixture.root, "status", "--porcelain")).toBe("");
     expect(git(prepared.destinationWorkspaceRoot, "branch", "--show-current")).toBe(
@@ -128,6 +144,7 @@ describe("local thread handoff Git transaction", () => {
       options(),
     );
 
+    const branches: CodexThreadHandoffBranches[] = [];
     const toCheckout = await prepareLocalThreadHandoff(
       {
         requestId: "handoff-to-checkout",
@@ -142,10 +159,17 @@ describe("local thread handoff Git transaction", () => {
         sourceManagedWorktreePath: toWorktree.managedWorktreePath,
         destinationCheckoutRoot: fixture.root,
       },
-      options(),
+      {
+        ...options(),
+        onProgress: (_step, _status, context) => {
+          if (context) branches.push(context);
+        },
+      },
     );
 
     expect(toCheckout.direction).toBe("to-checkout");
+    expect(branches.length).toBeGreaterThan(0);
+    expect(branches.every((context) => context.localBranch === "feature/handoff")).toBe(true);
     expect(git(fixture.root, "branch", "--show-current")).toBe("feature/handoff");
     expect(readFileSync(path.join(fixture.root, "tracked.txt"), "utf8")).toBe("dirty tracked\n");
     expect(git(toWorktree.destinationWorkspaceRoot, "branch", "--show-current")).toBe("");

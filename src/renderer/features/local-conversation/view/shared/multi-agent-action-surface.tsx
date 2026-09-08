@@ -6,7 +6,6 @@ import type {
   CodexConversationChildMembership,
   CodexConversationItem,
 } from "../../../../lib/types";
-import { semanticActivityStatusFromLifecycle } from "../../../../lib/semantic-activity-status";
 import { formatCodexModelLabel } from "../../../../lib/codex-thread-settings";
 import {
   normalizeMultiAgentActionPayload,
@@ -545,7 +544,6 @@ export function MultiAgentActionSurface({
       body={body}
       header={
         <ThreadRichActivityHeader
-          status={semanticActivityStatusFromLifecycle(resolvedStatus, "completed")}
           disclosure={{
             expanded,
             onToggle: () => setExpanded((current) => !current),

@@ -82,6 +82,7 @@ const progressFromEvent = (
   if (event.type !== "handoff-progress") return null;
   return {
     phase: event.step,
+    branchContext: event.branchContext,
     status:
       event.status === "failed"
         ? "error"

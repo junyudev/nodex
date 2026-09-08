@@ -1,3 +1,4 @@
+import type { CodexThreadHandoffSnapshot } from "./codex-thread-handoff";
 import type { DictationStreamingConnectInfo } from "./dictation-streaming";
 import type { DictationTextResult } from "./dictation-diagnostics";
 import type { ReadFileBytesInput, SaveFileInput } from "./library-files";
@@ -2162,6 +2163,10 @@ export interface IpcApi {
     args: [threadId: string];
     result: ManagedWorktreeRestoreResult;
   };
+  "codex:thread-handoffs:list": {
+    args: [];
+    result: CodexThreadHandoffSnapshot;
+  };
   "codex:pending-worktrees:list": {
     args: [];
     result: CodexPendingWorktreeEntry[];
@@ -2602,6 +2607,7 @@ export interface IpcEvents {
   "codex:scheduled-automations:changed": CodexScheduledAutomationChangedEvent;
   "codex:automation-runs:updated": CodexAutomationRunsUpdatedEvent;
   "codex:hooks:changed": CodexHooksChangedEvent;
+  "codex:thread-handoffs:changed": CodexThreadHandoffSnapshot;
   "codex:pending-worktrees:changed": CodexPendingWorktreesChangedEvent;
   "codex:pending-worktree:warning": CodexPendingWorktreeWarningEvent;
   "browser-sidebar-state": BrowserSidebarStateSnapshot;

@@ -1,3 +1,4 @@
+import type { CodexAppHandoffOperation } from "../../../../../shared/codex-thread-handoff";
 import { formatCodexScheduledAutomationRruleSummary } from "../../../../lib/codex-scheduled-automation-display";
 import { formatDynamicToolCallMarkdownFallback } from "../../../../../shared/codex-dynamic-tool-markdown";
 import { CODEX_CLIENT_THREAD_ID_PREFIX } from "../../../../../shared/codex-client-thread";
@@ -50,53 +51,55 @@ export type DynamicToolRegistryEntry = {
   continuesLiveActivityBetweenCalls?: boolean;
   standaloneInConversation?: boolean;
   summaryOnlyInConversationGroup?: boolean;
-  resolveLabel: (call: CodexDynamicToolCallView) => string | null;
+  resolveLabel: (call: CodexDynamicToolCallView, isLeadingSummaryPart?: boolean) => string | null;
   getCompletedSummaryPartKey?: (call: CodexDynamicToolCallView) => string | null;
 };
 
 const CODEX_APP_THREAD_LABELS = {
-  threadsForkActive: "Creating new task",
-  threadsForkCompleted: "Created new task",
-  threadsForkInWorktreeActive: "Creating task in new worktree",
-  threadsForkInWorktreeCompleted: "Created task in new worktree",
-  threadsCreateActive: "Creating task",
-  threadsCreateCompleted: "Created task",
-  threadsCreateInWorktreeActive: "Creating worktree task",
-  threadsCreateInWorktreeCompleted: "Created worktree task",
-  threadsListActive: "Listing tasks",
-  threadsListCompleted: "Listed tasks",
-  threadsReadActive: "Reading task",
-  threadsReadCompleted: "Read task",
+  threadsForkActive: "Forking chat",
+  threadsForkCompleted: "Forked chat",
+  threadsForkCompletedFollowing: "forked chat",
+  threadsForkInWorktreeActive: "Forking chat in new worktree",
+  threadsForkInWorktreeCompleted: "Forked chat in new worktree",
+  threadsForkInWorktreeCompletedFollowing: "forked chat in new worktree",
+  threadsCreateActive: "Creating chat",
+  threadsCreateCompleted: "Created chat",
+  threadsCreateCompletedFollowing: "created chat",
+  threadsCreateInWorktreeActive: "Creating worktree chat",
+  threadsCreateInWorktreeCompleted: "Created worktree chat",
+  threadsCreateInWorktreeCompletedFollowing: "created worktree chat",
+  threadsListActive: "Listing chats",
+  threadsListCompleted: "Listed chats",
+  threadsListCompletedFollowing: "listed chats",
+  threadsReadActive: "Reading chat",
+  threadsReadCompleted: "Read chat",
+  threadsReadCompletedFollowing: "read chat",
   threadsHandoffStatusActive: "Checking handoff status",
   threadsHandoffStatusCompleted: "Checked handoff status",
-  threadsSendMessageActive: "Sending message to task",
-  threadsSendMessageCompleted: "Sent message to task",
-  threadsSetArchivedActive: "Updating task archive",
-  threadsSetArchivedCompleted: "Updated task archive",
-  threadsSetPinnedActive: "Updating task pin",
-  threadsSetPinnedCompleted: "Updated task pin",
-  threadsSetTitleActive: "Renaming task",
-  threadsSetTitleCompleted: "Renamed task",
+  threadsHandoffStatusCompletedFollowing: "checked handoff status",
+  threadsSendMessageActive: "Sending message to chat",
+  threadsSendMessageCompleted: "Sent message to chat",
+  threadsSendMessageCompletedFollowing: "sent message to chat",
+  threadsSetArchivedActive: "Updating chat archive",
+  threadsSetArchivedCompleted: "Updated chat archive",
+  threadsSetArchivedCompletedFollowing: "updated chat archive",
+  threadsSetPinnedActive: "Updating chat pin",
+  threadsSetPinnedCompleted: "Updated chat pin",
+  threadsSetPinnedCompletedFollowing: "updated chat pin",
+  threadsSetTitleActive: "Renaming chat",
+  threadsSetTitleCompleted: "Renamed chat",
+  threadsSetTitleCompletedFollowing: "renamed chat",
 } as const satisfies Record<string, string>;
 
 type CodexAppThreadLabelKey = keyof typeof CODEX_APP_THREAD_LABELS;
 
 export type CodexAppHandoffStatus = "queued" | "running" | "success" | "warning" | "error";
 
-export interface CodexAppHandoffStep {
-  id: string;
-  label: string;
-  message: string | null;
-  status: CodexAppHandoffStatus;
-}
-
 export interface CodexAppHandoffResult {
-  destinationHostDisplayName: string | null;
-  message: string | null;
+  destinationHostDisplayName: string;
   operationId: string;
   status: CodexAppHandoffStatus;
-  steps: CodexAppHandoffStep[];
-  threadTitle: string | null;
+  threadTitle: string;
 }
 
 export interface CodexAppHandoffRenderState {
@@ -104,6 +107,7 @@ export interface CodexAppHandoffRenderState {
   active: boolean;
   label: string;
   result: CodexAppHandoffResult | null;
+  operation: CodexAppHandoffOperation | null;
 }
 
 function isKnownHandoffStatus(value: unknown): value is CodexAppHandoffStatus {
@@ -116,20 +120,34 @@ function isKnownHandoffStatus(value: unknown): value is CodexAppHandoffStatus {
   );
 }
 
-function resolveSettingsToolLabel(call: CodexDynamicToolCallView): string | null {
-  if (call.tool === "read_settings") return call.completed ? "Read settings" : "Reading settings";
-  if (call.tool === "write_settings")
-    return call.completed ? "Updated settings" : "Updating settings";
-  return null;
+function resolveSettingsToolLabel(
+  call: CodexDynamicToolCallView,
+  isLeadingSummaryPart = true,
+): string | null {
+  if (call.tool === "read_settings") {
+    if (!call.completed) return "Reading settings";
+    return isLeadingSummaryPart ? "Read settings" : "read settings";
+  }
+  if (call.tool !== "write_settings") return null;
+  if (call.completed && call.success === false) {
+    return isLeadingSummaryPart ? "Couldn't update settings" : "couldn't update settings";
+  }
+  if (call.completed) return isLeadingSummaryPart ? "Updated settings" : "updated settings";
+  const args = asRecord(call.arguments);
+  return args && "config" in args ? "Waiting for approval" : "Updating settings";
 }
 
-function resolveChromeTabContextLabel(call: CodexDynamicToolCallView): string | null {
+function resolveChromeTabContextLabel(
+  call: CodexDynamicToolCallView,
+  isLeadingSummaryPart = true,
+): string | null {
   if (parseChromeTabContextTabId(call) === null) return null;
-  return call.completed ? "Read tab" : "Reading tab";
+  if (!call.completed) return "Reading tab";
+  return isLeadingSummaryPart ? "Read tab" : "read tab";
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null) return null;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
 }
 
@@ -543,7 +561,7 @@ export function applyAutomationUpdateMutationResult(
   return state;
 }
 
-function parseCodexAppHandoffArguments(
+export function parseCodexAppHandoffArguments(
   call: CodexDynamicToolCallView,
 ): { destinationHostId: string | null; threadId: string } | null {
   const args = asRecord(call.arguments);
@@ -555,27 +573,6 @@ function parseCodexAppHandoffArguments(
   };
 }
 
-function parseCodexAppHandoffSteps(value: unknown): CodexAppHandoffStep[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item): CodexAppHandoffStep[] => {
-    const record = asRecord(item);
-    if (!record) return [];
-    const id = getRequiredString(record, "id");
-    const status = record.status;
-    if (!id || !isKnownHandoffStatus(status)) return [];
-    const label = getRequiredString(record, "label") ?? id;
-    const message = getRequiredString(record, "message");
-    return [
-      {
-        id,
-        label,
-        message,
-        status,
-      },
-    ];
-  });
-}
-
 export function parseCodexAppHandoffResult(
   call: CodexDynamicToolCallView,
 ): CodexAppHandoffResult | null {
@@ -585,13 +582,12 @@ export function parseCodexAppHandoffResult(
   const operationId = getRequiredString(parsed, "operationId");
   const threadTitle = getRequiredString(parsed, "threadTitle");
   const status = parsed.status;
-  if (!operationId || !isKnownHandoffStatus(status)) return null;
+  if (!operationId || !threadTitle || !destinationHostDisplayName || !isKnownHandoffStatus(status))
+    return null;
   return {
     destinationHostDisplayName,
-    message: getRequiredString(parsed, "message"),
     operationId,
     status,
-    steps: parseCodexAppHandoffSteps(parsed.steps),
     threadTitle,
   };
 }
@@ -602,53 +598,34 @@ function isTerminalHandoffStatus(status: CodexAppHandoffStatus): boolean {
 
 export function resolveCodexAppHandoffRenderState(
   call: CodexDynamicToolCallView,
+  operation: CodexAppHandoffOperation | null = null,
 ): CodexAppHandoffRenderState {
-  const result = call.success === true ? parseCodexAppHandoffResult(call) : null;
-  const completed = result ? isTerminalHandoffStatus(result.status) : call.completed;
-  const success = result
-    ? result.status === "error"
+  const result = call.completed && call.success === true ? parseCodexAppHandoffResult(call) : null;
+  const completed = operation
+    ? isTerminalHandoffStatus(operation.status)
+    : result
+      ? isTerminalHandoffStatus(result.status)
+      : call.completed;
+  const success = operation
+    ? operation.status === "error"
       ? false
-      : result.status === "success" || result.status === "warning"
+      : operation.status === "success" || operation.status === "warning"
     : call.success;
-
   const activityStatus = !completed ? "running" : success === false ? "failed" : "completed";
-
-  if (!result) {
-    return {
-      activityStatus,
-      active: !completed,
-      label: !completed
-        ? "Handing off task"
-        : success === false
-          ? "Failed to hand off task"
-          : "Handed off task",
-      result,
-    };
-  }
-
-  if (!result.threadTitle || !result.destinationHostDisplayName) {
-    return {
-      activityStatus,
-      active: !completed,
-      label: !completed
-        ? "Handing off task"
-        : success === false
-          ? "Failed to hand off task"
-          : "Handed off task",
-      result,
-    };
-  }
-
-  const label = !completed
-    ? `Handing off ${result.threadTitle} to ${result.destinationHostDisplayName}`
-    : success === false
-      ? `Failed to hand off ${result.threadTitle} to ${result.destinationHostDisplayName}`
-      : `Handed off ${result.threadTitle} to ${result.destinationHostDisplayName}`;
+  const threadTitle = operation?.threadTitle ?? result?.threadTitle ?? null;
+  const destination =
+    operation?.destinationHostDisplayName ?? result?.destinationHostDisplayName ?? null;
+  const target = threadTitle && destination ? `${threadTitle} to ${destination}` : "chat";
   return {
     activityStatus,
     active: !completed,
-    label,
+    label: !completed
+      ? `Handing off ${target}`
+      : success === false
+        ? `Failed to hand off ${target}`
+        : `Handed off ${target}`,
     result,
+    operation,
   };
 }
 
@@ -704,10 +681,18 @@ function resolveCodexAppThreadLabelKey(
   }
 }
 
-function resolveCodexAppThreadToolLabel(call: CodexDynamicToolCallView): string | null {
+function resolveCodexAppThreadToolLabel(
+  call: CodexDynamicToolCallView,
+  isLeadingSummaryPart = true,
+): string | null {
   if (call.tool === "handoff_thread") return resolveCodexAppHandoffLabel(call);
   const key = resolveCodexAppThreadLabelKey(call);
-  return key ? CODEX_APP_THREAD_LABELS[key] : null;
+  if (!key) return null;
+  const followingKey = `${key}Following`;
+  if (!isLeadingSummaryPart && followingKey in CODEX_APP_THREAD_LABELS) {
+    return CODEX_APP_THREAD_LABELS[followingKey as CodexAppThreadLabelKey];
+  }
+  return CODEX_APP_THREAD_LABELS[key];
 }
 
 function resolveCodexAppThreadSummaryKey(call: CodexDynamicToolCallView): string | null {
@@ -917,8 +902,11 @@ export function resolveCodexAppMetaThreadToolLabel(call: CodexDynamicToolCallVie
   return entry?.rendererKind === "codexAppThread" ? entry.resolveLabel(call) : null;
 }
 
-export function resolveDynamicToolRegistryLabel(call: CodexDynamicToolCallView): string | null {
-  return getDynamicToolRegistryEntry(call)?.resolveLabel(call) ?? null;
+export function resolveDynamicToolRegistryLabel(
+  call: CodexDynamicToolCallView,
+  isLeadingSummaryPart = true,
+): string | null {
+  return getDynamicToolRegistryEntry(call)?.resolveLabel(call, isLeadingSummaryPart) ?? null;
 }
 
 export type CodexAppCreateThreadResult =

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "vite-plus/test";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import type {
   CodexMcpToolCallView,
@@ -18,6 +18,7 @@ import { createTestQueryClient, TestQueryProvider } from "../../../../../test/qu
 import { queryKeys } from "../../../../../lib/query-keys";
 import { CODEX_BROWSER_USE_CHROME_LOGO_DATA_URL } from "../../../../../../shared/codex-mcp-tool-call";
 import { McpToolCall } from "./mcp-tool-call";
+import { WebMcpToolActivity } from "./webmcp-tool-activity";
 import {
   buildMcpAppSidePanelInput,
   resolveMcpWidgetMetadata,
@@ -151,6 +152,128 @@ describe("McpToolCall", () => {
     });
   });
 
+  test("uses a built-in website identity without requesting a remote favicon", async () => {
+    const view = renderMcp(
+      <WebMcpToolActivity
+        call={{ kind: "invokeTool", name: "search_issues", sourceHostname: "github.com" }}
+        fallbackPageUrl="https://example.com/"
+      />,
+    );
+    expect(await view.findByRole("button", { name: "Search issues" })).toBeTruthy();
+    expect(view.container.querySelector("img")).toBeNull();
+  });
+
+  test("preserves the full producer-bounded website result without a second preview truncation", async () => {
+    const output = { description: "product ".repeat(6_000), end: "last product" };
+    const view = renderMcp(
+      <WebMcpToolActivity
+        call={{ kind: "invokeTool", name: "read_catalog", outputJson: JSON.stringify(output) }}
+        fallbackPageUrl={null}
+      />,
+    );
+    const disclosure = view.getByRole("button", { name: "Read catalog" });
+    await act(async () => {
+      fireEvent.click(disclosure);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(disclosure.getAttribute("aria-expanded")).toBe("true"));
+    const result = view.container.querySelectorAll("pre")[1];
+    expect(JSON.parse(result?.textContent ?? "")).toEqual(output);
+    expect(view.queryByRole("button", { name: /View full/ })).toBeNull();
+  });
+
+  test("renders completed website subcalls with independent disclosure and JSON truncation semantics", async () => {
+    const payload = buildMcpView({
+      source: { kind: "browserUse", backend: "iab" },
+      invocation: { server: "node_repl", tool: "js", arguments: { title: "Search website" } },
+      result: {
+        type: "success",
+        content: [],
+        structuredContent: null,
+        raw: {
+          content: [],
+          structuredContent: null,
+          _meta: {
+            "codex/toolSurface": {
+              kind: "browserUse",
+              backend: "iab",
+              screenshot: { pageUrl: "https://fallback.example/page" },
+              webMcpCalls: [
+                { kind: "listTools", name: "webmcp_list_tools", outputJson: "[]" },
+                {
+                  kind: "invokeTool",
+                  name: "search_API",
+                  sourceHostname: "tools.example",
+                  inputJson: '{"query":"lamp"}',
+                  outputJson: '{"found":3}',
+                },
+                {
+                  kind: "invokeTool",
+                  name: "read_reviews",
+                  title: "Read reviews",
+                  inputJson: '{"ids":[1,…',
+                  inputTruncated: true,
+                  outputJson: '{"reviews":[…',
+                  outputTruncated: true,
+                },
+              ],
+            },
+          },
+        },
+      },
+    });
+    const view = renderMcp(<McpToolCall item={buildMcpEntry({ mcpToolCall: payload })} />);
+    const parent = await view.findByRole("button", { name: "Search website" });
+    const listing = view.getByRole("button", { name: "Listed website tools" });
+    const search = view.getByRole("button", { name: "Search API" });
+    const reviews = view.getByRole("button", { name: "Read reviews" });
+    expect(parent.getAttribute("aria-expanded")).toBe("false");
+    expect(listing.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => {
+      fireEvent.click(search);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(search.getAttribute("aria-expanded")).toBe("true"));
+    expect(parent.getAttribute("aria-expanded")).toBe("false");
+    expect(listing.getAttribute("aria-expanded")).toBe("false");
+    const definition = view.getByText(
+      (_, element) =>
+        element?.tagName === "PRE" &&
+        element.textContent ===
+          JSON.stringify(
+            { name: "search_API", website: "tools.example", input: { query: "lamp" } },
+            null,
+            2,
+          ),
+    );
+    expect(JSON.parse(definition.textContent ?? "")).toEqual({
+      name: "search_API",
+      website: "tools.example",
+      input: { query: "lamp" },
+    });
+    await act(async () => {
+      fireEvent.click(reviews);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(reviews.getAttribute("aria-expanded")).toBe("true"));
+    expect(view.getByText("Tool (input truncated)")).toBeTruthy();
+    expect(view.getByText("Result (truncated)")).toBeTruthy();
+    const truncated = view.getByText(
+      (_, element) =>
+        element?.tagName === "PRE" &&
+        element.textContent?.includes('"inputTruncated": true') === true,
+    );
+    expect(JSON.parse(truncated.textContent ?? "").input).toBe('{"ids":[1,…');
+    expect(view.getByText('{"reviews":[…')).toBeTruthy();
+    const imageSources = [...view.container.querySelectorAll("img")].map((image) => image.src);
+    expect(imageSources).toContain(
+      "https://www.google.com/s2/favicons?domain=https%3A%2F%2Ftools.example&sz=32",
+    );
+    expect(imageSources).toContain(
+      "https://www.google.com/s2/favicons?domain=https%3A%2F%2Ffallback.example&sz=32",
+    );
+  });
+
   test("scopes MCP app resource reads to the originating tool call", async () => {
     const readCalls: unknown[] = [];
     const resourceResponse: ProtocolMcpResourceReadResponse = {
@@ -247,8 +370,7 @@ describe("McpToolCall", () => {
     );
     await settleAsyncRender();
 
-    const summary = textContent(getByRole("button", { name: /Query docs/i }));
-    expect(summary).toBe("Query docs");
+    expect(getByRole("button", { name: "Query docs" })).toBeDefined();
     expect(textContent(container).includes("Called")).toBe(false);
     expect(textContent(container).includes("tool from Context 7")).toBe(false);
   });
@@ -427,9 +549,13 @@ describe("McpToolCall", () => {
 
     const summaryButton = getByRole("button", { name: /Resolve library id/i });
     expect(summaryButton.getAttribute("aria-expanded") ?? "").toBe("false");
-    expect(Boolean(summaryButton.querySelector(".loading-shimmer-pure-text"))).toBe(true);
+    const summary = document.getElementById(summaryButton.getAttribute("aria-labelledby") ?? "");
+    expect(Boolean(summary?.querySelector('[data-codex-shimmer="cadenced"]'))).toBe(true);
 
-    fireEvent.click(summaryButton);
+    await act(async () => {
+      fireEvent.click(summaryButton);
+      await Promise.resolve();
+    });
     await waitFor(() => {
       expect(summaryButton.getAttribute("aria-expanded") ?? "").toBe("true");
     });
@@ -458,8 +584,7 @@ describe("McpToolCall", () => {
     );
     await settleAsyncRender();
 
-    const summary = textContent(getByRole("button", { name: /Inspect package metadata/i }));
-    expect(summary).toBe("Inspect package metadata");
+    expect(getByRole("button", { name: "Inspect package metadata" })).toBeDefined();
   });
 
   test("preserves MCP acronyms in generic standalone labels", async () => {
@@ -481,8 +606,7 @@ describe("McpToolCall", () => {
     );
     await settleAsyncRender();
 
-    const summary = textContent(getByRole("button", { name: /List MCP resources/i }));
-    expect(summary).toBe("List MCP resources");
+    expect(getByRole("button", { name: "List MCP resources" })).toBeDefined();
   });
 
   test("uses canonical browser-source labels and icons", async () => {
@@ -510,10 +634,8 @@ describe("McpToolCall", () => {
     );
     await settleAsyncRender();
 
-    expect(textContent(getChromeRole("button", { name: /Used Chrome/i }))).toBe("Used Chrome");
-    expect(textContent(getBrowserRole("button", { name: /Used the browser/i }))).toBe(
-      "Used the browser",
-    );
+    expect(getChromeRole("button", { name: "Used Chrome" })).toBeDefined();
+    expect(getBrowserRole("button", { name: "Used the browser" })).toBeDefined();
     expect(chromeContainer.querySelector("img")?.getAttribute("src")).toBe(
       CODEX_BROWSER_USE_CHROME_LOGO_DATA_URL,
     );

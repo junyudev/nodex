@@ -539,6 +539,16 @@ export function createCodexWorktreeWorkerRequestMessage(input: {
   return message;
 }
 
+function isHandoffBranchContext(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnlyKeys(value, ["sourceBranch", "localBranch", "worktreeBranch"]) &&
+    ["sourceBranch", "localBranch", "worktreeBranch"].every((key) =>
+      isNullableString(value[key], 1_024),
+    )
+  );
+}
+
 function isWorkerEvent(value: unknown): value is CodexWorktreeWorkerEvent {
   if (!isRecord(value) || !isOperation(value.operation)) return false;
   if (value.type === "setup-started") return value.operation === "create";
@@ -553,6 +563,7 @@ function isWorkerEvent(value: unknown): value is CodexWorktreeWorkerEvent {
         value.operation === "rollback-handoff" ||
         value.operation === "export-handoff" ||
         value.operation === "import-handoff") &&
+      (value.branchContext === undefined || isHandoffBranchContext(value.branchContext)) &&
       typeof value.step === "string" &&
       (CODEX_WORKTREE_HANDOFF_STEPS as readonly string[]).includes(value.step) &&
       (value.status === "started" ||

@@ -5,7 +5,6 @@ import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { reviewDiffPreferencesAtom } from "@/features/review/model/review-view-state";
 import { useScopedAtomValue } from "@/lib/maitai";
 import type { CodexVisualizationActivity } from "../../../../../../shared/types";
-import { semanticActivityStatusFromLifecycle } from "../../../../../lib/semantic-activity-status";
 import {
   buildCodexFileChangePatchRows,
   canParseCodexFileChangeInline,
@@ -46,6 +45,7 @@ import {
 } from "./diff-file-shared";
 import { InlineFileDiff } from "./inline-file-diff";
 import { semanticToolIcon, ToolActivityIcon } from "./tool-call-icons";
+import { wasToolExecutionDeclinedByAutomaticReview } from "../../../projection/tool-metadata/automatic-approval-review";
 
 interface FileChangeToolCallProps {
   item: CodexTranscriptEntry;
@@ -60,7 +60,7 @@ interface FileChangeToolCallProps {
 const EMPTY_AUTOMATIC_APPROVAL_REVIEWS: readonly CodexTranscriptEntry[] = [];
 
 type FileChangeRowAction = CodexFileChangePatchAction;
-type FileChangeRowState = CodexFileChangeDisplayStatus;
+type FileChangeRowState = CodexFileChangeDisplayStatus | "auto-review-declined";
 type FileChangeRowPreview =
   | {
       kind: "diff";
@@ -94,7 +94,17 @@ interface FileChangeRowModel {
 function resolveFileChangeStatus(
   item: CodexTranscriptEntry,
   isTurnCancelled: boolean,
-): CodexFileChangeDisplayStatus {
+  automaticApprovalReviews: readonly CodexTranscriptEntry[],
+): FileChangeRowState {
+  if (
+    wasToolExecutionDeclinedByAutomaticReview({
+      type: "fileChange",
+      entry: item,
+      automaticApprovalReviews,
+    })
+  ) {
+    return "auto-review-declined";
+  }
   return resolveCodexFileChangeDisplayStatus({
     success: item.fileChange?.success,
     approvalRequestId: item.approvalRequestId,
@@ -135,7 +145,7 @@ function resolveRowLabels(
     };
   }
 
-  if (state === "rejected") {
+  if (state === "rejected" || state === "auto-review-declined") {
     return {
       label: "Rejected",
       showActionLabel: true,
@@ -215,7 +225,7 @@ function buildFileChangeRow(
 ): FileChangeRowModel {
   const unifiedDiff = showDiffDetails ? patchRow.unifiedDiff : null;
   const fileDiff = parseSingleFilePatch(unifiedDiff);
-  const state = resolveFileChangeStatus(item, isTurnCancelled);
+  const state = resolveFileChangeStatus(item, isTurnCancelled, automaticApprovalReviews);
   const labels = resolveRowLabels(patchRow.action, state);
   const preview: FileChangeRowPreview =
     fileDiff && unifiedDiff
@@ -551,10 +561,14 @@ function FileChangeRow({
     )
   ) : null;
   const hasApprovalReviews = row.automaticApprovalReviews.length > 0;
+  const wasDeclinedByAutoReview = row.state === "auto-review-declined";
   const bodyContent = (
     <div ref={row.state === "streaming" ? undefined : elementRef}>
       {hasApprovalReviews ? (
-        <AutomaticApprovalReviewRows items={row.automaticApprovalReviews} />
+        <AutomaticApprovalReviewRows
+          items={row.automaticApprovalReviews}
+          isDeclined={wasDeclinedByAutoReview}
+        />
       ) : null}
       <PatchFrame
         row={row}
@@ -566,7 +580,14 @@ function FileChangeRow({
       />
     </div>
   );
-  const summary = (
+  const summary = wasDeclinedByAutoReview ? (
+    <span className="select-none">
+      File change declined by auto-review:{" "}
+      <span className="text-token-text-secondary">
+        <PatchPathLink displayPath={row.displayPath} onOpen={openCollapsedFile} />
+      </span>
+    </span>
+  ) : (
     <>
       {actionLabel}
       {!useExpandedSettledHeader ? (
@@ -592,7 +613,7 @@ function FileChangeRow({
   const accessory = (
     <>
       {statsAccessory}
-      {hasApprovalReviews ? <AutomaticApprovalReviewShield /> : null}
+      {hasApprovalReviews && !wasDeclinedByAutoReview ? <AutomaticApprovalReviewShield /> : null}
     </>
   );
   const disclosure = row.canExpand
@@ -609,8 +630,9 @@ function FileChangeRow({
       accessory={accessory}
       className="text-token-conversation-body"
       disclosure={disclosure}
-      icon={summaryIcon}
-      status={semanticActivityStatusFromLifecycle(row.state, "completed")}
+      icon={
+        wasDeclinedByAutoReview ? <AutomaticApprovalReviewShield tone="warning" /> : summaryIcon
+      }
       summary={summary}
       testId="file-change-row-header"
     />
@@ -680,7 +702,7 @@ export function FileChangeToolCall({
   );
   const diffHostStyle = useMemo(() => getNodexDiffHostStyle(resolved), [resolved]);
   const diffHostClassName = `${NODEX_DIFF_HOST_CLASS} overflow-y-auto`;
-  const state = resolveFileChangeStatus(item, isTurnCancelled);
+  const state = resolveFileChangeStatus(item, isTurnCancelled, automaticApprovalReviews);
   const activity = resolveCodexFileChangeActivity({
     status: item.status,
     fileChange: item.fileChange,
@@ -689,11 +711,19 @@ export function FileChangeToolCall({
     item.fileChange?.visualizationActivities ?? [],
   );
   const showVisualization =
-    visualizationKind !== null && state !== "stopped" && state !== "rejected";
+    visualizationKind !== null &&
+    state !== "stopped" &&
+    state !== "rejected" &&
+    state !== "auto-review-declined";
   const summaryIcon = <ToolActivityIcon descriptor={semanticToolIcon("edit-files")} />;
 
   if (rows.length === 0 && !showVisualization) {
-    if (activity.visibility !== "active" || state === "stopped" || state === "rejected")
+    if (
+      activity.visibility !== "active" ||
+      state === "stopped" ||
+      state === "rejected" ||
+      state === "auto-review-declined"
+    )
       return null;
     return (
       <div className="text-size-chat text-token-description-foreground/80">

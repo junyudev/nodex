@@ -906,6 +906,7 @@ vi.mock("@/lib/api", () => {
     subscribeDesktopNotificationActions: () => () => undefined,
     subscribeCodexScheduledAutomationChanges: () => () => undefined,
     subscribeCodexAutomationRunsUpdates: () => () => undefined,
+    subscribeCodexThreadHandoffsChanged: () => () => undefined,
     subscribeCodexPendingWorktreesChanged: () => () => undefined,
     subscribeCodexPendingWorktreeWarnings: (
       listener: (event: CodexPendingWorktreeWarningEvent) => void,

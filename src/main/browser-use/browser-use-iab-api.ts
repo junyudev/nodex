@@ -311,6 +311,11 @@ class BrowserUseIabApiState implements BrowserUseIabApi {
         ],
         tab: [
           {
+            id: "webmcp",
+            description:
+              "Fetch page-defined WebMCP tools bound to the current document, then call them through the returned object.",
+          },
+          {
             id: "pageAssets",
             description: "Inspect assets observed in the current page.",
           },

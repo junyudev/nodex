@@ -336,11 +336,14 @@ describe("tool-call icon helpers", () => {
     expect(visualization?.kind === "semantic" ? visualization.icon : "").toBe("visualization");
   });
 
-  test("uses the automatic-review semantic icon for grouped review activity", () => {
+  test.each([
+    ["inProgress", "automatic-review"],
+    ["denied", "automatic-review-denied"],
+  ] as const)("uses the %s review's semantic icon", (status, icon) => {
     const entry = buildEntry({
       semanticKind: "automaticApprovalReview",
       status: "inProgress",
-      rawItem: { review: { status: "inProgress" } },
+      rawItem: { review: { status } },
     }) as CodexConversationItem;
     const descriptor = resolveToolActivityEntryIcon(
       {
@@ -357,7 +360,7 @@ describe("tool-call icon helpers", () => {
     );
 
     expect(descriptor?.kind).toBe("semantic");
-    expect(descriptor?.kind === "semantic" ? descriptor.icon : "").toBe("automatic-review");
+    expect(descriptor?.kind === "semantic" ? descriptor.icon : "").toBe(icon);
   });
 
   test("web search row resolver falls back to the semantic globe", () => {

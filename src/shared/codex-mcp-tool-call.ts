@@ -1,4 +1,5 @@
 import type { TurnStatus } from "@nodex/codex-app-server-protocol/v2/TurnStatus";
+import { isCodexBrowserMcpServer } from "./codex-webmcp-tool-call";
 import type {
   CodexMcpToolCallAnnotations,
   CodexMcpToolCallContentBlock,
@@ -53,6 +54,7 @@ const SOURCE_ACRONYMS = new Set([
 ]);
 const SOURCE_BRANDS = new Map([
   ["openai", "OpenAI"],
+  ["openaideveloperdocs", "OpenAI Developer Docs"],
   ["openapi", "OpenAPI"],
   ["github", "GitHub"],
   ["pagerduty", "PagerDuty"],
@@ -383,7 +385,7 @@ function isChromeNativeAppReference(
   );
 }
 
-function formatSourceWord(word: string, index: number): string {
+function formatSourceWord(word: string, index: number, style: "title" | "sentence"): string {
   const upper = word.toUpperCase();
   if (SOURCE_ACRONYMS.has(upper)) return upper;
   if (word.toLowerCase().endsWith("s")) {
@@ -394,16 +396,20 @@ function formatSourceWord(word: string, index: number): string {
   const lower = word.toLowerCase();
   const branded = SOURCE_BRANDS.get(lower);
   if (branded !== undefined) return branded;
+  if (style === "sentence" && index > 0) return lower;
   if (index > 0 && SOURCE_LOWERCASE_TITLE_WORDS.has(lower)) return lower;
   return `${lower.slice(0, 1).toUpperCase()}${lower.slice(1)}`;
 }
 
-export function formatCodexMcpVisualSourceName(value: string): string {
+export function formatCodexMcpVisualSourceName(
+  value: string,
+  options: { style?: "title" | "sentence" } = {},
+): string {
   return value
     .replace(/[_-]+/g, " ")
     .split(/\s+/)
     .filter((part) => part.length > 0)
-    .map(formatSourceWord)
+    .map((word, index) => formatSourceWord(word, index, options.style ?? "title"))
     .join(" ");
 }
 
@@ -555,7 +561,7 @@ export function resolveCodexMcpToolCallSource(
   serverName: string,
   resultMeta: ProtocolMcpToolCallResult["_meta"] | null,
 ): CodexMcpToolCallSource | null {
-  if (serverName !== "node_repl") return null;
+  if (!isCodexBrowserMcpServer(serverName)) return null;
 
   const meta = asRecord(resultMeta);
   const surface = asRecord(meta?.["codex/toolSurface"]);

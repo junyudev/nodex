@@ -349,3 +349,38 @@ describe("worktree worker protocol", () => {
     ).toBe(true);
   });
 });
+
+test("validates handoff branch context before forwarding worker progress", () => {
+  const message = {
+    type: "event",
+    id: "handoff:1",
+    operation: "prepare-handoff",
+    event: {
+      operation: "prepare-handoff",
+      type: "handoff-progress",
+      step: "checkout-local-branch",
+      status: "started",
+      branchContext: {
+        sourceBranch: "feature/task",
+        localBranch: "main",
+        worktreeBranch: "feature/task",
+      },
+    },
+  };
+  expect(isCodexWorktreeWorkerThreadMessage(message)).toBe(true);
+  expect(
+    isCodexWorktreeWorkerThreadMessage({
+      ...message,
+      event: {
+        ...message.event,
+        branchContext: { ...message.event.branchContext, localBranch: 123 },
+      },
+    }),
+  ).toBe(false);
+  expect(
+    isCodexWorktreeWorkerThreadMessage({
+      ...message,
+      event: { ...message.event, branchContext: { sourceBranch: "main" } },
+    }),
+  ).toBe(false);
+});

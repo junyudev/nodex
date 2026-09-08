@@ -258,6 +258,29 @@ describe("agent activity v2 type boundary", () => {
     expect(classifiedPatch?.item === patch).toBe(true);
   });
 
+  test.each([
+    ["exec", "declined", "denied", "standalone"],
+    ["exec", "completed", "denied", "groupable"],
+    ["exec", "failed", "denied", "groupable"],
+    ["exec", "declined", "approved", "groupable"],
+    ["exec", "declined", null, "groupable"],
+    ["fileChange", "declined", "denied", "standalone"],
+    ["fileChange", "completed", "denied", "groupable"],
+    ["fileChange", "failed", "denied", "groupable"],
+    ["fileChange", "declined", "approved", "groupable"],
+    ["fileChange", "declined", null, "groupable"],
+  ] as const)("classifies %s %s with review %s as %s", (type, status, reviewStatus, grouping) => {
+    const original = buildTranscriptBlock(type);
+    const item = {
+      ...original,
+      entry: { ...original.entry, status, executionStatus: status },
+      automaticApprovalReviews: reviewStatus
+        ? [buildConversationItem("review", { rawItem: { review: { status: reviewStatus } } })]
+        : undefined,
+    };
+    expect(classifyThreadExecPatchWebActivityItem(item)?.grouping).toBe(grouping);
+  });
+
   test("removes the review property when every attached review is approved", () => {
     const exec = buildTranscriptBlock("exec", {
       automaticApprovalReviews: [
@@ -305,7 +328,7 @@ describe("agent activity v2 type boundary", () => {
     expect(classifyThreadExecPatchWebActivityItem(emptyPatch)).toBe(null);
   });
 
-  test("makes computer-use source and server calls standalone barriers", () => {
+  test("groups computer-use and browser calls without an app widget", () => {
     const sourceCall = buildMcpBlock({
       server: "node_repl",
       source: { kind: "computerUse", app: null },
@@ -316,8 +339,8 @@ describe("agent activity v2 type boundary", () => {
       source: { kind: "browserUse", backend: "chrome" },
     });
 
-    expect(classifyThreadMcpActivityItem(sourceCall, null)?.grouping).toBe("standalone");
-    expect(classifyThreadMcpActivityItem(serverCall, null)?.grouping).toBe("standalone");
+    expect(classifyThreadMcpActivityItem(sourceCall, null)?.grouping).toBe("groupable");
+    expect(classifyThreadMcpActivityItem(serverCall, null)?.grouping).toBe("groupable");
     expect(classifyThreadMcpActivityItem(browserCall, null)?.grouping).toBe("groupable");
   });
 
