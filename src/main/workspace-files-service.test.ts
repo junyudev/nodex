@@ -8,6 +8,7 @@ import {
   readWorkspaceFileBinary,
   readWorkspaceFileMetadata,
   searchWorkspaceFiles,
+  saveWorkspaceFileCopy,
   toWorkspaceFileIpcError,
   WorkspaceFileUserError,
   writeWorkspaceFile,
@@ -23,6 +24,25 @@ async function makeTempWorkspace(): Promise<string> {
 
 afterEach(async () => {
   await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+test("save copy preserves binary bytes, cancellation, and the source through symlinks", async () => {
+  const root = await makeTempWorkspace();
+  const source = join(root, "source.bin");
+  const destination = join(root, "copy.bin");
+  const bytes = Buffer.from([0, 255, 128, 1, 0, 3]);
+  await writeFile(source, bytes);
+  expect(
+    await saveWorkspaceFileCopy({ path: source }, async (name) => {
+      expect(name).toBe("source.bin");
+      return destination;
+    }),
+  ).toEqual({ path: destination });
+  expect(await readFile(destination)).toEqual(bytes);
+  expect(await saveWorkspaceFileCopy({ path: source }, async () => null)).toEqual({ path: null });
+  await symlink(source, join(root, "alias.bin"));
+  await saveWorkspaceFileCopy({ path: source }, async () => join(root, "alias.bin"));
+  expect(await readFile(source)).toEqual(bytes);
 });
 
 describe("workspace-files-service directory browsing", () => {

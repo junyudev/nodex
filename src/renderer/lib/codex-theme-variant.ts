@@ -23,6 +23,7 @@ interface BaseTheme {
   opaqueWindows: boolean;
   semanticColors: {
     diffAdded: string;
+    diffModified: string;
     diffRemoved: string;
     skill: string;
   };
@@ -98,6 +99,7 @@ const DEFAULT_THEMES: Record<ThemeVariant, BaseTheme> = {
     opaqueWindows: false,
     semanticColors: {
       diffAdded: "#40c977",
+      diffModified: "#ff8549",
       diffRemoved: "#fa423e",
       skill: "#ad7bf9",
     },
@@ -117,6 +119,7 @@ const DEFAULT_THEMES: Record<ThemeVariant, BaseTheme> = {
     opaqueWindows: false,
     semanticColors: {
       diffAdded: "#00a240",
+      diffModified: "#923b0f",
       diffRemoved: "#ba2623",
       skill: "#924ff7",
     },
@@ -198,6 +201,7 @@ export function getCodexThemeVariantStyle(variant: ThemeVariant): Record<string,
     "--color-border-heavy": derived.borderHeavy,
     "--color-border-light": derived.borderLight,
     "--color-decoration-added": prepared.theme.semanticColors.diffAdded,
+    "--color-decoration-modified": prepared.theme.semanticColors.diffModified,
     "--color-decoration-deleted": prepared.theme.semanticColors.diffRemoved,
     "--color-editor-added": toRgba(
       parseHex(prepared.theme.semanticColors.diffAdded),

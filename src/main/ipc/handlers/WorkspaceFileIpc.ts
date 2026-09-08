@@ -27,6 +27,7 @@ import { MainConfig } from "../../app/MainConfig";
 import { type FileWatchError, type FileWatchHost, localFileWatchHost } from "../../file-watch-host";
 import { safeSendToWebContents } from "../../ipc-safe-send";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
+import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../../runtime-limits";
@@ -36,6 +37,7 @@ import {
   readWorkspaceFileBinary,
   readWorkspaceFileMetadata,
   searchWorkspaceFiles,
+  saveWorkspaceFileCopy,
   toWorkspaceFileIpcError,
   WorkspaceFileUserError,
   writeWorkspaceFile,
@@ -86,11 +88,12 @@ class WorkspaceFileWatch extends Context.Service<
 
 export const live = (
   options: WorkspaceFileIpcOptions = {},
-): Layer.Layer<never, never, ElectronIpc | MainConfig | WindowRuntime> =>
+): Layer.Layer<never, never, ElectronIpc | ElectronDesktop | MainConfig | WindowRuntime> =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const config = yield* MainConfig;
       const ipc = yield* ElectronIpc;
+      const desktop = yield* ElectronDesktop;
       const windows = yield* WindowRuntime;
       const watchHost = options.fileWatchHost ?? localFileWatchHost;
       const makeSubscriptionId = options.makeSubscriptionId ?? randomUUID;
@@ -209,6 +212,14 @@ export const live = (
       yield* ipc.handlePlainCommand("write-file", (event, input: unknown) =>
         run("write-file", event, () =>
           writeWorkspaceFile(WorkspaceFileWriteInputSchema.parse(input)),
+        ),
+      );
+      yield* ipc.handlePlainCommand("workspace-file:save-copy", (event, input: unknown) =>
+        run("save-file-copy", event, () =>
+          saveWorkspaceFileCopy(WorkspaceFileRequestSchema.parse(input), async (defaultPath) => {
+            const result = await desktop.dialog.showSaveDialog({ defaultPath });
+            return result.canceled ? null : (result.filePath ?? null);
+          }),
         ),
       );
       yield* ipc.handleControl("workspace-file-watch:start", (event, input: unknown) =>

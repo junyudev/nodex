@@ -415,6 +415,11 @@ function createReviewGitWorkerTestClient(): GitWorkerQueryClient {
           const value = await reviewDiffPanelTestInvoke("review-cat-file", input.params);
           return { type: "success", value } as never;
         }
+        case "review-generated-paths":
+          return ((await reviewDiffPanelTestInvoke("review-generated-paths", input.params)) ?? {
+            paths: [],
+            hasLinguistGeneratedAttributes: false,
+          }) as never;
         case "review-search":
           return (await reviewDiffPanelTestInvoke("review-search", input.params)) as never;
         case "review-patch":
@@ -741,9 +746,15 @@ async function loadReviewDiffPanelModule() {
   return { ReviewDiffPanel: TestReviewDiffPanel };
 }
 
+function reviewTreeRoot(container: HTMLElement): ShadowRoot {
+  const root = container.querySelector("file-tree-container")?.shadowRoot;
+  if (!root) throw new Error("Expected mounted review file tree");
+  return root;
+}
+
 async function waitForReviewTree(container: HTMLElement): Promise<void> {
   await waitFor(() => {
-    if (!container.querySelector('[data-review-tree-item="true"]')) {
+    if (!reviewTreeRoot(container).querySelector('[role="treeitem"]')) {
       throw new Error("Expected review tree items to render.");
     }
   });
@@ -752,7 +763,9 @@ async function waitForReviewTree(container: HTMLElement): Promise<void> {
 async function waitForReviewTreePath(container: HTMLElement, path: string): Promise<HTMLElement> {
   let row: Element | null = null;
   await waitFor(() => {
-    row = container.querySelector(`[data-review-tree-path="${path}"]`);
+    row = reviewTreeRoot(container).querySelector(
+      `[role="treeitem"][data-item-path="${path}"], [role="treeitem"][data-item-path="${path}/"]`,
+    );
     if (!row) {
       throw new Error(`Expected review tree row for ${path}.`);
     }
@@ -954,8 +967,8 @@ describe("review diff panel", () => {
     const reviewRows = view.container.querySelectorAll(
       '.codex-review-diff-card[data-review-path="src/example.ts"]',
     );
-    const treeRows = view.container.querySelectorAll(
-      '[data-item-type="file"][data-review-tree-path="src/example.ts"]',
+    const treeRows = reviewTreeRoot(view.container).querySelectorAll(
+      '[data-item-type="file"][data-item-path="src/example.ts"]',
     );
     const renderedFileDiffs = view.container.querySelectorAll('[data-file-diff="src/example.ts"]');
     const rowStats = reviewRows[0]?.querySelector('span[data-thread-find-skip="true"]');
@@ -1137,13 +1150,8 @@ describe("review diff panel", () => {
     expect(view.getByPlaceholderText("Filter files…").getAttribute("placeholder")).toBe(
       "Filter files…",
     );
-    expect(textContent(view.container).includes("src")).toBe(true);
-    expect(textContent(view.container).includes("example.ts")).toBe(true);
-    expect(view.container.querySelector('[data-item-type="folder"]')).not.toBeNull();
-    expect(view.container.querySelector('[data-item-type="file"]')).not.toBeNull();
-    expect(
-      view.container.querySelector('[data-item-type="file"] [data-icon-token="typescript"]'),
-    ).not.toBeNull();
+    const selectedFile = await waitForReviewTreePath(view.container, "src/example.ts");
+    expect(selectedFile.getAttribute("role")).toBe("treeitem");
     const separator = view.container.querySelector(
       '[role="separator"][aria-orientation="vertical"]',
     );
@@ -1208,60 +1216,6 @@ describe("review diff panel", () => {
     expect(view.container.querySelector('[data-file-diff="src/example.ts"]')).not.toBeNull();
   });
 
-  test("virtualizes the review file tree with codex-style host attrs", async () => {
-    const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
-    mockInvokeImpl = async (channel: unknown) => {
-      if (channel !== "review-diff") return null;
-      return {
-        cwd: "/tmp/storybook/virtualized-tree",
-        source: "unstaged",
-        patch: buildMultiFilePatch(24, true),
-        files: [],
-        isGitRepository: true,
-        baseRef: null,
-        currentBranch: "feature",
-        defaultBranch: "main",
-        errorMessage: null,
-      };
-    };
-
-    const view = render(
-      <NodexTooltipProvider>
-        <ReviewDiffPanel
-          conversation={buildConversation()}
-          projectWorkspacePath="/tmp/storybook/virtualized-tree"
-          initialSource="unstaged"
-          initialFileTreeOpen
-        />
-      </NodexTooltipProvider>,
-    );
-
-    await settleAsyncRender();
-    await settleAsyncRender();
-    await waitForReviewTree(view.container);
-    await waitFor(() => {
-      if (!view.container.querySelector('[data-file-tree-virtualized-root="true"]')) {
-        throw new Error("Expected the review file tree to render the virtualized shell.");
-      }
-    });
-
-    const virtualizedRoot = view.container.querySelector(
-      '[data-file-tree-virtualized-root="true"]',
-    );
-    const virtualizedScroll = view.container.querySelector(
-      '[data-file-tree-virtualized-scroll="true"]',
-    );
-    const virtualizedList = view.container.querySelector(
-      '[data-file-tree-virtualized-list="true"]',
-    );
-    if (!virtualizedRoot || !virtualizedScroll || !virtualizedList) {
-      throw new Error("Expected the review file tree to render the virtualized shell.");
-    }
-
-    const renderedTreeRows = view.container.querySelectorAll('[data-review-tree-item="true"]');
-    expect(renderedTreeRows.length < 24).toBe(true);
-  });
-
   test("collapses and expands folder rows in the review file tree", async () => {
     const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
 
@@ -1282,53 +1236,58 @@ describe("review diff panel", () => {
       fireEvent.click(folderRow);
     });
     const collapsedTreeRows = Array.from(
-      view.container.querySelectorAll('[data-review-tree-item="true"]'),
+      reviewTreeRoot(view.container).querySelectorAll('[role="treeitem"]'),
     );
     expect(
-      collapsedTreeRows.some(
-        (node) => node.getAttribute("data-review-tree-path") === "src/example.ts",
-      ),
+      collapsedTreeRows.some((node) => node.getAttribute("data-item-path") === "src/example.ts"),
     ).toBe(false);
 
     await dispatchReviewEvent(() => {
       fireEvent.click(folderRow);
     });
     const expandedTreeRows = Array.from(
-      view.container.querySelectorAll('[data-review-tree-item="true"]'),
+      reviewTreeRoot(view.container).querySelectorAll('[role="treeitem"]'),
     );
     expect(
-      expandedTreeRows.some(
-        (node) => node.getAttribute("data-review-tree-path") === "src/example.ts",
-      ),
+      expandedTreeRows.some((node) => node.getAttribute("data-item-path") === "src/example.ts"),
     ).toBe(true);
   });
 
-  test("tracks folder selection and focus with tree item ids", async () => {
+  test("filters generated turn files from both the tree and the diff list", async () => {
     const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
-
+    const conversation = buildConversation();
+    conversation.turns[0]!.diff = buildMultiFilePatch(2);
+    mockInvokeImpl = async (channel) =>
+      channel === "review-generated-paths"
+        ? { paths: ["/tmp/codex/src/file-001.ts"], hasLinguistGeneratedAttributes: true }
+        : null;
     const view = render(
       <NodexTooltipProvider>
         <ReviewDiffPanel
-          conversation={buildConversation()}
+          conversation={conversation}
           projectWorkspacePath="/tmp/codex"
           initialFileTreeOpen
         />
       </NodexTooltipProvider>,
     );
-
-    await settleAsyncRender();
-
-    const folderRow = await waitForReviewTreePath(view.container, "src");
-
-    await dispatchReviewEvent(() => {
-      fireEvent.click(folderRow);
+    await waitForReviewTreePath(view.container, "src/file-001.ts");
+    const options = await view.findByRole("button", { name: "Filter options" });
+    await dispatchReviewEvent(() => fireEvent.click(options));
+    await dispatchReviewEvent(() =>
+      fireEvent.click(view.getByRole("menuitemcheckbox", { name: "Filter generated files" })),
+    );
+    await waitFor(() => {
+      expect(
+        reviewTreeRoot(view.container).querySelector(
+          '[role="treeitem"][data-item-path="src/file-001.ts"]',
+        ),
+      ).toBeNull();
+      expect(view.container.querySelector('[data-review-path="src/file-001.ts"]')).toBeNull();
     });
-
-    expect(folderRow.getAttribute("data-item-selected")).toBe("true");
-    expect(folderRow.getAttribute("data-item-focused")).toBe("true");
+    expect(await waitForReviewTreePath(view.container, "src/file-002.ts")).toBeDefined();
   });
 
-  test("keeps folder change metadata without rendering modified status markers", async () => {
+  test("exposes modified file status and aggregates changed folders", async () => {
     const { ReviewDiffPanel } = await loadReviewDiffPanelModule();
     mockInvokeImpl = async (channel: unknown) => {
       if (channel !== "review-diff") return null;
@@ -1364,8 +1323,8 @@ describe("review diff panel", () => {
     const fileRow = await waitForReviewTreePath(view.container, "src/workbench.tsx");
 
     expect(folderRow.getAttribute("data-item-contains-git-change")).toBe("true");
-    expect(folderRow.querySelector('[data-item-section="git"]')).toBe(null);
-    expect(fileRow.querySelector('[data-item-section="git"]')).toBe(null);
+    expect(folderRow.querySelector('[title="Contains git status items"]')).not.toBeNull();
+    expect(fileRow.getAttribute("data-item-git-status")).toBe("modified");
   });
 
   test("renders binary metadata rows without invoking textual diff renderers", async () => {
@@ -1472,11 +1431,11 @@ describe("review diff panel", () => {
     await waitForReviewTreePath(view.container, "src/added.ts");
     await waitForReviewTreePath(view.container, "src/deleted.ts");
 
-    const addedStatus = view.container.querySelector(
-      '[data-item-type="file"][data-review-tree-path="src/added.ts"] [data-item-section="git"]',
+    const addedStatus = reviewTreeRoot(view.container).querySelector(
+      '[data-item-type="file"][data-item-path="src/added.ts"] [data-item-section="git"]',
     );
-    const deletedStatus = view.container.querySelector(
-      '[data-item-type="file"][data-review-tree-path="src/deleted.ts"] [data-item-section="git"]',
+    const deletedStatus = reviewTreeRoot(view.container).querySelector(
+      '[data-item-type="file"][data-item-path="src/deleted.ts"] [data-item-section="git"]',
     );
     if (!addedStatus || !deletedStatus) {
       throw new Error("Expected added and deleted file status slots.");

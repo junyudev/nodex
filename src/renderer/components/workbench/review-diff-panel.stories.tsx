@@ -656,6 +656,9 @@ function createControlledReviewTransport(
         return { cwd, baseBranch: "main", commits: [], errorMessage: null };
       }
       if (input.method === "recover-live-query") return { recovered: true };
+      if (input.method === "review-generated-paths") {
+        return { paths: [], hasLinguistGeneratedAttributes: false };
+      }
       const channel = channelByMethod[input.method];
       if (!channel) throw new Error(`Unsupported story Git method: ${input.method}`);
       const value = await invoke(channel, input.params);

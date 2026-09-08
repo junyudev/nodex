@@ -10,6 +10,7 @@ import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import type { FileWatchHost } from "../../file-watch-host";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
+import { ElectronDesktop } from "../../platform/electron/ElectronDesktop";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./WorkspaceFileIpc";
 
@@ -74,6 +75,7 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(ElectronIpc, ipc),
+            Layer.succeed(ElectronDesktop, {} as ElectronDesktop["Service"]),
             mainConfigLayer(),
             Layer.succeed(WindowRuntime, {
               has: () => true,
@@ -83,7 +85,7 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
       ),
       scope,
     );
-    assert.strictEqual(handlers.size, 8);
+    assert.strictEqual(handlers.size, 9);
 
     const start = handlers.get("workspace-file-watch:start");
     assert.isDefined(start);

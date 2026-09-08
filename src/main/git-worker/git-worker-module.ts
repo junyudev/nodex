@@ -27,6 +27,7 @@ import {
   readGitReviewBranchCommits,
   readGitReviewCatFile,
   readGitReviewDiff,
+  readGitReviewGeneratedPaths,
   readGitReviewPatch,
   readGitReviewSnapshot,
   readGitReviewSummary,
@@ -260,6 +261,9 @@ class GitWorkerModuleState implements GitWorkerModule {
           type: "success",
           value: yield* this.#runOperation(() => readGitReviewCatFile(request.params)),
         } satisfies GitWorkerMethodMap["review-cat-file"]["result"];
+      case "review-generated-paths":
+        yield* this.#registry.get(request.params.cwd);
+        return yield* this.#runOperation(() => readGitReviewGeneratedPaths(request.params));
       case "review-search":
         return yield* this.#runReviewRequest({
           method: request.method,

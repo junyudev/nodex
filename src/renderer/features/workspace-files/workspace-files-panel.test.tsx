@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, vi, test } from "vite-plus/test";
-import { act, fireEvent } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { renderWithMaitai } from "../../test/thread-maitai";
 import { settleAsyncRender } from "../../test/dom";
@@ -159,7 +159,6 @@ vi.mock("./workspace-file-tree", () => ({
     initialScrollTop,
     selectedPath,
     searchQuery,
-    onExpand,
     onOpen,
     onStateChange,
   }: {
@@ -168,7 +167,6 @@ vi.mock("./workspace-file-tree", () => ({
     initialScrollTop?: number;
     selectedPath: string | null;
     searchQuery: string;
-    onExpand: (path: string) => void;
     onOpen: (path: string, mode: "preview" | "durable") => void;
     onStateChange?: (state: {
       expandedPaths: readonly string[];
@@ -204,7 +202,11 @@ vi.mock("./workspace-file-tree", () => ({
             key={item.path}
             onClick={() => {
               if (item.kind === "directory") {
-                onExpand(item.path);
+                onStateChange?.({
+                  expandedPaths: [...expandedPaths, item.path],
+                  selectedPath,
+                  scrollTop: initialScrollTop ?? 0,
+                });
                 return;
               }
               onOpen(item.path, "preview");
@@ -481,10 +483,10 @@ describe("WorkspaceFilesPanel", () => {
     fireEvent.click(view.getByText("src"));
     await settleAsyncRender();
     expect(view.getByText("index.ts")).not.toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "Scroll tree" }));
     fireEvent.input(view.getByRole("textbox", { name: "Filter files" }), {
       target: { value: "index" },
     });
-    fireEvent.click(view.getByRole("button", { name: "Scroll tree" }));
     await settleAsyncRender();
 
     fireEvent.click(view.getByRole("button", { name: "Toggle panel" }));
@@ -493,7 +495,7 @@ describe("WorkspaceFilesPanel", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    expect(view.getByText("index.ts")).not.toBeNull();
+    await waitFor(() => expect(view.getByText("index.ts")).not.toBeNull());
     expect((view.getByRole("textbox", { name: "Filter files" }) as HTMLInputElement).value).toBe(
       "index",
     );

@@ -60,6 +60,7 @@ export interface ReviewRouteState extends ReviewDiffExpansionState {
   readonly fileTreeOpen: boolean;
   readonly fileTreeWidth: number;
   readonly fileFilter: string;
+  readonly filterGeneratedFiles: boolean;
   readonly expandedDirectoryPaths: readonly string[];
   readonly treeExpansionSourceKey: string | null;
   readonly nextRevealRequestId: number;
@@ -100,6 +101,7 @@ export const reviewRouteStateAtom = scopedAtom<ReviewRouteState>(
     fileTreeOpen: false,
     fileTreeWidth: REVIEW_FILE_TREE_DEFAULT_WIDTH_PX,
     fileFilter: "",
+    filterGeneratedFiles: false,
     expandedDirectoryPaths: [],
     treeExpansionSourceKey: null,
     allDiffsExpanded: true,

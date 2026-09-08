@@ -23,6 +23,19 @@ const writeWorkspaceFileCommand = defineRendererCommand({
   owner: "WorkspaceFiles",
   protocol: { kind: "returned_value" },
 });
+const saveWorkspaceFileCopyCommand = defineRendererCommand({
+  key: "workspace_file.save_copy",
+  channel: "workspace-file:save-copy",
+  authority: "external",
+  owner: "WorkspaceFiles",
+  protocol: { kind: "returned_value" },
+});
+
+export async function saveWorkspaceFileCopy(
+  input: WorkspaceFileRequest,
+): Promise<{ path: string | null }> {
+  return await invokePlainCommand(saveWorkspaceFileCopyCommand, input);
+}
 
 export async function readWorkspaceFileMetadata(
   input: WorkspaceFileMetadataInput,
