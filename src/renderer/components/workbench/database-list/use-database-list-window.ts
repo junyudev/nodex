@@ -5,7 +5,6 @@ import {
   databaseOperationsRequirePlacementFence,
   databasePresentationFailure,
 } from "@/lib/database-view-presentation";
-import { registerContentProjectionActivity } from "@/lib/content-interaction-history";
 import { commitDatabaseViewOperations } from "@/lib/database-view-row-mutations";
 import {
   applyOptimisticDatabaseListDrop,
@@ -717,24 +716,6 @@ export const useDatabaseListWindow = (input: {
     store.setRequest(model, effective);
   }, [effective, model, store]);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  const observationScope = useMemo(
-    () => ({
-      libraryId: model.libraryId,
-      accessContext: model.accessContext,
-      storeEpoch: model.storeEpoch,
-    }),
-    [model.libraryId, model.accessContext, model.storeEpoch],
-  );
-  useEffect(
-    () =>
-      registerContentProjectionActivity(observationScope, {
-        id: `list:${storeIdentity}`,
-        label: model.viewName,
-        getActivity: store.getActivity,
-        subscribe: store.subscribe,
-      }),
-    [observationScope, model.viewName, storeIdentity, store],
-  );
   return {
     ...state,
     presentationOwner: store,

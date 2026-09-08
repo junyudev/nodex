@@ -2610,6 +2610,13 @@ export function renderWorkbench({
     generatedAt: 1,
   });
   mockInvokeImpl = async (channel, ...args) => {
+    if (channel === "document-recovery:read") {
+      return {
+        ok: true,
+        storeEpoch: "test-epoch",
+        value: { kind: "list", page: { drafts: [], pending_count: 0 } },
+      };
+    }
     if (channel === "library-module:read") {
       const request = args[1] as {
         readonly read?: {

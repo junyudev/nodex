@@ -409,6 +409,7 @@ export function NfmEditor(props: NfmEditorProps) {
     <NfmEditorOwnerBoundary
       key={editorInstanceKey}
       input={{
+        pageId: props.sourcePageContext?.pageId,
         source,
         accessContext: props.contentAccessContext,
         editorInstanceKey,

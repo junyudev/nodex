@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { BlockNoteEditor, type BlockNoteEditorOptions } from "@blocknote/core";
 import type { EditorSurfaceLease } from "@/lib/document-session-registry";
+import { PAGE_DOCUMENT_TITLE_KEY } from "../../../../shared/block-documents/page-document";
+import type { ContentEditLocation } from "@/lib/content-edit-issues";
 import type { ContentAccessContext } from "../../../../shared/content-access-context";
 import { contentAccessContextKey } from "../../../../shared/content-access-context";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
@@ -34,6 +36,7 @@ export interface NfmEditorCallbackPorts {
 }
 
 export interface NfmEditorOwnerInput {
+  readonly pageId?: string;
   readonly source: NfmEditorSource;
   readonly accessContext: ContentAccessContext;
   readonly editorInstanceKey: string;
@@ -130,10 +133,20 @@ export class NfmEditorOwner {
             storeEpoch: input.source.storeEpoch,
           }
         : undefined);
+    const pageId = input.editorSession?.descriptor.ownerBlockId ?? input.pageId;
+    const locate = (): ContentEditLocation | null =>
+      pageId
+        ? {
+            target: { kind: "page", pageId },
+            label:
+              input.source.fragment.doc?.share.get(PAGE_DOCUMENT_TITLE_KEY)?.toString().trim() ||
+              "Untitled Page",
+          }
+        : null;
     const createEditor = () => {
       const editor = BlockNoteEditor.create(options);
       try {
-        controller.attachEditor(editor, historyScope);
+        controller.attachEditor(editor, historyScope, locate);
         return editor;
       } catch (error) {
         // A failed initialization never enters the retained editor cache.
@@ -146,7 +159,7 @@ export class NfmEditorOwner {
     };
     this.editor =
       input.editorSession?.getOrCreateEditor(ownerIdentity(input), createEditor) ?? createEditor();
-    this.structuralSession = controller.attachEditor(this.editor, historyScope);
+    this.structuralSession = controller.attachEditor(this.editor, historyScope, locate);
   }
 
   get closed(): boolean {

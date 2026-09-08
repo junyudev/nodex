@@ -17,14 +17,31 @@ import {
   NodexDialogAction,
 } from "@/components/ui/dialog";
 import { RecoveryPreview } from "./recovery-preview";
+import { contentAccessIdentityKey } from "../../../shared/content-access-context";
 
-export function RecoveryReview({
+type RecoveryReviewProps = ModalCloseProps & {
+  module: DocumentRecovery;
+  exportLocal?: () => Promise<void>;
+  initialDraftId?: string;
+};
+
+export function RecoveryReview(props: RecoveryReviewProps) {
+  return (
+    <RecoveryReviewContent
+      key={`${contentAccessIdentityKey(props.module.scope)}\0${props.module.documentId ?? "library"}\0${props.initialDraftId ?? "list"}`}
+      {...props}
+    />
+  );
+}
+
+function RecoveryReviewContent({
   module,
   onClose,
   exportLocal,
-}: ModalCloseProps & { module: DocumentRecovery; exportLocal?: () => Promise<void> }) {
+  initialDraftId,
+}: RecoveryReviewProps) {
   const state = useSyncExternalStore(module.subscribe, module.getSnapshot);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialDraftId ?? null);
   const [inspection, setInspection] = useState<RecoveryDraftInspection | null>(null);
   const [view, setView] = useState<"retained" | "restored" | "current">("restored");
   const [busy, setBusy] = useState(false);

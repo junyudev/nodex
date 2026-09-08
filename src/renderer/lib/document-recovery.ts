@@ -18,6 +18,8 @@ import {
 } from "./renderer-command";
 import { CoreApiError } from "./core-api-error";
 import { subscribeElectronRendererLocalCommitAtoms } from "./electron-renderer-transport";
+import { contentEditIssues } from "./content-edit-issues";
+import { createDocumentRecoveryIssueSource } from "./document-recovery-issues";
 
 const recoveryCommand = defineRendererCommand({
   key: "document.recovery.resolve",
@@ -27,7 +29,10 @@ const recoveryCommand = defineRendererCommand({
   protocol: { kind: "returned_value" },
 });
 export const documentRecoveryPort = {
-  subscribe: (scope: DocumentRecoveryScope, listener: (documentId: string | null) => void) => {
+  subscribe: (
+    scope: DocumentRecoveryScope,
+    listener: (documentId: string | null, change?: "recovery" | "content") => void,
+  ) => {
     if (!window.api) throw new Error("Recovery requires the desktop bridge");
     return subscribeElectronRendererLocalCommitAtoms(
       window.api,
@@ -35,9 +40,12 @@ export const documentRecoveryPort = {
       (_packet, atom) => {
         const payload = atom.payload;
         if (payload.module === "owned_document" && "document_id" in payload.event)
-          listener(payload.event.document_id);
+          listener(
+            payload.event.document_id,
+            payload.event.kind === "recovery_changed" ? "recovery" : "content",
+          );
         if (payload.module === "library" && Object.keys(payload.event.file_revisions).length > 0)
-          listener(null);
+          listener(null, "content");
       },
       () => listener(null),
     );
@@ -73,6 +81,7 @@ const message = (error: unknown): string =>
 
 /** Window-local coordinator; Core owns bytes and resolution. Views never infer capabilities from error codes. */
 export class DocumentRecovery {
+  readonly scope: DocumentRecoveryScope;
   private state: DocumentRecoveryState = EMPTY;
   private listeners = new Set<() => void>();
   private refreshing: Promise<void> | null = null;
@@ -86,10 +95,12 @@ export class DocumentRecovery {
   private readonly canvas: IndexedDbCanvasSceneOutbox | null;
   private readonly pending = new Map<string, DocumentRecoveryCommand>();
   constructor(
-    readonly scope: DocumentRecoveryScope,
+    scope: DocumentRecoveryScope,
     readonly documentId: string | null,
     private readonly port: DocumentRecoveryPort = documentRecoveryPort,
   ) {
+    // Callers may pass a Document descriptor; transport owns only its access identity.
+    this.scope = { libraryId: scope.libraryId, accessContext: scope.accessContext };
     this.canvas =
       typeof indexedDB === "undefined"
         ? null
@@ -107,9 +118,12 @@ export class DocumentRecovery {
   connect = (): (() => void) => {
     this.connections += 1;
     if (this.connections > 1) return this.release;
-    const unsubscribe = this.port.subscribe(this.scope, (documentId) => {
+    const unsubscribe = this.port.subscribe(this.scope, (documentId, change) => {
+      // Ordinary saves cannot create a draft. Keep the always-connected overview off that hot path.
+      if (change === "content" && this.state.pendingCount === 0) return;
       if (!this.documentId || !documentId || documentId === this.documentId) void this.refresh();
     });
+    const releaseIssues = contentEditIssues.register(createDocumentRecoveryIssueSource(this));
     const refresh = () => {
       void this.refresh();
     };
@@ -117,6 +131,7 @@ export class DocumentRecovery {
     window.addEventListener("online", refresh);
     refresh();
     this.disconnect = () => {
+      releaseIssues();
       unsubscribe();
       window.removeEventListener("focus", refresh);
       window.removeEventListener("online", refresh);

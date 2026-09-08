@@ -250,19 +250,21 @@ test("replays Board, List, and editor transfers through their content participan
       const changed = await preparePromoted();
       await invokeHistoryMenu(harness, "undo", "Move to Database");
       await expect(
-        page.getByRole("status").filter({ hasText: "Content edits need attention" }),
+        page.getByRole("status").filter({ hasText: "1 content issue needs attention" }),
       ).toBeVisible();
-      await page.getByRole("button", { name: "Content edits", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Reset history", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Content issues", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Retry undo", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^More actions for / })).toBeVisible();
       const blockedScreenshot = test.info().outputPath("blocked-view-history.png");
       await page.screenshot({ path: blockedScreenshot });
       await test.info().attach("Blocked View history", {
         path: blockedScreenshot,
         contentType: "image/png",
       });
-      await page.getByRole("button", { name: "Reset history", exact: true }).click();
-      const dialog = page.getByRole("dialog", { name: "Reset content history?" });
+      await page.getByRole("button", { name: /^More actions for / }).click();
+      await expect(page.getByText("Project: Surface history", { exact: true })).toBeVisible();
+      await page.getByRole("menuitem", { name: "Clear undo history…", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Clear undo history?" });
       await expect(dialog).toBeVisible();
       const confirmationScreenshot = test.info().outputPath("reset-history-confirmation.png");
       await page.screenshot({ path: confirmationScreenshot });
@@ -270,9 +272,11 @@ test("replays Board, List, and editor transfers through their content participan
         path: confirmationScreenshot,
         contentType: "image/png",
       });
-      await dialog.getByRole("button", { name: "Reset history", exact: true }).click();
+      await dialog.getByRole("button", { name: "Clear undo history", exact: true }).click();
       await expect(dialog).toBeHidden();
-      await expect(page.getByRole("button", { name: "Reset history", exact: true })).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Clear undo history", exact: true }),
+      ).toHaveCount(0);
       await expect(triage.locator(`[data-board-uuid-v7="${promotedPageId}"]`)).toBeVisible();
       await expect(block(seeded.blockIds[2]!)).toHaveCount(0);
       const afterReset = await preparePromoted();
@@ -304,10 +308,9 @@ test("replays Board, List, and editor transfers through their content participan
       }
       await expect(block(first.pageId)).toBeVisible();
       await expect(sourceCard).toHaveCount(0);
-      await page.getByRole("button", { name: "Content edits", exact: true }).click();
-      await expect(
-        page.getByText("Move Pages here · This transfer has no complete inverse.", { exact: true }),
-      ).toBeVisible();
+      await expect(page.getByRole("button", { name: "Content issues", exact: true })).toHaveCount(
+        0,
+      );
       await independentText.click();
       await page.keyboard.press(`${modifier}+Z`);
       await expect(independentText).toHaveText("Independent text kept");

@@ -10,6 +10,7 @@ import {
   type DragEvent as ReactDragEvent,
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
+import { ContentSaveStatus } from "@/components/shared/content-save-status";
 import {
   useDatabaseViewPresentation,
   databaseOperationsRequirePlacementFence,
@@ -870,6 +871,7 @@ function BoardDatabaseViewSurface({
       return;
     }
     await commitDatabaseViewBlockDrop({
+      viewName: model.viewName,
       historyScopeKey: databaseViewHistoryScopeKey(mutationModel),
       session,
       projectId: model.accessContext.kind === "project" ? model.accessContext.projectId : null,
@@ -1365,7 +1367,7 @@ function BoardDatabaseViewSurface({
       <div
         ref={surfaceRef}
         tabIndex={0}
-        className="flex h-full min-h-0 flex-col bg-token-main-surface-primary"
+        className="relative flex h-full min-h-0 flex-col bg-token-main-surface-primary"
         data-database-view-id={model.databaseViewId}
         data-embedded-surface-input="true"
         contentEditable={false}
@@ -1373,6 +1375,7 @@ function BoardDatabaseViewSurface({
         onPointerDownCapture={() => markContextualKeyboardActionTargetActive(surfaceId)}
         onKeyDown={handleListKeyDown}
       >
+        <ContentSaveStatus source={presentationOwner.owner} />
         {failedContinuations.length > 0 && onLoadMoreGroup ? (
           <div
             role="alert"

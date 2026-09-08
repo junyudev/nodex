@@ -26,14 +26,34 @@ Thread Summary content and row actions are specified in [Thread Summary Panel Be
 
 ## Scene And Surface Semantics
 
-The global header keeps one fixed-size `Content edits` control for this window's
-Page and Database history. It does not replace Page version history or follow
-DOM focus. Fast edits remain quiet; work lasting more than one second shows
-activity, and unknown or blocked actions show an attention indicator. Opening
-the control reveals Library/Project-scoped recovery without inserting content
-above a View or editor. Acknowledged work awaiting projection is labelled
-`Updating views`, separately from saving. Reset is secondary, explicitly
-confirmed for its original scope, and unavailable during ordinary submission.
+The global header shows `Content issues` only while an edit needs attention:
+an unconfirmed action, a failed Undo or Redo, actionable Page/Canvas save
+trouble, or retained drafts. Its absence makes no all-content-saved claim.
+Routine saving stays beside the affected content; a successful edit that cannot
+be undone is only a native Undo limitation and does not raise an alert.
+
+The manually opened popover identifies each problem by its original
+Library/Project and available Page, View, or Canvas location. Navigation and
+recovery preserve that access context. Separate actions in one scope remain
+separate; the same retained draft observed through multiple surfaces appears
+once, preferring the live document's recovery controls. Retained drafts stay
+separate from the current document's save state and open the shared recovery
+review. The header neither follows focus nor replaces Page version history.
+
+Each problem leads with its failure or unconfirmed-result title, followed by
+the explanation. Recovery actions have visible button surfaces at rest: the
+primary action is filled and alternatives are outlined. The original content
+location is one outlined Library/Project path with a navigation arrow; static
+context stays plain. An in-progress action stays visible and disabled with a
+loading indicator while its owner confirms the result.
+
+`Check again` confirms the exact submitted action. `Retry undo` and `Retry redo`
+retry the corresponding failed replay. `Clear undo history` lives in the
+secondary actions menu, which names the affected Project or Library, and
+requires a root-hosted confirmation describing the affected shared Page and
+Database timeline. It changes no content and does not abandon submitted
+requests. The confirmation rechecks the history revision, so later edits make
+it stale; ordinary submission cannot offer it.
 
 - Primary surfaces are fixed for Project and Session owners. A Project Scene's `db_view` primary starts with the semantic `project-default` target and may resolve to an exact `database-view` target after explicit View selection. It occurs exactly once at the start of the full-width right stack and cannot be closed, moved, split, or reordered behind another tab. The protected role and placement, not a permanently symbolic target, define the Project primary. A Session Scene's `conversation` primary resolves that exact Session outside its panel trees. Pages has no primary; its Library-authorized surfaces all live in the panel trees and may close, move, split, and reorder.
 - `db_view`: renders one durable View through shared effective-presentation and data authority. A canonical Status Board retains the established Board Column/Card presenter; List uses the dense task-row presenter; capability-specific Board configurations use the advanced fallback. A Scene can have one panel surface per explicit View target; selecting an already-open target focuses that surface. Board and List tabs are distinct View identities, so selecting a tab changes the exact target and preserves it across window restoration. Explicitly converting one View's layout preserves only that View identity and its layout-neutral settings. The toolbar's adjacent `Canvas` destination opens or focuses that Project's deterministic primary `canvas_stage` in the same panel group; it does not alter Database config or personal presentation preferences.

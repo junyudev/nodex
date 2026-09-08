@@ -1,4 +1,5 @@
 import { RecoveryEntry } from "@/features/document-recovery/recovery-entry";
+import { exportCanvasRecovery } from "@/lib/canvas-content-issues";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   AppState,
@@ -505,13 +506,7 @@ function CanvasEditor({
       });
     };
     const exportRecovery = async (): Promise<void> => {
-      const data = await provider.exportRecovery();
-      const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "nodex-canvas-recovery.json";
-      link.click();
-      globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+      await exportCanvasRecovery(provider);
     };
     exportRecoveryRef.current = exportRecovery;
     retrySceneRef.current = retry;

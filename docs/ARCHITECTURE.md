@@ -598,8 +598,10 @@ identities. Electron Main retains admitted exact requests across renderer loss;
 late outcomes cannot reopen a retired participant. Mutation presentation shares
 one receipt-fenced lifecycle while each semantic owner retains its canonical
 projection and rendered-handoff proof. Independent read authorities never share
-render retirement merely because they present the same View. Workbench activity observes these owners
-without acquiring content participation or becoming another command queue.
+render retirement merely because they present the same View. Workbench content issues borrow
+observations and exact recovery actions from Content Interaction History, retained
+Document sessions, and DocumentRecovery. This observation does not retain content
+participation, own persistence, or introduce another command queue.
 User-visible replay and retention
 rules belong to [NFM Structural Editing](product-specs/nfm-editor-structural-editing-behavior.md)
 and [Database Pages and Views](product-specs/database-pages-and-views-behavior.md).
@@ -1075,6 +1077,6 @@ Do not add implementation chronology, current version inventories, individual fi
 | Cross-cutting engineering principles                                                                         | [ENGINEERING_LEARNINGS.md](docs/ENGINEERING_LEARNINGS.md)        |
 | Build, signing, notarization, distribution recovery                                                          | [release-macos.md](docs/release-macos.md)                        |
 | Executable migration and protocol versions                                                                   | Source contracts, migration code, generated artifacts, and tests |
-| Temporary implementation sequence and evidence                                                               | `notes.local/living-plans/`; see [plan requirements](PLANS.md)    |
+| Temporary implementation sequence and evidence                                                               | `notes.local/living-plans/`; see [plan requirements](PLANS.md)   |
 
 When two documents disagree, fix the narrow authoritative document first and then replace or remove the stale summary here.

@@ -27,6 +27,7 @@ const titles = new WeakMap<Y.Text, TitleOwner>();
 export function getPageTitleInteractionHistory(
   title: Y.Text,
   scope?: ContentInteractionHistoryScope,
+  pageId?: string,
 ): PageTitleInteractionHistory {
   const document = title.doc;
   if (!document || document.isDestroyed)
@@ -62,6 +63,10 @@ export function getPageTitleInteractionHistory(
     scopeKey,
     breakCapture: () => manager.stopCapturing(),
     adapter: {
+      locate: () =>
+        pageId
+          ? { target: { kind: "page", pageId }, label: title.toString().trim() || "Untitled Page" }
+          : null,
       describe: () => "Edit Page title",
       prepare: async () => {
         throw new Error("Page title edits use native capture.");

@@ -132,3 +132,51 @@ test("review keeps export and Later separate from persisted discard, undo and re
     "restore",
   ]);
 });
+
+test("an issue opens its exact draft and retargeting the review resets the previous selection", async () => {
+  const drafts = ["First", "Second"].map((title) => {
+    const base = createInspection();
+    return {
+      ...base,
+      summary: { ...base.summary, draft_id: title, source_title: title },
+      restored: { kind: "document" as const, title, rich_title: [], nfm: "", files: {} },
+    };
+  });
+  const port: DocumentRecoveryPort = {
+    subscribe: () => () => {},
+    read: async (_scope, read) => ({
+      ok: true,
+      storeEpoch: "epoch:one",
+      value:
+        read.kind === "list"
+          ? {
+              kind: "list",
+              page: { drafts: drafts.map((draft) => draft.summary), pending_count: 2 },
+            }
+          : {
+              kind: "inspect",
+              inspection: drafts.find((draft) => draft.summary.draft_id === read.draft_id)!,
+            },
+    }),
+    apply: async (command) => {
+      if (command.kind !== "resolve" || command.resolve.choice.kind !== "reconcile")
+        throw new Error("Unexpected content mutation");
+      return drafts.find((draft) => draft.summary.draft_id === command.resolve.draft_id)!.summary;
+    },
+  };
+  const module = new DocumentRecovery(scope, "document:source", port);
+  vi.spyOn(module, "connect").mockReturnValue(() => {});
+  await module.refresh();
+  const close = vi.fn();
+  const view = renderWithMaitai(
+    <RecoveryReview module={module} initialDraftId="Second" onClose={close} />,
+  );
+  await waitFor(() =>
+    expect(view.getByRole("article", { name: "Recovery preview" }).textContent).toBe("Second"),
+  );
+  view.rerender(<RecoveryReview module={module} initialDraftId="First" onClose={close} />);
+  await waitFor(() =>
+    expect(view.getByRole("article", { name: "Recovery preview" }).textContent).toBe("First"),
+  );
+  expect(module.getSnapshot().pendingCount).toBe(2);
+});

@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, useMotionValue, useTransform, type MotionStyle } from "motion/react";
@@ -18,7 +19,10 @@ import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host"
 import { WorkbenchAutomationDetailRail } from "./workbench-automation-detail-rail";
 import { WorkbenchThreadSummaryHeader } from "./workbench-thread-summary-header";
 import { ToolbarIconButton, WindowNavigationToolbarButton } from "./workbench-panel-controls";
-import { ContentHistoryControl } from "@/components/shared/surface-history-status";
+import { ContentIssuesControl } from "@/components/shared/content-issues-control";
+import { contentEditIssues, type ContentEditLocation } from "@/lib/content-edit-issues";
+import type { ContentAccessIdentity } from "../../../shared/content-access-context";
+import { ContentRecoveryObserver } from "@/features/document-recovery/recovery-entry";
 import {
   PageStageSessionTab,
   type OpenPageTabHandler,
@@ -455,6 +459,12 @@ export function WorkbenchRuntime({
 }: WorkbenchRuntimeProps) {
   const queryClient = useQueryClient();
   const currentLibraryId = useLibraryNavigationInvalidation() ?? projects[0]?.libraryId ?? null;
+  const contentIssueCount = useSyncExternalStore(
+    contentEditIssues.subscribe,
+    () =>
+      contentEditIssues.getSnapshot().filter((issue) => issue.scope.libraryId === currentLibraryId)
+        .length,
+  );
   const appHandle = useScopeHandle(appScope);
   const mutationAuditSessionId = useMutationAuditSessionId();
   const workbenchWindow = useWorkbenchWindowState(initialWindowLayoutSnapshot);
@@ -3050,6 +3060,34 @@ export function WorkbenchRuntime({
     },
     [openProjectScenePage, presentExistingDatabaseView, selectProject],
   );
+  const openContentIssueLocation = async (
+    scope: ContentAccessIdentity,
+    location: ContentEditLocation,
+  ) => {
+    if (scope.libraryId !== currentLibraryId) return;
+    const { target, label } = location;
+    try {
+      if (scope.accessContext.kind === "library") {
+        await presentLibraryTarget(target, { titleSnapshot: label });
+        return;
+      }
+      const projectId = scope.accessContext.projectId;
+      if (!projects.some((project) => project.id === projectId)) {
+        toast.danger("This Project is no longer available.");
+        return;
+      }
+      selectProject(projectId);
+      if (target.kind === "page") await openProjectScenePage(projectId, target.pageId, label);
+      else if (target.kind === "canvas")
+        await openProjectSceneCanvas(projectId, target.canvasId, label);
+      else if (target.kind === "view") {
+        if (!(await presentExistingDatabaseView(projectId, target.viewId)))
+          toast.danger("This View is no longer available.");
+      } else await openResourceTargetInProject(projectId, target, label);
+    } catch (error) {
+      toast.danger(error instanceof Error ? error.message : "The content could not be opened.");
+    }
+  };
   const handOffCancelledPendingWorktree = useCallback(
     async (entry: CodexPendingWorktreeEntry) => {
       const targetProjectId = resolveCancelledPendingWorktreeProjectId(
@@ -4463,13 +4501,25 @@ export function WorkbenchRuntime({
 
   return (
     <PageTitleProjectionProvider currentLibraryId={currentLibraryId} store={pageTitleStore}>
+      {currentLibraryId ? <ContentRecoveryObserver libraryId={currentLibraryId} /> : null}
+      <span role="status" aria-live="polite" className="sr-only">
+        {contentIssueCount > 0
+          ? `${contentIssueCount} content ${contentIssueCount === 1 ? "issue needs" : "issues need"} attention`
+          : ""}
+      </span>
       <HeaderActionProvider
         actions={
           <>
             {appShellHeaderActions}
-            <HeaderAction actionId="content-history" slotPosition="right" align="end" order={150}>
-              <ContentHistoryControl projects={projects} />
-            </HeaderAction>
+            {contentIssueCount > 0 ? (
+              <HeaderAction actionId="content-issues" slotPosition="right" align="end" order={150}>
+                <ContentIssuesControl
+                  libraryId={currentLibraryId}
+                  projects={projects}
+                  onOpenLocation={openContentIssueLocation}
+                />
+              </HeaderAction>
+            ) : null}
           </>
         }
       >

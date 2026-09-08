@@ -338,17 +338,20 @@ function PageStageContent({
 
 function PageStageDocumentTitle({
   title,
+  pageId,
   historyScope,
   onValueChange,
   autoFocus,
 }: {
   readonly title: Y.Text;
+  readonly pageId: string;
   readonly historyScope: ContentInteractionHistoryScope;
   readonly onValueChange: (title: string) => void;
   readonly autoFocus?: boolean;
 }) {
   return (
     <CollaborativePageTitle
+      pageId={pageId}
       title={title}
       historyScope={historyScope}
       autoFocus={autoFocus}
@@ -415,6 +418,7 @@ export function PageStage(props: PageStageProps) {
         <PageStageDocumentTitle
           title={surface.title}
           historyScope={surface.descriptor}
+          pageId={surface.descriptor.ownerBlockId}
           onValueChange={controller.handleDocumentTitleChange}
           autoFocus={props.autoFocusTitle}
         />

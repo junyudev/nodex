@@ -13,6 +13,7 @@ import {
 } from "react";
 
 import { ActivitySpinnerIcon } from "@/components/shared/icons";
+import { ContentSaveStatus } from "@/components/shared/content-save-status";
 import { NodexButton } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { usePropertyOptionRegistries } from "@/components/database/use-property-option-registries";
@@ -1465,6 +1466,7 @@ export function DatabaseList({
     setBlockDropPreview(null);
     setBlockDropMessage(null);
     await commitDatabaseViewBlockDrop({
+      viewName: model.viewName,
       historyScopeKey: databaseViewHistoryScopeKey(model),
       session,
       projectId: mutationHistoryProjectId,
@@ -1810,6 +1812,7 @@ export function DatabaseList({
             DATABASE_LIST_THEME_CLASS_NAME,
           )}
         >
+          <ContentSaveStatus source={coreWindow.presentationOwner} />
           <div
             ref={scrollerRef}
             role="grid"

@@ -31,6 +31,7 @@ import type {
   DatabaseDataEditUndoRecipeV2,
   DatabaseListMoveUndoRecipeV2,
 } from "../../../shared/database-module-v2";
+import { parseDatabaseViewId } from "../../../shared/database-identities";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import {
   buildBlockToDataSourceTransferIntent,
@@ -52,6 +53,7 @@ export interface DatabaseViewOperationsCommand {
 }
 
 export interface DatabaseViewBlockDropCommand {
+  readonly viewName?: string;
   readonly historyScopeKey: string;
   readonly session: LocalBlockDragSession;
   readonly projectId: string;
@@ -242,6 +244,20 @@ export const databaseViewHistoryAdapter = (
     if (intent.kind === "data") intent.command.discardPresentation?.(operationId);
   };
   return {
+    locate: () => ({
+      target: {
+        kind: "view",
+        viewId: parseDatabaseViewId(
+          intent.kind === "data"
+            ? intent.command.model.databaseViewId
+            : intent.command.placement.viewId,
+        ),
+      },
+      label:
+        intent.kind === "data"
+          ? intent.command.model.viewName
+          : (intent.command.viewName ?? "Database View"),
+    }),
     describe: (action) =>
       action.kind === "data"
         ? dataLabel(action.command)

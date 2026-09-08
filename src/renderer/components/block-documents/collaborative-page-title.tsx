@@ -69,6 +69,7 @@ type NativeTitleEditorProps = Omit<
 >;
 
 export interface CollaborativePageTitleProps extends NativeTitleEditorProps {
+  readonly pageId?: string;
   readonly title: Y.Text;
   readonly historyScope?: ContentInteractionHistoryScope;
   readonly ref?: Ref<HTMLDivElement>;
@@ -156,6 +157,7 @@ const renderRichTitleDom = (root: HTMLDivElement, value: PortableRichText): void
 
 export function CollaborativePageTitle({
   title,
+  pageId,
   historyScope,
   ref: forwardedRef,
   onValueChange,
@@ -231,7 +233,7 @@ export function CollaborativePageTitle({
     if (!document) {
       throw new TypeError("Collaborative Page title must belong to a Y.Doc");
     }
-    const history = getPageTitleInteractionHistory(title, historyScope);
+    const history = getPageTitleInteractionHistory(title, historyScope, pageId);
     const releaseOrigin = history.retainOrigin(localOrigin);
     historyRef.current = history;
     const root = editorRef.current;
@@ -314,7 +316,7 @@ export function CollaborativePageTitle({
       releaseOrigin();
       if (historyRef.current === history) historyRef.current = null;
     };
-  }, [historyScope, localOrigin, title]);
+  }, [historyScope, localOrigin, title, pageId]);
 
   useLayoutEffect(() => {
     const editor = editorRef.current;

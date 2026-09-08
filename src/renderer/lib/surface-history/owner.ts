@@ -4,6 +4,30 @@ import type {
   SurfaceHistoryDirection,
   SurfaceHistorySnapshot,
 } from "../../../shared/surface-history";
+import type { ContentEditLocation } from "../content-edit-issues";
+
+export interface HistoryAttentionTarget {
+  readonly generation: number;
+  readonly entryId: number;
+  readonly direction: "forward" | SurfaceHistoryDirection;
+}
+
+interface HistoryFailure {
+  readonly kind: "unconfirmed" | "replay-failed";
+  readonly direction: HistoryAttentionTarget["direction"];
+  readonly reason: string;
+}
+
+/** Recovery observes the exact failed action, independently of native Undo availability. */
+export interface HistoryAttention extends HistoryAttentionTarget, HistoryFailure {
+  readonly ownerId: string;
+  readonly revision: number;
+  readonly label: string;
+  readonly location: ContentEditLocation | null;
+  readonly checking: boolean;
+  readonly canRetry: boolean;
+  readonly canReset: boolean;
+}
 
 export type HistoryCommandOutcome<Receipt> =
   | { readonly kind: "committed"; readonly receipt: Receipt }
@@ -34,6 +58,8 @@ export interface HistoryCommandHandle<Receipt> {
 
 export interface HistoryContentAdapter<Intent, Request, Receipt, Inverse> {
   describe(intent: Intent): string;
+  /** Captured with the admitted gesture; navigation cannot retarget a later recovery. */
+  locate?(): ContentEditLocation | null;
   prepare(intent: Intent): Promise<HistoryPreparation<Request, Receipt>>;
   prepareInverse(inverse: Inverse): Promise<HistoryPreparation<Request, Receipt>>;
   submit(request: Request): Promise<HistoryCommandOutcome<Receipt>>;
@@ -88,8 +114,9 @@ export interface SurfaceHistory<Intent, Receipt, Inverse = unknown> {
     direction: SurfaceHistoryDirection,
     targetEntryId?: number,
   ): HistoryCommandHandle<Receipt>;
-  recover(): HistoryCommandHandle<Receipt>;
+  recover(target?: HistoryAttentionTarget): HistoryCommandHandle<Receipt>;
   snapshot(): SurfaceHistorySnapshot;
+  attention(): readonly HistoryAttention[];
   subscribe(listener: () => void): () => void;
   setScope(scopeKey: string): void;
   reset(): void;
@@ -109,6 +136,7 @@ type EntryState<Inverse> =
       readonly kind: "pending";
       readonly phase: "preparing" | "submitting" | "recovering";
       readonly inverse?: Inverse;
+      readonly failure?: HistoryFailure;
     }
   | { readonly kind: "ready"; readonly inverse: Inverse }
   | {
@@ -116,11 +144,13 @@ type EntryState<Inverse> =
       readonly reason: string;
       readonly retryable: boolean;
       readonly inverse?: Inverse;
+      readonly failure?: HistoryFailure;
     };
 interface Entry<Inverse, Adapter> {
   readonly id: number;
   readonly local: boolean;
   readonly label: string;
+  readonly location: ContentEditLocation | null;
   state: EntryState<Inverse>;
   bytes: number;
   readonly adapter: Adapter;
@@ -313,10 +343,44 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
     undo: capability("undo"),
     redo: capability("redo"),
   });
+  const readAttention = (): readonly HistoryAttention[] => {
+    if (closed) return [];
+    const candidates = [
+      scope.uncertain?.entry,
+      scope.activeReplay?.entry,
+      scope.undo.at(-1),
+      scope.redo.at(-1),
+    ];
+    return [...new Set(candidates)].flatMap((entry): HistoryAttention[] => {
+      if (!entry || entry.state.kind === "ready" || !entry.state.failure) return [];
+      const failure = entry.state.failure;
+      const checking = entry.state.kind === "pending" && entry.state.phase !== "recovering";
+      return [
+        {
+          ...failure,
+          ownerId,
+          generation: scope.generation,
+          revision,
+          entryId: entry.id,
+          label: entry.label,
+          location: entry.location,
+          checking,
+          canRetry:
+            !scope.active &&
+            (scope.uncertain
+              ? scope.uncertain.entry === entry
+              : entry.state.kind === "blocked" && entry.state.retryable),
+          canReset: !scope.active,
+        },
+      ];
+    });
+  };
   let snapshot = readSnapshot();
+  let attention = readAttention();
   const publish = () => {
     revision++;
     snapshot = readSnapshot();
+    attention = readAttention();
     for (const listener of listeners) {
       try {
         listener();
@@ -542,6 +606,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
       kind: "pending",
       phase: "submitting",
       inverse: attempt.originalInverse,
+      failure: attempt.entry.state.kind === "ready" ? undefined : attempt.entry.state.failure,
     };
     if (owner === scope) publish();
     let outcome: HistoryCommandOutcome<Receipt>;
@@ -562,6 +627,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
           reason:
             "This action is being recovered outside the closed surface. Reset history to continue.",
           retryable: false,
+          failure: { kind: "unconfirmed", direction: attempt.direction, reason: outcome.reason },
         };
         if (owner === scope) publish();
         return { status: "blocked", reason: attempt.entry.state.reason };
@@ -574,6 +640,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
         kind: "pending",
         phase: "recovering",
         inverse: attempt.originalInverse,
+        failure: { kind: "unconfirmed", direction: attempt.direction, reason: outcome.reason },
       };
       owner.uncertain = attempt;
       if (owner === scope) publish();
@@ -596,6 +663,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
         reason: outcome.reason,
         retryable: false,
         inverse: attempt.abandoned ? undefined : attempt.originalInverse,
+        failure: { kind: "unconfirmed", direction: attempt.direction, reason: outcome.reason },
       };
       if (attempt.direction === "forward" && owner === scope) fork(owner, attempt.entry.id);
       if (owner === scope) publish();
@@ -608,6 +676,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
         reason: outcome.reason,
         retryable: outcome.retryable,
         inverse: attempt.originalInverse,
+        failure: { kind: "replay-failed", direction: attempt.direction, reason: outcome.reason },
       };
     if (owner === scope) publish();
     return { status: "rejected", reason: outcome.reason };
@@ -627,7 +696,12 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
       if (owner === scope) publish();
       return { status: "rejected", reason: "This history participant is no longer available." };
     }
-    entry.state = { kind: "pending", phase: "preparing", inverse: originalInverse };
+    entry.state = {
+      kind: "pending",
+      phase: "preparing",
+      inverse: originalInverse,
+      failure: entry.state.kind === "ready" ? undefined : entry.state.failure,
+    };
     publish();
     let request: Request;
     let bytes: number;
@@ -653,6 +727,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
           reason: reasonOf(error),
           retryable: true,
           inverse: originalInverse,
+          failure: { kind: "replay-failed", direction, reason: reasonOf(error) },
         };
       if (owner === scope) publish();
       return { status: "rejected", reason: reasonOf(error) };
@@ -725,7 +800,17 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
       checked = await entry.adapter.checkInverse!(inverse);
     } catch (error) {
       if (stale()) return "changed" as const;
-      entry.state = { kind: "blocked", reason: reasonOf(error), retryable: true, inverse };
+      entry.state = {
+        kind: "blocked",
+        reason: reasonOf(error),
+        retryable: true,
+        inverse,
+        failure: {
+          kind: "replay-failed",
+          direction: owner.activeReplay?.direction ?? "undo",
+          reason: reasonOf(error),
+        },
+      };
       publish();
       return { reason: reasonOf(error) };
     }
@@ -773,6 +858,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
           reason: reasonOf(error),
           retryable: false,
           inverse: entry.state.inverse,
+          failure: { kind: "replay-failed", direction, reason: reasonOf(error) },
         };
         publish();
         return immediate("blocked", reasonOf(error));
@@ -843,6 +929,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
           id: ++sequence,
           local: true,
           label: adapter.describe(intent),
+          location: adapter.locate?.() ?? null,
           adapter,
           bytes: 0,
           state:
@@ -904,6 +991,11 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
             reason:
               "This action is being recovered outside the closed surface. Reset history to continue.",
             retryable: false,
+            failure: {
+              kind: "unconfirmed",
+              direction: attempt.direction,
+              reason: "The action is still being confirmed after its content was closed.",
+            },
           };
           if (scope.uncertain === attempt) finishAttempt(scope, attempt);
           continue;
@@ -929,6 +1021,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
         id: ++sequence,
         local: true,
         label: adapter.describe(intent),
+        location: adapter.locate?.() ?? null,
         bytes: 128,
         adapter,
         state: { kind: "pending", phase: "preparing" },
@@ -964,6 +1057,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
         id: ++sequence,
         local: false,
         label: adapter.describe(intent),
+        location: adapter.locate?.() ?? null,
         bytes: 128,
         adapter,
         state: { kind: "pending", phase: "preparing" },
@@ -987,7 +1081,18 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
         replay(owner, direction, throughEntryId, targetEntryId),
       );
     },
-    recover: () => {
+    recover: (target) => {
+      if (
+        target &&
+        !attention.some(
+          (issue) =>
+            issue.generation === target.generation &&
+            issue.entryId === target.entryId &&
+            issue.direction === target.direction &&
+            issue.canRetry,
+        )
+      )
+        return immediate("noop");
       if (closed || scope.active)
         return immediate("blocked", "The current action is still being confirmed.");
       const owner = scope;
@@ -1002,12 +1107,18 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
         owner.queue.push(...waiting);
         return handle;
       }
-      const direction = owner.undo.at(-1)?.state.kind === "blocked" ? "undo" : "redo";
+      const direction =
+        target && target.direction !== "forward"
+          ? target.direction
+          : owner.undo.at(-1)?.state.kind === "blocked"
+            ? "undo"
+            : "redo";
       return enqueue(owner, owner[direction].at(-1)?.id ?? null, direction, () =>
-        replay(owner, direction, sequence, undefined, true),
+        replay(owner, direction, sequence, target?.entryId, true),
       );
     },
     snapshot: () => snapshot,
+    attention: () => attention,
     subscribe: (listener) => {
       listeners.add(listener);
       return () => {
@@ -1059,15 +1170,16 @@ export interface InteractionHistoryBinding<Intent, Receipt, Inverse> extends Omi
   /** Call before the native engine decides whether to extend its current group. */
   beginLocalCapture(): void;
   request(direction: SurfaceHistoryDirection, targetEntryId?: number): HistoryReplayHandle;
-  recover(): HistoryReplayHandle;
+  recover(target?: HistoryAttentionTarget): HistoryReplayHandle;
 }
 export interface InteractionHistory {
   bind<Intent, Request, Receipt, Inverse>(
     options: HistoryBindingOptions<Intent, Request, Receipt, Inverse>,
   ): InteractionHistoryBinding<Intent, Receipt, Inverse>;
   request(direction: SurfaceHistoryDirection, targetEntryId?: number): HistoryReplayHandle;
-  recover(): HistoryReplayHandle;
+  recover(target?: HistoryAttentionTarget): HistoryReplayHandle;
   snapshot(): SurfaceHistorySnapshot;
+  attention(): readonly HistoryAttention[];
   subscribe(listener: () => void): () => void;
   setScope(scopeKey: string): void;
   reset(): void;
@@ -1124,9 +1236,9 @@ export const createInteractionHistory = (options: {
     breakCapture();
     return replayHandle(engine.request(direction, target));
   };
-  const recover = () => {
+  const recover = (target?: HistoryAttentionTarget) => {
     breakCapture();
-    return replayHandle(engine.recover());
+    return replayHandle(engine.recover(target));
   };
   return {
     bind: <Intent, Request, Receipt, Inverse>(
@@ -1212,8 +1324,9 @@ export const createInteractionHistory = (options: {
           retained().some((entry) => entry.entryId === input.entryId) && engine.reconcile(input),
         request: (direction: SurfaceHistoryDirection, target?: number) =>
           closed ? rejectClosed() : request(direction, target),
-        recover: () => (closed ? rejectClosed() : recover()),
+        recover: (target) => (closed ? rejectClosed() : recover(target)),
         snapshot: engine.snapshot,
+        attention: engine.attention,
         subscribe: engine.subscribe,
         setScope: (key: string) => {
           if (closed || scopeKey === key) return;
@@ -1235,6 +1348,7 @@ export const createInteractionHistory = (options: {
     request,
     recover,
     snapshot: engine.snapshot,
+    attention: engine.attention,
     subscribe: engine.subscribe,
     setScope: (key) => {
       breakCapture();

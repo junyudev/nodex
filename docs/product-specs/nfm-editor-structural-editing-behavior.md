@@ -156,12 +156,12 @@ selection, focus and File notifications never decide whether content committed.
 The native Edit menu shows the focused input owner's next action and availability.
 Page bodies, titles and embedded Views report the same content history; native inputs
 and independent editor drafts keep their own history. A stale focus or owner
-snapshot cannot replace a newer menu observation. Waiting and blocked actions
-show a compact notice in their surface, with Check again or Retry when safe.
-Reset history requires confirmation, changes no content, and retires the entire
+snapshot cannot replace a newer menu observation. Unconfirmed actions and failed
+replays appear in Workbench content issues, with Check again or a replay retry
+when safe. Clear undo history requires confirmation, changes no content, and retires the entire
 content timeline without interrupting confirmation of submitted requests.
 If the original receipt can no longer be confirmed, the action stays blocked
-until Reset history. Receipt expiry is neither a rejection nor permission to
+until Clear undo history. Receipt expiry is neither a rejection nor permission to
 repeat the edit under a new identity, and cannot settle a Cut as source-preserved.
 An inverse retired before preparation finishes is not submitted. Retirement
 after submission transfers recovery responsibility without erasing the attempt.
@@ -199,12 +199,13 @@ disposal retires the chronological prefix through its lost actions and clears
 dependent Redo; temporary DOM detach does not. Unconfirmed sent actions retain
 an explicit barrier and exact Main recovery responsibility.
 
-History activity never inserts a section above the editor. The fixed Workbench
-`Content edits` control observes the shared timeline without changing focus or
-retaining another participant. Short waits stay quiet; delayed activity and
-unknown or blocked actions are available in its manual recovery popover.
-Ordinary pending work cannot reset history. An explicit safe reset confirms
-the affected content scope and rechecks that scope before clearing history.
+History activity never inserts a section above the editor. The Workbench
+`Content issues` control observes exact unconfirmed actions and failed replays
+without changing focus or retaining another participant. It stays absent during
+routine saves and successful edits with no inverse. Issues retain their source
+Page and access context even after navigation. `Clear undo history` requires a
+root-hosted confirmation and rechecks the history revision before clearing it;
+ordinary submission cannot offer that action.
 
 Undoing a structural edit executes a new Core transaction from its single-use inverse token. Core returns a fresh inverse token for redo; it never rewinds SQLite or replays the original command. Deleting and restoring an owner therefore preserves the same owner and Document identities while leaving unrelated collaborator changes intact. Replacement history swaps the currently active closure with the retained opposite closure, so paste and direct typing do not create a separate delete entry. Exact File identities and any Page-entry relationships are part of that same forward transaction and LocalCommit; they are never patched optimistically by the renderer. A conflict keeps the entry at the top of history instead of skipping to an earlier action.
 

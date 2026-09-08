@@ -208,6 +208,7 @@ function ActivePageOutlinerContent({
       title={
         <div {...nestedEditorEventProps} data-embedded-surface-input="page-title">
           <CollaborativePageTitle
+            pageId={surface.descriptor.ownerBlockId}
             ref={titleRef}
             title={surface.title}
             historyScope={surface.descriptor}
