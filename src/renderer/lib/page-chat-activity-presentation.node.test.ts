@@ -19,7 +19,6 @@ describe("Page Chat activity presentation", () => {
     expect(presentPageChatActivity(summary({ workingCount: 1, unreadCount: 1 }))).toEqual({
       execution: "working",
       unread: true,
-      visibleAtRest: true,
       accessibleLabel: "1 linked chat, 1 working chat, 1 unread chat",
     });
   });
@@ -45,11 +44,10 @@ describe("Page Chat activity presentation", () => {
     ).toBe("input");
   });
 
-  test("keeps idle/read relations discoverable without persistent emphasis", () => {
+  test("presents idle/read relations without execution or unread activity", () => {
     expect(presentPageChatActivity(summary())).toMatchObject({
       execution: "idle",
       unread: false,
-      visibleAtRest: false,
     });
   });
 });

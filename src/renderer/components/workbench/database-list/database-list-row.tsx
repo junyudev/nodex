@@ -380,7 +380,6 @@ export function DatabaseListRow({
               summary={pageChatActivity}
               onOpenChat={onOpenRelatedChat}
               onRemoveRelation={onRemovePageChatRelation}
-              idleVisibilityClassName="group-hover/list-row:opacity-100 group-focus-within/list-row:opacity-100"
             />
           ) : null}
           {inlineProperties}

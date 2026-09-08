@@ -89,10 +89,10 @@ end of the Board title lane and after the List title, without changing Card
 height, List density, selection, drag, or title truncation. Working uses the
 shared spinner, waiting for approval or user input uses an attention glyph,
 system error uses an error glyph, and unread uses an independent 6px blue dot,
-so execution and unread can appear together. Error, waiting, working, and
-unread controls remain visible. An idle/read relationship is quiet at rest and
-reveals a muted Chat glyph on Page hover or focus. The control has a complete
-pluralized accessible label and tooltip; color alone never carries state.
+so execution and unread can appear together. Board and List keep the control
+visible whenever a Page has an available linked Chat, including a muted Chat
+glyph for idle/read relationships, without requiring hover or focus. The control
+has a complete pluralized accessible label and tooltip; color alone never carries state.
 
 If exactly one available unarchived Chat is related, activating the control
 opens that durable Project Session directly. Otherwise it opens a Related

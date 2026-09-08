@@ -148,7 +148,7 @@ function ActivityMatrix({ narrow = false }: { readonly narrow?: boolean }) {
               {rows.map(({ label, activity, detail }) => (
                 <div
                   key={activity.pageId}
-                  className="group/story-row flex h-11 min-w-0 items-center gap-2 border-b border-token-border/60 px-2 last:border-b-0 hover:bg-token-list-hover-background"
+                  className="flex h-11 min-w-0 items-center gap-2 border-b border-token-border/60 px-2 last:border-b-0 hover:bg-token-list-hover-background"
                 >
                   <span className="min-w-0 flex-1 truncate text-sm">{label}</span>
                   <PageChatActivityControl
@@ -157,7 +157,6 @@ function ActivityMatrix({ narrow = false }: { readonly narrow?: boolean }) {
                     summary={activity}
                     onOpenChat={() => undefined}
                     onRemoveRelation={() => undefined}
-                    idleVisibilityClassName="group-hover/story-row:opacity-100 group-focus-within/story-row:opacity-100"
                     detailOverride={detail}
                   />
                 </div>
