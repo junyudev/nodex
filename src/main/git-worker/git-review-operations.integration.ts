@@ -1,7 +1,7 @@
 import { it } from "@effect/vitest";
 import { afterEach, expect } from "vite-plus/test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import * as Effect from "effect/Effect";
@@ -17,6 +17,7 @@ import {
   readGitReviewBranchCommits,
   readGitReviewCatFile,
   readGitReviewDiff,
+  readGitReviewGeneratedPaths,
   readGitReviewPatch,
   readGitReviewRepositoryMetadata,
   readGitReviewSnapshot,
@@ -1066,6 +1067,39 @@ it.layer(GitCommandPlatformNode.nodeLive)("git review service", (it) => {
       },
     ]);
   });
+
+  runtimeTest(
+    "resolves generated attributes for turn paths, nested overrides, and unmatched rules",
+    async () => {
+      const cwd = createTempDir("nodex-git-generated-tree-");
+      runGit(cwd, ["init"]);
+      mkdirSync(path.join(cwd, "src"));
+      writeFileSync(path.join(cwd, ".gitattributes"), "*.ts linguist-generated\n", "utf8");
+      writeFileSync(
+        path.join(cwd, "src", ".gitattributes"),
+        "keep.ts -linguist-generated\n",
+        "utf8",
+      );
+      const paths = [path.join(cwd, "src", "generated.ts"), path.join(cwd, "src", "keep.ts")];
+      expect(await readGitReviewGeneratedPaths({ cwd, paths })).toEqual({
+        paths: [paths[0]],
+        hasLinguistGeneratedAttributes: true,
+      });
+      const canonicalPath = path.join(realpathSync(cwd), "src", "generated.ts");
+      expect(await readGitReviewGeneratedPaths({ cwd, paths: [canonicalPath] })).toEqual({
+        paths: [canonicalPath],
+        hasLinguistGeneratedAttributes: true,
+      });
+      expect(await readGitReviewGeneratedPaths({ cwd, paths: ["README.md"] })).toEqual({
+        paths: [],
+        hasLinguistGeneratedAttributes: true,
+      });
+      expect(await readGitReviewGeneratedPaths({ cwd, paths: ["../outside.ts"] })).toEqual({
+        paths: [],
+        hasLinguistGeneratedAttributes: true,
+      });
+    },
+  );
 
   runtimeTest("excludes generated file paths and bodies from search", async () => {
     const cwd = createTempDir("nodex-git-review-search-generated-");

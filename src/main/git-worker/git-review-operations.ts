@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { tmpdir } from "node:os";
 import { readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { GitWorkerMethodMap } from "../../shared/git-worker-protocol";
 import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 import type {
   BranchDiffStatsRequest,
@@ -1012,6 +1013,79 @@ async function annotateGeneratedReviewFiles(
     ...file,
     generated: generatedPaths === null ? null : generatedPaths.has(file.path),
   }));
+}
+
+/** The host resolves attributes for both turn patches and repository reviews. */
+export async function readGitReviewGeneratedPaths(
+  input: GitWorkerMethodMap["review-generated-paths"]["params"],
+): Promise<GitWorkerMethodMap["review-generated-paths"]["result"]> {
+  return runGitReviewRequest(undefined, async (signal) => {
+    const cwd = await ensureDirectory(input.cwd);
+    const repository = await resolveGitReviewRepositoryPaths(cwd);
+    if (!repository) return { paths: [], hasLinguistGeneratedAttributes: false };
+    const canonicalCwd = await realpath(cwd);
+    const files = input.paths
+      .map((original) => {
+        const absolute = path.resolve(cwd, original);
+        const relativeToRoot = path.relative(repository.root, absolute);
+        const alreadyCanonical =
+          relativeToRoot !== ".." &&
+          !relativeToRoot.startsWith(`..${path.sep}`) &&
+          !path.isAbsolute(relativeToRoot);
+        const canonicalPath = alreadyCanonical
+          ? absolute
+          : path.resolve(canonicalCwd, path.relative(cwd, absolute));
+        return { original, relative: path.relative(repository.root, canonicalPath) };
+      })
+      .filter(
+        (file) =>
+          file.relative !== ".." &&
+          !file.relative.startsWith(`..${path.sep}`) &&
+          !path.isAbsolute(file.relative),
+      );
+    const attributeFiles = new Set([path.join(repository.root, ".gitattributes")]);
+    for (const file of files) {
+      let directory = path.dirname(path.resolve(repository.root, file.relative));
+      while (directory !== repository.root) {
+        attributeFiles.add(path.join(directory, ".gitattributes"));
+        directory = path.dirname(directory);
+      }
+    }
+    let hasLinguistGeneratedAttributes = false;
+    for (const attributePath of attributeFiles) {
+      signal?.throwIfAborted();
+      const contents = await readFile(attributePath, { encoding: "utf8", signal }).catch(
+        (error: unknown) => {
+          if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
+            return "";
+          throw error;
+        },
+      );
+      if (
+        contents.split(/\r?\n/).some((line) => {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("[attr]")) return false;
+          return trimmed
+            .split(/\s+/)
+            .slice(1)
+            .some((token) =>
+              /^(?:[!-]?linguist-generated|linguist-generated=(?:true|false))$/.test(token),
+            );
+        })
+      )
+        hasLinguistGeneratedAttributes = true;
+    }
+    const generated = await readGeneratedReviewPaths(
+      repository.root,
+      files.map((file) => file.relative),
+      signal,
+    );
+    if (!generated) throw new Error("Unable to resolve generated file attributes");
+    return {
+      paths: files.filter((file) => generated.has(file.relative)).map((file) => file.original),
+      hasLinguistGeneratedAttributes,
+    };
+  });
 }
 
 function toFileSummaries(patch: string): GitReviewFileSummary[] {

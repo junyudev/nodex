@@ -1,5 +1,5 @@
 import type { Dirent } from "node:fs";
-import { open, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { copyFile, open, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import type {
   WorkspaceDirectoryEntriesInput,
@@ -486,6 +486,28 @@ export async function readWorkspaceFileBinary(
     contentsBase64: bytes.toString("base64"),
     ...(mimeType === undefined ? {} : { mimeType }),
   };
+}
+
+/** Copies bytes only after a native destination picker; selecting the source is a no-op. */
+export async function saveWorkspaceFileCopy(
+  input: WorkspaceFileRequest,
+  selectDestination: (defaultPath: string) => Promise<string | null>,
+): Promise<{ path: string | null }> {
+  const source = resolveFileRequestPath(input);
+  const sourceStats = await stat(source);
+  if (!sourceStats.isFile())
+    throw new WorkspaceFileUserError("invalid_path", `${source} is not a file`);
+  const destination = await selectDestination(basename(source));
+  if (!destination) return { path: null };
+  if (resolve(destination) === source) return { path: destination };
+  const destinationStats = await stat(destination).catch((error: unknown) => {
+    if (readErrorCode(error) === "ENOENT") return null;
+    throw error;
+  });
+  if (destinationStats?.dev === sourceStats.dev && destinationStats.ino === sourceStats.ino)
+    return { path: destination };
+  await copyFile(source, destination);
+  return { path: destination };
 }
 
 export async function writeWorkspaceFile(

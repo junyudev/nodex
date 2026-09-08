@@ -39,6 +39,10 @@ export interface GitWorkerMethodMap {
     params: import("./types").GitReviewCatFileInput;
     result: import("./git-review").GitWorkerCatFileResult;
   };
+  "review-generated-paths": {
+    params: { cwd: string; paths: string[] };
+    result: { paths: string[]; hasLinguistGeneratedAttributes: boolean };
+  };
   "review-search": {
     params: import("./types").GitReviewSearchInput;
     result: import("./git-review").GitWorkerSnapshotResult<import("./types").GitReviewSearchResult>;
@@ -378,6 +382,14 @@ function isMethodParams(method: unknown, params: unknown): method is GitWorkerMe
   }
   if (method === "review-diff") return isReviewDiffParams(params);
   if (method === "review-cat-file") return isCatFileParams(params);
+  if (method === "review-generated-paths") {
+    return (
+      isCwdParams(params) &&
+      Array.isArray(params.paths) &&
+      params.paths.length <= 100_000 &&
+      params.paths.every((path) => isBoundedString(path, 4_096))
+    );
+  }
   if (method === "review-search") {
     return hasValidReviewSourceParams(params) && isBoundedString(params.query, 4_096);
   }
@@ -524,6 +536,14 @@ function isMethodResult(method: GitWorkerMethod, value: unknown): boolean {
   if (method === "review-summary") return isReviewSummaryResult(value);
   if (method === "review-diff") return isReviewDiffResult(value);
   if (method === "review-cat-file") return isCatFileResult(value);
+  if (method === "review-generated-paths") {
+    return (
+      isRecord(value) &&
+      Array.isArray(value.paths) &&
+      value.paths.every((path) => typeof path === "string") &&
+      typeof value.hasLinguistGeneratedAttributes === "boolean"
+    );
+  }
   if (method === "subscribe-live-query") {
     return isRecord(value) && value.subscribed === true;
   }
@@ -656,6 +676,7 @@ const GIT_WORKER_METHODS: Record<GitWorkerMethod, true> = {
   "git-init-repo": true,
   "merge-base": true,
   "review-cat-file": true,
+  "review-generated-paths": true,
   "review-diff": true,
   "review-patch": true,
   "review-search": true,

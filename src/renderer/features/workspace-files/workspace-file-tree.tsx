@@ -1,28 +1,19 @@
-import { FileTree, useFileTree } from "@pierre/trees/react";
-import type { FileTreeDirectoryHandle } from "@pierre/trees";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useMemo } from "react";
+import { FileTreeContextMenu } from "@/components/workbench/file-tree-context-menu";
+import { resolveWorkspaceTreeFilePath } from "./workspace-file-model";
+import { FileTree, getFileTreeEventPath, type FileTreeState } from "@/components/ui/file-tree";
 import { preloadSourceViewer } from "@/components/ui/lazy-source-viewer";
-import { cn } from "@/lib/utils";
+import { buildFileTreeExpandedPaths, buildFileTreePaths } from "@/lib/file-tree-paths";
 
 export interface WorkspaceFileTreePath {
   readonly path: string;
   readonly kind: "directory" | "file";
 }
-
-export interface WorkspaceFileTreeState {
-  readonly expandedPaths: readonly string[];
-  readonly selectedPath: string | null;
-  readonly scrollTop: number;
-}
+export type WorkspaceFileTreeState = FileTreeState;
 
 export interface WorkspaceFileTreeProps {
+  readonly workspaceRoot?: string | null;
+  readonly threadId?: string | null;
   readonly paths: readonly WorkspaceFileTreePath[];
   readonly expandedPaths: ReadonlySet<string>;
   readonly selectedPath: string | null;
@@ -31,81 +22,14 @@ export interface WorkspaceFileTreeProps {
   readonly revealSelectedPath?: boolean;
   readonly revealSelectedPathScrollOffset?: "top" | "center" | "nearest";
   readonly className?: string;
-  readonly onExpand: (path: string) => void;
-  readonly onCollapse: (path: string) => void;
   readonly onOpen: (path: string, mode: "preview" | "durable") => void;
-  readonly onStateChange?: (state: WorkspaceFileTreeState) => void;
-}
-
-const WORKSPACE_TREE_UNSAFE_CSS = `
-:host {
-  --trees-bg-override: var(--color-token-main-surface-primary);
-  --trees-bg-muted-override: var(--color-token-list-hover-background);
-  --trees-border-color-override: var(--color-token-border);
-  --trees-fg-override: var(--color-token-foreground);
-  --trees-font-size-override: 13px;
-  --trees-focus-ring-color-override: var(--color-token-list-focus-outline);
-  --trees-item-padding-x-override: 6px;
-  --trees-item-margin-x-override: 0px;
-  --trees-level-gap-override: 0px;
-  --trees-padding-inline-override: 0px;
-  --trees-scrollbar-gutter-override: 0px;
-  --trees-scrollbar-gutter-measured: 0px;
-  --trees-selected-bg-override: var(--color-token-list-active-selection-background);
-  --trees-selected-fg-override: var(--color-token-list-active-selection-foreground);
-  --trees-item-row-gap-override: 10px;
-}
-
-[data-file-tree-sticky-overlay-content='true'],
-[data-file-tree-sticky-row='true'] {
-  background-color: var(--color-token-main-surface-primary);
-}
-
-[data-file-tree-virtualized-scroll='true'] {
-  scrollbar-gutter: auto;
-}
-
-[role='treeitem'],
-[role='treeitem'] * {
-  cursor: var(--cursor-interaction) !important;
-}
-
-[data-item-type='file']:has([data-item-section='content']:empty) {
-  display: none;
-}
-
-@container measure (height <= calc(1lh + 1px)) {
-  [data-truncate-marker] {
-    opacity: 0;
-  }
-}
-`;
-
-function toPierreDirectoryPath(path: string): string {
-  return path.replace(/\/+$/, "") + "/";
+  readonly onStateChange: (state: WorkspaceFileTreeState) => void;
 }
 
 export function toPierreWorkspaceTreePaths(paths: readonly WorkspaceFileTreePath[]): string[] {
   return paths.map((item) =>
-    item.kind === "directory" ? toPierreDirectoryPath(item.path) : item.path,
+    item.kind === "directory" ? item.path.replace(/\/+$/, "") + "/" : item.path,
   );
-}
-
-function fromPierreTreePath(path: string): string {
-  return path.replace(/\/+$/, "");
-}
-
-export function resolveWorkspaceFileClickMode(detail: number): "preview" | null {
-  return detail > 1 ? null : "preview";
-}
-
-function getTreeEventPath(event: Event): string | null {
-  for (const target of event.composedPath()) {
-    if (!(target instanceof HTMLElement)) continue;
-    const itemPath = target.dataset.itemPath ?? target.dataset.fileTreeStickyPath;
-    if (itemPath) return itemPath;
-  }
-  return null;
 }
 
 export function WorkspaceFileTree({
@@ -114,222 +38,84 @@ export function WorkspaceFileTree({
   selectedPath,
   searchQuery,
   initialScrollTop = 0,
+  workspaceRoot,
+  threadId,
   revealSelectedPath = false,
   revealSelectedPathScrollOffset = "nearest",
   className,
-  onExpand,
-  onCollapse,
   onOpen,
   onStateChange,
 }: WorkspaceFileTreeProps) {
-  const callbacksRef = useRef({
-    onCollapse,
-    onExpand,
-    onOpen,
-    onStateChange,
-  });
-  callbacksRef.current = {
-    onCollapse,
-    onExpand,
-    onOpen,
-    onStateChange,
-  };
-  const treePaths = useMemo(() => toPierreWorkspaceTreePaths(paths), [paths]);
-  const initialExpandedPaths = useMemo(
-    () => [...expandedPaths].filter((path) => path.length > 0).map(toPierreDirectoryPath),
-    [expandedPaths],
+  const searching = searchQuery.trim().length > 0;
+  const mapped = useMemo(
+    () =>
+      searching
+        ? buildFileTreePaths(
+            paths
+              .filter((item) => item.kind === "file")
+              .map((item) => ({
+                path: item.path,
+                displayPath: item.path,
+              })),
+          )
+        : [],
+    [paths, searching],
   );
-  const initialSelectedPaths = useMemo(() => (selectedPath ? [selectedPath] : []), [selectedPath]);
-  const expandedPathsRef = useRef<readonly string[]>([...expandedPaths]);
-  const selectedPathRef = useRef(selectedPath);
-  const scrollTopRef = useRef(Math.max(0, initialScrollTop));
-  const restoredScrollRef = useRef(false);
-  const { model } = useFileTree({
-    paths: treePaths,
-    initialExpandedPaths,
-    initialSelectedPaths,
-    fileTreeSearchMode: "hide-non-matches",
-    flattenEmptyDirectories: false,
-    icons: { set: "complete", colored: true },
-    itemHeight: 28,
-    stickyFolders: true,
-    search: false,
-    unsafeCSS: WORKSPACE_TREE_UNSAFE_CSS,
-  });
-
-  useEffect(() => {
-    model.resetPaths(treePaths, { initialExpandedPaths });
-  }, [initialExpandedPaths, model, treePaths]);
-
-  useEffect(() => {
-    expandedPathsRef.current = [...expandedPaths];
-  }, [expandedPaths]);
-
-  useEffect(() => {
-    model.setSearch(searchQuery || null);
-  }, [model, searchQuery]);
-
-  useEffect(() => {
-    selectedPathRef.current = selectedPath;
-    const currentSelection = model.getSelectedPaths();
-    if (
-      currentSelection.length === (selectedPath ? 1 : 0) &&
-      currentSelection[0] === selectedPath
-    ) {
-      return;
-    }
-    for (const path of currentSelection) model.getItem(path)?.deselect();
-    if (selectedPath) model.getItem(selectedPath)?.select();
-  }, [model, selectedPath, treePaths]);
-
-  useEffect(() => {
-    const readExpandedPaths = (): readonly string[] => {
-      const knownDirectoryPaths = new Set(
-        treePaths.filter((path) => path.endsWith("/")).map(fromPierreTreePath),
-      );
-      const next = expandedPathsRef.current.filter(
-        (path) => path === "" || !knownDirectoryPaths.has(path),
-      );
-      for (const path of treePaths) {
-        if (!path.endsWith("/")) continue;
-        const item = model.getItem(path);
-        if (!item?.isDirectory()) continue;
-        if (!(item as FileTreeDirectoryHandle).isExpanded()) continue;
-        next.push(fromPierreTreePath(path));
-      }
-      return next;
-    };
-    const emitState = () => {
-      expandedPathsRef.current = readExpandedPaths();
-      const modelSelectedPath = model.getSelectedPaths()[0] ?? null;
-      if (modelSelectedPath || !selectedPathRef.current || model.getItem(selectedPathRef.current)) {
-        selectedPathRef.current = modelSelectedPath;
-      }
-      callbacksRef.current.onStateChange?.({
-        expandedPaths: expandedPathsRef.current,
-        selectedPath: selectedPathRef.current,
-        scrollTop: scrollTopRef.current,
-      });
-    };
-    const unsubscribeModel = model.subscribe(emitState);
-    let cancelled = false;
-    let animationFrame: number | null = null;
-    let scrollElement: HTMLElement | null = null;
-
-    const connectScrollElement = (attempt: number) => {
-      if (cancelled) return;
-      const container = model.getFileTreeContainer();
-      scrollElement =
-        container?.shadowRoot?.querySelector<HTMLElement>(
-          "[data-file-tree-virtualized-scroll='true']",
-        ) ?? null;
-      if (!scrollElement) {
-        if (attempt >= 12) return;
-        animationFrame = window.requestAnimationFrame(() => {
-          connectScrollElement(attempt + 1);
-        });
-        return;
-      }
-
-      if (!restoredScrollRef.current) {
-        restoredScrollRef.current = true;
-        scrollElement.scrollTop = Math.max(0, initialScrollTop);
-        scrollTopRef.current = scrollElement.scrollTop;
-      }
-      scrollElement.addEventListener("scroll", emitScrollState, { passive: true });
-    };
-    const emitScrollState = () => {
-      if (!scrollElement) return;
-      scrollTopRef.current = scrollElement.scrollTop;
-      callbacksRef.current.onStateChange?.({
-        expandedPaths: expandedPathsRef.current,
-        selectedPath: selectedPathRef.current,
-        scrollTop: scrollTopRef.current,
-      });
-    };
-
-    connectScrollElement(0);
-    return () => {
-      cancelled = true;
-      unsubscribeModel();
-      scrollElement?.removeEventListener("scroll", emitScrollState);
-      if (animationFrame !== null) {
-        window.cancelAnimationFrame(animationFrame);
-      }
-    };
-  }, [initialScrollTop, model, treePaths]);
-
-  useEffect(() => {
-    if (!revealSelectedPath || !selectedPath) return;
-    model.scrollToPath(selectedPath, {
-      offset: revealSelectedPathScrollOffset,
-    });
-  }, [model, revealSelectedPath, revealSelectedPathScrollOffset, selectedPath]);
-
-  const handleClick = (event: ReactMouseEvent<HTMLElement>) => {
-    const rawPath = getTreeEventPath(event.nativeEvent);
-    if (!rawPath) return;
-    if (!rawPath.endsWith("/")) {
-      // A double click emits two click events before `dblclick`. Only the
-      // first click previews; the dedicated handler performs one durable open.
-      const mode = resolveWorkspaceFileClickMode(event.detail);
-      if (!mode) return;
-      callbacksRef.current.onOpen(rawPath, mode);
-      return;
-    }
-    const item = model.getItem(rawPath);
-    if (!item?.isDirectory()) return;
-    const directoryItem = item as FileTreeDirectoryHandle;
-    const path = fromPierreTreePath(rawPath);
-    if (directoryItem.isExpanded()) {
-      callbacksRef.current.onExpand(path);
-      return;
-    }
-    callbacksRef.current.onCollapse(path);
-  };
-
-  const handleDoubleClick = (event: ReactMouseEvent<HTMLElement>) => {
-    const rawPath = getTreeEventPath(event.nativeEvent);
-    if (!rawPath || rawPath.endsWith("/")) return;
-    callbacksRef.current.onOpen(rawPath, "durable");
-  };
-
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.key !== "Enter") return;
-    const item = model.getFocusedItem();
-    if (!item) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const rawPath = item.getPath();
-    if (!item.isDirectory()) {
-      callbacksRef.current.onOpen(rawPath, "durable");
-      return;
-    }
-    const directoryItem = item as FileTreeDirectoryHandle;
-    directoryItem.toggle();
-    const path = fromPierreTreePath(rawPath);
-    if (directoryItem.isExpanded()) {
-      callbacksRef.current.onExpand(path);
-      return;
-    }
-    callbacksRef.current.onCollapse(path);
-  };
-
-  const handlePointerOver = (event: ReactPointerEvent<HTMLElement>) => {
-    const rawPath = getTreeEventPath(event.nativeEvent);
-    if (rawPath && !rawPath.endsWith("/")) preloadSourceViewer();
-  };
+  const treePaths = useMemo(
+    () => (searching ? mapped.map(({ treePath }) => treePath) : toPierreWorkspaceTreePaths(paths)),
+    [mapped, paths, searching],
+  );
+  const searchPaths = useMemo(
+    () => new Map(mapped.map(({ entry, treePath }) => [treePath, entry.path])),
+    [mapped],
+  );
+  const initialExpandedPaths = useMemo(
+    () => (searching ? buildFileTreeExpandedPaths(treePaths) : [...expandedPaths]),
+    [expandedPaths, searching, treePaths],
+  );
+  const resolveFilePath = (treePath: string) =>
+    searching
+      ? searchPaths.get(treePath)
+      : paths.find((item) => item.kind === "file" && item.path === treePath)?.path;
 
   return (
-    <FileTree
-      model={model}
-      aria-label="Workspace files"
-      className={cn("block h-full min-h-0 w-full", className)}
-      data-tab-preview-pin-exempt="true"
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
-      onKeyDown={handleKeyDown}
-      onPointerOver={handlePointerOver}
-    />
+    <FileTreeContextMenu
+      threadId={threadId}
+      resolvePath={(treePath) => {
+        const path = resolveFilePath(treePath);
+        return path && workspaceRoot ? resolveWorkspaceTreeFilePath(workspaceRoot, path) : null;
+      }}
+    >
+      <FileTree
+        key={searching ? "search" : "browse"}
+        ariaLabel="Workspace files"
+        appearance="workspace"
+        className={className}
+        paths={treePaths}
+        expandedPaths={initialExpandedPaths}
+        selectedPath={searching ? null : selectedPath}
+        flattenEmptyDirectories={searching}
+        initialScrollTop={searching ? 0 : initialScrollTop}
+        revealSelectedPath={!searching && revealSelectedPath}
+        revealSelectedPathScrollOffset={revealSelectedPathScrollOffset}
+        resetKey={searching ? searchQuery : undefined}
+        onSelectionChange={(selection) => {
+          const path = selection.map(resolveFilePath).find((path) => path !== undefined);
+          if (path) onOpen(path, "preview");
+        }}
+        onDoubleClick={(event) => {
+          const treePath = getFileTreeEventPath(event.nativeEvent, true);
+          const path = treePath ? resolveFilePath(treePath) : undefined;
+          if (path) onOpen(path, "durable");
+        }}
+        onPointerOver={(event) => {
+          if (getFileTreeEventPath(event.nativeEvent, true)) preloadSourceViewer();
+        }}
+        onStateChange={(state) => {
+          if (searching) return;
+          onStateChange({ ...state, expandedPaths: ["", ...state.expandedPaths] });
+        }}
+      />
+    </FileTreeContextMenu>
   );
 }

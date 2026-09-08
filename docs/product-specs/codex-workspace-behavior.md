@@ -149,6 +149,17 @@ destroying the page when panels hide.
 
 Exact file previews may open outside a Project tree after top-level window
 ownership is verified. Tree browsing stays within an explicit canonical root.
+Files uses the shared file-tree model with 28px rows, native keyboard selection,
+sticky folders, and an 8px search/tree inset. Browsing reads only the root and
+expanded directories, includes hidden entries, and preserves explicit empty
+directories. Search queries the whole workspace, compresses ancestor-only
+paths, and distinguishes pending, failed, empty, and successful results. Clearing
+the filter restores the root-scoped browse expansion, selection, and scroll;
+results from another host or root never appear in the current tree. Selection
+opens a preview; double click makes the Files tab durable. Files does not show
+Git status decorations. Its file context menu shares external opening, native
+Save as, full-path copying, and composer attachment behavior with Review.
+
 Editable files use bounded reads, recoverable drafts, compare-and-swap save,
 watcher refresh, and explicit external-change conflict presentation. Bounded
 image previews use ephemeral object URLs that are revoked when the file or

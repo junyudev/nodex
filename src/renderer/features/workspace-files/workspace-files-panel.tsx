@@ -1,3 +1,4 @@
+import { FileTreeFilter } from "@/components/ui/file-tree-filter";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
@@ -13,12 +14,7 @@ import {
 import { CheckmarkIcon, CopyIcon, OpenInIcon, RefreshIcon } from "@/components/shared/icons";
 import { PanelRightHiddenIcon, PanelRightVisibleIcon } from "@/components/shared/icons";
 import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
-import {
-  FileIcon,
-  SidePanelFilesIcon,
-  SearchIcon,
-  ProjectActionsIcon,
-} from "@/components/shared/icons";
+import { FileIcon, SidePanelFilesIcon, ProjectActionsIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/toast";
 import {
@@ -71,7 +67,6 @@ import {
 import {
   normalizeWorkspaceFileNavigationState,
   selectWorkspaceFileNavigationPath,
-  updateWorkspaceFileNavigationExpansion,
   workspaceFileNavigationStateFamily,
   type WorkspaceFileNavigationState,
 } from "./workspace-file-navigation-state";
@@ -448,8 +443,17 @@ export function WorkspaceFilesPanel({
   const navigationWriteTimeoutRef = useRef<number | null>(null);
   const initialTabStateRef = useRef(normalizeWorkspaceFilesTabState(tab.state));
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
-  const [searchPaths, setSearchPaths] = useState<WorkspaceFileTreePath[] | null>(null);
+  const [searchResult, setSearchResult] = useState<{
+    readonly hostId: string;
+    readonly workspaceRoot: string;
+    readonly paths: WorkspaceFileTreePath[];
+  } | null>(null);
+  const searchPaths =
+    searchResult?.hostId === hostId && searchResult.workspaceRoot === workspaceRoot
+      ? searchResult.paths
+      : null;
   const [searchPending, setSearchPending] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const searchGenerationRef = useRef(0);
   const persistedTabStateRef = useRef<WorkspaceFilesTabState>(initialTabStateRef.current);
   const [treeWidth, setTreeWidth] = useState(
@@ -621,11 +625,12 @@ export function WorkspaceFilesPanel({
 
   useEffect(() => {
     const normalizedQuery = navigationState.searchQuery.trim();
+    setSearchError(null);
     const generation = searchGenerationRef.current + 1;
     searchGenerationRef.current = generation;
     if (!workspaceRoot || !normalizedQuery) {
       setDebouncedSearchQuery("");
-      setSearchPaths(null);
+      setSearchResult(null);
       setSearchPending(false);
       return;
     }
@@ -643,23 +648,27 @@ export function WorkspaceFilesPanel({
         )
         .then((result) => {
           if (searchGenerationRef.current !== generation) return;
-          setSearchPaths([
-            ...result.ancestorDirectories.map((path) => ({
-              path,
-              kind: "directory" as const,
-            })),
-            ...result.matches.map((match) => ({
-              path: match.path,
-              kind: "file" as const,
-            })),
-          ]);
+          setSearchResult({
+            hostId,
+            workspaceRoot,
+            paths: [
+              ...result.ancestorDirectories.map((path) => ({
+                path,
+                kind: "directory" as const,
+              })),
+              ...result.matches.map((match) => ({
+                path: match.path,
+                kind: "file" as const,
+              })),
+            ],
+          });
           setSearchPending(false);
         })
         .catch((error: unknown) => {
           if (searchGenerationRef.current !== generation) return;
-          setSearchPaths([]);
+          setSearchResult({ hostId, workspaceRoot, paths: [] });
           setSearchPending(false);
-          toast.danger(error instanceof Error ? error.message : "Unable to search files");
+          setSearchError(error instanceof Error ? error.message : "Unable to search files");
         });
     }, 150);
     return () => window.clearTimeout(timeout);
@@ -941,7 +950,7 @@ export function WorkspaceFilesPanel({
     }
     return [...byPath.values()];
   }, [entriesByPath]);
-  const treePaths = searchPaths ?? browsePaths;
+  const treePaths = navigationState.searchQuery.trim() ? (searchPaths ?? []) : browsePaths;
 
   const openTreeEntry = useCallback(
     async (path: string, mode: "preview" | "durable") => {
@@ -954,24 +963,6 @@ export function WorkspaceFilesPanel({
       });
     },
     [onOpenFileTab, tab.panelId, workspaceRoot],
-  );
-
-  const expandTreeEntry = useCallback(
-    (path: string) => {
-      publishNavigationState(
-        updateWorkspaceFileNavigationExpansion(navigationStateRef.current, path, true),
-      );
-    },
-    [publishNavigationState],
-  );
-
-  const collapseTreeEntry = useCallback(
-    (path: string) => {
-      publishNavigationState(
-        updateWorkspaceFileNavigationExpansion(navigationStateRef.current, path, false),
-      );
-    },
-    [publishNavigationState],
   );
 
   const updateTreeState = useCallback(
@@ -1362,38 +1353,35 @@ export function WorkspaceFilesPanel({
           >
             <div className="mx-auto h-full w-px bg-gradient-to-b from-transparent via-token-foreground/25 to-transparent" />
           </div>
-          <div className="shrink-0 p-2">
-            <label
-              htmlFor="workspace-directory-tree-search"
-              className="relative flex h-token-button-composer w-full items-center gap-1.5 rounded-lg border border-token-border bg-token-bg-fog px-2 text-base leading-[18px]"
-            >
-              <SearchIcon className="icon-2xs shrink-0 text-token-description-foreground" />
-              <input
-                id="workspace-directory-tree-search"
-                aria-label="Filter files"
-                value={navigationState.searchQuery}
-                onInput={(event) => updateFilterQuery(event.currentTarget.value)}
-                placeholder="Filter files…"
-                className="min-w-0 flex-1 bg-transparent text-sm text-token-text-primary outline-none placeholder:text-token-description-foreground"
-              />
-            </label>
+          <div className="shrink-0 px-2 pt-2 pb-px">
+            <FileTreeFilter value={navigationState.searchQuery} onChange={updateFilterQuery} />
           </div>
-          <div className="min-h-0 flex-1 px-1 pb-2">
+          <div className="min-h-0 flex-1 px-2">
             {treePaths.length > 0 ? (
               <WorkspaceFileTree
+                workspaceRoot={workspaceRoot}
+                threadId={activeSession?.thread?.threadId}
                 paths={treePaths}
                 expandedPaths={expandedPaths}
                 selectedPath={selectedTreePath}
                 searchQuery={debouncedSearchQuery}
+                revealSelectedPath
                 initialScrollTop={navigationState.scrollTop}
-                onExpand={expandTreeEntry}
-                onCollapse={collapseTreeEntry}
                 onOpen={openTreeEntry}
                 onStateChange={updateTreeState}
               />
             ) : (
-              <div className="px-2 py-4 text-sm text-token-text-secondary">
-                {rootDirectoryPending || searchPending ? "Loading files..." : "No files found."}
+              <div className="px-2 py-2 text-sm text-tertiary">
+                {searchError ??
+                  (searchPending
+                    ? "Searching files…"
+                    : rootDirectoryPending
+                      ? "Loading directory entries…"
+                      : directoryError
+                        ? "Unable to load files"
+                        : navigationState.searchQuery.trim()
+                          ? "No matching files"
+                          : "No files in this folder")}
               </div>
             )}
           </div>

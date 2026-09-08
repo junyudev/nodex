@@ -560,7 +560,8 @@ type PlainResultCommandEndpointPolicy =
   | "worktrees:execution-hosts:update"
   | "worktrees:settings:update"
   | "worktrees:thread:restore"
-  | "write-file";
+  | "write-file"
+  | "workspace-file:save-copy";
 
 type ClassifiedEndpoint =
   | QueryEndpointPolicy

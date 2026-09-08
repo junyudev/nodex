@@ -1409,6 +1409,10 @@ export interface IpcApi {
     args: [input: WorkspaceFileWriteInput];
     result: WorkspaceFileWriteResult;
   };
+  "workspace-file:save-copy": {
+    args: [input: WorkspaceFileRequest];
+    result: { path: string | null };
+  };
   "workspace-file-watch:start": {
     args: [input: WorkspaceFileRequest];
     result: WorkspaceFileWatchStartResult;
