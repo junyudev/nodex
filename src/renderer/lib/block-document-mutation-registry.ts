@@ -1,5 +1,21 @@
 import type { DocumentHeadFence } from "./block-document-surface-runtime";
-import type { DocumentWaitOptions } from "./document-wait";
+import type { DocumentCommitRef } from "../../shared/block-documents";
+import {
+  DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
+  assertDocumentWaitActive,
+  type DocumentWaitOptions,
+} from "./document-wait";
+
+export type StructuralReplayDocument = Pick<DocumentCommitRef, "documentId" | "generation">;
+
+/** Retain replay coordinates without retaining canonical update payloads. */
+export const structuralReplayDocuments = (
+  documents: readonly StructuralReplayDocument[],
+): readonly StructuralReplayDocument[] => [
+  ...new Map(
+    documents.map(({ documentId, generation }) => [documentId, { documentId, generation }]),
+  ).values(),
+];
 
 /**
  * One mounted editor's complete preparation boundary for a structural command.
@@ -57,3 +73,29 @@ export const resolveBlockDocumentStructuralMutationParticipantByDocumentId = (
   }
   return match;
 };
+
+/** Flush local edits before a recipe replaces their collaborative addresses. */
+export async function prepareBlockDocumentStructuralReplay(
+  storeEpoch: string,
+  documents: readonly StructuralReplayDocument[],
+  input: DocumentWaitOptions = {},
+): Promise<void> {
+  const options = {
+    ...input,
+    deadlineAt: input.deadlineAt ?? Date.now() + DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
+  };
+  for (const document of documents) {
+    assertDocumentWaitActive(options);
+    const participant = resolveBlockDocumentStructuralMutationParticipantByDocumentId(
+      document.documentId,
+    );
+    if (!participant) continue;
+    const head = await participant.prepareAndFence(options);
+    if (
+      head.documentId !== document.documentId ||
+      head.storeEpoch !== storeEpoch ||
+      head.generation !== document.generation
+    )
+      throw new Error("The Document authority changed before history replay.");
+  }
+}

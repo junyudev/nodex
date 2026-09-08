@@ -1,4 +1,5 @@
 import * as Y from "yjs";
+import { registerBlockDocumentStructuralMutationParticipant } from "./block-document-mutation-registry";
 import { writeTextToClipboardStrict } from "./clipboard";
 import type { Awareness } from "y-protocols/awareness";
 import type { OwnedDocumentDescriptor } from "../../shared/block-documents";
@@ -236,6 +237,7 @@ export class BlockDocumentSurfaceRuntime {
   private readonly persistPreparers = new Set<BlockDocumentSurfacePersistPreparer>();
   private readonly readyWaiters = new Set<ReadyWaiter>();
   private readonly unsubscribeProviderStatus: () => void;
+  private readonly releaseMutationParticipant: () => void;
 
   private readyDocument: OwnedDocumentEnvelope | null = null;
   private terminal: SurfaceTerminalState | null = null;
@@ -293,6 +295,12 @@ export class BlockDocumentSurfaceRuntime {
     this.status = this.buildStatus(this.provider.getStatus());
     this.unsubscribeProviderStatus = this.provider.subscribeStatus(this.handleProviderStatus);
     this.handleProviderStatus();
+    // The provider can still have local writes while its React editor is detached.
+    // A mounted editor overrides this fallback with its DOM-settling participant.
+    this.releaseMutationParticipant = registerBlockDocumentStructuralMutationParticipant(
+      `document-runtime:${this.clientSessionId}`,
+      { documentId: this.descriptor.documentId, prepareAndFence: this.flushAndFence },
+    );
   }
 
   get clientSessionId(): string {
@@ -634,6 +642,7 @@ export class BlockDocumentSurfaceRuntime {
       return persisted;
     }
     this.unsubscribeProviderStatus();
+    this.releaseMutationParticipant();
     try {
       this.provider.destroy();
     } catch {

@@ -166,6 +166,13 @@ repeat the edit under a new identity, and cannot settle a Cut as source-preserve
 An inverse retired before preparation finishes is not submitted. Retirement
 after submission transfers recovery responsibility without erasing the attempt.
 
+While structural replay temporarily blurs its initiating editor to settle browser
+selection, that editor retains keyboard and native-menu Undo/Redo input until
+replay completes. Repeated intents enter the same content queue even when the
+content projection arrives before the command receipt. Pointer interaction,
+another focused input, ordinary keyboard input, window blur, or detachment ends
+this temporary ownership; completion never reclaims a user's later focus choice.
+
 Portable fallback is part of its reserved Paste gesture, including when Undo
 was requested while the clipboard was still preparing. Ordinary local fallback
 records one native inverse in that gesture. Replacing a selection containing
@@ -207,6 +214,10 @@ Page and access context even after navigation. `Clear undo history` requires a
 root-hosted confirmation and rechecks the history revision before clearing it;
 ordinary submission cannot offer that action.
 
+Before either direction of structural replay, every affected open Document saves
+its pending local edits, including retained Documents without a mounted editor.
+Replay rejects a changed Store epoch or Document generation before submission.
+
 Undoing a structural edit executes a new Core transaction from its single-use inverse token. Core returns a fresh inverse token for redo; it never rewinds SQLite or replays the original command. Deleting and restoring an owner therefore preserves the same owner and Document identities while leaving unrelated collaborator changes intact. Replacement history swaps the currently active closure with the retained opposite closure, so paste and direct typing do not create a separate delete entry. Exact File identities and any Page-entry relationships are part of that same forward transaction and LocalCommit; they are never patched optimistically by the renderer. A conflict keeps the entry at the top of history instead of skipping to an earlier action.
 
 Core's ordinary Block Promotion into Library or Data Source returns the opposite
@@ -215,10 +226,11 @@ Page, Document generation, rich body and wrapper identities. Copy retirement
 keeps its owned Document intact; Move restores the original source forest and
 retains the target Document for replay. Data Source membership, Page Key,
 Properties and manual positions keep their identities while the row is retired.
-Move Redo validates the restored source forest and its parent and adjacent sibling
+Move Undo validates the restored placement and refuses to remove an edited source
+placeholder. Move Redo validates the restored source forest and its parent and adjacent sibling
 identities within the same Document generation. Earlier Undo/Redo may advance the
 source revision without blocking replay when this affected content is unchanged.
-Unrelated source title and sibling fields survive both Redo and its next Undo;
+Unrelated source title and sibling fields survive every Undo and Redo;
 changed restored content or placement rejects the entire replay atomically.
 Library order uses surviving neighbors outside the retired batch. Promotion
 history preserves exact File identities and Page relationship clocks without

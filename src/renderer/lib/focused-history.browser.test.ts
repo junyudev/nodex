@@ -6,6 +6,7 @@ import {
   dispatchFocusedHistory,
   readFocusedHistory,
   registerFocusedHistory,
+  retainPendingHistoryInput,
 } from "./focused-history";
 import { createSurfaceHistory } from "./surface-history/owner";
 import { ComposerPromptEditor } from "@/features/local-conversation/view/composer/composer-prompt-editor";
@@ -21,18 +22,19 @@ function Prompt() {
   });
 }
 
+const history = () =>
+  createSurfaceHistory({
+    scopeKey: "test",
+    adapter: {
+      describe: () => "Edit",
+      prepare: async () => ({ kind: "complete", receipt: "noop" }),
+      prepareInverse: async () => ({ kind: "complete", receipt: "noop" }),
+      submit: async () => ({ kind: "committed", receipt: "noop" }),
+      interpret: () => ({ kind: "noop" }),
+    },
+  });
+
 test("capabilities follow the nearest surface without claiming embedded or native input history", async () => {
-  const history = () =>
-    createSurfaceHistory({
-      scopeKey: "test",
-      adapter: {
-        describe: () => "Edit",
-        prepare: async () => ({ kind: "complete", receipt: "noop" }),
-        prepareInverse: async () => ({ kind: "complete", receipt: "noop" }),
-        submit: async () => ({ kind: "committed", receipt: "noop" }),
-        interpret: () => ({ kind: "noop" }),
-      },
-    });
   const editorHistory = history();
   const viewHistory = history();
   const editor = document.createElement("div");
@@ -137,3 +139,57 @@ test("native menu intents preserve ordinary input undo and redo", async () => {
     input.remove();
   }
 });
+
+test.each(["pointer", "focus", "nested input", "typing", "window", "detach"] as const)(
+  "pending history gives up input after %s changes the target",
+  async (interaction) => {
+    const controls = history();
+    const editor = document.createElement("div");
+    editor.contentEditable = "true";
+    const other = document.createElement("input");
+    document.body.append(editor, other);
+    const request = vi.fn();
+    editor.focus();
+    const previous = retainPendingHistoryInput(editor, controls, request);
+    const pending = retainPendingHistoryInput(editor, controls, request);
+    try {
+      await act(async () => {
+        editor.blur();
+        previous.release();
+        expect(readFocusedHistory()?.ownerId).toBe(controls.snapshot().ownerId);
+        dispatchFocusedHistory("undo");
+      });
+      expect(request.mock.calls).toEqual([["undo"]]);
+      await act(async () => {
+        if (interaction === "pointer")
+          document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        if (interaction === "focus") {
+          other.focus();
+          other.blur();
+        }
+        if (interaction === "nested input") {
+          editor.append(other);
+          other.focus();
+          other.blur();
+        }
+        if (interaction === "typing") await userEvent.keyboard("x");
+        if (interaction === "window") window.dispatchEvent(new Event("blur"));
+        if (interaction === "detach") editor.remove();
+        await Promise.resolve();
+      });
+      expect(pending.isCurrent()).toBe(false);
+      expect(readFocusedHistory()).toBeNull();
+      await act(async () => {
+        dispatchFocusedHistory("redo");
+        await Promise.resolve();
+      });
+      expect(request.mock.calls).toEqual([["undo"]]);
+    } finally {
+      pending.release();
+      previous.release();
+      controls.close();
+      editor.remove();
+      other.remove();
+    }
+  },
+);

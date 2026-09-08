@@ -1,4 +1,8 @@
 import type * as Y from "yjs";
+import {
+  structuralReplayDocuments,
+  type StructuralReplayDocument,
+} from "../../../lib/block-document-mutation-registry";
 import type { ContentEditLocation } from "@/lib/content-edit-issues";
 import type { SurfaceHistorySelectionPair } from "@blocknote/core/yjs";
 import type { BlockHistoryPatch } from "../../../../shared/block-documents/block-history-patch";
@@ -69,6 +73,7 @@ export interface NfmHistoryLaneOptions {
   ) => Promise<NfmHistoryRequest>;
   readonly prepareStructuralReverse?: (
     token: LibraryStructuralHistoryToken,
+    documents: readonly StructuralReplayDocument[],
     selection?: SurfaceHistorySelectionPair,
   ) => Promise<NfmHistoryRequest>;
   readonly submit?: (
@@ -447,7 +452,11 @@ export class NfmHistoryLane {
         throw new Error("The editor surface is not mounted for history replay.");
       return {
         kind: "submit",
-        request: await this.handlers.prepareStructuralReverse(inverse.token, inverse.selection),
+        request: await this.handlers.prepareStructuralReverse(
+          inverse.token,
+          inverse.documents,
+          inverse.selection,
+        ),
       };
     }
     const item = this.requireCapture(inverse.captureId);
@@ -470,7 +479,14 @@ export class NfmHistoryLane {
     if (receipt.kind === "block_transfer") {
       const { history } = receipt.result;
       return history
-        ? { kind: "reversible", inverse: { kind: "structural", token: history } }
+        ? {
+            kind: "reversible",
+            inverse: {
+              kind: "structural",
+              token: history,
+              documents: structuralReplayDocuments(receipt.result.documentCommits),
+            },
+          }
         : { kind: "barrier", reason: "This transfer has no complete inverse." };
     }
     const { result, presentation } = receipt;
@@ -484,6 +500,7 @@ export class NfmHistoryLane {
       inverse: {
         kind: "structural",
         token: result.history,
+        documents: structuralReplayDocuments(result.documentCommits),
         ...(selection ? { selection: { before: selection.after, after: selection.before } } : {}),
       },
     };

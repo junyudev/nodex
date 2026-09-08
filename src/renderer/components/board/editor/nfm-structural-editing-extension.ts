@@ -30,6 +30,7 @@ import { createUuidV7 } from "../../../../shared/uuid-v7";
 import { hasTypedOwnerBlock, type TypedOwnerBlockLike } from "../../../lib/typed-owner-blocks";
 import {
   resolveBlockDocumentStructuralMutationParticipantByDocumentId,
+  prepareBlockDocumentStructuralReplay,
   type BlockDocumentStructuralMutationParticipant,
 } from "../../../lib/block-document-mutation-registry";
 import {
@@ -47,6 +48,7 @@ import {
 } from "../../../lib/nfm-block-move-runtime";
 import type { SurfaceHistorySelectionPair, YUndoExtension } from "@blocknote/core/yjs";
 import { NfmHistoryLane } from "./nfm-editor-history";
+import { historyKeyDirection, retainPendingHistoryInput } from "../../../lib/focused-history";
 import type { SurfaceHistoryControls } from "../../../lib/surface-history/controls";
 import type { SurfaceHistoryDirection } from "../../../../shared/surface-history";
 import {
@@ -335,6 +337,7 @@ export class NfmStructuralEditingSession {
     }
   >();
   private focusRevision = 0;
+  private releasePendingHistoryInput: (() => void) | undefined;
   private focusDocument: Document | null = null;
   private readonly preparationLifetime = new AbortController();
   private readonly preparationWaits = new Set<AbortController>();
@@ -403,8 +406,14 @@ export class NfmStructuralEditingSession {
     this.ownsHistory = this.history !== options.historyLane;
     this.detachHistory = this.history.attach({
       prepareCommand: (command) => this.prepareCommand(command),
-      prepareStructuralReverse: (token, selection) =>
-        this.prepareHistory({ kind: "reverse_structural_edit", token }, selection),
+      prepareStructuralReverse: async (token, documents, selection) => {
+        await prepareBlockDocumentStructuralReplay(
+          token.storeEpoch,
+          documents.filter(({ documentId }) => documentId !== this.boundRuntime.source.documentId),
+          { signal: this.preparationLifetime.signal },
+        );
+        return this.prepareHistory({ kind: "reverse_structural_edit", token }, selection);
+      },
       prepareTextReverse: (patch, selection) =>
         this.prepareHistory(
           {
@@ -494,13 +503,8 @@ export class NfmStructuralEditingSession {
 
   handleKeyDown(event: KeyboardEvent): boolean {
     if (this.disposed || event.isComposing || this.editor.prosemirrorView?.composing) return false;
-    const mod = event.metaKey || event.ctrlKey;
-    if (mod && !event.altKey && event.key.toLowerCase() === "z") {
-      return this.requestHistory(event.shiftKey ? "redo" : "undo");
-    }
-    if (mod && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "y") {
-      return this.requestHistory("redo");
-    }
+    const direction = historyKeyDirection(event);
+    if (direction) return this.requestHistory(direction);
     if (
       event.altKey ||
       event.ctrlKey ||
@@ -685,14 +689,19 @@ export class NfmStructuralEditingSession {
         active === document?.documentElement ||
         container.contains(active));
     const focusRevision = this.focusRevision;
+    const input = ownsInput
+      ? retainPendingHistoryInput(container, this.history, (next) => this.requestHistory(next))
+      : undefined;
+    this.releasePendingHistoryInput = input?.release;
     const handle = this.history.requestHistory(direction);
     if (ownsInput)
       void handle.result
         .then(() => {
-          if (this.disposed || focusRevision !== this.focusRevision) return;
+          if (this.disposed || focusRevision !== this.focusRevision || !input?.isCurrent()) return;
           this.restoreFocusIfUnclaimed();
         })
-        .catch((error: unknown) => this.reportError(error));
+        .catch((error: unknown) => this.reportError(error))
+        .finally(() => input?.release());
     return true;
   }
 
@@ -703,6 +712,7 @@ export class NfmStructuralEditingSession {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.releasePendingHistoryInput?.();
     this.preparationLifetime.abort();
     this.bindFocusDocument(null);
     void this.localRetention

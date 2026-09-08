@@ -829,7 +829,7 @@ fn restored_root<'a>(
 /// Replay consumes only the restored forest. Collaborative history may advance
 /// the head while returning that forest to the same semantic state; unrelated
 /// title/sibling fields are not a comparison fence and must not be overwritten.
-fn validate_restored_forest(
+pub(super) fn validate_restored_forest(
     before: &DocumentMaterialization,
     current: &DocumentMaterialization,
     roots: &[BlockTransferUndoRootV1],
@@ -844,6 +844,26 @@ fn validate_restored_forest(
                 "Restored promotion content or placement changed after Undo",
             ));
         }
+    }
+    Ok(())
+}
+
+/// Undo removes only the empty paragraph introduced by promotion. Never discard
+/// subsequent text or children written into that placeholder.
+pub(super) fn validate_source_placeholder(
+    current: &DocumentMaterialization,
+    recipe: &BlockTransferUndoRecipeV4,
+) -> Result<(), StoreError> {
+    let Some(id) = &recipe.source_placeholder_block_id else {
+        return Ok(());
+    };
+    let placeholder = restored_root(&current.block_tree, None, id)
+        .ok_or_else(|| conflict("Promotion source placeholder is no longer available"))?;
+    let expected = empty_paragraph(id);
+    if placeholder.block != &expected || placeholder.path.len() != 1 {
+        return Err(conflict(
+            "Promotion source placeholder changed after promotion",
+        ));
     }
     Ok(())
 }
