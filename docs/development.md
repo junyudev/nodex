@@ -150,6 +150,20 @@ same seed is a no-op and prints its provenance. A different seed, or a seed for
 a home already initialized without one, fails. Later manual edits belong to the
 environment and are not reset or compared with the original recipe.
 
+`landing/showcase` supplies three Tinyboard Pages with an unfinished brief.
+`landing/shared-pages` supplies the complete brief, an empty Implementation notes
+section, and one linked Chat without a Thread or fabricated transcript. Use a fresh
+home for each take, and `--build` for optimized Core and renderer execution:
+
+```bash
+vp run dev --home runs.local/shared-pages-take-01 --seed landing/shared-pages --build
+```
+
+Neither recipe implements a task-list repository or claims verification results.
+Perform real implementation and verification before asking an Agent to document
+them. Built renderers do not imply that every unfinished product control is hidden;
+inspect the intended composition before recording.
+
 The catalog is shared by Core integration and Electron E2E tests. Deterministic
 UI behavior belongs in a dedicated Playwright spec such as
 `tests/e2e/board-dense.spec.ts`; `vp run dev --seed ...` never starts
