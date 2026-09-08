@@ -17,7 +17,10 @@ export async function mountApplicationRenderer({
   const rootElement = document.getElementById("root");
   if (!rootElement) throw new Error("Nodex renderer root is missing");
 
-  const Agentation = import.meta.env.DEV ? (await import("agentation")).Agentation : null;
+  const Agentation =
+    import.meta.env.DEV && runtimeCapabilities.enabledDevelopmentFeatures.includes("agentation")
+      ? (await import("agentation")).Agentation
+      : null;
   const root = createRoot(rootElement);
   // The renderer-ready report is a multi-window scheduling boundary, so the
   // first full application commit must precede this function's resolution.

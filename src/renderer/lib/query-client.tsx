@@ -6,6 +6,7 @@ import type { CodexEvent } from "./types";
 import { ProjectionInvalidationProvider } from "./projection-invalidation-context";
 import { ResourceAuthorityQueryCacheBridge } from "./resource-authority-query-cache";
 import { PageFileQueryCacheSync } from "./page-file-query-cache";
+import { useDevelopmentFeature } from "./development-features-context";
 
 const ReactQueryDevtools = lazy(async () => {
   const module = await import("@tanstack/react-query-devtools");
@@ -59,12 +60,9 @@ function PageFileQueryCacheBridge({ queryClient }: { queryClient: QueryClient })
   return null;
 }
 
-function shouldRenderQueryDevtools(): boolean {
-  return process.env.NODE_ENV === "development" && window.__NODEX_STORYBOOK__ !== true;
-}
-
 export function NodexQueryProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => createNodexQueryClient());
+  const queryDevtoolsEnabled = useDevelopmentFeature("query-devtools");
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -74,7 +72,7 @@ export function NodexQueryProvider({ children }: { children: ReactNode }) {
         {children}
       </ProjectionInvalidationProvider>
       <CodexHostCatalogQuerySync queryClient={queryClient} />
-      {shouldRenderQueryDevtools() ? (
+      {import.meta.env.DEV && queryDevtoolsEnabled && window.__NODEX_STORYBOOK__ !== true ? (
         <Suspense fallback={null}>
           <ReactQueryDevtools initialIsOpen={false} />
         </Suspense>
