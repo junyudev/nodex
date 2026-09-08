@@ -66,6 +66,17 @@ const inputFor = (
   shiftKey: false,
   mutationHistory,
 });
+const documentCommits = [
+  {
+    documentId: "document-source",
+    generation: 1,
+    baseHeadSeq: 1,
+    headSeq: 2,
+    updateId: "commit",
+    update: new Uint8Array(),
+    stateVector: new Uint8Array(),
+  },
+];
 const success = (operationId: string) => ({
   ok: true,
   value: {
@@ -83,11 +94,13 @@ const success = (operationId: string) => ({
       storeEpoch: "epoch-1",
     },
     transformationEvidence: [{ promotion: { kind: "no_match" } }],
+    documentCommits,
   },
   localCommit: { status: "committed", commit: { store_epoch: "epoch-1", commit_seq: 3 } },
 });
 const source = () =>
   registerBlockDocumentStructuralMutationParticipant(session.sourceSurfaceId, {
+    documentId: "document-source",
     prepareAndFence: async () => ({
       documentId: "document-source",
       storeEpoch: "epoch-1",
@@ -110,6 +123,7 @@ describe("Database View Block drop command", () => {
       ok: true,
       value: {
         structuralEdit: {
+          documentCommits,
           history: {
             recipeOperationId: `inverse:${request.operation.token.recipeOperationId}`,
             recipeHash: "recipe:inverse",
@@ -159,6 +173,63 @@ describe("Database View Block drop command", () => {
         ),
       );
     } finally {
+      unregister();
+    }
+  });
+
+  test("each Undo and Redo waits for pending local Document saves before replacing addresses", async () => {
+    let completeSave = () => {};
+    let pendingSave = Promise.resolve();
+    let saved = true;
+    const prepareAndFence = vi.fn(async () => {
+      await pendingSave;
+      saved = true;
+      return {
+        documentId: "document-source",
+        storeEpoch: "epoch-1",
+        generation: 1,
+        expectedHeadSeq: 3,
+      };
+    });
+    const unregister = registerBlockDocumentStructuralMutationParticipant(session.sourceSurfaceId, {
+      documentId: "document-source",
+      prepareAndFence,
+    });
+    const history = createDatabaseViewMutationHistory("view-1");
+    mocks.transferBlocks.mockResolvedValue(success("promotion"));
+    mocks.applyLibraryModule.mockImplementation(async (_access, request) => {
+      expect(saved).toBe(true);
+      return {
+        ok: true,
+        value: {
+          structuralEdit: {
+            documentCommits,
+            history: {
+              ...request.operation.token,
+              recipeOperationId: `inverse:${request.operation.token.recipeOperationId}`,
+            },
+          },
+        },
+      };
+    });
+    try {
+      expect(await commitDatabaseViewBlockDrop(inputFor(history))).toBe(true);
+      for (const [index, direction] of (["undo", "redo"] as const).entries()) {
+        saved = false;
+        pendingSave = new Promise<void>((resolve) => {
+          completeSave = resolve;
+        });
+        const replay = history.request(direction);
+        await vi.waitFor(() => expect(prepareAndFence).toHaveBeenCalledTimes(index + 2));
+        expect(mocks.applyLibraryModule).toHaveBeenCalledTimes(index);
+        completeSave();
+        expect((await replay.result).status).toBe("committed");
+      }
+      expect(mocks.transferBlocks).toHaveBeenCalledOnce();
+      expect(mocks.applyLibraryModule).toHaveBeenCalledTimes(2);
+    } finally {
+      completeSave();
+      history.close();
       unregister();
     }
   });
@@ -317,7 +388,7 @@ describe("Database View Block drop command", () => {
       );
       mocks.applyLibraryModule.mockResolvedValue({
         ok: true,
-        value: { structuralEdit: { history: null } },
+        value: { structuralEdit: { history: null, documentCommits } },
       });
       expect(await history.undoLast()).toBe(true);
       expect(mocks.applyLibraryModule.mock.calls[0]?.[1].operation.token.recipeOperationId).toBe(

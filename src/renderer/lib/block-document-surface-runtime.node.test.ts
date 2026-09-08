@@ -28,6 +28,12 @@ import {
 } from "./block-document-surface-runtime";
 import { BlockDocumentSurfaceError } from "./block-document-surface-failure";
 import { DocumentWaitError } from "./document-wait";
+import {
+  prepareBlockDocumentStructuralReplay,
+  registerBlockDocumentStructuralMutationParticipant,
+  resolveBlockDocumentStructuralMutationParticipant,
+  resolveBlockDocumentStructuralMutationParticipantByDocumentId,
+} from "./block-document-mutation-registry";
 
 const descriptor = (overrides: Partial<OwnedDocumentDescriptor> = {}): OwnedDocumentDescriptor => ({
   libraryId: "library-1",
@@ -244,6 +250,56 @@ const applyServerDocument = (document: Y.Doc, documentId: string): void => {
 const never = (): Promise<void> => new Promise<void>(() => undefined);
 
 describe("BlockDocumentSurfaceRuntime", () => {
+  test("a detached editor still fences its retained provider before structural replay", async () => {
+    const providers: FakeSurfaceProvider[] = [];
+    const runtime = new BlockDocumentSurfaceRuntime({
+      descriptor: descriptor({ documentId: "retained-replay" }),
+      adapter: unusedAdapter,
+      createProvider: createFactory(providers, []),
+      localCheckpointStore: null,
+    });
+    const provider = providers[0]!;
+    applyServerDocument(provider.document, provider.options.documentId);
+    provider.emit({
+      phase: "synced",
+      connected: true,
+      storeEpoch: "store-1",
+      generation: 1,
+      headSeq: 1,
+    });
+    const retained =
+      resolveBlockDocumentStructuralMutationParticipantByDocumentId("retained-replay");
+    expect(retained).not.toBeNull();
+    expect(resolveBlockDocumentStructuralMutationParticipant(runtime.clientSessionId)).toBeNull();
+    const detach = registerBlockDocumentStructuralMutationParticipant(runtime.clientSessionId, {
+      documentId: "retained-replay",
+      prepareAndFence: runtime.flushAndFence,
+    });
+    detach();
+    let finish = () => {};
+    provider.flushPromise = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    provider.emit({ phase: "saving", pendingUpdateCount: 1 });
+    try {
+      const replay = prepareBlockDocumentStructuralReplay("store-1", [
+        { documentId: "retained-replay", generation: 1 },
+      ]);
+      expect(runtime.getStatus().structuralWaitStartedAt).not.toBeNull();
+      provider.emit({ phase: "synced", pendingUpdateCount: 0, headSeq: 2 });
+      finish();
+      await replay;
+      expect(resolveBlockDocumentStructuralMutationParticipantByDocumentId("retained-replay")).toBe(
+        retained,
+      );
+    } finally {
+      finish();
+      await runtime.close();
+    }
+    expect(
+      resolveBlockDocumentStructuralMutationParticipantByDocumentId("retained-replay"),
+    ).toBeNull();
+  });
   test("subscribes and syncs before opening or exposing the Page document", async () => {
     const events: string[] = [];
     const providers: FakeSurfaceProvider[] = [];

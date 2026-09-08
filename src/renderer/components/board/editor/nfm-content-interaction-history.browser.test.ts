@@ -1,3 +1,4 @@
+import { userEvent } from "vite-plus/test/browser";
 import { BlockNoteEditor } from "@blocknote/core";
 import type { YUndoExtension } from "@blocknote/core/yjs";
 import { act } from "@testing-library/react";
@@ -16,6 +17,7 @@ import {
   type InteractionHistory,
 } from "../../../lib/surface-history/owner";
 import { createNfmEditorModeOptions } from "./nfm-editor-source";
+import { dispatchFocusedHistory, readFocusedHistory } from "../../../lib/focused-history";
 import { prepareNfmEditorStructuralMutation } from "./nfm-editor-relocation";
 import { NfmStructuralEditingSession } from "./nfm-structural-editing-extension";
 import { nfmSchema } from "./nfm-schema";
@@ -357,3 +359,78 @@ test("foreign history fences preserve the invoking editor focus without overridi
     other.remove();
   }
 });
+
+test.each(["keyboard", "menu"] as const)(
+  "%s history input remains owned while a foreign inverse awaits its receipt",
+  async (input) => {
+    const history = createInteractionHistory({ scopeKey: "pending-focus" });
+    const source = surface(history, "pending-focus-source");
+    let value = true;
+    let releaseReceipt: () => void = () => undefined;
+    const receiptReady = new Promise<void>((resolve) => {
+      releaseReceipt = resolve;
+    });
+    let entered: () => void = () => undefined;
+    const contentChanged = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const foreign = history.bind<"move", never, boolean, boolean>({
+      adapter: {
+        describe: () => "Move Blocks",
+        prepare: async () => {
+          throw new Error("The fixture starts from a committed move");
+        },
+        prepareInverse: async (next) => {
+          await prepareNfmEditorStructuralMutation(source.editor, source.host, {
+            flushAndFence: async () => ({
+              documentId: source.doc.guid,
+              storeEpoch: "epoch:realm",
+              generation: 1,
+              expectedHeadSeq: 1,
+            }),
+          });
+          value = next;
+          entered();
+          await receiptReady;
+          return { kind: "complete", receipt: next };
+        },
+        submit: async () => {
+          throw new Error("No remote request is needed");
+        },
+        interpret: (current) => ({ kind: "reversible", inverse: !current }),
+      },
+    });
+    try {
+      await act(async () => {
+        source.editor.mount(source.host);
+        await settle();
+        foreign.capture("move", true);
+        source.editor.focus();
+        expect(source.editor.undo()).toBe(true);
+        await contentChanged;
+        expect(value).toBe(false);
+        try {
+          expect(readFocusedHistory()?.ownerId).toBe(history.snapshot().ownerId);
+          if (input === "menu") dispatchFocusedHistory("redo");
+          else {
+            const modifier = navigator.platform.includes("Mac") ? "Meta" : "Control";
+            await userEvent.keyboard(`{${modifier}>}{Shift>}z{/Shift}{/${modifier}}`);
+          }
+        } finally {
+          releaseReceipt();
+        }
+        await history.whenIdle();
+        await settle();
+      });
+      expect(value).toBe(true);
+      expect(source.errors).toEqual([]);
+    } finally {
+      releaseReceipt();
+      foreign.close();
+      await act(async () => {
+        await source.close();
+      });
+      history.close();
+    }
+  },
+);

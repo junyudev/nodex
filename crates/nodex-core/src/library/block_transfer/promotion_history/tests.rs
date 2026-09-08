@@ -160,41 +160,46 @@ impl Fixture {
     }
 
     fn promotion_undone_for(&self, root: &str) -> LibraryStructuralHistoryToken {
-        let promoted = self
-            .apply(LibraryIntent::TransferBlocks {
-                intent: LibraryBlockTransferLogicalIntent {
-                    actor: serde_json::json!({ "kind": "test" }),
-                    mode: LibraryBlockTransferMode::Move,
-                    root_block_ids: vec![root.into()],
-                    causal_dependencies: vec![self.head()],
-                    source: LibraryBlockTransferSource::Document {
-                        document_id: DOCUMENT.into(),
-                    },
-                    target: LibraryBlockTransferTarget::DataSource {
-                        data_source_id: DATA_SOURCE.into(),
-                        placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
-                            view_id: VIEW.into(),
-                            preferences_override: Default::default(),
-                            group_key: None,
-                            before_page_id: None,
-                            sorted_property_values: Vec::new(),
-                        }),
-                    },
-                    promotion_policy: LibraryPagePromotionPolicy::Literal,
-                },
-            })
-            .unwrap()
-            .committed
-            .value
-            .block_transfer
-            .unwrap();
-        self.reverse(promoted.history.unwrap())
+        let token = self.promote(root);
+        self.reverse(token)
             .committed
             .value
             .structural_edit
             .unwrap()
             .history
             .unwrap()
+    }
+
+    fn promote(&self, root: &str) -> LibraryStructuralHistoryToken {
+        self.apply(LibraryIntent::TransferBlocks {
+            intent: LibraryBlockTransferLogicalIntent {
+                actor: serde_json::json!({ "kind": "test" }),
+                mode: LibraryBlockTransferMode::Move,
+                root_block_ids: vec![root.into()],
+                causal_dependencies: vec![self.head()],
+                source: LibraryBlockTransferSource::Document {
+                    document_id: DOCUMENT.into(),
+                },
+                target: LibraryBlockTransferTarget::DataSource {
+                    data_source_id: DATA_SOURCE.into(),
+                    placement: Box::new(LibraryBlockTransferDataSourcePlacement::Direct {
+                        view_id: VIEW.into(),
+                        preferences_override: Default::default(),
+                        group_key: None,
+                        before_page_id: None,
+                        sorted_property_values: Vec::new(),
+                    }),
+                },
+                promotion_policy: LibraryPagePromotionPolicy::Literal,
+            },
+        })
+        .unwrap()
+        .committed
+        .value
+        .block_transfer
+        .unwrap()
+        .history
+        .unwrap()
     }
 
     fn reverse(&self, token: LibraryStructuralHistoryToken) -> LibraryApplyOutcome {
@@ -356,4 +361,111 @@ fn promotion_redo_rejects_placement_drift_of_a_restored_roots_parent() {
     assert_eq!(fixture.source(), before);
     assert_eq!(fixture.head().expected_head_seq, head.expected_head_seq);
     assert_eq!(fixture.active_rows(), 0);
+}
+
+#[test]
+fn promotion_undo_preserves_unrelated_edits_and_semantic_history_round_trips() {
+    let fixture = Fixture::new();
+    let undo = fixture.promote(&fixture.root);
+    fixture.edit(vec![text_update(SIBLING, "Temporary")]);
+    fixture.edit(vec![text_update(SIBLING, "Sibling")]);
+    fixture.edit(vec![Operation::SetTitle {
+        title: "Current title".into(),
+    }]);
+    let redo = fixture
+        .reverse(undo)
+        .committed
+        .value
+        .structural_edit
+        .unwrap()
+        .history
+        .unwrap();
+    let restored = fixture.source();
+    assert_eq!(restored.title, "Current title");
+    assert_eq!(restored.block_tree[0].id, fixture.root);
+    assert_eq!(restored.block_tree[1].content, Some(rich_text("Sibling")));
+    assert_eq!(fixture.active_rows(), 0);
+    let undo = fixture
+        .reverse(redo)
+        .committed
+        .value
+        .structural_edit
+        .unwrap()
+        .history
+        .unwrap();
+    fixture.edit(vec![text_update(SIBLING, "New sibling text")]);
+    fixture.reverse(undo);
+    assert_eq!(
+        fixture.source().block_tree[1].content,
+        Some(rich_text("New sibling text"))
+    );
+}
+
+#[test]
+fn promotion_undo_rejects_source_parent_placement_drift_atomically() {
+    let fixture = Fixture::new();
+    let undo = fixture.promote(CHILD);
+    fixture.edit(vec![Operation::MoveBlock {
+        block_id: fixture.root.clone(),
+        parent_block_id: None,
+        before_block_id: None,
+    }]);
+    let before = fixture.source();
+    let head = fixture.head();
+    let error = fixture
+        .apply(LibraryIntent::ReverseStructuralEdit { token: undo })
+        .unwrap_err();
+    assert_eq!(error.code, CoreErrorCode::RevisionConflict);
+    assert_eq!(fixture.source(), before);
+    assert_eq!(fixture.head().expected_head_seq, head.expected_head_seq);
+    assert_eq!(fixture.active_rows(), 1);
+}
+
+#[test]
+fn promotion_undo_never_discards_edited_placeholder() {
+    let fixture = Fixture::new();
+    fixture.edit(vec![Operation::DeleteBlock {
+        block_id: SIBLING.into(),
+    }]);
+    let undo = fixture.promote(&fixture.root);
+    let placeholder = fixture.source().block_tree[0].id.clone();
+    fixture.edit(vec![text_update(&placeholder, "Keep this text")]);
+    let before = fixture.source();
+    let error = fixture
+        .apply(LibraryIntent::ReverseStructuralEdit {
+            token: undo.clone(),
+        })
+        .unwrap_err();
+    assert_eq!(error.code, CoreErrorCode::RevisionConflict);
+    assert_eq!(fixture.source(), before);
+    assert_eq!(fixture.active_rows(), 1);
+    fixture.edit(vec![text_update(&placeholder, "")]);
+    fixture.reverse(undo);
+    assert_eq!(fixture.source().block_tree[0].id, fixture.root);
+    assert_eq!(fixture.active_rows(), 0);
+}
+
+#[test]
+fn promotion_undo_rejects_a_missing_restore_anchor_atomically() {
+    let fixture = Fixture::new();
+    let undo = fixture.promote(&fixture.root);
+    fixture.edit(vec![
+        Operation::InsertBlock {
+            block: paragraph("018f0000-0000-7000-8000-000000009107", "Keep"),
+            parent_block_id: None,
+            before_block_id: None,
+        },
+        Operation::DeleteBlock {
+            block_id: SIBLING.into(),
+        },
+    ]);
+    let before = fixture.source();
+    let head = fixture.head();
+    let error = fixture
+        .apply(LibraryIntent::ReverseStructuralEdit { token: undo })
+        .unwrap_err();
+    assert_eq!(error.code, CoreErrorCode::RevisionConflict);
+    assert_eq!(fixture.source(), before);
+    assert_eq!(fixture.head().expected_head_seq, head.expected_head_seq);
+    assert_eq!(fixture.active_rows(), 1);
 }

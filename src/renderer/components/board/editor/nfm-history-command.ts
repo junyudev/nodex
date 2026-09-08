@@ -14,6 +14,7 @@ import type {
   LibraryStructuralTurnIntoTarget,
 } from "../../../../shared/library-module";
 import type { DocumentHeadFence } from "../../../lib/block-document-surface-runtime";
+import type { StructuralReplayDocument } from "../../../lib/block-document-mutation-registry";
 import type { NfmBlockMoveRequest } from "../../../lib/nfm-block-move-runtime";
 import type { PublicBlockTransferIntent } from "../../../../shared/block-transfer-transport";
 import type { BlockTransferReceipt } from "../../../../shared/block-transfer";
@@ -137,6 +138,7 @@ export type NfmHistoryInverse =
   | {
       readonly kind: "structural";
       readonly token: LibraryStructuralHistoryToken;
+      readonly documents: readonly StructuralReplayDocument[];
       readonly selection?: SurfaceHistorySelectionPair;
     };
 

@@ -1,5 +1,10 @@
 import { transferBlocks, applyLibraryModule } from "@/lib/api";
-import { resolveBlockDocumentStructuralMutationParticipant } from "@/lib/block-document-mutation-registry";
+import {
+  prepareBlockDocumentStructuralReplay,
+  resolveBlockDocumentStructuralMutationParticipant,
+  structuralReplayDocuments,
+  type StructuralReplayDocument,
+} from "@/lib/block-document-mutation-registry";
 import {
   commitDatabaseViewOperations,
   DatabaseViewMutationError,
@@ -114,6 +119,7 @@ type DatabaseViewHistoryInverse =
       readonly kind: "block_transfer";
       readonly projectId: string;
       readonly token: LibraryStructuralHistoryToken;
+      readonly documents: readonly StructuralReplayDocument[];
     };
 
 const dataLabel = (command: DatabaseViewOperationsCommand): string => {
@@ -137,17 +143,31 @@ export const interpretDatabaseViewHistoryReceipt = (
   value: DatabaseViewHistoryReceipt,
 ): HistoryReceiptInterpretation<DatabaseViewHistoryInverse> => {
   if (value.kind === "transfer") {
-    const { history, projectId } = value.result.value;
+    const { history, projectId, documentCommits } = value.result.value;
     return history
-      ? { kind: "reversible", inverse: { kind: "block_transfer", projectId, token: history } }
+      ? {
+          kind: "reversible",
+          inverse: {
+            kind: "block_transfer",
+            projectId,
+            token: history,
+            documents: structuralReplayDocuments(documentCommits),
+          },
+        }
       : { kind: "barrier", reason: "This transfer has no complete inverse." };
   }
   if (value.kind === "reverse_transfer") {
-    const token = value.result.value.structuralEdit?.history;
-    if (!token) return { kind: "barrier", reason: "This transfer has no complete inverse." };
+    const edit = value.result.value.structuralEdit;
+    if (!edit?.history)
+      return { kind: "barrier", reason: "This transfer has no complete inverse." };
     return {
       kind: "reversible",
-      inverse: { kind: "block_transfer", projectId: value.projectId, token },
+      inverse: {
+        kind: "block_transfer",
+        projectId: value.projectId,
+        token: edit.history,
+        documents: structuralReplayDocuments(edit.documentCommits),
+      },
     };
   }
   const { receipt, scope } = value;
@@ -281,7 +301,8 @@ export const databaseViewHistoryAdapter = (
       };
     },
     prepareInverse: async (inverse) => {
-      if (inverse.kind === "block_transfer")
+      if (inverse.kind === "block_transfer") {
+        await prepareBlockDocumentStructuralReplay(inverse.token.storeEpoch, inverse.documents);
         return {
           kind: "submit",
           request: {
@@ -294,6 +315,7 @@ export const databaseViewHistoryAdapter = (
             },
           },
         };
+      }
       return {
         kind: "submit",
         request: {

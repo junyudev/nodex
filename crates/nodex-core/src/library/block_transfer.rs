@@ -6802,15 +6802,6 @@ fn undo_promotion(
                 stored,
             )?);
     }
-    if let Some(expected_head_seq) = recipe.source_post_head_seq {
-        let current = read_document_authority(connection, &recipe.source_document_id)?
-            .ok_or_else(|| conflict("Source Document is no longer available for Undo"))?;
-        if current.head.generation != recipe.source_generation
-            || current.head.head_seq != expected_head_seq
-        {
-            return Err(conflict("Source Document changed after Block promotion"));
-        }
-    }
     let target_guard = block_transfer_target_guard_hash(
         connection,
         &recipe.roots,
@@ -6827,6 +6818,11 @@ fn undo_promotion(
     let mut source_restore = if recipe.mode == LibraryBlockTransferMode::Move {
         let authority = read_document_authority(connection, &recipe.source_document_id)?
             .ok_or_else(|| conflict("Source Document is no longer available for Undo"))?;
+        if authority.head.generation != recipe.source_generation {
+            return Err(conflict(
+                "Source Document generation changed after Block promotion",
+            ));
+        }
         let schema = require_schema(&authority)?;
         let engine = reconstruct_yjs_engine(connection, &authority.head)?;
         let decoded = decode_block_document(engine.document(), schema)
@@ -6837,6 +6833,7 @@ fn undo_promotion(
             .source_pre_materialization
             .as_ref()
             .ok_or_else(|| corrupt("Move Undo recipe has no source snapshot"))?;
+        promotion_history::validate_source_placeholder(&base, &recipe)?;
         let operations = source_restore_operations(
             target,
             &recipe.roots,
@@ -6850,12 +6847,16 @@ fn undo_promotion(
             &operations,
             false,
         )
-        .map_err(|error| invalid(error.to_string()))?;
-        if update.materialization != *target {
-            return Err(corrupt(
-                "Block transfer Undo did not restore the exact source Document",
-            ));
-        }
+        .map_err(|error| {
+            conflict(format!(
+                "Promotion source can no longer be restored: {error}"
+            ))
+        })?;
+        promotion_history::validate_restored_forest(
+            target,
+            &update.materialization,
+            &recipe.roots,
+        )?;
         Some((authority, engine, base, update))
     } else {
         None
