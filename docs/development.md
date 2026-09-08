@@ -62,6 +62,8 @@ vp run dev --remote-debugging-port 9229
 vp run dev --cdp 9229
 vp run dev --enable runtime-metrics
 vp run dev --enable database-page-reorder-menu
+vp run dev --enable agentation
+vp run dev --enable query-devtools
 ```
 
 Unpackaged Desktop startup fails when `NODEX_HOME` is absent. Do not invoke the
@@ -91,11 +93,15 @@ config sanitizer and also installs it with mode `0600`. Omitted flags preserve
 the environment's existing files.
 
 `--enable` is repeatable and applies a Nodex feature only to the current
-invocation. Unknown slugs fail and list the catalog. Currently
+invocation. Unknown slugs fail and list the catalog. Agentation and TanStack
+Query Devtools are hidden by default and loaded only when `--enable agentation`
+or `--enable query-devtools` is passed, respectively. Enable both with
+`vp run dev --enable agentation --enable query-devtools`. These overlays are
+development-only and remain absent from built production renderers. Currently
 `runtime-metrics` enables structured development runtime metrics.
 `database-page-reorder-menu` shows the position-only `Reorder` submenu in a
 Database Page context menu; it does not gate `Move to`, drag ordering, keyboard
-ordering, or bulk ordering. Both features default off. Agent/app-server
+ordering, or bulk ordering. These features default off. Agent/app-server
 features remain owned by `config.toml`. The former Library workspace and
 Calendar presentation gates were retired with those product surfaces, so they
 are intentionally not accepted as launcher aliases.

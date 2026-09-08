@@ -1,8 +1,18 @@
 export const NODEX_DEVELOPMENT_FEATURES_ENV = "NODEX_DEV_ENABLED_FEATURES" as const;
 
-// Keep this catalog limited to gates with a current production owner. When a
+// Keep this catalog limited to gates with a current owner. When a
 // product surface is retired, its launcher alias should disappear with it.
 export const DEVELOPMENT_FEATURE_CATALOG = [
+  {
+    slug: "agentation",
+    description: "Show the Agentation visual feedback toolbar.",
+    defaultEnabled: false,
+  },
+  {
+    slug: "query-devtools",
+    description: "Show TanStack Query Devtools.",
+    defaultEnabled: false,
+  },
   {
     slug: "nodex-dynamic-tools",
     description: "Enable experimental Nodex content tools for Agents.",

@@ -120,6 +120,29 @@ describe("dev launcher", () => {
     expect(plan.environment.NODEX_CORE_EXECUTABLE).toBeUndefined();
   });
 
+  test("enables developer overlays only for the requested invocation", () => {
+    const optedIn = createDevLaunchPlan({
+      arguments: parseDevLauncherArguments([
+        "--enable",
+        "agentation",
+        "--enable",
+        "query-devtools",
+      ]),
+      environment: {},
+      home: HOME,
+    });
+    expect(optedIn.enabledFeatures).toEqual(["agentation", "query-devtools"]);
+    expect(optedIn.environment.NODEX_DEV_ENABLED_FEATURES).toBe("agentation,query-devtools");
+
+    const ordinaryLaunch = createDevLaunchPlan({
+      arguments: parseDevLauncherArguments([]),
+      environment: optedIn.environment,
+      home: HOME,
+    });
+    expect(ordinaryLaunch.enabledFeatures).toEqual([]);
+    expect(ordinaryLaunch.environment.NODEX_DEV_ENABLED_FEATURES).toBeUndefined();
+  });
+
   test("accepts the CDP alias and lets the command line override the environment", () => {
     const plan = createDevLaunchPlan({
       arguments: parseDevLauncherArguments(["--cdp", "9333"]),
@@ -206,7 +229,7 @@ describe("dev launcher", () => {
         environment: {},
         home: HOME,
       }),
-    ).toThrow(/Available features: database-page-reorder-menu, runtime-metrics/u);
+    ).toThrow(/Unknown development feature missing\. Available features:/u);
     expect(() => parseDevLauncherArguments(["--remote-debugging-port", "70000"])).toThrow(
       "--remote-debugging-port",
     );
