@@ -193,3 +193,39 @@ describe("durable document recovery", () => {
     expect(JSON.parse(encodeRecoveryEnvelope(value)).coverage).toBeUndefined();
   });
 });
+
+test("the Library recovery overview ignores ordinary saves when no drafts exist", async () => {
+  vi.stubGlobal("window", new EventTarget());
+  const transport = port();
+  let notify: Parameters<DocumentRecoveryPort["subscribe"]>[1] = () => {};
+  transport.subscribe = (_scope, listener) => {
+    notify = listener;
+    return () => {};
+  };
+  const module = new DocumentRecovery(scope, null, transport);
+  const release = module.connect();
+  try {
+    await module.refresh();
+    await vi.waitFor(() => expect(module.getSnapshot().loading).toBe(false));
+    vi.mocked(transport.read).mockClear();
+    notify("document:one", "content");
+    await Promise.resolve();
+    expect(transport.read).not.toHaveBeenCalled();
+    notify("document:one", "recovery");
+    await vi.waitFor(() => expect(transport.read).toHaveBeenCalled());
+  } finally {
+    release();
+  }
+});
+
+test("recovery transport takes only access identity from a retained runtime descriptor", async () => {
+  const descriptor = { ...scope, documentId: "document:one", createProvider: () => {} };
+  const transport = port();
+  const module = new DocumentRecovery(descriptor, descriptor.documentId, transport);
+  await module.refresh();
+  expect(module.getSnapshot().error).toBeNull();
+  for (const [requestScope] of vi.mocked(transport.read).mock.calls) {
+    expect(requestScope).toEqual(scope);
+    expect(structuredClone(requestScope)).toEqual(scope);
+  }
+});

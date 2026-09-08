@@ -605,14 +605,15 @@ not a partial Undo followed by a Redo barrier. Their unused one-way token is
 released; the success notification offers Undo only for a complete inverse.
 Consumed inverses are not released twice. Retiring the surface or a Redo branch
 releases the remaining reachable capabilities through Main's cleanup owner.
-Routine edits do not insert status sections into Board or List. The fixed
-Workbench `Content edits` control stays quiet for short waits, shows delayed
-activity, and exposes unknown or blocked actions through an attention indicator
-and a manually opened recovery popover. A committed edit still awaiting its
-canonical projection is described as updating the View, not saving. Recovery
-is scoped to the original Library/access context. Ordinary pending work offers
-no reset action. When reset is safe, it requires confirmation and clears the
-complete shared content timeline without changing content or abandoning
+Routine edits do not insert status sections into Board or List. A local status
+shows delayed saving or `Changes saved. Updating view…` without moving content.
+Unconfirmed saves remain visibly distinct from committed projection catch-up.
+The Workbench `Content issues` control appears only for actionable problems,
+identifies the original View and Library/Project, and delegates recovery to the
+shared content owner. Successful irreversible edits remain native Undo barriers
+without raising an alert. Ordinary pending work offers no clear-history action.
+`Clear undo history` confirms and rechecks the exact shared timeline revision,
+then clears its Undo/Redo capabilities without changing content or abandoning
 submitted requests. Native menu labels and availability
 follow the focused input boundary; native inputs retain their own history. Keyboard and native-menu history requests share the same content owner,
 including when empty, pending, or blocked. A nested Property input keeps its own

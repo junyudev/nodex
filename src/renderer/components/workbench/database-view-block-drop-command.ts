@@ -16,6 +16,7 @@ export interface DatabaseViewBlockDropCommitCursor {
 }
 
 export interface CommitDatabaseViewBlockDropInput {
+  readonly viewName?: string;
   readonly historyScopeKey: string;
   readonly session: LocalBlockDragSession;
   readonly projectId: string | null;
@@ -54,6 +55,7 @@ export const commitDatabaseViewBlockDrop = async (
   let committed;
   try {
     committed = await input.mutationHistory.executeBlockDrop({
+      viewName: input.viewName,
       historyScopeKey: input.historyScopeKey,
       session: input.session,
       projectId,

@@ -3,7 +3,7 @@ import type {
   CanvasPresenceRealtimeEvent,
   PortableCanvasScene,
 } from "../../shared/block-documents";
-import type { CanvasSceneProvider } from "./canvas-scene-provider";
+import type { CanvasSceneProvider, CanvasSceneProviderStatus } from "./canvas-scene-provider";
 import {
   createCanvasDocumentSessionRegistry,
   type CanvasDocumentSessionCallbacks,
@@ -26,11 +26,24 @@ const deferred = () => {
 const providerFactory = () => {
   let callbacks: CanvasDocumentSessionCallbacks | null = null;
   let currentScene = scene;
+  let status: CanvasSceneProviderStatus = {
+    phase: "ready",
+    connected: true,
+    headSeq: 0,
+    pendingMutationCount: 0,
+    writeFrozen: false,
+  };
   const provider = {
     connect: vi.fn(async () => undefined),
-    close: vi.fn(async () => undefined),
-    retireOwner: vi.fn(async () => undefined),
+    close: vi.fn(async () => {
+      status = { ...status, phase: "closed" };
+    }),
+    retireOwner: vi.fn(async () => {
+      status = { ...status, phase: "closed" };
+    }),
     getScene: vi.fn(() => currentScene),
+    getStatus: () => status,
+    subscribeStatus: () => () => {},
   } as unknown as CanvasSceneProvider;
   return {
     provider,
@@ -165,4 +178,17 @@ describe("CanvasDocumentSessionRegistry", () => {
     await first.release();
     await second.release();
   });
+});
+
+test("Canvas owner retirement still reaches a replica whose last close could not protect edits", async () => {
+  const registry = createCanvasDocumentSessionRegistry();
+  const factory = providerFactory();
+  vi.mocked(factory.provider.close).mockRejectedValueOnce(new Error("Local storage unavailable"));
+  const lease = registry.acquire(input(factory));
+  await expect(lease.release()).rejects.toThrow("Local storage unavailable");
+  await registry.retireOwner(
+    { libraryId: "library-1", accessContext: { kind: "project", projectId: "project-1" } },
+    "canvas-1",
+  );
+  expect(factory.provider.retireOwner).toHaveBeenCalledOnce();
 });

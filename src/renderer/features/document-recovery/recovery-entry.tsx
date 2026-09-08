@@ -7,16 +7,40 @@ import { openModal } from "@/lib/modal-registry";
 const RecoveryReview = lazy(() =>
   import("./recovery-review").then((module) => ({ default: module.RecoveryReview })),
 );
+export function useOpenDocumentRecoveryReview() {
+  const appHandle = useScopeHandle(appScope);
+  return ({
+    scope,
+    documentId,
+    draftId,
+    exportLocal,
+  }: {
+    readonly scope: DocumentRecoveryScope;
+    readonly documentId: string | null;
+    readonly draftId?: string;
+    readonly exportLocal?: () => Promise<void>;
+  }) =>
+    openModal(appHandle, RecoveryReview, {
+      module: getDocumentRecovery(scope, documentId),
+      initialDraftId: draftId,
+      exportLocal,
+    });
+}
+
+/** Keep bounded Library recovery visible independently of the selected Page. */
+export function ContentRecoveryObserver({ libraryId }: { readonly libraryId: string }) {
+  useDocumentRecovery({ libraryId, accessContext: { kind: "library" } }, null);
+  return null;
+}
 export function useDocumentRecovery(scope: DocumentRecoveryScope, documentId: string | null) {
   const module = getDocumentRecovery(scope, documentId);
   const state = useSyncExternalStore(module.subscribe, module.getSnapshot);
-  const appHandle = useScopeHandle(appScope);
+  const openReview = useOpenDocumentRecoveryReview();
   useEffect(() => module.connect(), [module]);
   return {
     module,
     state,
-    review: (exportLocal?: () => Promise<void>) =>
-      openModal(appHandle, RecoveryReview, { module, exportLocal }),
+    review: (exportLocal?: () => Promise<void>) => openReview({ scope, documentId, exportLocal }),
   };
 }
 

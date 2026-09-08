@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useMemo, useSyncExternalStore } from "react";
+import { useLayoutEffect, useMemo, useSyncExternalStore } from "react";
 import { contentAccessContextKey } from "../../shared/content-access-context";
 import type { DatabaseApplyOperationV2 } from "../../shared/database-module-v2";
 import type { DatabaseViewRenderModel } from "./database-view-render-model";
@@ -8,7 +8,6 @@ import {
   DatabaseViewMutationError,
 } from "./database-view-row-mutations";
 import { ReceiptFencedOptimisticJournal } from "./receipt-fenced-optimistic-journal";
-import { registerContentProjectionActivity } from "./content-interaction-history";
 import { getRendererProjectionInvalidationRegistry } from "./projection-invalidation-service";
 import type { ProjectionInvalidationRegistry } from "./projection-invalidation-registry";
 
@@ -269,7 +268,6 @@ export function useDatabaseViewPresentation(
   readIdentity = canonicalModel,
 ) {
   const identity = databaseViewPresentationIdentity(model);
-  const source = useId();
   const owner = useMemo(
     () => new DatabaseViewPresentationStore(model),
     // Each mounted read source owns its render handoff; another host cannot settle it.
@@ -281,24 +279,6 @@ export function useDatabaseViewPresentation(
   useLayoutEffect(() => {
     owner.update(model, refresh, canonicalModel, canonicalReadGeneration, readIdentity);
   }, [owner, model, refresh, canonicalModel, canonicalReadGeneration, readIdentity]);
-  const observationScope = useMemo(
-    () => ({
-      libraryId: model.libraryId,
-      accessContext: model.accessContext,
-      storeEpoch: model.storeEpoch,
-    }),
-    [model.libraryId, model.accessContext, model.storeEpoch],
-  );
-  useLayoutEffect(
-    () =>
-      registerContentProjectionActivity(observationScope, {
-        id: `${identity}:${source}`,
-        label: model.viewName,
-        getActivity: owner.getActivity,
-        subscribe: owner.subscribe,
-      }),
-    [identity, source, observationScope, model.viewName, owner],
-  );
   const projected = useMemo(() => {
     // An external journal change invalidates the memoized projection.
     void revision;

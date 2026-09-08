@@ -33,7 +33,7 @@ import { handleWorkbenchShortcut } from "@/lib/use-workbench-shortcuts";
 import { readFocusedHistory } from "@/lib/focused-history";
 import { createMaitaiStore } from "@/lib/maitai";
 import { NodexModalHost } from "@/lib/modal-registry";
-import { ContentHistoryControl } from "@/components/shared/surface-history-status";
+import { ContentIssuesControl } from "@/components/shared/content-issues-control";
 import { acquireContentInteractionHistory } from "@/lib/content-interaction-history";
 import { TestMaitaiRoot } from "@/test/app-maitai";
 import { resetContextualKeyboardActionRegistryForTests } from "@/lib/contextual-keyboard-actions";
@@ -1312,7 +1312,7 @@ describe("DatabaseViewSurface", () => {
     ).rejects.toThrow();
     const screen = render(
       <>
-        <ContentHistoryControl />
+        <ContentIssuesControl />
         <DatabaseViewSurface
           model={model}
           presentationLayout="list"
@@ -1324,7 +1324,7 @@ describe("DatabaseViewSurface", () => {
       </>,
     );
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Content edits" }));
+      fireEvent.click(screen.getByRole("button", { name: "Content issues" }));
       await Promise.resolve();
     });
     const retry = await screen.findByRole("button", { name: "Check again" });
@@ -1334,13 +1334,17 @@ describe("DatabaseViewSurface", () => {
     });
     await waitFor(() => expect(commitOperations).toHaveBeenCalledTimes(2));
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Reset history" }));
+      fireEvent.click(screen.getByRole("button", { name: /^More actions for / }));
       await Promise.resolve();
     });
-    const dialog = await screen.findByRole("dialog", { name: "Reset content history?" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Clear undo history…" }));
+      await Promise.resolve();
+    });
+    const dialog = await screen.findByRole("dialog", { name: "Clear undo history?" });
     expect(history.snapshot().undo.status).toBe("waiting");
     await act(async () => {
-      fireEvent.click(within(dialog).getByRole("button", { name: "Reset history" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Clear undo history" }));
       await Promise.resolve();
     });
     await waitFor(() => expect(history.snapshot().undo.status).toBe("empty"));

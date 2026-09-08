@@ -127,6 +127,7 @@ type StructuralEditor = BlockNoteEditor & {
 };
 
 export interface NfmStructuralEditingSessionOptions {
+  readonly locate?: () => import("@/lib/content-edit-issues").ContentEditLocation | null;
   readonly editor: BlockNoteEditor<any, any, any>;
   readonly historyLane?: NfmHistoryLane | null;
   readonly interactionHistory?: InteractionHistory;
@@ -386,6 +387,7 @@ export class NfmStructuralEditingSession {
     this.history =
       options.historyLane ??
       new NfmHistoryLane({
+        locate: options.locate,
         interactionHistory: options.interactionHistory,
         undoManager: backend.undoManager,
         textHistory: journal,
@@ -1807,6 +1809,7 @@ export class NfmStructuralEditingController {
   attachEditor(
     editor: BlockNoteEditor<any, any, any>,
     historyScope?: ContentInteractionHistoryScope,
+    locate?: NfmStructuralEditingSessionOptions["locate"],
   ): NfmStructuralEditingSession {
     if (this.disposed) {
       throw new Error("Cannot attach an editor to a disposed structural editing controller.");
@@ -1826,6 +1829,7 @@ export class NfmStructuralEditingController {
     this.historyLease = historyScope ? acquireContentInteractionHistory(historyScope) : undefined;
     this.session = new NfmStructuralEditingSession({
       editor,
+      locate,
       interactionHistory: this.historyLease?.history,
       historyReconciliation: this.historyReconciliation,
     });

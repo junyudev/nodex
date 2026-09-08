@@ -1,4 +1,5 @@
 import type * as Y from "yjs";
+import type { ContentEditLocation } from "@/lib/content-edit-issues";
 import type { SurfaceHistorySelectionPair } from "@blocknote/core/yjs";
 import type { BlockHistoryPatch } from "../../../../shared/block-documents/block-history-patch";
 import {
@@ -53,6 +54,7 @@ const DEFAULT_LIMITS: NfmHistoryLimits = {
   maxRetainedIdentities: 10_000,
 };
 export interface NfmHistoryLaneOptions {
+  readonly locate?: () => ContentEditLocation | null;
   readonly interactionHistory?: InteractionHistory;
   readonly limits?: Partial<NfmHistoryLimits>;
   readonly undoManager?: Y.UndoManager | null;
@@ -155,6 +157,7 @@ export class NfmHistoryLane {
       },
       onError: (error) => this.onError?.(error),
       adapter: {
+        locate: options.locate,
         describe: (command: NfmHistoryCommand | CaptureIntent) =>
           command.kind === "native_capture" ? "Edit Text" : nfmCommandLabel(command),
         prepare: async (command) => {

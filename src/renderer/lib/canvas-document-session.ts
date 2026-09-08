@@ -4,6 +4,7 @@ import type {
 } from "../../shared/block-documents";
 import type { CanvasSceneProvider } from "./canvas-scene-provider";
 import { CanvasSceneStagedFileCatalog } from "./canvas-scene-binding";
+import { observeCanvasContentIssues } from "./canvas-content-issues";
 import {
   contentAccessIdentityKey,
   type ContentAccessIdentity,
@@ -40,6 +41,7 @@ const sessionKey = (identity: ContentAccessIdentity, documentId: string): string
   JSON.stringify([contentAccessIdentityKey(identity), documentId]);
 
 class DefaultCanvasDocumentSession {
+  private readonly releaseIssues: () => void;
   readonly provider: CanvasSceneProvider;
   readonly stagedFileCatalog = new CanvasSceneStagedFileCatalog();
 
@@ -61,6 +63,7 @@ class DefaultCanvasDocumentSession {
     private readonly connectBarrier: Promise<void>,
     createProvider: CanvasDocumentSessionAcquireInput["createProvider"],
     private readonly onLastRelease: (session: DefaultCanvasDocumentSession) => Promise<void>,
+    scope: CanvasDocumentSessionAcquireInput,
   ) {
     this.provider = createProvider({
       onScene: (scene) => {
@@ -75,6 +78,7 @@ class DefaultCanvasDocumentSession {
         for (const listener of this.presenceListeners) listener(event);
       },
     });
+    this.releaseIssues = observeCanvasContentIssues(this.provider, scope);
   }
 
   isCompatible(input: CanvasDocumentSessionAcquireInput): boolean {
@@ -130,7 +134,9 @@ class DefaultCanvasDocumentSession {
     this.sceneListeners.clear();
     this.presenceListeners.clear();
     this.presenceReplay.length = 0;
-    this.closePromise = this.provider.close({ requireCommitted: false });
+    this.closePromise = this.provider.close({ requireCommitted: false }).finally(() => {
+      if (this.provider.getStatus().phase === "closed") this.releaseIssues();
+    });
     return this.closePromise;
   }
 
@@ -138,14 +144,19 @@ class DefaultCanvasDocumentSession {
     if (this.closePromise) {
       this.closePromise = this.closePromise
         .catch(() => undefined)
-        .then(() => this.provider.retireOwner());
+        .then(() => this.provider.retireOwner())
+        .finally(() => {
+          if (this.provider.getStatus().phase === "closed") this.releaseIssues();
+        });
       return this.closePromise;
     }
     this.closing = true;
     this.sceneListeners.clear();
     this.presenceListeners.clear();
     this.presenceReplay.length = 0;
-    this.closePromise = this.provider.retireOwner();
+    this.closePromise = this.provider.retireOwner().finally(() => {
+      if (this.provider.getStatus().phase === "closed") this.releaseIssues();
+    });
     return this.closePromise;
   }
 
@@ -166,19 +177,19 @@ class DefaultCanvasDocumentSession {
 }
 
 export const createCanvasDocumentSessionRegistry = (): CanvasDocumentSessionRegistry => {
+  // A failed close still owns the only unprotected copy, independently of UI observation.
+  const retainedSessions = new Set<DefaultCanvasDocumentSession>();
   const currentByKey = new Map<string, DefaultCanvasDocumentSession>();
   const closingByKey = new Map<string, Promise<void>>();
-  const closingSessionsByKey = new Map<string, DefaultCanvasDocumentSession>();
 
   const closeLastSession = async (session: DefaultCanvasDocumentSession): Promise<void> => {
     if (currentByKey.get(session.key) === session) {
       currentByKey.delete(session.key);
     }
-    closingSessionsByKey.set(session.key, session);
     const closing = session.beginClose().finally(() => {
+      if (session.provider.getStatus().phase === "closed") retainedSessions.delete(session);
       if (closingByKey.get(session.key) === closing) {
         closingByKey.delete(session.key);
-        closingSessionsByKey.delete(session.key);
       }
     });
     closingByKey.set(session.key, closing);
@@ -189,11 +200,10 @@ export const createCanvasDocumentSessionRegistry = (): CanvasDocumentSessionRegi
     if (currentByKey.get(session.key) === session) {
       currentByKey.delete(session.key);
     }
-    closingSessionsByKey.set(session.key, session);
     const closing = session.beginOwnerRetired().finally(() => {
+      if (session.provider.getStatus().phase === "closed") retainedSessions.delete(session);
       if (closingByKey.get(session.key) === closing) {
         closingByKey.delete(session.key);
-        closingSessionsByKey.delete(session.key);
       }
     });
     closingByKey.set(session.key, closing);
@@ -218,15 +228,15 @@ export const createCanvasDocumentSessionRegistry = (): CanvasDocumentSessionRegi
         predecessor,
         input.createProvider,
         closeLastSession,
+        input,
       );
+      retainedSessions.add(session);
       currentByKey.set(key, session);
       return session.acquire();
     },
     async retireOwner(identity, ownerBlockId) {
       const accessKey = contentAccessIdentityKey(identity);
-      const sessions = [
-        ...new Set([...currentByKey.values(), ...closingSessionsByKey.values()]),
-      ].filter(
+      const sessions = [...retainedSessions].filter(
         (session) =>
           session.accessIdentityKey === accessKey && session.ownerBlockId === ownerBlockId,
       );

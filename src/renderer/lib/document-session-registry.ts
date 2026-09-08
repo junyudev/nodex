@@ -10,6 +10,7 @@ import {
 import type { OwnedDocumentDescriptor } from "../../shared/block-documents";
 import type { BlockDocumentSurfaceRuntime } from "./block-document-surface-runtime";
 import { contentAccessContextKey } from "../../shared/content-access-context";
+import { observeDocumentContentIssues } from "./document-content-issues";
 
 interface RetainedBlockNoteEditor {
   readonly _tiptapEditor: {
@@ -23,6 +24,7 @@ interface DocumentSurfaceAwarenessState {
 }
 
 interface DocumentSession {
+  readonly releaseIssues: () => void;
   readonly identity: string;
   readonly descriptor: OwnedDocumentDescriptor;
   readonly runtime: BlockDocumentSurfaceRuntime;
@@ -354,10 +356,12 @@ export class DocumentSessionRegistry {
     readonly createRuntime: () => BlockDocumentSurfaceRuntime;
     readonly connectBarrier: Promise<void>;
   }): DocumentSession {
+    const runtime = input.createRuntime();
     const entry: DocumentSession = {
       identity: input.identity,
       descriptor: input.descriptor,
-      runtime: input.createRuntime(),
+      runtime,
+      releaseIssues: observeDocumentContentIssues(runtime),
       connectBarrier: input.connectBarrier,
       references: 0,
       awarenessSequence: 0,
@@ -443,6 +447,7 @@ export class DocumentSessionRegistry {
         return;
       }
       this.retainedDocuments.delete(entry);
+      entry.releaseIssues();
       if (this.documents.get(entry.identity) === entry) {
         this.documents.delete(entry.identity);
       }

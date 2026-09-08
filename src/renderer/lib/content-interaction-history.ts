@@ -1,8 +1,8 @@
 import type { OwnedDocumentDescriptor } from "../../shared/block-documents";
 import { contentAccessContextKey } from "../../shared/content-access-context";
 import { createInteractionHistory, type InteractionHistory } from "./surface-history/owner";
-import type { SurfaceHistorySnapshot } from "../../shared/surface-history";
-import type { SurfaceHistoryControls } from "./surface-history/controls";
+import { contentEditIssues } from "./content-edit-issues";
+import { createContentHistoryIssueSource } from "./content-history-issues";
 
 export type ContentInteractionHistoryScope = Pick<
   OwnedDocumentDescriptor,
@@ -14,93 +14,10 @@ export const contentInteractionHistoryScopeKey = (scope: ContentInteractionHisto
 
 interface RealmLease {
   readonly history: InteractionHistory;
-  readonly scope: ContentInteractionHistoryScope;
   readonly unsubscribe: () => void;
   references: number;
 }
 const realms = new Map<string, RealmLease>();
-export interface ContentHistoryObservation {
-  readonly scope: ContentInteractionHistoryScope;
-  readonly controls: SurfaceHistoryControls;
-  readonly snapshot: SurfaceHistorySnapshot;
-}
-const observers = new Set<() => void>();
-let observations: readonly ContentHistoryObservation[] = [];
-export interface ContentProjectionActivity {
-  readonly pending: number;
-  readonly unknown: number;
-  readonly acknowledged: number;
-}
-export interface ContentProjectionActivitySource {
-  readonly id: string;
-  readonly label: string;
-  getActivity(): ContentProjectionActivity;
-  subscribe(listener: () => void): () => void;
-}
-export interface ContentProjectionObservation {
-  readonly scope: ContentInteractionHistoryScope;
-  readonly id: string;
-  readonly label: string;
-  readonly activity: ContentProjectionActivity;
-}
-const projectionSources = new Map<
-  string,
-  {
-    readonly source: ContentProjectionActivitySource;
-    readonly scope: ContentInteractionHistoryScope;
-    readonly unsubscribe: () => void;
-    references: number;
-  }
->();
-let projectionObservations: readonly ContentProjectionObservation[] = [];
-const publish = () => {
-  observations = [...realms.values()].map(({ history, scope }) => ({
-    scope,
-    controls: history,
-    snapshot: history.snapshot(),
-  }));
-  projectionObservations = [...projectionSources.values()].map(({ source, scope }) => ({
-    scope,
-    id: source.id,
-    label: source.label,
-    activity: source.getActivity(),
-  }));
-  observers.forEach((listener) => listener());
-};
-
-/** Borrow projection-owner observations; this registry cannot settle or mutate a journal. */
-export function registerContentProjectionActivity(
-  scope: ContentInteractionHistoryScope,
-  source: ContentProjectionActivitySource,
-): () => void {
-  const key = `${contentInteractionHistoryScopeKey(scope)}\0${source.id}`;
-  let entry = projectionSources.get(key);
-  if (!entry) {
-    entry = { source, scope, references: 0, unsubscribe: source.subscribe(publish) };
-    projectionSources.set(key, entry);
-  }
-  const retained = entry;
-  retained.references += 1;
-  publish();
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    retained.references -= 1;
-    if (retained.references !== 0) return;
-    projectionSources.delete(key);
-    retained.unsubscribe();
-    publish();
-  };
-}
-export const readContentProjectionActivities = () => projectionObservations;
-
-/** Observation never acquires a lease or prolongs a content timeline's lifetime. */
-export const readContentInteractionHistories = () => observations;
-export function subscribeContentInteractionHistories(listener: () => void): () => void {
-  observers.add(listener);
-  return () => observers.delete(listener);
-}
 
 /** Runtime participants, not DOM mounts, retain each window-local content timeline. */
 export function acquireContentInteractionHistory(scope: ContentInteractionHistoryScope): {
@@ -117,12 +34,10 @@ export function acquireContentInteractionHistory(scope: ContentInteractionHistor
     });
     realm = {
       history,
-      scope,
-      unsubscribe: history.subscribe(publish),
+      unsubscribe: contentEditIssues.register(createContentHistoryIssueSource(scope, history)),
       references: 0,
     };
     realms.set(key, realm);
-    publish();
   }
   const retained = realm;
   retained.references += 1;
@@ -137,7 +52,6 @@ export function acquireContentInteractionHistory(scope: ContentInteractionHistor
       realms.delete(key);
       retained.unsubscribe();
       retained.history.close();
-      publish();
     },
   };
 }

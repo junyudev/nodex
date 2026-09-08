@@ -89,6 +89,15 @@ a separate recovery draft. It is not replayed under a new request identity.
 Canonical content stays editable. Same-boundary deltas without unresolved
 submissions can merge through normal canonical synchronization.
 
+Actionable Page and Canvas save failures also appear in the Workbench
+`Content issues` control while their shared document session is retained,
+including when its surface is hidden. Routine save progress remains local.
+Global actions use the same document provider and recovery review as the local
+status. Closing a surface does not discard an issue while its only unsaved copy
+still requires that retained runtime. The Library recovery overview observes
+bounded draft summaries after the original document closes; ordinary content
+commits do not reload an empty recovery list.
+
 ## Review retained edits
 
 `Unsaved edits · Review` opens a shared, root-hosted review dialog. It describes

@@ -81,6 +81,7 @@ function createRuntime(input: {
     persist,
     clearLocalAwareness,
     getStatus: () => status,
+    subscribe: () => () => {},
   } as unknown as BlockDocumentSurfaceRuntime;
   return { runtime, connect, close, persist, clearLocalAwareness };
 }
