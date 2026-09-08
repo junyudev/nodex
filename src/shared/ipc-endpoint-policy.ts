@@ -135,6 +135,7 @@ type QueryEndpointPolicy =
   | "codex:mcp-server-statuses:list"
   | "codex:model:list"
   | "codex:pasted-text:read"
+  | "codex:thread-handoffs:list"
   | "codex:pending-worktrees:list"
   | "codex:permission:mode:get"
   | "codex:permission:state:get"

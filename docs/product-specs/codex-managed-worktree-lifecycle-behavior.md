@@ -355,6 +355,8 @@ complete materialized state locally. A conflicting branch or dirty destination
 fails before overwriting either copy. Compensation reverses the same Git
 operation and removes only a destination created by that handoff.
 
+The originating tool activity observes a revisioned Main-owned operation snapshot. Repeated delivery of the same tool call reuses its operation; another conversation cannot claim that operation through presentation state. Snapshots retain the requesting Chat, target Chat, Project, execution hosts, title, direction, and available branch context. Progress and terminal results are restored from the journal on restart. Failed steps do not mark subsequent unperformed phases as successful.
+
 Only one handoff may run for a Chat at a time. Main journals the source,
 prepared destination, runtime-switch and Core-commit boundaries with an atomic
 replace. On restart it reads Core's canonical location to decide whether to

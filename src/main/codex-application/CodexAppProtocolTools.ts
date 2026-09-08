@@ -1,3 +1,4 @@
+import { createCodexThreadHandoffOperationId } from "../../shared/codex-thread-handoff";
 import type { RequestId } from "@nodex/codex-app-server-protocol";
 import type { DynamicToolCallParams } from "@nodex/codex-app-server-protocol/v2/DynamicToolCallParams";
 import type { DynamicToolCallResponse } from "@nodex/codex-app-server-protocol/v2/DynamicToolCallResponse";
@@ -32,7 +33,6 @@ import { parseCodexDynamicCreateThreadInput } from "../codex/codex-dynamic-threa
 import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
 import { CoreModules } from "../core-runtime/CoreModules";
 import type { ProjectWorkspaceIntent, ProjectWorkspaceReadSnapshot } from "../core-client/types";
-import { createOperationId } from "../core-runtime/operation-identity";
 import { TerminalSessions } from "../terminal-runtime/TerminalSessions";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { AutomationApplication } from "../automation-application/AutomationApplication";
@@ -1263,12 +1263,15 @@ export const make: Effect.Effect<
         if (!threadId) return yield* toolError("handoff_thread requires threadId");
         if (threadId === params.threadId)
           return yield* toolError("A thread cannot hand itself off. Choose another thread.");
-        yield* requireCodexThread(threadId);
-        const existing = yield* handoffs.get(params.callId);
+        const target = yield* requireCodexThread(threadId);
+        const operationId = createCodexThreadHandoffOperationId(params.threadId, params.callId);
+        const existing = yield* handoffs.get(operationId);
         const operation =
           existing ??
           (yield* handoffs.launch({
-            operationId: createOperationId("codex-app.handoff-thread"),
+            operationId,
+            requestThreadId: params.threadId,
+            threadTitle: target.summary.threadName ?? target.summary.threadPreview,
             threadId,
             destinationHostId: stringArg(args.destinationHostId),
             followUpPrompt: stringArg(args.followUpPrompt),

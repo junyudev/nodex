@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../../components/ui/tooltip";
 import {
   installAsyncRequestAnimationFrame,
@@ -786,6 +786,50 @@ describe("FileChangeToolCall", () => {
     await settleAsyncRender();
 
     expect(Boolean(textContent(container).includes("Created file"))).toBe(false);
+  });
+
+  test("declined file changes explain authorization and retain the proposed diff", async () => {
+    const review: CodexTranscriptEntry = {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "review",
+      type: "automaticApprovalReview",
+      kind: "systemEvent",
+      createdAt: 1,
+      updatedAt: 1,
+      rawItem: {
+        review: { status: "denied", riskLevel: "medium", rationale: "Private review rationale" },
+      },
+    };
+    const item = buildFileChangeEntry({
+      status: "declined",
+      fileChange: {
+        changes: { "src/proposed.ts": { type: "add", content: "export const proposed = true;\n" } },
+        success: false,
+        visualizationActivities: [{ path: "/tmp/visualizations/example.html", kind: "create" }],
+      },
+    });
+    const { getByRole, getByText, queryByRole, queryByText, container } = render(
+      <TooltipProvider>
+        <FileChangeToolCall
+          item={item}
+          threadCwd="/tmp/project"
+          automaticApprovalReviews={[review]}
+        />
+      </TooltipProvider>,
+    );
+    const trigger = getByRole("button", { name: "Toggle diff for proposed.ts" });
+    expect(getByText("File change declined by auto-review:")).toBeTruthy();
+    expect(getByRole("link", { name: "proposed.ts" })).toBeTruthy();
+    expect(container.querySelector("[data-file-change-visualization-status]")).toBeNull();
+    await act(async () => {
+      fireEvent.click(trigger);
+      await Promise.resolve();
+    });
+    expect(getByText("Requires explicit authorization")).toBeTruthy();
+    expect(getByRole("button", { name: "Copy diff" })).toBeTruthy();
+    expect(queryByRole("button", { name: "Auto-review denied" })).toBeNull();
+    expect(queryByText("Private review rationale")).toBeNull();
   });
 
   test("renders failed file changes with rejected status copy", () => {

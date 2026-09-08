@@ -42,6 +42,7 @@ export function ToolCallCodePanel({
   bodyClassName,
   preClassName,
   stickyHeaderClassName,
+  previewCharacterLimit = INLINE_TEXT_PREVIEW_MAX_CHARS,
 }: {
   title: string;
   preview: TextPreview;
@@ -50,12 +51,14 @@ export function ToolCallCodePanel({
   bodyClassName?: string;
   preClassName?: string;
   stickyHeaderClassName?: string;
+  /** Null preserves a payload whose producing protocol already bounds its size. */
+  previewCharacterLimit?: number | null;
 }) {
   const [fullTextOpen, setFullTextOpen] = useState(false);
   const boundedPreview =
-    preview.text.length <= INLINE_TEXT_PREVIEW_MAX_CHARS
+    previewCharacterLimit === null || preview.text.length <= previewCharacterLimit
       ? preview
-      : buildTextPreview(preview.text, INLINE_TEXT_PREVIEW_MAX_CHARS);
+      : buildTextPreview(preview.text, previewCharacterLimit);
   return (
     <div
       className="bg-token-text-code-block-background border-token-border-heavy relative overflow-clip rounded-lg border contain-inline-size dark"

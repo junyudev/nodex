@@ -140,6 +140,11 @@ export interface RendererTransport {
   subscribeCodexHooksChanged: (
     callback: (event: import("../../shared/codex-hooks").CodexHooksChangedEvent) => void,
   ) => () => void;
+  subscribeCodexThreadHandoffsChanged: (
+    callback: (
+      event: import("../../shared/codex-thread-handoff").CodexThreadHandoffSnapshot,
+    ) => void,
+  ) => () => void;
   subscribeCodexPendingWorktreesChanged: (
     callback: (
       event: import("../../shared/codex-pending-worktree").CodexPendingWorktreesChangedEvent,

@@ -5,7 +5,6 @@ import { readResizeObserverBorderBoxSize } from "@/lib/resize-observer-size";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { motion } from "motion/react";
 import { cn } from "../../../../../lib/utils";
-import { semanticActivitySummaryClassName } from "../../../../../lib/semantic-activity-status";
 import type { SemanticActivityStatus } from "../../../../../lib/semantic-activity-status";
 import { buildTextPreview, INLINE_TEXT_PREVIEW_MAX_CHARS } from "../../../../../lib/text-preview";
 import { ToolCallCodePanel } from "./tool-call-inspection";
@@ -292,6 +291,35 @@ function useMeasuredThreadActivityBodyHeight(): {
   return { elementHeightPx, elementRef };
 }
 
+/** Owns summary text across tool rows and group headers; icons and accessories stay outside. */
+export function ThreadActivitySummaryLabel({
+  children,
+  className,
+  id,
+  interactive = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  id?: string;
+  interactive?: boolean;
+}) {
+  return (
+    <span
+      id={id}
+      className={cn(
+        "min-w-0 flex-1 truncate text-text/60 [&_[data-codex-shimmer]]:align-top [&_*:not(button)]:!text-text/60",
+        // File references wrap their labels; preserve the button's independent hover tone.
+        "[&_[data-agent-activity-file-link]_*]:!text-inherit",
+        interactive &&
+          "[@media(hover:hover)]:group-[:hover:not(:has([data-agent-activity-file-link]:hover))]/activity-header:!text-token-foreground [@media(hover:hover)]:group-[:hover:not(:has([data-agent-activity-file-link]:hover))]/activity-header:[&_*:not(button)]:!text-token-foreground",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 export function ThreadRichActivityHeader({
   accessibleLabel,
   accessory,
@@ -300,7 +328,6 @@ export function ThreadRichActivityHeader({
   icon,
   summary,
   summaryClassName,
-  status,
   testId,
 }: {
   accessibleLabel?: string;
@@ -310,25 +337,19 @@ export function ThreadRichActivityHeader({
   icon: ReactNode;
   summary: ReactNode;
   summaryClassName?: string;
-  status: SemanticActivityStatus;
   testId?: string;
 }) {
   const summaryId = useId();
   const content = (
     <>
-      <span className={cn("contents", semanticActivitySummaryClassName(status))}>{icon}</span>
-      <span
+      <span className="contents text-text/60">{icon}</span>
+      <ThreadActivitySummaryLabel
         id={disclosure ? summaryId : undefined}
-        className={cn(
-          "min-w-0 flex-1 truncate [&_[data-codex-shimmer]]:align-top",
-          semanticActivitySummaryClassName(status),
-          disclosure &&
-            "[@media(hover:hover)]:group-[:hover:not(:has([data-agent-activity-file-link]:hover))]/activity-header:!text-token-foreground [@media(hover:hover)]:group-[:hover:not(:has([data-agent-activity-file-link]:hover))]/activity-header:[&_*:not(button)]:!text-token-foreground",
-          summaryClassName,
-        )}
+        className={summaryClassName}
+        interactive={disclosure !== undefined}
       >
         {summary}
-      </span>
+      </ThreadActivitySummaryLabel>
     </>
   );
 
@@ -429,7 +450,6 @@ export function ThreadActivityDisclosure({
         icon={icon}
         summary={summary}
         summaryClassName={summaryClassName}
-        status={status}
         testId={headerTestId}
       />
     );

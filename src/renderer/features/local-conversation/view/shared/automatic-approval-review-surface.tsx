@@ -14,11 +14,23 @@ import { CODEX_THREAD_ACCORDION_TRANSITION } from "./thread-motion";
 import { ThreadActivityDisclosure } from "./tools/tool-primitives";
 import { AutomaticApprovalReviewIcon } from "@/components/shared/icons";
 
-export function AutomaticApprovalReviewShield({ className }: { className?: string }) {
+export function AutomaticApprovalReviewShield({
+  className,
+  tone = "default",
+}: {
+  className?: string;
+  tone?: "default" | "warning";
+}) {
   return (
     <AutomaticApprovalReviewIcon
       aria-hidden
-      className={cn("icon-xs shrink-0 text-token-input-placeholder-foreground", className)}
+      className={cn(
+        "icon-xs shrink-0",
+        tone === "warning"
+          ? "text-token-editor-warning-foreground"
+          : "text-token-input-placeholder-foreground",
+        className,
+      )}
     />
   );
 }
@@ -93,14 +105,34 @@ export function AutomaticApprovalReviewRow({
 
 export function AutomaticApprovalReviewRows({
   className,
+  isDeclined = false,
   isExpandable = true,
   items,
 }: {
   className?: string;
+  isDeclined?: boolean;
   isExpandable?: boolean;
   items: readonly CodexConversationItem[];
 }) {
   if (items.length === 0) return null;
+  if (isDeclined) {
+    const isHighRisk = items.some((item) => {
+      const review = normalizeAutomaticApprovalReviewPayload(item.rawItem);
+      return review?.status === "denied" && review.riskLevel === "high";
+    });
+    return (
+      <p
+        className={cn(
+          "max-w-[80ch] pt-1 text-size-chat leading-relaxed text-token-foreground/60",
+          className,
+        )}
+      >
+        {isHighRisk
+          ? "Requires explicit authorization because this action is considered high risk"
+          : "Requires explicit authorization"}
+      </p>
+    );
+  }
   return (
     <>
       {items.map((item) => (
@@ -121,10 +153,11 @@ export function AutomaticApprovalReviewSurface({ item }: { item: CodexConversati
 
   const actionSummary = buildAutomaticApprovalReviewActionSummary(review.action);
   const isInProgress = review.status === "inProgress";
+  const isDenied = review.status === "denied";
 
   return (
     <ThreadActivityDisclosure
-      icon={<AutomaticApprovalReviewShield />}
+      icon={<AutomaticApprovalReviewShield tone={isDenied ? "warning" : "default"} />}
       status={isInProgress ? "running" : "completed"}
       summary={
         <CodexShimmerText
@@ -135,7 +168,7 @@ export function AutomaticApprovalReviewSurface({ item }: { item: CodexConversati
         </CodexShimmerText>
       }
     >
-      <AutomaticApprovalReviewRow item={item} />
+      <AutomaticApprovalReviewRows items={[item]} isDeclined={isDenied} />
     </ThreadActivityDisclosure>
   );
 }

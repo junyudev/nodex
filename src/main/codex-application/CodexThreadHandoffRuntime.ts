@@ -1,3 +1,10 @@
+import { resolveCodexThreadHandoffStepLabel } from "../../shared/codex-thread-handoff";
+import type {
+  CodexAppHandoffOperation,
+  CodexAppHandoffStep,
+  CodexAppHandoffStatusType,
+  CodexThreadHandoffSnapshot,
+} from "../../shared/codex-thread-handoff";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -31,32 +38,9 @@ export interface CodexStartThreadHandoffInput {
   readonly threadId: string;
   readonly destinationHostId: string | null;
   readonly followUpPrompt: string | null;
+  readonly requestThreadId?: string;
+  readonly threadTitle?: string;
   readonly onProgress?: (progress: CodexThreadHandoffProgress) => void;
-}
-
-export type CodexAppHandoffStatusType = "running" | "success" | "warning" | "error";
-
-export interface CodexAppHandoffStep {
-  readonly id: string;
-  readonly label: string;
-  readonly status: CodexAppHandoffStatusType;
-  readonly message: string | null;
-  readonly updatedAt: number;
-}
-
-export interface CodexAppHandoffOperation {
-  readonly operationId: string;
-  readonly revision: number;
-  readonly status: CodexAppHandoffStatusType;
-  readonly threadId: string;
-  readonly sourceThreadId: string;
-  readonly destinationHostId: string;
-  readonly destinationHostDisplayName: string | null;
-  readonly message: string | null;
-  readonly steps: readonly CodexAppHandoffStep[];
-  readonly createdAt: number;
-  readonly updatedAt: number;
-  readonly completedAt: number | null;
 }
 
 export type CodexLaunchThreadHandoffInput = CodexStartThreadHandoffInput;
@@ -75,6 +59,8 @@ export class CodexThreadHandoffRuntimeError extends Schema.TaggedError<CodexThre
 export class CodexThreadHandoffRuntime extends Context.Service<
   CodexThreadHandoffRuntime,
   {
+    readonly snapshot: Effect.Effect<CodexThreadHandoffSnapshot>;
+    readonly changes: Stream.Stream<CodexThreadHandoffSnapshot>;
     readonly start: (
       input: CodexStartThreadHandoffInput,
     ) => Effect.Effect<CodexThreadHandoffJournalEntry, CodexThreadHandoffRuntimeError>;
@@ -149,19 +135,34 @@ const buildStep = (
 const buildInitialOperation = (
   input: CodexLaunchThreadHandoffInput,
   now: number,
+  source: CodexThreadExecutionLocation | null,
+  destinationHostId: string,
+  destinationHostDisplayName: string,
 ): CodexAppHandoffOperation => ({
   operationId: input.operationId,
   revision: 0,
   status: "running",
   threadId: input.threadId,
   sourceThreadId: input.threadId,
-  destinationHostId: input.destinationHostId ?? "local",
-  destinationHostDisplayName: null,
+  requestThreadId: input.requestThreadId ?? null,
+  threadTitle: input.threadTitle?.trim() || input.threadId,
+  projectId: source?.projectId ?? null,
+  sourceHostId: source?.hostId ?? null,
+  direction:
+    source === null
+      ? null
+      : destinationHostId !== source.hostId
+        ? "cross-host"
+        : source.managedWorktreePath
+          ? "worktree-to-local"
+          : "local-to-worktree",
+  localBranch: null,
+  sourceBranch: null,
+  worktreeBranch: null,
+  destinationHostId,
+  destinationHostDisplayName,
   message: "Preparing thread handoff.",
-  steps: [
-    buildStep("resolve-thread", "Resolve thread", "success", null, now),
-    buildStep("handoff", "Move thread", "running", "Preparing thread handoff.", now),
-  ],
+  steps: [],
   createdAt: now,
   updatedAt: now,
   completedAt: null,
@@ -174,74 +175,72 @@ const buildOperationFromJournal = (input: {
   readonly destinationHostDisplayName: string;
 }): CodexAppHandoffOperation => {
   const { entry, existing } = input;
-  const definitions: readonly {
-    readonly id: string;
-    readonly label: string;
-    readonly phase: CodexThreadHandoffPhase;
-  }[] = [
-    { id: "resolve-thread", label: "Resolve task", phase: "queued" },
-    { id: "stop-active-turn", label: "Stop active turn", phase: "stopping-turn" },
-    { id: "prepare-destination", label: "Prepare destination", phase: "preparing-destination" },
-    { id: "switch-runtime", label: "Switch task runtime", phase: "switching-runtime" },
-    { id: "commit-location", label: "Save execution location", phase: "committing-location" },
-    { id: "transfer-owner", label: "Update worktree owner", phase: "transferring-owner" },
-    { id: "cleanup-source", label: "Clean up source", phase: "cleaning-source" },
-  ];
-  const phaseIndex = new Map(definitions.map((definition, index) => [definition.phase, index]));
+  const destinationHostId =
+    entry.destination?.hostId ?? entry.requestedDestinationHostId ?? entry.source.hostId;
+  const context: Pick<
+    CodexAppHandoffOperation,
+    "direction" | "sourceBranch" | "localBranch" | "worktreeBranch"
+  > = {
+    direction:
+      destinationHostId !== entry.source.hostId
+        ? "cross-host"
+        : entry.source.managedWorktreePath
+          ? "worktree-to-local"
+          : "local-to-worktree",
+    sourceBranch: entry.prepared?.sourceBranch ?? entry.branchContext?.sourceBranch ?? null,
+    localBranch:
+      entry.prepared?.direction === "to-worktree"
+        ? entry.prepared.localCheckoutBranch
+        : entry.prepared?.direction === "to-checkout"
+          ? entry.prepared.sourceBranch
+          : (entry.branchContext?.localBranch ?? null),
+    worktreeBranch:
+      entry.prepared?.direction === "to-worktree"
+        ? entry.prepared.destinationBranch
+        : (entry.prepared?.sourceBranch ?? entry.branchContext?.worktreeBranch ?? null),
+  };
   const terminal = terminalPhases.has(entry.phase);
-  const currentIndex =
-    entry.phase === "rolling-back" || entry.phase === "failed"
-      ? (phaseIndex.get(entry.failedPhase ?? "queued") ?? 0)
-      : entry.phase === "completed" || entry.phase === "completed-with-warning"
-        ? definitions.length
-        : (phaseIndex.get(entry.phase) ?? 0);
-  const steps = definitions
-    .filter((_definition, index) => index <= currentIndex || terminal)
-    .map((definition, index) => {
-      const failed = entry.phase === "failed" && index === currentIndex;
-      const warning = entry.phase === "completed-with-warning" && index === definitions.length - 1;
-      const running = !terminal && index === currentIndex;
-      return buildStep(
-        definition.id,
-        definition.label,
-        failed ? "error" : warning ? "warning" : running ? "running" : "success",
-        failed
-          ? entry.lastError
-          : running && input.detail
-            ? input.detail
-            : warning
-              ? (entry.warnings.at(-1) ?? null)
-              : null,
+  const failedPhase =
+    entry.phase === "failed" || entry.phase === "rolling-back" ? entry.failedPhase : null;
+  const steps = (entry.preparationSteps ?? []).map((step) =>
+    buildStep(
+      step.id,
+      resolveCodexThreadHandoffStepLabel(step.id, context) ?? step.id,
+      step.status === "running" && failedPhase === "preparing-destination" ? "error" : step.status,
+      null,
+      step.updatedAt,
+    ),
+  );
+  const switchedPhases = new Set<CodexThreadHandoffPhase>([
+    "switching-runtime",
+    "committing-location",
+    "transferring-owner",
+    "cleaning-source",
+    "completed",
+    "completed-with-warning",
+  ]);
+  if (switchedPhases.has(failedPhase ?? entry.phase)) {
+    steps.push(
+      buildStep(
+        "switching-thread",
+        resolveCodexThreadHandoffStepLabel("switching-thread", context)!,
+        terminal ? (entry.phase === "failed" ? "error" : "success") : "running",
+        entry.lastError,
         entry.updatedAt,
-      );
-    });
+      ),
+    );
+  }
   if (entry.phase === "rolling-back" || entry.phase === "failed") {
     steps.push(
       buildStep(
-        "rollback",
-        "Restore source",
+        "rolling-back-changes",
+        "Rolling back changes",
         entry.phase === "rolling-back"
           ? "running"
           : entry.warnings.length > 0
             ? "warning"
             : "success",
         entry.warnings.at(-1) ?? null,
-        entry.updatedAt,
-      ),
-    );
-  }
-  if (
-    entry.followUpPrompt &&
-    (entry.followUpDispatchStarted ||
-      entry.phase === "completed" ||
-      entry.phase === "completed-with-warning")
-  ) {
-    steps.push(
-      buildStep(
-        "follow-up",
-        "Send follow-up",
-        entry.followUpDispatchStarted ? "success" : "running",
-        null,
         entry.updatedAt,
       ),
     );
@@ -254,14 +253,17 @@ const buildOperationFromJournal = (input: {
         : entry.phase === "failed"
           ? "error"
           : "running";
-  const destinationHostId =
-    entry.destination?.hostId ?? entry.requestedDestinationHostId ?? entry.source.hostId;
   return {
     operationId: entry.operationId,
     revision: (existing?.revision ?? -1) + 1,
     status,
     threadId: entry.threadId,
     sourceThreadId: entry.threadId,
+    requestThreadId: entry.requestThreadId ?? existing?.requestThreadId ?? null,
+    threadTitle: entry.threadTitle ?? existing?.threadTitle ?? null,
+    projectId: entry.source.projectId,
+    sourceHostId: entry.source.hostId,
+    ...context,
     destinationHostId,
     destinationHostDisplayName: input.destinationHostDisplayName,
     message:
@@ -287,6 +289,11 @@ interface ActiveHandoff {
   >;
 }
 
+interface HandoffStatusState {
+  readonly revision: number;
+  readonly operations: ReadonlyMap<string, CodexAppHandoffOperation>;
+}
+
 type StatusAdmission =
   | { readonly isNew: false; readonly operation: CodexAppHandoffOperation }
   | { readonly isNew: true; readonly operation: CodexAppHandoffOperation };
@@ -310,9 +317,17 @@ export const make = (options: {
     );
     const activeLock = yield* Semaphore.make(1);
     const activeByThreadId = yield* Ref.make<ReadonlyMap<string, ActiveHandoff>>(new Map());
-    const statuses = yield* SubscriptionRef.make<ReadonlyMap<string, CodexAppHandoffOperation>>(
-      new Map(),
-    );
+    const statuses = yield* SubscriptionRef.make<HandoffStatusState>({
+      revision: 0,
+      operations: new Map<string, CodexAppHandoffOperation>(),
+    });
+    const projectSnapshot = (state: {
+      readonly revision: number;
+      readonly operations: ReadonlyMap<string, CodexAppHandoffOperation>;
+    }): CodexThreadHandoffSnapshot => ({
+      revision: state.revision,
+      operations: [...state.operations.values()],
+    });
 
     const runtimeError = (
       operation: string,
@@ -399,11 +414,14 @@ export const make = (options: {
           const operation = buildOperationFromJournal({
             entry: progress.entry,
             detail: progress.detail,
-            existing: current.get(progress.entry.operationId),
+            existing: current.operations.get(progress.entry.operationId),
             destinationHostDisplayName: host?.descriptor.displayName ?? destinationHostId,
           });
-          const next = new Map(current).set(operation.operationId, operation);
-          return [operation, retainStatusOperations(next.values())];
+          const next = new Map(current.operations).set(operation.operationId, operation);
+          return [
+            operation,
+            { revision: current.revision + 1, operations: retainStatusOperations(next.values()) },
+          ];
         });
       });
     const emitProgress = (
@@ -614,7 +632,28 @@ export const make = (options: {
         const preparation = yield* invoke(
           "prepare-destination",
           managedWorktrees.prepare(entry, (progress) =>
-            emitProgress({ entry, detail: `${progress.phase}:${progress.status}` }, observer),
+            Effect.gen(function* () {
+              const id =
+                progress.phase === "snapshot-source" || progress.phase === "bundle-source"
+                  ? "prepare-host-transfer"
+                  : progress.phase === "transfer-state"
+                    ? "transfer-host-artifacts"
+                    : progress.phase === "import-bundle"
+                      ? "create-new-worktree"
+                      : progress.phase;
+              const updatedAt = yield* Clock.currentTimeMillis;
+              const nextStep = { id, status: progress.status, updatedAt };
+              const steps = entry.preparationSteps ?? [];
+              entry = {
+                ...entry,
+                branchContext: progress.branchContext ?? entry.branchContext,
+                preparationSteps: steps.some((step) => step.id === id)
+                  ? steps.map((step) => (step.id === id ? nextStep : step))
+                  : [...steps, nextStep],
+                updatedAt,
+              };
+              yield* emitProgress({ entry, detail: null }, observer);
+            }),
           ),
           { operationId: entry.operationId, threadId: entry.threadId },
         );
@@ -826,6 +865,8 @@ export const make = (options: {
             schemaVersion: 1,
             operationId: input.operationId,
             threadId: input.threadId,
+            requestThreadId: input.requestThreadId ?? null,
+            threadTitle: input.threadTitle?.trim() || input.threadId,
             phase: "queued",
             source,
             requestedDestinationHostId: input.destinationHostId,
@@ -852,7 +893,10 @@ export const make = (options: {
         const entries = yield* listJournal;
         const recovered: CodexThreadHandoffJournalEntry[] = [];
         for (const entry of entries) {
-          if (isTerminalCodexThreadHandoff(entry)) continue;
+          if (isTerminalCodexThreadHandoff(entry)) {
+            yield* emitProgress({ entry, detail: null }, observer);
+            continue;
+          }
           recovered.push(
             yield* runOwned(entry.threadId, entry.operationId, recoverEntry(entry, observer)),
           );
@@ -861,7 +905,9 @@ export const make = (options: {
       });
 
     const get = (operationId: string) =>
-      SubscriptionRef.get(statuses).pipe(Effect.map((current) => current.get(operationId) ?? null));
+      SubscriptionRef.get(statuses).pipe(
+        Effect.map((current) => current.operations.get(operationId) ?? null),
+      );
     const waitForRevision = (operationId: string, afterRevision: number | null, waitMs: number) =>
       Effect.gen(function* () {
         const existing = yield* get(operationId);
@@ -876,7 +922,7 @@ export const make = (options: {
         }
         yield* SubscriptionRef.changes(statuses).pipe(
           Stream.filter((current) => {
-            const operation = current.get(operationId);
+            const operation = current.operations.get(operationId);
             return (
               operation !== undefined &&
               (operation.revision > afterRevision || isTerminalStatus(operation.status))
@@ -890,15 +936,31 @@ export const make = (options: {
       });
     const launch = (input: CodexLaunchThreadHandoffInput) =>
       Effect.gen(function* () {
+        const existing = yield* get(input.operationId);
+        if (existing) return existing;
+        const source = yield* threadExecution
+          .read(input.threadId)
+          .pipe(Effect.catch(() => Effect.succeed(null)));
+        const destinationHostId = input.destinationHostId ?? source?.hostId ?? "local";
+        const host = yield* executionHosts.get(destinationHostId);
         const now = yield* Clock.currentTimeMillis;
         const admitted = yield* SubscriptionRef.modify(
           statuses,
-          (current): readonly [StatusAdmission, ReadonlyMap<string, CodexAppHandoffOperation>] => {
-            const existing = current.get(input.operationId);
+          (current): readonly [StatusAdmission, HandoffStatusState] => {
+            const existing = current.operations.get(input.operationId);
             if (existing) return [{ isNew: false as const, operation: existing }, current];
-            const operation = buildInitialOperation(input, now);
-            const next = new Map(current).set(operation.operationId, operation);
-            return [{ isNew: true as const, operation }, retainStatusOperations(next.values())];
+            const operation = buildInitialOperation(
+              input,
+              now,
+              source,
+              destinationHostId,
+              host?.descriptor.displayName ?? destinationHostId,
+            );
+            const next = new Map(current.operations).set(operation.operationId, operation);
+            return [
+              { isNew: true as const, operation },
+              { revision: current.revision + 1, operations: retainStatusOperations(next.values()) },
+            ];
           },
         );
         if (!admitted.isNew) return admitted.operation;
@@ -907,23 +969,27 @@ export const make = (options: {
             Effect.gen(function* () {
               const failedAt = yield* Clock.currentTimeMillis;
               yield* SubscriptionRef.update(statuses, (current) => {
-                const existing = current.get(input.operationId);
+                const existing = current.operations.get(input.operationId);
                 if (!existing || isTerminalStatus(existing.status)) return current;
                 const failed: CodexAppHandoffOperation = {
                   ...existing,
                   revision: existing.revision + 1,
                   status: "error",
                   message: cause.message,
-                  steps: [
-                    buildStep("resolve-thread", "Resolve thread", "success", null, failedAt),
-                    buildStep("handoff", "Move thread", "error", cause.message, failedAt),
-                  ],
+                  steps: existing.steps.map((step) =>
+                    step.status === "running"
+                      ? { ...step, status: "error", updatedAt: failedAt }
+                      : step,
+                  ),
                   updatedAt: failedAt,
                   completedAt: failedAt,
                 };
-                return retainStatusOperations(
-                  new Map(current).set(input.operationId, failed).values(),
-                );
+                return {
+                  revision: current.revision + 1,
+                  operations: retainStatusOperations(
+                    new Map(current.operations).set(input.operationId, failed).values(),
+                  ),
+                };
               });
             }),
           ),
@@ -932,5 +998,13 @@ export const make = (options: {
         return admitted.operation;
       });
 
-    return CodexThreadHandoffRuntime.of({ start, recover, launch, get, waitForRevision });
+    return CodexThreadHandoffRuntime.of({
+      start,
+      recover,
+      launch,
+      get,
+      waitForRevision,
+      snapshot: SubscriptionRef.get(statuses).pipe(Effect.map(projectSnapshot)),
+      changes: SubscriptionRef.changes(statuses).pipe(Stream.map(projectSnapshot)),
+    });
   });

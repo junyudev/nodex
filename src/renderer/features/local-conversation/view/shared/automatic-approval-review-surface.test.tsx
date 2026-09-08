@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import type { CodexConversationItem } from "../../../../lib/types";
 import { render, settleAsyncRender, textContent } from "../../../../test/dom";
 import {
@@ -75,7 +75,7 @@ describe("AutomaticApprovalReviewSurface", () => {
     expect(textContent(container).includes("Only local tests are executed.")).toBe(true);
   });
 
-  test("uses the request fallback summary and nests the high-risk denied title", async () => {
+  test("uses the request fallback summary and directly explains high-risk authorization", async () => {
     const item = buildReviewItem({
       rawItem: {
         targetItemId: "item-command",
@@ -89,20 +89,22 @@ describe("AutomaticApprovalReviewSurface", () => {
       },
     });
 
-    const { getByRole, container } = render(<AutomaticApprovalReviewSurface item={item} />);
+    const { getByRole, getByText, queryByRole, queryByText } = render(
+      <AutomaticApprovalReviewSurface item={item} />,
+    );
     const trigger = getByRole("button", { name: "Request" });
-    const summary = textContent(container);
-    expect(summary.includes("Request")).toBe(true);
-    expect(summary.includes("Auto-review denied high risk")).toBe(true);
-    expect(summary.includes("High risk")).toBe(false);
     expect(disclosureBody(trigger)?.getAttribute("aria-hidden")).toBe("true");
 
-    fireEvent.click(trigger);
-    await settleAsyncRender();
+    await act(async () => {
+      fireEvent.click(trigger);
+      await Promise.resolve();
+    });
 
-    const body = textContent(container);
-    expect(body.includes("Auto-review denied high risk")).toBe(true);
-    expect(body.includes("High risk")).toBe(false);
+    expect(
+      getByText("Requires explicit authorization because this action is considered high risk"),
+    ).toBeTruthy();
+    expect(queryByRole("button", { name: "Auto-review denied high risk" })).toBeNull();
+    expect(queryByText("The request edits outside the workspace.")).toBeNull();
     expect(disclosureBody(trigger)?.getAttribute("aria-hidden")).toBe("false");
   });
 

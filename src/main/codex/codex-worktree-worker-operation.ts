@@ -217,12 +217,13 @@ export async function executeCodexWorktreeWorkerOperation(
               ...paths,
             });
           },
-          onProgress: (step, status) => {
+          onProgress: (step, status, branchContext) => {
             options.onEvent({
               operation: "prepare-handoff",
               type: "handoff-progress",
               step,
               status,
+              branchContext,
             });
           },
         }),

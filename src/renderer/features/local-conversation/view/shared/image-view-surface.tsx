@@ -126,7 +126,6 @@ export function ImageViewSurface({ imagePaths }: { imagePaths: readonly string[]
         className="overflow-clip"
         header={
           <ThreadRichActivityHeader
-            status="completed"
             icon={
               <ImageEditorTabIcon
                 aria-hidden="true"

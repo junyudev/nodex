@@ -36,6 +36,7 @@ import { WorktreeInitActivityList } from "../shared/tools/worktree-init-activity
 import {
   JsonBlock,
   ThreadActivityDisclosure,
+  ThreadActivitySummaryLabel,
   type ThreadActivitySummaryTransition,
 } from "../shared/tools/tool-primitives";
 import { ToolActivityIcon, resolveToolActivityEntryIcon } from "../shared/tools/tool-call-icons";
@@ -331,7 +332,11 @@ function CompletedActivitySummaryText({
         {
           key: part.key,
           content: (
-            <DynamicToolCallSummary call={{ ...call, completed: true }} variant="summary-text" />
+            <DynamicToolCallSummary
+              call={{ ...call, completed: true }}
+              isLeadingSummaryPart={index === 0}
+              variant="summary-text"
+            />
           ),
         },
       ];
@@ -400,7 +405,9 @@ export function ThreadAgentActivityGroupBlock({
   const summary = (
     <span className="inline-flex max-w-full min-w-0 items-center gap-1.5 overflow-hidden">
       {icon ? <ToolActivityIcon descriptor={icon} /> : null}
-      <span className="min-w-0 flex-1 truncate">{summaryText}</span>
+      <ThreadActivitySummaryLabel interactive={block.canExpand}>
+        {summaryText}
+      </ThreadActivitySummaryLabel>
     </span>
   );
   const body = (

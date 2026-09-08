@@ -8,6 +8,7 @@ import type {
   ProtocolAppInfo,
 } from "../../../../../lib/types";
 import { resolveCodexMcpVisualSource } from "../../../../../../shared/codex-mcp-tool-call";
+import { normalizeAutomaticApprovalReviewPayload } from "../../../../../../shared/codex-transcript-special-items";
 import { extractCommandActions } from "../../../projection/tool-metadata/command-actions";
 import {
   isCurlWebSearchCommand,
@@ -43,6 +44,7 @@ export type ToolActivityIconId =
   | "app"
   | "approved"
   | "automatic-review"
+  | "automatic-review-denied"
   | "browser-use"
   | "code-searching"
   | "computer-use"
@@ -101,6 +103,13 @@ function SemanticToolIcon({ icon, className }: { icon: ToolActivityIconId; class
       return <SuccessCircleIcon aria-hidden className={iconClassName} />;
     case "automatic-review":
       return <AutomaticApprovalReviewIcon aria-hidden className={iconClassName} />;
+    case "automatic-review-denied":
+      return (
+        <AutomaticApprovalReviewIcon
+          aria-hidden
+          className={cn(iconClassName, "text-token-editor-warning-foreground")}
+        />
+      );
     case "browser-use":
       return <BrowserUseIcon aria-hidden className={iconClassName} />;
     case "computer-use":
@@ -407,7 +416,13 @@ export function resolveToolActivityEntryIcon(
     }
     return semanticToolIcon("run-command");
   }
-  if (block.type === "automaticApprovalReview") return semanticToolIcon("automatic-review");
+  if (block.type === "automaticApprovalReview") {
+    return semanticToolIcon(
+      normalizeAutomaticApprovalReviewPayload(block.entry.rawItem)?.status === "denied"
+        ? "automatic-review-denied"
+        : "automatic-review",
+    );
+  }
   if (block.type === "hook") return semanticToolIcon("hooks");
   if (block.type === "mcpToolCall") return resolveMcpSourceIcon(block.entry, resolvedApps);
   if (block.type === "dynamicToolCall") {

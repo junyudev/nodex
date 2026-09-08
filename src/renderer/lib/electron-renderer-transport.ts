@@ -496,6 +496,20 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload);
       });
     },
+    subscribeCodexThreadHandoffsChanged(callback) {
+      return bridge.on("codex:thread-handoffs:changed", (...args: unknown[]) => {
+        const payload = args[0] as
+          | import("../../shared/codex-thread-handoff").CodexThreadHandoffSnapshot
+          | undefined;
+        if (
+          !payload ||
+          !Number.isSafeInteger(payload.revision) ||
+          !Array.isArray(payload.operations)
+        )
+          return;
+        callback(payload);
+      });
+    },
     subscribeCodexPendingWorktreesChanged(
       callback: (
         event: import("../../shared/codex-pending-worktree").CodexPendingWorktreesChangedEvent,

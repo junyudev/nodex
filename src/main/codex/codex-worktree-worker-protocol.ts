@@ -1,3 +1,4 @@
+import type { CodexThreadHandoffBranches } from "../../shared/codex-thread-handoff";
 import type { CodexStoredShellEnvironment } from "./codex-worktree-shell-environment";
 import type { CodexPendingWorktreeStartingState } from "../../shared/codex-pending-worktree";
 import type { WorktreeStartMode } from "../../shared/types";
@@ -99,6 +100,7 @@ export type CodexWorktreeWorkerEvent =
         | "export-handoff"
         | "import-handoff";
       readonly type: "handoff-progress";
+      readonly branchContext?: CodexThreadHandoffBranches;
       readonly step: CodexWorktreeHandoffStep;
       readonly status: CodexWorktreeHandoffStepStatus;
     };

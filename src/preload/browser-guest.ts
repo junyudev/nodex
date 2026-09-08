@@ -1,4 +1,5 @@
 import { ipcRenderer } from "electron";
+import { installBrowserWebMcp } from "./browser-webmcp";
 import type {
   BrowserAnnotationAnchor,
   BrowserAnnotationDesignChange,
@@ -6,6 +7,7 @@ import type {
 } from "../shared/browser-annotation";
 
 const ANNOTATION_OVERLAY_ATTRIBUTE = "data-nodex-browser-annotation-overlay";
+installBrowserWebMcp();
 let annotationSessionId: string | null = null;
 let annotationSelectionMode: "inspect" | "region" = "inspect";
 let hoveredElement: Element | null = null;

@@ -563,7 +563,7 @@ export const AutomaticApprovalReviewDenied: Story = {
   render: () => (
     <StorySurface
       title="Automatic Approval Review Denied"
-      description="Denied automatic approval reviews are standalone action-summary disclosures with the compact review row nested inside."
+      description="Denied automatic approval reviews show the reviewed action and explain why explicit authorization is required."
     >
       <ConversationStorySurface>
         <AutomaticApprovalReviewSurface

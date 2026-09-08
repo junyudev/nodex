@@ -1047,6 +1047,12 @@ export function subscribeCodexHooksChanged(
   return resolveRendererTransport().subscribeCodexHooksChanged(callback);
 }
 
+export function subscribeCodexThreadHandoffsChanged(
+  callback: (event: import("../../shared/codex-thread-handoff").CodexThreadHandoffSnapshot) => void,
+): () => void {
+  return resolveRendererTransport().subscribeCodexThreadHandoffsChanged(callback);
+}
+
 export function subscribeCodexPendingWorktreesChanged(
   callback: (
     event: import("../../shared/codex-pending-worktree").CodexPendingWorktreesChangedEvent,

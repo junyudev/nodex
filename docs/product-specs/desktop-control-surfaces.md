@@ -8,6 +8,12 @@ The built-in Browser is available when its verified runtime is ready. Control of
 
 Computer Use is available only when its verified helper and operating-system requirements are ready. A failure in one control backend does not weaken or implicitly enable another. ACP tasks and remote Codex executions do not acquire local desktop-control surfaces.
 
+## Website tools
+
+The built-in Browser advertises website tool discovery and invocation through its WebMCP capability. The registry is installed on `document.modelContext` before page scripts run. Registration requires a secure context and origin-keyed agent clustering for network documents; local file documents use their secure-file boundary. Tool definitions and results must be JSON-serializable; registrations belong to the current document, support abort-based removal, and carry identities that reject stale discovery results after replacement or removal. Unsupported user-interaction requests fail explicitly.
+
+The page bridge exposes only this document-owned registry and callbacks. It grants no host, filesystem, or general application IPC capability. Browser Use continues to apply its existing page admission and policy boundaries. Discovery and invocation metadata accompanies the tool result so the transcript can show each website action with its definition, input, output, and explicit truncation state; see [Thread Transcript Behavior](codex-thread-transcript-behavior.md).
+
 ## Native picture in picture
 
 An admitted local task becomes active when Browser Use has an open session or Computer Use has an active item. A task can have both sources; ending one source does not hide the other. Browser presentations retain only the bounded latest accepted raster for each open presentation. Computer Use remains a native remote layer and is not copied into renderer history.

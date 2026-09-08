@@ -1,3 +1,4 @@
+import type { CodexThreadHandoffBranches } from "../../shared/codex-thread-handoff";
 import { createHash } from "node:crypto";
 import * as path from "node:path";
 import * as Cause from "effect/Cause";
@@ -36,6 +37,7 @@ export interface PrepareCrossHostThreadHandoffInput {
 }
 
 export interface CrossHostThreadHandoffProgress {
+  readonly branchContext?: CodexThreadHandoffBranches;
   readonly phase: string;
   readonly status: "running" | "success" | "error";
 }

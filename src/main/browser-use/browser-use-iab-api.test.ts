@@ -475,6 +475,16 @@ describe("BrowserUseIabApi", () => {
     }, policyStore);
   });
 
+  it.effect("advertises document WebMCP independently of unrestricted CDP access", () =>
+    withApi(async ({ api }) => {
+      expect(api.getInfo({ session_id: "thread-1" })).toMatchObject({
+        apiSupportOverrides: { "Tab.cdpCall": false },
+        capabilities: { tab: expect.arrayContaining([expect.objectContaining({ id: "webmcp" })]) },
+      });
+      await expect(api.dispatch("getInfo", { session_id: "other-thread" })).rejects.toThrow();
+    }),
+  );
+
   it.effect("maps top-level and frame CDP targets and restores capture surface", () =>
     withApi(async ({ api, service }) => {
       const tab = (await api.dispatch("createTab", {

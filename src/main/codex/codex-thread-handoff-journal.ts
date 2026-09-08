@@ -1,3 +1,4 @@
+import type { CodexThreadHandoffBranches } from "../../shared/codex-thread-handoff";
 import path from "node:path";
 import { z } from "zod";
 import type { CodexExecutionHostFileDescriptor } from "./codex-execution-host-file-transfer";
@@ -70,6 +71,14 @@ export interface CodexThreadHandoffJournalEntry {
   readonly schemaVersion: typeof CODEX_THREAD_HANDOFF_JOURNAL_SCHEMA_VERSION;
   readonly operationId: string;
   readonly threadId: string;
+  readonly requestThreadId?: string | null;
+  readonly threadTitle?: string | null;
+  readonly branchContext?: CodexThreadHandoffBranches;
+  readonly preparationSteps?: readonly {
+    readonly id: string;
+    readonly status: "running" | "success" | "error";
+    readonly updatedAt: number;
+  }[];
   readonly phase: CodexThreadHandoffPhase;
   readonly source: CodexThreadExecutionLocation;
   readonly requestedDestinationHostId: string | null;
@@ -167,6 +176,28 @@ const entrySchema = z
     schemaVersion: z.literal(CODEX_THREAD_HANDOFF_JOURNAL_SCHEMA_VERSION),
     operationId: z.string().min(1).max(1_024),
     threadId: z.string().min(1).max(1_024),
+    requestThreadId: z.string().min(1).max(1_024).nullable().optional(),
+    threadTitle: z.string().max(64_000).nullable().optional(),
+    branchContext: z
+      .object({
+        sourceBranch: z.string().max(1_024).nullable(),
+        localBranch: z.string().max(1_024).nullable(),
+        worktreeBranch: z.string().max(1_024).nullable(),
+      })
+      .strict()
+      .optional(),
+    preparationSteps: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1).max(128),
+            status: z.enum(["running", "success", "error"]),
+            updatedAt: z.number().int().nonnegative(),
+          })
+          .strict(),
+      )
+      .max(128)
+      .optional(),
     phase: z.enum(CODEX_THREAD_HANDOFF_PHASES),
     source: locationSchema,
     requestedDestinationHostId: z.string().min(1).max(512).nullable().default(null),
