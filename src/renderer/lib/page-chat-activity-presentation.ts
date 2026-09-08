@@ -5,7 +5,6 @@ export type PageChatExecutionIndicator = "error" | "approval" | "input" | "worki
 export interface PageChatActivityPresentation {
   readonly execution: PageChatExecutionIndicator;
   readonly unread: boolean;
-  readonly visibleAtRest: boolean;
   readonly accessibleLabel: string;
 }
 
@@ -39,7 +38,6 @@ export function presentPageChatActivity(
   return {
     execution,
     unread,
-    visibleAtRest: execution !== "idle" || unread,
     accessibleLabel: parts.join(", "),
   };
 }

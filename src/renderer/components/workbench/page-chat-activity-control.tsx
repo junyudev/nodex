@@ -18,7 +18,6 @@ import {
 } from "@/lib/page-chat-activity-presentation";
 import { pageChatWindowQueryOptions } from "@/lib/query-options";
 import type { PageChatActivitySummary, PageChatItem } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 export interface PageChatActivityDetailOverride {
   readonly items: readonly PageChatItem[];
@@ -35,7 +34,6 @@ export interface PageChatActivityControlProps {
   readonly summary: PageChatActivitySummary;
   readonly onOpenChat: (sessionId: string) => Promise<void> | void;
   readonly onRemoveRelation?: (sessionId: string) => Promise<void> | void;
-  readonly idleVisibilityClassName?: string;
   readonly detailOverride?: PageChatActivityDetailOverride;
 }
 
@@ -102,7 +100,6 @@ export function PageChatActivityControl({
   summary,
   onOpenChat,
   onRemoveRelation,
-  idleVisibilityClassName,
   detailOverride,
 }: PageChatActivityControlProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -186,12 +183,7 @@ export function PageChatActivityControl({
             type="button"
             aria-label={activity.accessibleLabel}
             data-page-chat-activity-control="true"
-            className={cn(
-              "relative flex size-5 shrink-0 items-center justify-center rounded outline-none transition-opacity",
-              "focus-visible:ring-2 focus-visible:ring-token-focus",
-              !activity.visibleAtRest && "opacity-0 focus-visible:opacity-100",
-              !activity.visibleAtRest && idleVisibilityClassName,
-            )}
+            className="relative flex size-5 shrink-0 items-center justify-center rounded outline-none focus-visible:ring-2 focus-visible:ring-token-focus"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={handleTriggerClick}
             onDoubleClick={(event) => event.stopPropagation()}

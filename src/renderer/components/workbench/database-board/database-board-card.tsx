@@ -431,7 +431,6 @@ export function DatabaseBoardCard(props: DatabaseBoardCardProps) {
             summary={props.pageChatActivity}
             onOpenChat={props.pageActionPort.openRelatedChat}
             onRemoveRelation={props.onRemovePageChatRelation}
-            idleVisibilityClassName="group-hover/card:opacity-100 group-focus-within/card:opacity-100"
           />
         ) : null}
       </div>
