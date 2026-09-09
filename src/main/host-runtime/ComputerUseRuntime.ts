@@ -223,6 +223,8 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
       ),
     );
 
+    // Once native launch starts, retain the gate until its PID is adopted or
+    // terminated. The platform launch and process validation are both bounded.
     const ensureServiceUnlocked = Effect.fn("ComputerUseRuntime.ensureServiceUnlocked")(function* (
       addon: ComputerUseServiceAddon,
       executablePath: string,
@@ -279,7 +281,7 @@ const make = (options: ComputerUseRuntimeLayerOptions) =>
         "service.validate",
         new Error("Computer Use service did not become a valid managed process"),
       );
-    });
+    }, Effect.uninterruptible);
 
     const ensureService = (
       addon: ComputerUseServiceAddon,
