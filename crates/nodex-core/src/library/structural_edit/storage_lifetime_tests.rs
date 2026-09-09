@@ -214,7 +214,6 @@ fn history_payload_storage_lifetime_preserves_replay_and_page_history() {
         initial.active_inverse > 0 && initial.terminal_payload > 0 && initial.retained_receipt > 0
     );
     assert!(initial.page_history_body > 0 && initial.minimal_evidence > 0);
-    eprintln!("history storage before maintenance: {initial:?}");
 
     // Storage-lifetime subject: advance only terminal-payload eligibility. A
     // valid receipt still protects exact replay; the available inverse has no TTL.
@@ -309,8 +308,6 @@ fn history_payload_storage_lifetime_preserves_replay_and_page_history() {
             .expect("bounded payload collection");
     }
     let collected = kernel.readers().read_default(storage_bytes).unwrap();
-    eprintln!("history storage released, awaiting expiry: {released:?}");
-    eprintln!("history storage after expiry and GC: {collected:?}");
     assert_eq!(collected.active_inverse, 0);
     assert_eq!(collected.terminal_payload, 0);
     assert_eq!(collected.retained_receipt, 0);

@@ -23,7 +23,7 @@ function bytesField(fieldNumber: number, bytes: Uint8Array): Buffer {
 }
 
 function makeSignedCrx3(): { readonly bytes: Buffer; readonly extensionId: string } {
-  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 1024 });
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const publicKeyBytes = publicKey.export({ format: "der", type: "spki" });
   const extensionId = deriveChromeExtensionId(publicKeyBytes);
   const signedCrxId = createHash("sha256").update(publicKeyBytes).digest().subarray(0, 16);
