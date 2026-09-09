@@ -739,8 +739,8 @@ fn validate_subagent_projection(connection: &Connection) -> Result<(), StoreErro
            UNION
            SELECT child.host_id, child.source_epoch, child.generation,
              child.root_thread_id, child.thread_id
-           FROM workspace_subagent_descendants child
-           JOIN reachable parent
+           FROM reachable parent
+           CROSS JOIN workspace_subagent_descendants child
              ON child.host_id = parent.host_id
             AND child.source_epoch = parent.source_epoch
             AND child.generation = parent.generation

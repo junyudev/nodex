@@ -1,3 +1,6 @@
+// Recursive closures keep the current parent outside the child lookup with CROSS JOIN.
+// Otherwise SQLite may scan the entire universe per parent despite the parent index,
+// making overview, completeness, and lifecycle queries quadratic on fresh Profiles.
 use std::collections::BTreeSet;
 
 use nodex_core_contracts::BoundModuleContext;
@@ -718,8 +721,8 @@ pub(super) fn begin_lifecycle(
            SELECT ?5
            UNION
            SELECT child.thread_id
-           FROM workspace_subagent_descendants child
-           JOIN reachable parent ON child.parent_thread_id = parent.thread_id
+           FROM reachable parent
+           CROSS JOIN workspace_subagent_descendants child ON child.parent_thread_id = parent.thread_id
            WHERE child.host_id = ?1 AND child.source_epoch = ?2
              AND child.generation = ?3 AND child.root_thread_id = ?4
          ), expected(thread_id) AS (
@@ -1170,8 +1173,8 @@ fn read_overview_lane(
              AND descendant.parent_thread_id = ?4
            UNION
            SELECT child.thread_id
-           FROM workspace_subagent_descendants child
-           JOIN reachable parent ON child.parent_thread_id = parent.thread_id
+           FROM reachable parent
+           CROSS JOIN workspace_subagent_descendants child ON child.parent_thread_id = parent.thread_id
            WHERE child.host_id = ?1 AND child.source_epoch = ?2
              AND child.generation = ?3 AND child.root_thread_id = ?4
          )
@@ -1264,8 +1267,8 @@ fn overview_counts(
              AND descendant.parent_thread_id = ?4
            UNION
            SELECT child.thread_id
-           FROM workspace_subagent_descendants child
-           JOIN reachable parent ON child.parent_thread_id = parent.thread_id
+           FROM reachable parent
+           CROSS JOIN workspace_subagent_descendants child ON child.parent_thread_id = parent.thread_id
            WHERE child.host_id = ?1 AND child.source_epoch = ?2
              AND child.generation = ?3 AND child.root_thread_id = ?4
          )
@@ -1626,8 +1629,8 @@ fn require_complete_reachable_closure(
              AND descendant.parent_thread_id = ?4
            UNION
            SELECT child.thread_id
-           FROM workspace_subagent_descendants child
-           JOIN reachable parent ON child.parent_thread_id = parent.thread_id
+           FROM reachable parent
+           CROSS JOIN workspace_subagent_descendants child ON child.parent_thread_id = parent.thread_id
            WHERE child.host_id = ?1 AND child.source_epoch = ?2
              AND child.generation = ?3 AND child.root_thread_id = ?4
          )
@@ -2048,6 +2051,80 @@ mod tests {
         assert_eq!(snapshot.known_done_count, 0);
         assert!(!snapshot.discovery_complete);
         assert_eq!(snapshot.discovery_continuation, None);
+    }
+
+    #[test]
+    fn overview_query_work_grows_with_descendants_instead_of_all_parent_child_pairs() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let mut measurements = Vec::new();
+        for size in [100, 1_000] {
+            let workspace = seeded_workspace();
+            seed_root(&workspace.module);
+            for page in 0..size / 100 {
+                let observations = (page * 100..(page + 1) * 100)
+                    .map(|index| {
+                        observation(
+                            index,
+                            "thread:root",
+                            if index % 2 == 0 {
+                                CodexThreadStatusType::Active
+                            } else {
+                                CodexThreadStatusType::Idle
+                            },
+                        )
+                    })
+                    .collect();
+                observe_page(
+                    &workspace.module,
+                    page,
+                    observations,
+                    page + 1 == size / 100,
+                );
+            }
+            let steps = workspace
+                .kernel
+                .writer()
+                .call(move |connection| {
+                    let ticks = Arc::new(AtomicUsize::new(0));
+                    let observed = Arc::clone(&ticks);
+                    connection.progress_handler(
+                        100,
+                        Some(move || {
+                            observed.fetch_add(1, Ordering::Relaxed);
+                            false
+                        }),
+                    )?;
+                    let result = super::read_overview(
+                        connection,
+                        "library-1",
+                        0,
+                        &universe(),
+                        &CollectionWindowRequest {
+                            after: None,
+                            first: Some(4),
+                        },
+                        &CollectionWindowRequest {
+                            after: None,
+                            first: Some(10),
+                        },
+                    );
+                    connection.progress_handler(0, None::<fn() -> bool>)?;
+                    let snapshot = result?;
+                    assert_eq!(snapshot.known_active_count as usize, size / 2);
+                    assert_eq!(snapshot.known_done_count as usize, size / 2);
+                    assert_eq!(snapshot.active.items.len(), 4);
+                    assert_eq!(snapshot.done.items.len(), 10);
+                    Ok(ticks.load(Ordering::Relaxed) * 100)
+                })
+                .expect("measured production overview");
+            measurements.push(steps);
+        }
+        assert!(
+            measurements[1] < measurements[0] * 20,
+            "10x descendants must not cause quadratic query work: {measurements:?}"
+        );
     }
 
     #[test]
