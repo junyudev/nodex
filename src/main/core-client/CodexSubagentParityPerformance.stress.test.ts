@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
-import type { Thread } from "@nodex/codex-app-server-protocol/v2";
+import type { Thread, ThreadListParams } from "@nodex/codex-app-server-protocol/v2";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -26,6 +26,7 @@ import {
 } from "../app/ScopedCallbackRuntime";
 import { resolveCodexRuntime } from "../codex/codex-runtime";
 import { openCodexProbeSession } from "../../../scripts/codex-probe-session";
+import { requiredNativeExecutable } from "../../../scripts/testing/native-artifacts";
 import type {
   CodexSelectedSubagentHydrateResult,
   CodexSubagentOverviewWindow,
@@ -53,6 +54,16 @@ const DESCENDANT_COUNTS = [10, 100, 1_000] as const;
 const REAL_HISTORY_ITEM_COUNTS = [0, 100, 10_000] as const;
 const REAL_HISTORY_ITEM_TEXT_BYTES = 4_096;
 const REAL_HISTORY_INJECTION_BATCH_SIZE = 500;
+const REAL_HISTORY_SOURCE = "appServer";
+const REAL_HISTORY_LIST_PARAMS = {
+  archived: false,
+  limit: 10,
+  modelProviders: [],
+  sortDirection: "desc",
+  sortKey: "created_at",
+  sourceKinds: [REAL_HISTORY_SOURCE],
+  useStateDbOnly: true,
+} satisfies ThreadListParams;
 const SAMPLE_COUNT = 15;
 const WARMUP_COUNT = 3;
 const STATUS_SAMPLE_COUNT = 15;
@@ -60,7 +71,7 @@ const HOT_OVERVIEW_P95_GATE_MS = 250;
 const REAL_HISTORY_LIST_P95_GATE_MS = 250;
 const REAL_HISTORY_RSS_NOISE_FLOOR_BYTES = 4 * 1024 * 1024;
 const PINNED_THREAD_SECTION_ID = "01984de2-8f74-7c91-a3b2-5c5e937cf318";
-const CORE_EXECUTABLE = path.resolve("target/release/nodex-core");
+const CORE_EXECUTABLE = requiredNativeExecutable("core-server");
 const EVIDENCE_PATH = path.resolve(
   "notes.local/artifacts/subagent-parity/subagent-performance-scale.json",
 );
@@ -646,7 +657,7 @@ const measureRealPersistedHistory = async (input: {
       const started = await writer.request("thread/start", {
         ephemeral: false,
         historyMode: "paginated",
-        threadSource: "appServer",
+        threadSource: REAL_HISTORY_SOURCE,
         cwd,
         approvalPolicy: "never",
         sandbox: "danger-full-access",
@@ -750,15 +761,7 @@ const measureRealPersistedHistory = async (input: {
         threadId,
         name: `Indexed real history ${input.historyItemCount}`,
       });
-      const response = await indexer.request("thread/list", {
-        archived: false,
-        limit: 10,
-        modelProviders: [],
-        sortDirection: "desc",
-        sortKey: "created_at",
-        sourceKinds: ["vscode"],
-        useStateDbOnly: true,
-      });
+      const response = await indexer.request("thread/list", REAL_HISTORY_LIST_PARAMS);
       const data = isRecord(response) && Array.isArray(response.data) ? response.data : null;
       if (!data?.some((candidate) => isRecord(candidate) && candidate.id === threadId)) {
         throw new Error("Real-history metadata resume did not index its Thread");
@@ -778,15 +781,7 @@ const measureRealPersistedHistory = async (input: {
       let metadataListBytes = 0;
       for (let sampleIndex = 0; sampleIndex < WARMUP_COUNT + SAMPLE_COUNT; sampleIndex += 1) {
         const startedAt = performance.now();
-        const response = await reader.request("thread/list", {
-          archived: false,
-          limit: 10,
-          modelProviders: [],
-          sortDirection: "desc",
-          sortKey: "created_at",
-          sourceKinds: ["vscode"],
-          useStateDbOnly: true,
-        });
+        const response = await reader.request("thread/list", REAL_HISTORY_LIST_PARAMS);
         const elapsedMs = performance.now() - startedAt;
         const data = isRecord(response) && Array.isArray(response.data) ? response.data : null;
         if (!data) throw new Error("Real-history probe received an invalid thread/list response");
@@ -962,7 +957,13 @@ it.live(
           assert.strictEqual(harness.measurement.gateway.transcriptResponseBytes, 0);
           assert.strictEqual(harness.measurement.gateway.requestCount, 0);
           assert.strictEqual(harness.measurement.childSubscriptionDependencyReads, 0);
-          assert.deepEqual(harness.measurement.conversationsReadThreadIds, []);
+          // Reading the resident root prevents starting a second live owner. Only child
+          // Conversation reads would hydrate descendant history through this boundary.
+          const childConversationReads = harness.measurement.conversationsReadThreadIds.filter(
+            (threadId) => threadId !== fixture.rootThreadId,
+          );
+          assert.deepEqual(childConversationReads, []);
+          assert.isAtMost(harness.measurement.conversationsReadThreadIds.length, SAMPLE_COUNT);
 
           const latency = summarize(latencySamples);
           assert.isAtMost(latency.p95Ms, HOT_OVERVIEW_P95_GATE_MS);
@@ -970,7 +971,8 @@ it.live(
             descendantCount,
             latency,
             steadyOverview: {
-              childConversationReads: harness.measurement.conversationsReadThreadIds.length,
+              childConversationReads: childConversationReads.length,
+              rootConversationReads: harness.measurement.conversationsReadThreadIds.length,
               childSubscriptionDependencyReads:
                 harness.measurement.childSubscriptionDependencyReads,
               childTranscriptBytes: 0,

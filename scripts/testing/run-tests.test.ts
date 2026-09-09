@@ -122,8 +122,9 @@ test("a full Core stress tier does not prepare the default-only bridge", async (
       expect(context.env?.NODEX_TEST_TIER).toBe("stress");
       return ["src/main/core-client/database-context-menu-scenario.stress.node.test.ts"];
     },
-    prepare: async (artifacts) => {
+    prepare: async (artifacts, context) => {
       expect(artifacts).toEqual(["core-server"]);
+      expect(context.profile).toBe("release");
       return { executables: { "core-server": "/tmp/core" } };
     },
     execute: async () => result(),

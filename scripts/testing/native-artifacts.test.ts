@@ -46,6 +46,19 @@ describe("native test preparation", () => {
       executable,
     );
   });
+  test("prepares optimized native executables for performance measurements", async () => {
+    const releaseExecutable = path.resolve("/tmp/custom target/release/nodex-core");
+    const prepared = await prepareNativeArtifacts(["core-server"], {
+      repositoryRoot: root,
+      profile: "release",
+      execute: async (command) => {
+        expect(command.args).toContain("--release");
+        command.onStdout?.(JSON.stringify({ ...artifact, executable: releaseExecutable }) + "\n");
+        return { exitCode: 0, signal: null, durationMs: 1 };
+      },
+    });
+    expect(prepared.executables["core-server"]).toBe(releaseExecutable);
+  });
   test("rejects missing, ambiguous and unrelated artifacts", () => {
     expect(() => readCargoExecutables("", ["core-server"], root)).toThrow("exactly one");
     expect(() =>

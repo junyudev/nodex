@@ -32,11 +32,17 @@ export interface PreparedNativeArtifacts {
   readonly executables: Readonly<Partial<Record<NativeArtifactId, string>>>;
 }
 
-export function cargoBuildArguments(artifacts: readonly NativeArtifactId[]): readonly string[] {
+export type NativeBuildProfile = "dev" | "release";
+
+export function cargoBuildArguments(
+  artifacts: readonly NativeArtifactId[],
+  profile: NativeBuildProfile = "dev",
+): readonly string[] {
   const selected = [...new Set(artifacts)].map((id) => targets[id]);
   if (selected.length === 0) return [];
   return [
     "build",
+    ...(profile === "release" ? ["--release"] : []),
     ...[...new Set(selected.map((target) => target.package))].flatMap((name) => ["-p", name]),
     ...selected.flatMap((target) => ["--" + target.kind, target.name]),
     "--message-format=json-render-diagnostics",
@@ -89,12 +95,13 @@ export async function prepareNativeArtifacts(
   artifacts: readonly NativeArtifactId[],
   context: {
     readonly repositoryRoot: string;
+    readonly profile?: NativeBuildProfile;
     readonly env?: NodeJS.ProcessEnv;
     readonly signal?: AbortSignal;
     readonly execute?: typeof runCommand;
   },
 ): Promise<PreparedNativeArtifacts> {
-  const args = cargoBuildArguments(artifacts);
+  const args = cargoBuildArguments(artifacts, context.profile);
   if (args.length === 0) return { executables: {} };
   let output = "";
   process.stdout.write(

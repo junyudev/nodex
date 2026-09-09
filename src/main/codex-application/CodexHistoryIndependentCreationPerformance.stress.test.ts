@@ -11,6 +11,7 @@ import type {
   CodexConversationSnapshot,
 } from "../../shared/types";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
+import { createCodexCanonicalConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
 import {
   CodexAppServerCapabilities,
   createCodexAppServerCapabilitySnapshot,
@@ -34,7 +35,7 @@ import { CodexRendererConversationCoordinator } from "./CodexRendererConversatio
 import { make as makeSideChatCommands } from "./CodexSideChatCommands";
 import { SIDE_CHAT_BOUNDARY_TEXT } from "./CodexSideChatPolicy";
 import { CodexThreadCatalog } from "./CodexThreadCatalog";
-import { CodexThreadDirectory } from "./CodexThreadDirectory";
+import { CodexThreadDirectory, type CodexThreadDirectoryEntry } from "./CodexThreadDirectory";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
 import { CodexTurnCommands, type CodexTurnCommandsService } from "./CodexTurnCommands";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
@@ -171,7 +172,10 @@ const forkResponse = (threadId: string, ephemeral: boolean): ThreadForkResponse 
     multiAgentMode: "explicitRequestOnly",
   }) as unknown as ThreadForkResponse;
 
-const sourceEntry = (logicalTurnCount: number, includeMetadataOnlyCanonical = false) => {
+const sourceEntry = (
+  logicalTurnCount: number,
+  includeMetadataOnlyCanonical = false,
+): CodexThreadDirectoryEntry => {
   const summary = conversationSnapshot(SOURCE_THREAD_ID, logicalTurnCount);
   return {
     fidelity: "durable",
@@ -179,16 +183,41 @@ const sourceEntry = (logicalTurnCount: number, includeMetadataOnlyCanonical = fa
     durable: {
       threadId: SOURCE_THREAD_ID,
       projectId: "project-performance",
+      sessionId: null,
+      forkedFromId: null,
+      parentThreadId: null,
+      threadSource: "user",
+      serviceName: null,
+      agentNickname: null,
+      agentRole: null,
+      agentPath: null,
+      threadName: summary.threadName,
+      threadPreview: summary.threadPreview,
+      backendBinding: { kind: "codex" },
       executionHostId: HOST_ID,
       cwd: "/workspace",
       executionProfile: summary.executionProfile,
+      managedWorktreePath: null,
+      projectlessOutputDirectory: null,
+      projectlessWorkspaceBrowserRoot: null,
+      statusType: "notLoaded",
+      statusActiveFlags: [],
+      archived: false,
+      pinnedOrder: null,
+      hasUnreadTurn: false,
+      createdAt: 100,
+      updatedAt: 100,
+      recencyAt: 100,
+      linkedAt: "2026-09-09T00:00:00.000Z",
     },
     summary,
     canonical: includeMetadataOnlyCanonical
-      ? ({ turns: [] } as unknown as CodexCanonicalConversationState)
+      ? createCodexCanonicalConversationState(protocolThread(SOURCE_THREAD_ID), {
+          turnParamsById: {},
+        })
       : null,
     snapshot: null,
-  } as never;
+  };
 };
 
 const capabilitySnapshot = createCodexAppServerCapabilitySnapshot({

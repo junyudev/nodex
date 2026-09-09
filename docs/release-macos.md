@@ -241,6 +241,11 @@ release, it proves the protected private key matches the reviewed public key
 and that the extracted App plist/runtime carry that key; both architectures
 must also use the pinned Developer ID Team ID `8HGUT3HC4Z`.
 
+Compatible history moves between fetch and finalization as a JSON manifest of
+absolute directory paths. Task-runner stdout is diagnostic output, never the
+machine-readable directory list. Empty history is an empty array; paths do not
+depend on shell delimiters or GitHub step-output parsing.
+
 `Nightly Retention` keeps the newest 20 published Nightly releases and every
 release younger than 14 days. It also protects every tag referenced by either
 live Nightly appcast and deletes only immutable releases whose downloaded

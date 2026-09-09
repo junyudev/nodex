@@ -557,13 +557,24 @@ export async function finalizeSparkleArchitectureUpdate(
   }
 }
 
-const splitHistoryDirectories = (value: string | undefined): readonly string[] =>
-  value
-    ? value
-        .split(path.delimiter)
-        .filter(Boolean)
-        .map((entry) => path.resolve(entry))
-    : [];
+/** Machine output is a file contract; task-runner logs never become paths. */
+export function writeSparkleHistoryManifest(
+  filePath: string,
+  directories: readonly string[],
+): void {
+  writeFileSync(filePath, `${JSON.stringify(directories, null, 2)}\n`, "utf8");
+}
+
+export function readSparkleHistoryManifest(filePath: string): readonly string[] {
+  const value: unknown = JSON.parse(readFileSync(filePath, "utf8"));
+  if (
+    !Array.isArray(value) ||
+    !value.every((entry) => typeof entry === "string" && path.isAbsolute(entry))
+  ) {
+    throw new Error("Sparkle history manifest must contain an array of absolute directory paths.");
+  }
+  return value;
+}
 
 export async function runSparkleFinalizeCli(args: ReadonlyMap<string, string>): Promise<void> {
   const architecture = args.get("arch");
@@ -584,7 +595,9 @@ export async function runSparkleFinalizeCli(args: ReadonlyMap<string, string>): 
       return channel;
     })(),
     architectureDirectory: required("architecture-dir"),
-    historyDirectories: splitHistoryDirectories(args.get("history-dirs")),
+    historyDirectories: args.has("history-manifest")
+      ? readSparkleHistoryManifest(required("history-manifest"))
+      : [],
     outputDirectory: required("output"),
     privateKey: process.env.SPARKLE_ED25519_PRIVATE_KEY ?? "",
     publishedAt: required("published-at"),
@@ -809,5 +822,5 @@ export function runSparkleHistoryCli(args: ReadonlyMap<string, string>): void {
     outputDirectory: required("output"),
     repository: required("repo"),
   });
-  process.stdout.write(`${directories.join(path.delimiter)}\n`);
+  writeSparkleHistoryManifest(required("manifest"), directories);
 }
