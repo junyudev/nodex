@@ -11,6 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import { MAC_DICTATION_HELPER_PROTOCOL_VERSION } from "../src/main/dictation/mac-dictation-native-helper-client";
 import {
   swiftTargetForNativeRuntime,
   type NativeRuntimeArchitecture,
@@ -19,7 +20,7 @@ import {
 interface BuildStamp {
   readonly architecture: NativeRuntimeArchitecture;
   readonly minimumMacOS: "15.0";
-  readonly protocolVersion: 3;
+  readonly protocolVersion: typeof MAC_DICTATION_HELPER_PROTOCOL_VERSION;
   readonly sourceSha256: string;
 }
 
@@ -57,7 +58,7 @@ const main = (): void => {
   const stamp: BuildStamp = {
     architecture: resolveArchitecture(),
     minimumMacOS: "15.0",
-    protocolVersion: 3,
+    protocolVersion: MAC_DICTATION_HELPER_PROTOCOL_VERSION,
     sourceSha256: createHash("sha256").update(readFileSync(sourcePath)).digest("hex"),
   };
   const stampPath = `${outputPath}.build.json`;
