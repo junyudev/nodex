@@ -1470,12 +1470,13 @@ fn internal(message: &str) -> StoreError {
 mod tests {
     use super::*;
 
-    fn element(id: &str, version: i64, nonce: i64, text: &str) -> Value {
+    // Excalidraw revision tie-breakers are deterministic merge metadata, not cryptographic values.
+    fn element(id: &str, version: i64, tie_breaker: i64, text: &str) -> Value {
         json!({
             "id": id,
             "type": "text",
             "version": version,
-            "versionNonce": nonce,
+            "versionNonce": tie_breaker,
             "isDeleted": false,
             "text": text,
         })
