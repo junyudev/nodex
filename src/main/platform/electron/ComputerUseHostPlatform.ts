@@ -321,7 +321,63 @@ function isLiveProcess(pid: number): boolean {
   return !processState.stdout.trimStart().startsWith("Z");
 }
 
+export interface ComputerUseServiceLaunchContext {
+  readonly nodePath: string;
+  readonly codexCliPath: string;
+  readonly runtimeStateHome: string;
+}
+
+// The native spawn API inherits its process environment. A short-lived launcher
+// gives each Profile an explicit environment without mutating Electron's globals.
+const SERVICE_LAUNCHER_SOURCE = `
+const fs = require("node:fs");
+const addon = require(process.argv[1]);
+addon.spawnComputerUseService(process.argv[2]).then((pid) => {
+  fs.writeFileSync(process.argv[3], JSON.stringify(pid));
+}).catch(() => { process.exitCode = 1; });
+`;
+
+export async function spawnComputerUseServiceInContext(
+  addonPath: string,
+  executablePath: string,
+  context: ComputerUseServiceLaunchContext,
+): Promise<number | null> {
+  const receiptDirectory = await fs.mkdtemp(path.join(context.runtimeStateHome, "service-launch-"));
+  const receiptPath = path.join(receiptDirectory, "pid.json");
+  try {
+    // Disclaimed native descendants must not inherit guarded CI stdio pipes.
+    await execFileAsync(
+      "/bin/sh",
+      [
+        "-c",
+        'exec "$@" </dev/null >/dev/null 2>&1',
+        "nodex-service-launch",
+        context.nodePath,
+        "-e",
+        SERVICE_LAUNCHER_SOURCE,
+        addonPath,
+        executablePath,
+        receiptPath,
+      ],
+      {
+        env: {
+          ...process.env,
+          CODEX_CLI_PATH: context.codexCliPath,
+          CODEX_HOME: context.runtimeStateHome,
+        },
+        timeout: 10_000,
+      },
+    );
+    const pid: unknown = JSON.parse(await fs.readFile(receiptPath, "utf8"));
+    if (typeof pid !== "number" || !Number.isSafeInteger(pid) || pid <= 0) return null;
+    return pid;
+  } finally {
+    await fs.rm(receiptDirectory, { force: true, recursive: true });
+  }
+}
+
 export interface ComputerUseHostPlatformOptions {
+  readonly serviceLaunchContext?: ComputerUseServiceLaunchContext;
   readonly loadAddon?: (
     verifiedAddonPath: string,
     verifiedExports: readonly string[],
@@ -365,9 +421,18 @@ export function makeComputerUseHostPlatform(
         return false;
       }
     },
-    spawnService: (addon, executablePath) =>
+    spawnService: (_addon, executablePath) =>
       Effect.tryPromise({
-        try: () => addon.spawnComputerUseService(executablePath),
+        try: () => {
+          if (!options.serviceLaunchContext || !options.verifiedSkyNativeAddonPath) {
+            throw new Error("Computer Use requires a verified Profile launch context");
+          }
+          return spawnComputerUseServiceInContext(
+            options.verifiedSkyNativeAddonPath,
+            executablePath,
+            options.serviceLaunchContext,
+          );
+        },
         catch: (cause) => platformError("service.spawn", cause),
       }),
     terminateProcess: (pid) =>

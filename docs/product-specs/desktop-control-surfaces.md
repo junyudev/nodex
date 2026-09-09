@@ -6,7 +6,7 @@ Nodex presents Browser Use, control of supported browser profiles, and Computer 
 
 The built-in Browser is available when its verified runtime is ready. Control of an existing browser profile additionally requires a supported browser family, the installed native host, and a connected allowed extension instance. Browser Settings reports the live provider state as checking, unavailable, needs repair, waiting for extension, or ready. Agents can select the existing-browser backend only in the ready state.
 
-Computer Use is available only when its verified helper and operating-system requirements are ready. A failure in one control backend does not weaken or implicitly enable another. ACP tasks and remote Codex executions do not acquire local desktop-control surfaces.
+Computer Use is available only when its verified helper and operating-system requirements are ready. Its service uses the bundled Agent runtime and the owning Profile without requiring a separately installed Codex app or sharing another Profile’s configuration. A failure in one control backend does not weaken or implicitly enable another. ACP tasks and remote Codex executions do not acquire local desktop-control surfaces.
 
 ## Website tools
 

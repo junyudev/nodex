@@ -587,6 +587,14 @@ export const live = (
           {
             macOSRelease: options.macOSRelease,
             platform: options.platform,
+            serviceLaunchContext:
+              options.browserRuntime.status === "available"
+                ? {
+                    nodePath: options.browserRuntime.bundle.paths.node,
+                    codexCliPath: options.browserRuntime.bundle.paths.codexCli,
+                    runtimeStateHome: options.runtimeStateHome,
+                  }
+                : undefined,
             verifiedSkyNativeAddonPath:
               options.browserRuntime.status === "available"
                 ? options.browserRuntime.bundle.paths.skyNativeAddon

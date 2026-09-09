@@ -14,6 +14,8 @@ export type SuiteId = (typeof APP_TEST_SUITES)[number];
 export type TestRuntime = "host-node" | "electron-node" | "jsdom" | "chromium";
 export type NativeArtifactId = "core-server" | "yjs-yrs-bridge" | "cli";
 export const NODEX_CLI_BOOTSTRAP_TEST = "src/main/platform/node/NodexCliBootstrap.node.test.ts";
+export const CODEX_SCALE_TEST =
+  "src/main/core-client/CodexSubagentParityPerformance.stress.test.ts";
 export const YJS_YRS_TEST = "src/shared/block-documents/yjs-yrs-conformance.test.ts";
 
 const blocknoteTests = [
@@ -191,3 +193,12 @@ export function nativeRequirements(
 }
 
 export const maintainedThirdPartyTests: readonly string[] = blocknoteTests;
+
+/** The real-history pressure gate uses the same locked macOS package as Nodex. */
+export function requiresAgentRuntime(
+  suite: SuiteId,
+  tier: VitestTestTier,
+  files?: readonly string[],
+): boolean {
+  return suite === "main" && tier === "stress" && (!files || files.includes(CODEX_SCALE_TEST));
+}

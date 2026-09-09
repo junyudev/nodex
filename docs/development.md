@@ -323,6 +323,9 @@ once. Standalone native suites prepare themselves. Cargo checks freshness and
 returns the executable paths, including when `CARGO_TARGET_DIR` is customized.
 Ordinary suites use development builds; stress suites use optimized release
 builds so performance evidence measures the shipped native execution profile.
+The real-history stress gate also stages the locked Agent runtime before tests
+start. The complete stress tier runs on macOS, matching that runtime package;
+Nightly and release certification use the same macOS runner and test launcher.
 Bridge tests run the prepared executable directly; test bodies never invoke
 Cargo. Reuse binaries, but always create fresh writable Profiles and stores.
 Cancellation terminates only this command's descendants, including detached Core

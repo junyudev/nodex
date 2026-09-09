@@ -3,11 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import * as Effect from "effect/Effect";
 import { assert, it } from "@effect/vitest";
-import { afterEach, vi } from "vite-plus/test";
+import { afterEach, test, vi } from "vite-plus/test";
 import {
   ComputerUseAppMaterializer,
   ComputerUseHostPlatformError,
   makeComputerUseHostPlatform,
+  spawnComputerUseServiceInContext,
 } from "./ComputerUseHostPlatform";
 import type { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
 
@@ -167,3 +168,46 @@ it.effect("restores the prior canonical helper when post-swap verification fails
     assert.strictEqual(fs.readFileSync(canonical.serviceExecutablePath, "utf8"), "old-helper");
   }),
 );
+
+test("launches native helpers with isolated Profile and locked runtime environments", async () => {
+  const root = makeTemporaryRoot();
+  const addonPath = path.join(root, "addon.cjs");
+  fs.writeFileSync(
+    addonPath,
+    `
+const fs = require("node:fs");
+const path = require("node:path");
+module.exports.spawnComputerUseService = async (executable) => {
+  fs.writeFileSync(path.join(process.env.CODEX_HOME, "observed.json"), JSON.stringify({
+    home: process.env.CODEX_HOME, codex: process.env.CODEX_CLI_PATH, executable,
+  }));
+  return 8123;
+};
+`,
+  );
+  const inheritedHome = process.env.CODEX_HOME;
+  const inheritedCli = process.env.CODEX_CLI_PATH;
+  await Promise.all(
+    ["first", "second"].map(async (name) => {
+      const home = path.join(root, name);
+      fs.mkdirSync(home);
+      const context = {
+        runtimeStateHome: home,
+        codexCliPath: path.join(home, "locked-codex"),
+        nodePath: process.execPath,
+      };
+      assert.strictEqual(
+        await spawnComputerUseServiceInContext(addonPath, "/canonical/helper", context),
+        8123,
+      );
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, "observed.json"), "utf8")), {
+        home,
+        codex: context.codexCliPath,
+        executable: "/canonical/helper",
+      });
+      assert.deepEqual(fs.readdirSync(home), ["observed.json"]);
+    }),
+  );
+  assert.strictEqual(process.env.CODEX_HOME, inheritedHome);
+  assert.strictEqual(process.env.CODEX_CLI_PATH, inheritedCli);
+});
