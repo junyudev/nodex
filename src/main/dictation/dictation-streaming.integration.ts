@@ -149,6 +149,12 @@ test("streams real AudioWorklet PCM from the isolated renderer directly to WebSo
     const page = await application.firstWindow();
     await page.waitForLoadState("load");
     await page.getByRole("button", { name: "Stream synthetic audio" }).click();
+    await expect
+      .poll(() => frames.length > 2 && frames.some((frame) => frame.some((byte) => byte !== 0)), {
+        timeout: 12_000,
+      })
+      .toBe(true);
+    await page.getByRole("button", { name: "Finish synthetic audio" }).click();
     await expect.poll(() => page.locator("output").textContent(), { timeout: 12_000 }).not.toBe("");
     const result = JSON.parse((await page.locator("output").textContent())!);
     expect(result).toMatchObject({
