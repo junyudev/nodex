@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vite-plus/test";
 
+import { PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION } from "../package-provenance.mjs";
 import {
   assembleReleaseBundle,
   parseArchitectureBuildManifest,
@@ -166,7 +167,7 @@ const makeUpdate = (
     target: {
       buildVersion: BUILD_VERSION,
       bundleId: "app.jyu.nodex",
-      packageProvenanceSchema: 5,
+      packageProvenanceSchema: PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION,
       teamIdentifier: NODEX_MACOS_TEAM_IDENTIFIER,
       version: VERSION,
     },
