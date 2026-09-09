@@ -87,13 +87,22 @@ const testOnlyUnboundedChannelAdapters = new Set([
   "packages/effect-codex-app-server/src/_internal/stdio.ts",
 ]);
 
-// These synchronous callback ingress points cannot suspend without changing
-// Electron/app-server ordering. They may only offer to an already scoped Queue
-// or complete its overflow signal; allocation and interruption stay effectful.
-const synchronousCallbackUnsafeCalls = new Map<string, ReadonlySet<string>>([
-  ["src/main/core-runtime/ProjectionLiveRuntime.ts", new Set(["doneUnsafe", "offerUnsafe"])],
-  ["src/main/core-runtime/DocumentLiveRuntime.ts", new Set(["doneUnsafe", "offerUnsafe"])],
-  ["src/main/codex-application/CodexConversationDeltaBufferRuntime.ts", new Set(["offerUnsafe"])],
+// These qualified operations preserve synchronous external ingress. Queue admission
+// and completion never suspend; interruption and resource release remain Effect-owned.
+const synchronousIngressUnsafeCalls = new Map<string, ReadonlySet<string>>([
+  [
+    "src/main/core-runtime/ProjectionLiveRuntime.ts",
+    new Set(["Deferred.doneUnsafe", "Queue.offerUnsafe"]),
+  ],
+  [
+    "src/main/core-runtime/DocumentLiveRuntime.ts",
+    new Set(["Deferred.doneUnsafe", "Queue.offerUnsafe"]),
+  ],
+  // Node pipe callbacks offer into Stream.callback's scoped, bounded sliding queue.
+  ["src/main/host-runtime/ChromeControlRuntime.ts", new Set(["Queue.offerUnsafe"])],
+  // Capture the renderer generation before an IPC Effect can start after navigation.
+  // Only its completion cell is allocated synchronously; settlement stays effectful.
+  ["src/main/host-runtime/EditorHistoryRuntime.ts", new Set(["Deferred.makeUnsafe"])],
 ]);
 
 function normalizeProjectPath(path: string): string {
@@ -142,6 +151,8 @@ function isEffectAdapter(path: string): boolean {
 const nodeRuntimeEntries = new Set([
   "packages/effect-codex-app-server/scripts/generate.ts",
   "scripts/codex-probe-session.ts",
+  "scripts/probe-acp-agent.ts",
+  "scripts/testing/probe-agent-cli-bootstrap.ts",
   "scripts/dev-launcher.ts",
   "scripts/verify-native-runtime.ts",
   "src/main/app/MainEntry.ts",
@@ -296,7 +307,13 @@ export function analyzeEffectBoundaries({
       if (
         applicationModule &&
         lifecycleBypassingCalls.has(node.callee.property.name) &&
-        !synchronousCallbackUnsafeCalls.get(path)?.has(node.callee.property.name)
+        !synchronousIngressUnsafeCalls
+          .get(path)
+          ?.has(
+            node.callee.object.type === "Identifier"
+              ? `${node.callee.object.name}.${node.callee.property.name}`
+              : "",
+          )
       ) {
         report(
           "application-unsafe-runtime",
