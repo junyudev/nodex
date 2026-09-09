@@ -17,6 +17,7 @@ import path from "node:path";
 
 import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
 
+import { PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION } from "../package-provenance.mjs";
 import { materializeSparkleRuntime } from "../materialize-sparkle-runtime";
 import {
   compareStableVersions,
@@ -31,6 +32,7 @@ import {
 } from "./model";
 import {
   parseSparkleArchitectureUpdateManifest,
+  parseCompatibleSparkleHistoryUpdateManifest,
   type SparkleArchitectureUpdateManifest,
   type SparkleDeltaIdentity,
   type SparkleFileIdentity,
@@ -469,7 +471,7 @@ export async function finalizeSparkleArchitectureUpdate(
     if (
       identity.version !== version ||
       identity.bundleId !== PRODUCT_BUNDLE_ID ||
-      identity.packageProvenanceSchema !== 5 ||
+      identity.packageProvenanceSchema !== PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION ||
       identity.publicKey !== publicKey ||
       identity.runtimePublicKey !== publicKey
     ) {
@@ -539,7 +541,7 @@ export async function finalizeSparkleArchitectureUpdate(
       target: {
         buildVersion: identity.buildVersion,
         bundleId: PRODUCT_BUNDLE_ID,
-        packageProvenanceSchema: 5,
+        packageProvenanceSchema: PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION,
         teamIdentifier: identity.teamIdentifier,
         version,
       },
@@ -749,7 +751,7 @@ export function fetchSparkleHistory(options: {
         `${release.tag_name} does not contain one complete ${options.architecture} update set.`,
       );
     }
-    for (const asset of selected) {
+    const downloadAsset = (asset: (typeof selected)[number]): void => {
       gh([
         "release",
         "download",
@@ -766,15 +768,22 @@ export function fetchSparkleHistory(options: {
       if (statSync(assetPath).size !== asset.bytes || sha256File(assetPath) !== asset.sha256) {
         throw new Error(`${release.tag_name}/${asset.name} does not match release-bundle.json.`);
       }
-    }
-    const updateName = `Nodex-${version}-update-${options.architecture}.json`;
-    const update = parseSparkleArchitectureUpdateManifest(
-      JSON.parse(readFileSync(path.join(releaseRoot, updateName), "utf8")) as unknown,
+    };
+    const updateAsset = selected.find(({ role }) => role === "sparkle-update-manifest");
+    if (!updateAsset) throw new Error(`${release.tag_name} is missing its update manifest.`);
+    downloadAsset(updateAsset);
+    const update = parseCompatibleSparkleHistoryUpdateManifest(
+      JSON.parse(readFileSync(path.join(releaseRoot, updateAsset.name), "utf8")) as unknown,
     );
+    if (!update) {
+      rmSync(releaseRoot, { force: true, recursive: true });
+      continue;
+    }
     const fullAsset = selected.find(({ role }) => role === "sparkle-full");
     const appcastAsset = selected.find(({ role }) => role === "sparkle-appcast");
     if (
-      update.target.packageProvenanceSchema !== 5 ||
+      update.architecture !== options.architecture ||
+      update.target.buildVersion !== bundle.releaseIdentity.buildVersion ||
       update.channel !== channel ||
       update.sourceSha !== bundle.sourceSha ||
       update.tag !== bundle.tag ||
@@ -790,6 +799,8 @@ export function fetchSparkleHistory(options: {
     ) {
       throw new Error(`${release.tag_name} is not a Sparkle-capable provenance release.`);
     }
+    downloadAsset(fullAsset);
+    downloadAsset(appcastAsset);
     verifySparkleAppcastContract(
       readFileSync(path.join(releaseRoot, update.appcast.name), "utf8"),
       update,

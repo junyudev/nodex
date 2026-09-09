@@ -29,7 +29,7 @@ import {
   parseCodexAppServerReleaseLock,
 } from "../src/shared/codex-app-server-release-lock.mjs";
 
-const PROVENANCE_SCHEMA_VERSION = 6;
+export const PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION = 6;
 const PREPARED_SCHEMA_VERSION = 4;
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const canonicalAgentRuntimeLockPath = path.join(
@@ -498,7 +498,7 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
   }
 
   const body = {
-    schemaVersion: PROVENANCE_SCHEMA_VERSION,
+    schemaVersion: PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION,
     product: {
       name: prepared.product.name,
       version: prepared.product.version,
@@ -568,7 +568,7 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     ],
     "Packaged build provenance",
   );
-  if (value.schemaVersion !== PROVENANCE_SCHEMA_VERSION) {
+  if (value.schemaVersion !== PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION) {
     throw new Error("Packaged build provenance schema is unsupported");
   }
   const { provenanceId, ...body } = value;

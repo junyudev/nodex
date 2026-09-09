@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 
+import { PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION } from "../package-provenance.mjs";
 import {
   compareBuildVersions,
   normalizeAppleBuildVersion,
@@ -41,7 +42,7 @@ export interface SparkleArchitectureUpdateManifest {
   readonly target: {
     readonly buildVersion: string;
     readonly bundleId: "app.jyu.nodex";
-    readonly packageProvenanceSchema: 5;
+    readonly packageProvenanceSchema: typeof PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION;
     readonly teamIdentifier: string;
     readonly version: string;
   };
@@ -209,7 +210,7 @@ export function parseSparkleArchitectureUpdateManifest(
   if (
     value.tag !== tag ||
     value.target.bundleId !== "app.jyu.nodex" ||
-    value.target.packageProvenanceSchema !== 5 ||
+    value.target.packageProvenanceSchema !== PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION ||
     value.target.teamIdentifier !== NODEX_MACOS_TEAM_IDENTIFIER
   ) {
     throw new Error("Sparkle update target identity is invalid.");
@@ -257,9 +258,26 @@ export function parseSparkleArchitectureUpdateManifest(
     target: {
       buildVersion: targetBuildVersion,
       bundleId: "app.jyu.nodex",
-      packageProvenanceSchema: 5,
+      packageProvenanceSchema: PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION,
       teamIdentifier: value.target.teamIdentifier,
       version,
     },
   };
+}
+
+/** Older package formats are excluded from delta history; current candidates stay strict. */
+export function parseCompatibleSparkleHistoryUpdateManifest(
+  value: unknown,
+): SparkleArchitectureUpdateManifest | null {
+  const schema =
+    isRecord(value) && isRecord(value.target) ? value.target.packageProvenanceSchema : undefined;
+  if (
+    typeof schema === "number" &&
+    Number.isSafeInteger(schema) &&
+    schema > 0 &&
+    schema < PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION
+  ) {
+    return null;
+  }
+  return parseSparkleArchitectureUpdateManifest(value);
 }

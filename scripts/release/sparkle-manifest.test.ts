@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
 
+import { PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION } from "../package-provenance.mjs";
 import {
   NODEX_MACOS_TEAM_IDENTIFIER,
   parseSparkleArchitectureUpdateManifest,
+  parseCompatibleSparkleHistoryUpdateManifest,
 } from "./sparkle-manifest";
 
 const VERSION = "0.2.2";
@@ -43,7 +45,7 @@ const manifest = () => ({
   target: {
     buildVersion: VERSION,
     bundleId: "app.jyu.nodex",
-    packageProvenanceSchema: 5,
+    packageProvenanceSchema: PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION,
     teamIdentifier: NODEX_MACOS_TEAM_IDENTIFIER,
     version: VERSION,
   },
@@ -104,4 +106,32 @@ test("accepts a nightly feed identity and rejects a stable feed path", () => {
     appcast: { ...nightly.appcast, feedPath: "updates/stable/arm64/appcast.xml" },
   };
   expect(() => parseSparkleArchitectureUpdateManifest(mismatched)).toThrow("projection identity");
+});
+
+test("excludes older package formats only from history, never current release validation", () => {
+  for (const schema of [4, 5]) {
+    const candidate = {
+      ...manifest(),
+      target: { ...manifest().target, packageProvenanceSchema: schema },
+    };
+    expect(parseCompatibleSparkleHistoryUpdateManifest(candidate)).toBeNull();
+    expect(() => parseSparkleArchitectureUpdateManifest(candidate)).toThrow("target identity");
+  }
+  expect(parseCompatibleSparkleHistoryUpdateManifest(manifest())).toEqual(
+    parseSparkleArchitectureUpdateManifest(manifest()),
+  );
+});
+
+test("fails closed on malformed, future, and invalid current history identities", () => {
+  for (const schema of [undefined, "4", 0, -1, 4.5, PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION + 1]) {
+    expect(() =>
+      parseCompatibleSparkleHistoryUpdateManifest({
+        ...manifest(),
+        target: { ...manifest().target, packageProvenanceSchema: schema },
+      }),
+    ).toThrow();
+  }
+  const candidate = manifest();
+  candidate.target.teamIdentifier = "OTHERTEAM1";
+  expect(() => parseCompatibleSparkleHistoryUpdateManifest(candidate)).toThrow("target identity");
 });

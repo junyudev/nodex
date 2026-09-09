@@ -11,6 +11,7 @@ import {
 } from "../src/shared/browser-app-server-compatibility";
 
 import {
+  PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION,
   verifyPackagedBuildProvenance,
   writePackagedBuildProvenance,
 } from "./package-provenance.mjs";
@@ -421,6 +422,7 @@ describe("packaged build provenance", () => {
       expectedPreparedManifestPath: fixture.currentPreparedPath,
     });
 
+    expect(written.schemaVersion).toBe(PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION);
     expect(verified.provenanceId).toBe(written.provenanceId);
     const lock = readCodexAppServerReleaseLock(fixture.lockPath);
     expect(verified.agentRuntime).toMatchObject({

@@ -245,6 +245,12 @@ release, it proves the protected private key matches the reviewed public key
 and that the extracted App plist/runtime carry that key; both architectures
 must also use the pinned Developer ID Team ID `8HGUT3HC4Z`.
 
+Update targets use the package-provenance module’s current format. History selection
+verifies the immutable Release Bundle and update-manifest digests before checking
+package-format compatibility. Older package formats are excluded before downloading
+full ZIPs; malformed or invalid current candidates fail closed. An empty compatible
+history publishes a full update without deltas.
+
 Compatible history moves between fetch and finalization as a JSON manifest of
 absolute directory paths. Task-runner stdout is diagnostic output, never the
 machine-readable directory list. Empty history is an empty array; paths do not
