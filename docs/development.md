@@ -355,6 +355,11 @@ The test commands follow production boundaries:
   browser globals implicitly.
 - `vp run test:browser` runs browser-sensitive renderer contracts in Chromium.
 - `vp run test:integration` runs integration tests in Electron's Node runtime.
+- Rust development and test profiles retain full debug information in separate
+  build artifacts (`split-debuginfo = "unpacked"`) on every host. Keep these
+  artifacts for native debugging. Core hashes its executable during startup;
+  embedding full debug information can exceed its executable admission limit
+  on Linux even when the corresponding macOS build remains within the limit.
 - `vp run test:stress` runs every catalogued stress owner, including core-client,
   one worker at a time, independently of the ordinary suite.
 - `vp run verify:test-inventory` compares independent repository enumeration with

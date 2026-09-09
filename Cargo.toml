@@ -80,5 +80,10 @@ yrs = { version = "=0.27.3", features = ["sync", "small-client"] }
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
+[profile.dev]
+# Keep full debugger information outside the executable on every host. Core
+# hashes its executable at startup, so embedded DWARF must not inflate that input.
+split-debuginfo = "unpacked"
+
 [profile.dev.package.sha2]
 opt-level = 3
