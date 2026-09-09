@@ -4,7 +4,7 @@ This document describes the requirements for an execution plan ("ExecPlan"), a d
 
 ## How to use ExecPlans and PLANS.md
 
-Store execution plans under `notes.local/living-plans/` by default. Plans and their supporting evidence are local working artifacts covered by Git ignore rules; keep them out of commits unless the user explicitly requests otherwise. Durable product and architecture decisions belong in their owning documentation under `docs/`.
+Store plans under `notes.local/living-plans/` by default. This replaces `docs/plans/`; keep that retired directory absent. Plans and their supporting evidence are local working artifacts covered by Git ignore rules; keep them out of commits unless the user explicitly requests otherwise. Durable product and architecture decisions belong in their owning documentation under `docs/`.
 
 When authoring an executable specification (ExecPlan), follow the process and document requirements in PLANS.md _to the letter_. Implementation decisions inside the plan remain hypotheses that must change when evidence changes. If this file is not in your context, read it completely before drafting the plan.
 
