@@ -172,6 +172,9 @@ of hiding an unresolved subtree.
 
 ## Performance and failure behavior
 
+Graph traversal uses indexed parent-to-child lookups so larger descendant sets
+do not multiply every parent by the entire root graph, including on fresh Profiles.
+
 Normal overview and notification handling may read child metadata, graph, and
 status only. It does not call child resume, item-page, or transcript-bearing
 Thread reads, and it does not register child conversation subscriptions. The
