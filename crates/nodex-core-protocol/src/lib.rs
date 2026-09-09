@@ -1353,7 +1353,12 @@ mod tests {
             .iter()
             .map(|format| format.version)
             .collect::<Vec<_>>();
-        assert_eq!(advertised, (130..=152).collect::<Vec<_>>());
+        let published_migrations = nodex_store_format::PUBLISHED_STORE_FORMATS
+            .iter()
+            .filter(|format| format.revision != CURRENT_STORE_VERSION)
+            .map(|format| format.revision)
+            .collect::<Vec<_>>();
+        assert_eq!(advertised, published_migrations);
         assert_eq!(manifest.store.readable, vec![manifest.store.current]);
         for revision in 153..159 {
             assert_eq!(store_format(revision), None);

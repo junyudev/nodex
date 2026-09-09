@@ -170,7 +170,24 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
             .contains(r#"title: "Native \\*\\*read\\*\\*""#)
     );
     assert!(value.validators.title_etag.is_some());
-    assert!(value.validators.body_etag.is_none());
+    let body_projection = client
+        .library_read(
+            Some(project_id),
+            LibraryRead::PageProjectionFile {
+                page_id: page_id.to_owned(),
+                file_kind: LibraryPageProjectionFileKind::BodyNestedMarkdown,
+                prepare: None,
+            },
+        )
+        .expect("read Page body validators through native client");
+    let ResponseEnvelope::Ok(body_snapshot) = body_projection.0 else {
+        panic!("expected Page body snapshot")
+    };
+    let LibraryReadValue::PageProjectionFile { value: body } = body_snapshot.value else {
+        panic!("expected Page body file value")
+    };
+    assert!(value.validators.body_etag.is_some());
+    assert_eq!(value.validators.body_etag, body.validators.body_etag);
 
     let file_bytes = b"native client Library File";
     let file_operation_id = "native-client-page-file";
