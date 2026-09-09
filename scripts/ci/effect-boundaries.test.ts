@@ -119,4 +119,42 @@ describe("Effect architecture boundaries", () => {
       "production-unbounded-channel",
     ]);
   });
+
+  test("limits probe execution to registered standalone entrypoints", () => {
+    for (const path of [
+      "scripts/probe-acp-agent.ts",
+      "scripts/testing/probe-agent-cli-bootstrap.ts",
+    ]) {
+      expect(codes(path, "run-promise.ts"), path).toEqual([]);
+    }
+    expect(codes("scripts/testing/probe-agent-cli-helper.ts", "run-promise.ts")).toEqual([
+      "run-outside-boundary",
+    ]);
+  });
+
+  test("allows only the reviewed synchronous ingress operation in each owner", () => {
+    const sourceText = `
+      import * as Deferred from "effect/Deferred";
+      import * as Queue from "effect/Queue";
+      import * as Semaphore from "effect/Semaphore";
+      Deferred.makeUnsafe();
+      Semaphore.makeUnsafe(1);
+      Queue.offerUnsafe(queue, "snapshot");
+      Deferred.doneUnsafe(completion, effect);
+    `;
+    const rejectedOperations = (path: string) =>
+      analyzeEffectBoundaries({ path, sourceText }).map((diagnostic) =>
+        sourceText.split("\n")[diagnostic.line - 1]!.trim(),
+      );
+    expect(rejectedOperations("src/main/host-runtime/EditorHistoryRuntime.ts")).toEqual([
+      "Semaphore.makeUnsafe(1);",
+      'Queue.offerUnsafe(queue, "snapshot");',
+      "Deferred.doneUnsafe(completion, effect);",
+    ]);
+    expect(rejectedOperations("src/main/host-runtime/ChromeControlRuntime.ts")).toEqual([
+      "Deferred.makeUnsafe();",
+      "Semaphore.makeUnsafe(1);",
+      "Deferred.doneUnsafe(completion, effect);",
+    ]);
+  });
 });
