@@ -1,3 +1,4 @@
+import { remoteHostedPipRuntime } from "@/lib/remote-hosted-pip-runtime";
 import { useEffect, useEffectEvent, useLayoutEffect, useRef } from "react";
 import {
   REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE,
@@ -69,9 +70,7 @@ export function createRemoteHostedPipHostLayoutReporter(
     suppressNextAnimation = false;
     lastIdentity = identity;
     lastLayout = publishedLayout;
-    void window.api
-      ?.invoke("remote-hosted-pip:host-layout:report", publishedLayout)
-      .catch(() => undefined);
+    void remoteHostedPipRuntime.reportHostLayout(publishedLayout).catch(() => undefined);
   }
 
   function clearLayout() {

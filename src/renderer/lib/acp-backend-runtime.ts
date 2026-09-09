@@ -16,25 +16,6 @@ import {
 } from "./renderer-command";
 import { resolveRendererTransport } from "./renderer-transport";
 
-const defineAcpReturnedCommand = <
-  const Channel extends
-    | "agent-backend:acp:session:authenticate"
-    | "agent-backend:acp:session:cancel"
-    | "agent-backend:acp:session:close"
-    | "agent-backend:acp:session:set-config-option"
-    | "agent-backend:acp:session:set-mode",
->(
-  channel: Channel,
-) =>
-  defineRendererCommand({
-    key: `acp_conversation.${channel}`,
-    channel,
-    authority: "external",
-    owner: "AcpConversationOwner",
-    protocol: { kind: "returned_value" },
-    trace: { scopeKind: "thread" },
-  });
-
 const openAcpSessionCommand = defineRendererCommand({
   key: "acp_conversation.session.open",
   channel: "agent-backend:acp:session:open",
@@ -62,13 +43,50 @@ const startAcpThreadCommand = defineRendererCommand({
   trace: { scopeKind: "session" },
 });
 
-const acpCommands = {
-  authenticate: defineAcpReturnedCommand("agent-backend:acp:session:authenticate"),
-  cancel: defineAcpReturnedCommand("agent-backend:acp:session:cancel"),
-  close: defineAcpReturnedCommand("agent-backend:acp:session:close"),
-  setConfigOption: defineAcpReturnedCommand("agent-backend:acp:session:set-config-option"),
-  setMode: defineAcpReturnedCommand("agent-backend:acp:session:set-mode"),
-} as const;
+const authenticateAcpSessionCommand = defineRendererCommand({
+  key: "acp_conversation.session.authenticate",
+  channel: "agent-backend:acp:session:authenticate",
+  authority: "external",
+  owner: "AcpConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "thread" },
+});
+
+const cancelAcpSessionCommand = defineRendererCommand({
+  key: "acp_conversation.session.cancel",
+  channel: "agent-backend:acp:session:cancel",
+  authority: "external",
+  owner: "AcpConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "thread" },
+});
+
+const closeAcpSessionCommand = defineRendererCommand({
+  key: "acp_conversation.session.close",
+  channel: "agent-backend:acp:session:close",
+  authority: "external",
+  owner: "AcpConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "thread" },
+});
+
+const setConfigOptionAcpSessionCommand = defineRendererCommand({
+  key: "acp_conversation.session.set-config-option",
+  channel: "agent-backend:acp:session:set-config-option",
+  authority: "external",
+  owner: "AcpConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "thread" },
+});
+
+const setModeAcpSessionCommand = defineRendererCommand({
+  key: "acp_conversation.session.set-mode",
+  channel: "agent-backend:acp:session:set-mode",
+  authority: "external",
+  owner: "AcpConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "thread" },
+});
 
 export interface AcpBackendRuntime {
   readonly startThread: (
@@ -108,11 +126,11 @@ export const acpBackendRuntime: AcpBackendRuntime = {
   open: (input) => invokePlainCommand(openAcpSessionCommand, input),
   read: (threadId) => invokeRendererQuery("agent-backend:acp:session:read", threadId),
   prompt: (input) => invokePlainCommand(promptAcpSessionCommand, input),
-  cancel: (threadId) => invokePlainCommand(acpCommands.cancel, threadId),
-  setMode: (input) => invokePlainCommand(acpCommands.setMode, input),
-  setConfigOption: (input) => invokePlainCommand(acpCommands.setConfigOption, input),
-  authenticate: (input) => invokePlainCommand(acpCommands.authenticate, input),
-  close: (threadId) => invokePlainCommand(acpCommands.close, threadId),
+  cancel: (threadId) => invokePlainCommand(cancelAcpSessionCommand, threadId),
+  setMode: (input) => invokePlainCommand(setModeAcpSessionCommand, input),
+  setConfigOption: (input) => invokePlainCommand(setConfigOptionAcpSessionCommand, input),
+  authenticate: (input) => invokePlainCommand(authenticateAcpSessionCommand, input),
+  close: (threadId) => invokePlainCommand(closeAcpSessionCommand, threadId),
   subscribe: async (threadId, listener) => {
     const releaseDelivery = resolveRendererTransport().subscribeAcpBackendSessionChanges(
       (event) => {
