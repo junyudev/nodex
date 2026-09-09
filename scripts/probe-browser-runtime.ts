@@ -370,6 +370,11 @@ async function probeBrowserRuntimePromise(
     {
       macOSRelease,
       platform: process.platform,
+      serviceLaunchContext: {
+        nodePath: bundle.paths.node,
+        codexCliPath: bundle.paths.codexCli,
+        runtimeStateHome: stateHome,
+      },
       verifiedSkyNativeAddonPath: bundle.paths.skyNativeAddon,
       verifiedSkyNativeExports: bundle.manifest.capabilities.nativePip.exports.expectedExports,
     },

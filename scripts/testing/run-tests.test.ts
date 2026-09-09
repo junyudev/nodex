@@ -1,7 +1,7 @@
 import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { parseTestSelection, runTests } from "./run-tests";
-import { YJS_YRS_TEST } from "../../config/test-suites";
+import { CODEX_SCALE_TEST, YJS_YRS_TEST } from "../../config/test-suites";
 
 const result = (exitCode = 0) => ({ exitCode, signal: null, durationMs: 1 });
 const root = path.resolve(".");
@@ -129,4 +129,24 @@ test("a full Core stress tier does not prepare the default-only bridge", async (
     },
     execute: async () => result(),
   });
+});
+
+test("stages the locked Agent runtime before a discovered real-history pressure gate", async () => {
+  const events: string[] = [];
+  const exit = await runTests(parseTestSelection(["main", CODEX_SCALE_TEST], "stress"), {
+    repositoryRoot: root,
+    env: {},
+    signal: new AbortController().signal,
+    discover: async () => [CODEX_SCALE_TEST],
+    prepare: async () => {
+      events.push("native");
+      return { executables: {} };
+    },
+    execute: async (command) => {
+      events.push(command.args.includes("stage:codex-runtime:mac:cached") ? "agent" : "test");
+      return result();
+    },
+  });
+  expect(exit).toBe(0);
+  expect(events).toEqual(["agent", "native", "test"]);
 });

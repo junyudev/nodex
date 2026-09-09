@@ -41,7 +41,7 @@ jobs:
 
   stress:
     name: nightly stress suite
-    runs-on: ubuntu-latest
+    runs-on: macos-26
     env:
       CI_TIMING_JOB: nightly-stress
       RUSTC_WRAPPER: sccache

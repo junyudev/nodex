@@ -66,6 +66,10 @@ the materialized plugin, private host-services socket, `sky.node`, and canonical
 helper app. The primary app-server is the digest-pinned, unmodified package from
 the locked official Codex release; Nodex neither rebuilds it nor publishes a
 second copy.
+The managed Computer Use service starts with the verified bundled Codex CLI and
+its owning Profile in an explicit process environment. Its short-lived native
+launcher preserves the vendor spawn behavior and gives disclaimed descendants
+non-pipe stdio; it never depends on another installed app or a PATH lookup.
 The probe runner uses a temporary LaunchServices background app so helper stdio
 matches an ordinary desktop launch instead of inheriting CI pipe fd guards.
 The x64 probe must prove Computer Use is absent while Browser Use remains

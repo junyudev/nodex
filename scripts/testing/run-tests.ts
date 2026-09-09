@@ -4,6 +4,7 @@ import {
   STANDARD_TEST_SUITES,
   STRESS_TEST_SUITES,
   nativeRequirements,
+  requiresAgentRuntime,
   parseTestSuite,
   type SuiteId,
   type NativeArtifactId,
@@ -68,6 +69,7 @@ export async function runTests(
     signal: context.signal,
   };
   const requirements: NativeArtifactId[] = [];
+  let stageAgentRuntime = false;
   for (const suite of selection.suites) {
     if (context.signal.aborted) return 130;
     const needsSelection =
@@ -82,6 +84,15 @@ export async function runTests(
         )
       : undefined;
     requirements.push(...nativeRequirements(suite, files));
+    stageAgentRuntime ||= requiresAgentRuntime(suite, selection.tier, files);
+  }
+  if (stageAgentRuntime) {
+    const staged = await (context.execute ?? runCommand)({
+      ...commandContext,
+      command: "vp",
+      args: ["run", "stage:codex-runtime:mac:cached"],
+    });
+    if (staged.exitCode !== 0) return staged.exitCode;
   }
   const prepared = await (context.prepare ?? prepareNativeArtifacts)([...new Set(requirements)], {
     repositoryRoot: context.repositoryRoot,

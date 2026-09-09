@@ -12,7 +12,7 @@ runs:
       env:
         NODEX_TEST_TIMINGS: .generated/ci-timings
       shell: bash
-      run: vp exec tsx scripts/ci/run-timed.ts --name stress-tests -- xvfb-run --auto-servernum vp run test:stress
+      run: vp exec tsx scripts/ci/run-timed.ts --name stress-tests -- vp run test:stress
     - name: Show Rust compiler cache statistics
       if: always()
       shell: bash
