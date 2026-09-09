@@ -14,6 +14,7 @@ import {
   removePrivateTemporaryDirectory,
   resolveNodexNativeCodeObjects,
   selectPackagedSmokeProjectId,
+  smokeDictationHelper,
 } from "./verify-native-runtime";
 import { NATIVE_RUNTIME_BINARY_PATHS, parseNativeRuntimeManifest } from "./native-runtime-manifest";
 import {
@@ -37,6 +38,43 @@ afterEach(() => {
 });
 
 describe("packaged native runtime verification", () => {
+  const createDictationHelperApp = (protocolVersion: number): string => {
+    const appPath = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-dictation-smoke-"));
+    temporaryDirectories.push(appPath);
+    const bin = path.join(appPath, "Contents/Resources/bin");
+    fs.mkdirSync(bin, { recursive: true });
+    fs.writeFileSync(
+      path.join(bin, "nodex-dictation-helper"),
+      `#!/usr/bin/env node
+const readline = require("node:readline");
+let requests = 0;
+process.stdout.write(JSON.stringify({ type: "ready", protocolVersion: ${protocolVersion} }) + "\\n");
+readline.createInterface({ input: process.stdin }).on("line", (line) => {
+  const request = JSON.parse(line);
+  const expected = requests++ === 0 ? "replaceBindings" : "capabilities";
+  if (request.type !== expected) process.exit(2);
+  if (request.type === "replaceBindings" && request.bindings.length !== 0) process.exit(3);
+  const value = request.type === "replaceBindings"
+    ? { applied: true, generation: request.generation }
+    : { inputMonitoring: false, accessibility: false };
+  process.stdout.write(JSON.stringify({ type: "response", id: request.id, ok: true, value }) + "\\n");
+}).on("close", () => process.exit(requests === 2 ? 0 : 4));
+`,
+      { mode: 0o755 },
+    );
+    return appPath;
+  };
+
+  test("smokes the current dictation handshake, empty bindings, capabilities and clean exit", async () => {
+    await expect(smokeDictationHelper(createDictationHelperApp(3))).resolves.toBeUndefined();
+  });
+
+  test("rejects an incompatible dictation handshake with its version instead of timing out", async () => {
+    await expect(smokeDictationHelper(createDictationHelperApp(2))).rejects.toThrow(
+      "protocol is 2, expected 3",
+    );
+  });
+
   test("keeps Nodex signature and entitlement verification disjoint from preserved vendor code", () => {
     const appPath = "/signed/Nodex.app";
     const manifest = parseNativeRuntimeManifest({

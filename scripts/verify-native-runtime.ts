@@ -60,6 +60,7 @@ import {
   ProjectWorkspace,
 } from "../src/main/project-application/ProjectWorkspace";
 import { decodeXmlCharacterReferences } from "../src/shared/xml-character-references";
+import { MAC_DICTATION_HELPER_PROTOCOL_VERSION } from "../src/main/dictation/mac-dictation-native-helper-client";
 
 export class PackagedNativeRuntimeVerificationError extends Schema.TaggedError<PackagedNativeRuntimeVerificationError>()(
   "PackagedNativeRuntimeVerificationError",
@@ -1061,7 +1062,7 @@ const smokeBrowserProfileHelper = (appPath: string): void => {
   }
 };
 
-const smokeDictationHelper = async (appPath: string): Promise<void> => {
+export const smokeDictationHelper = async (appPath: string): Promise<void> => {
   const helper = join(appPath, "Contents/Resources/bin/nodex-dictation-helper");
   const child = spawn(helper, [], { stdio: ["pipe", "pipe", "pipe"] });
   child.stdout.setEncoding("utf8");
@@ -1094,7 +1095,15 @@ const smokeDictationHelper = async (appPath: string): Promise<void> => {
           fail(new Error("Packaged dictation helper emitted invalid JSON"));
           return;
         }
-        if (message.type === "ready" && message.protocolVersion === 2) {
+        if (message.type === "ready") {
+          if (message.protocolVersion !== MAC_DICTATION_HELPER_PROTOCOL_VERSION) {
+            fail(
+              new Error(
+                `Packaged dictation helper protocol is ${String(message.protocolVersion)}, expected ${MAC_DICTATION_HELPER_PROTOCOL_VERSION}`,
+              ),
+            );
+            return;
+          }
           ready = true;
           child.stdin.write(
             `${JSON.stringify({

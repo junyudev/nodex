@@ -346,6 +346,10 @@ the release lock's upstream team by the Codex runtime verifier. The native
 verifier's Nodex signature and entitlement inventory contains only the native
 runtime manifest binaries and Nodex clipboard bridge; it must remain disjoint
 from the signing hook's preserved vendor inventory.
+The dictation helper build stamp and packaged handshake check use the production
+client's protocol version. Packaged conformance checks empty binding replacement,
+permission capability reads without prompting, and clean helper exit; an
+incompatible ready handshake fails immediately with the observed version.
 
 `vp run test:all` remains a compatibility alias for `verify:source`.
 

@@ -8,7 +8,7 @@ const MAXIMUM_LINE_BYTES = 64 * 1024;
 const MAXIMUM_STDERR_BYTES = 8 * 1024;
 const REQUEST_TIMEOUT_MS = 12_000;
 const READY_TIMEOUT_MS = 3_000;
-const MAC_DICTATION_HELPER_PROTOCOL_VERSION = 3;
+export const MAC_DICTATION_HELPER_PROTOCOL_VERSION = 3;
 
 export interface MacDictationForegroundTarget {
   readonly pid: number;
