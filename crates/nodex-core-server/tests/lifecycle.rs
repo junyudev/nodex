@@ -1437,15 +1437,32 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
         .expect("current Core auth")
         .trim()
         .to_owned();
-    let handoff = request(
-        &current_descriptor.socket_path,
-        &auth,
-        "POST",
-        "/core/v1/admin/shutdown",
-        &replacement_request(&current_descriptor),
-    );
-    assert!(handoff.starts_with("HTTP/1.1 200"));
-    assert_eq!(response_json(&handoff)["status"], "draining");
+    // Readiness admits clients before background work necessarily becomes idle.
+    // Honor replacement backpressure instead of assuming immediate handoff.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let handoff = loop {
+        let response = request(
+            &current_descriptor.socket_path,
+            &auth,
+            "POST",
+            "/core/v1/admin/shutdown",
+            &replacement_request(&current_descriptor),
+        );
+        assert!(response.starts_with("HTTP/1.1 200"));
+        let handoff = response_json(&response);
+        if handoff["status"] != "busy" {
+            break handoff;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "Core never became idle: {handoff}"
+        );
+        let retry_after_ms = handoff["retry_after_ms"]
+            .as_u64()
+            .expect("busy retry delay");
+        std::thread::sleep(Duration::from_millis(retry_after_ms));
+    };
+    assert_eq!(handoff["status"], "draining");
     assert!(
         current_app
             .wait()
