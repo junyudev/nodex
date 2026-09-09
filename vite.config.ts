@@ -17,6 +17,7 @@ const generatedOrExternalPaths = [
   "packages/codex-app-server-protocol/src/**",
   "packages/effect-codex-app-server/src/_generated/**",
   "packages/core-protocol/openapi.json",
+  "packages/core-protocol/runtime-schemas/**",
   "packages/core-protocol/src/compatibility.generated.ts",
   "packages/core-protocol/src/generated.ts",
   "packages/storybook/storybook-static/**",

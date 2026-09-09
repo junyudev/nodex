@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runCommand, withCommandSignal, type CommandResult } from "../tooling/process";
+import { runCommand, withCommandSignal, type CommandResult } from "../tooling/process.ts";
 
 export interface TimedCommandArguments {
   readonly name: string;

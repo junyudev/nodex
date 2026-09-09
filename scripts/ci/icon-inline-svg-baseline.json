@@ -36,7 +36,19 @@
       "count": 1,
       "reason": "Browser test fixture intentionally passes sanitized Mermaid SVG markup through the security pipeline; it is generated diagram content, not an icon."
     },
-    "src/renderer/lib/status-presentation.tsx": 1
+    "src/renderer/lib/status-presentation.tsx": 1,
+    "src/renderer/components/board/editor/image-layout.browser.test.tsx": {
+      "count": 2,
+      "reason": "Browser test fixture uses SVG image bytes with exact dimensions to verify image layout stability."
+    },
+    "src/renderer/components/board/editor/selected-block-decorations.browser.test.tsx": {
+      "count": 1,
+      "reason": "Browser test fixture uses inert SVG image bytes to verify selected Block decoration behavior."
+    },
+    "src/renderer/features/avatar-overlay/avatar-overlay-page.tsx": {
+      "count": 1,
+      "reason": "The mascot is a product illustration owned by the Avatar overlay, not a reusable control icon."
+    }
   },
   "geometry": []
 }

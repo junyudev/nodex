@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
 import { parseRunTimedArguments, runTimedCommand } from "./run-timed";
@@ -14,6 +16,30 @@ afterEach(async () => {
 });
 
 describe("CI timed command runner", () => {
+  test("runs under native Node without a TypeScript loader and preserves failure evidence", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "nodex-ci-native-timed-"));
+    temporaryRoots.push(root);
+    const result = await promisify(execFile)(
+      process.execPath,
+      [
+        "--no-warnings",
+        path.resolve("scripts/ci/run-timed.ts"),
+        "--name",
+        "native failure",
+        "--",
+        process.execPath,
+        "-e",
+        "process.exit(7)",
+      ],
+      { cwd: root, env: { ...process.env, CI_TIMING_JOB: "native", GITHUB_STEP_SUMMARY: "" } },
+    ).catch((error: unknown) => error);
+    expect(result).toMatchObject({ code: 7 });
+    const record = JSON.parse(
+      await readFile(path.join(root, ".generated/ci-timings/native.jsonl"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(record).toMatchObject({ name: "native failure", exitCode: 7 });
+  });
+
   test("parses a command after the separator without consuming command flags", () => {
     expect(
       parseRunTimedArguments(["--name", "rust-tests", "--", "cargo", "test", "--workspace"]),
