@@ -95,6 +95,16 @@ pub enum CoreErrorCode {
     CoreUnavailable,
 }
 
+/// Exact coordinates for retrieving a rejected Document update.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct DocumentRecoveryArtifactReference {
+    pub artifact_id: String,
+    pub document_id: String,
+    pub store_epoch: StoreEpoch,
+    pub generation: i64,
+    pub update_id: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CoreErrorRecovery {
@@ -113,13 +123,8 @@ pub enum CoreErrorRecovery {
     DatabaseViewOrderPreparation {
         view_id: String,
     },
-    DocumentRecoveryArtifact {
-        artifact_id: String,
-        document_id: String,
-        store_epoch: StoreEpoch,
-        generation: i64,
-        update_id: String,
-    },
+    // Rare recovery coordinates must not inflate every Core and Store Result.
+    DocumentRecoveryArtifact(Box<DocumentRecoveryArtifactReference>),
     SupportedSchema {
         minimum: u32,
         maximum: u32,
@@ -269,6 +274,20 @@ pub const fn module_contract_manifest() -> [ModuleContractVersion; 7] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn document_recovery_artifact_preserves_flat_wire_coordinates() {
+        let wire = serde_json::json!({
+            "kind": "document_recovery_artifact",
+            "artifact_id": "artifact-1",
+            "document_id": "document-1",
+            "store_epoch": "epoch-1",
+            "generation": 4,
+            "update_id": "update-1"
+        });
+        let recovery: CoreErrorRecovery = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(serde_json::to_value(recovery).unwrap(), wire);
+    }
 
     #[test]
     fn public_module_names_match_the_adapter_budget() {

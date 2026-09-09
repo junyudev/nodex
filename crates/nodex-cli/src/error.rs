@@ -98,7 +98,7 @@ pub struct CliError {
     pub column: Option<usize>,
     pub hunk: Option<usize>,
     pub path: Option<String>,
-    pub details: Option<serde_json::Value>,
+    pub details: Option<Box<serde_json::Value>>,
 }
 
 impl CliError {
@@ -115,7 +115,7 @@ impl CliError {
     }
 
     pub fn with_details(mut self, details: serde_json::Value) -> Self {
-        self.details = Some(details);
+        self.details = Some(Box::new(details));
         self
     }
 
@@ -175,7 +175,7 @@ impl<'a> ErrorEnvelope<'a> {
                 column: error.column,
                 hunk: error.hunk,
                 path: error.path.as_deref(),
-                details: error.details.as_ref(),
+                details: error.details.as_deref(),
             },
         }
     }
@@ -189,7 +189,8 @@ mod tests {
     fn structured_errors_use_stable_codes_and_evidence() {
         let error = CliError::new(CliErrorCode::PatchSyntax, "expected hunk")
             .at_line(4)
-            .in_hunk(2);
+            .in_hunk(2)
+            .with_details(serde_json::json!({"expected": "hunk"}));
         let value = serde_json::to_value(ErrorEnvelope::new(&error)).expect("error JSON");
 
         assert_eq!(value["version"], 1);
@@ -197,5 +198,9 @@ mod tests {
         assert_eq!(value["error"]["code"], "PATCH_SYNTAX");
         assert_eq!(value["error"]["line"], 4);
         assert_eq!(value["error"]["hunk"], 2);
+        assert_eq!(
+            value["error"]["details"],
+            serde_json::json!({"expected": "hunk"})
+        );
     }
 }

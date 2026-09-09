@@ -226,6 +226,34 @@ fn replacement_request_for(
     .expect("replacement handoff JSON")
 }
 
+// Readiness admits clients before background work necessarily becomes idle.
+// Only idle-handoff tests retry; active-client tests must observe Busy directly.
+fn drain_idle_core(descriptor: &RuntimeDescriptor, auth: &str) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let body = replacement_request(descriptor);
+    loop {
+        assert!(Instant::now() < deadline, "Core never became idle");
+        let response = request(
+            &descriptor.socket_path,
+            auth,
+            "POST",
+            "/core/v1/admin/shutdown",
+            &body,
+        );
+        assert!(response.starts_with("HTTP/1.1 200"));
+        let handoff = response_json(&response);
+        if handoff["status"] != "busy" {
+            assert_eq!(handoff["status"], "draining");
+            return;
+        }
+        let retry_after_ms = handoff["retry_after_ms"]
+            .as_u64()
+            .expect("busy retry delay");
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        std::thread::sleep(Duration::from_millis(retry_after_ms).min(remaining));
+    }
+}
+
 #[test]
 fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     let directory = tempdir().expect("disposable Core home");
@@ -989,15 +1017,7 @@ fn incompatible_idle_core_drains_before_a_replacement_starts() {
         .expect("incumbent auth")
         .trim()
         .to_owned();
-    let handoff = request(
-        &incumbent_descriptor.socket_path,
-        &auth,
-        "POST",
-        "/core/v1/admin/shutdown",
-        &replacement_request(&incumbent_descriptor),
-    );
-    assert!(handoff.starts_with("HTTP/1.1 200"));
-    assert_eq!(response_json(&handoff)["status"], "draining");
+    drain_idle_core(&incumbent_descriptor, &auth);
     let mut replacements = [spawn(), spawn()];
     let replacement_descriptors = replacements
         .iter_mut()
@@ -1043,14 +1063,7 @@ fn incompatible_idle_core_drains_before_a_replacement_starts() {
         .expect("replacement auth")
         .trim()
         .to_owned();
-    let replacement_handoff = request(
-        &replacement_descriptor.socket_path,
-        &replacement_auth,
-        "POST",
-        "/core/v1/admin/shutdown",
-        &replacement_request(replacement_descriptor),
-    );
-    assert_eq!(response_json(&replacement_handoff)["status"], "draining");
+    drain_idle_core(replacement_descriptor, &replacement_auth);
     let replacement = replacements
         .iter_mut()
         .find(|replacement| replacement.id() == replacement_descriptor.pid)
@@ -1437,32 +1450,7 @@ fn compatibility_policy_reuses_while_electron_artifact_policy_replaces_without_a
         .expect("current Core auth")
         .trim()
         .to_owned();
-    // Readiness admits clients before background work necessarily becomes idle.
-    // Honor replacement backpressure instead of assuming immediate handoff.
-    let deadline = Instant::now() + Duration::from_secs(5);
-    let handoff = loop {
-        let response = request(
-            &current_descriptor.socket_path,
-            &auth,
-            "POST",
-            "/core/v1/admin/shutdown",
-            &replacement_request(&current_descriptor),
-        );
-        assert!(response.starts_with("HTTP/1.1 200"));
-        let handoff = response_json(&response);
-        if handoff["status"] != "busy" {
-            break handoff;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "Core never became idle: {handoff}"
-        );
-        let retry_after_ms = handoff["retry_after_ms"]
-            .as_u64()
-            .expect("busy retry delay");
-        std::thread::sleep(Duration::from_millis(retry_after_ms));
-    };
-    assert_eq!(handoff["status"], "draining");
+    drain_idle_core(&current_descriptor, &auth);
     assert!(
         current_app
             .wait()

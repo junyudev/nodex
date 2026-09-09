@@ -1170,7 +1170,7 @@ describe("ConnectedThreadStage read-state control plane", () => {
 
 describe("ConnectedThreadStage new-chat home", () => {
   test("replaces the provisional first submission with its canonical row before releasing it", async () => {
-    installAsyncRequestAnimationFrame(20);
+    installAsyncRequestAnimationFrame();
     sessionFirstSubmissionOwner.dispose();
     const submission = sessionFirstSubmissionOwner.begin({
       backend: "codex",
@@ -1185,6 +1185,29 @@ describe("ConnectedThreadStage new-chat home", () => {
 
     const view = await renderStage(buildThreadSummary(false));
     const { dispatchCodexAppServerMessage } = await import("../app-server-message-bus");
+    // Hold presentation frames explicitly: elapsed wall time cannot prove this handoff boundary.
+    const frames = new Map<number, FrameRequestCallback>();
+    let frameId = 0;
+    const requestFrame = vi
+      .spyOn(globalThis, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        frames.set(++frameId, callback);
+        return frameId;
+      });
+    const cancelFrame = vi
+      .spyOn(globalThis, "cancelAnimationFrame")
+      .mockImplementation((handle) => {
+        frames.delete(handle);
+      });
+    const advancePresentationFrame = async () => {
+      await act(async () => {
+        for (const [handle, callback] of [...frames]) {
+          if (!frames.delete(handle)) continue;
+          callback(performance.now());
+        }
+        await Promise.resolve();
+      });
+    };
     try {
       expect(view.container.querySelectorAll('[data-user-message-bubble="true"]')).toHaveLength(1);
 
@@ -1208,7 +1231,7 @@ describe("ConnectedThreadStage new-chat home", () => {
                   items: [
                     {
                       ...canonicalUserItem,
-                      markdownText: "Keep one row through canonical handoff.",
+                      markdownText: "Canonical first submission is visible.",
                       rawItem: {
                         id: canonicalUserItem.itemId,
                         type: "userMessage",
@@ -1226,16 +1249,23 @@ describe("ConnectedThreadStage new-chat home", () => {
       });
 
       expect(view.container.querySelectorAll('[data-user-message-bubble="true"]')).toHaveLength(1);
-      expect(textContent(view.container).includes("Keep one row through canonical handoff.")).toBe(
-        true,
-      );
+      expect(
+        view.container.querySelector('[data-user-message-bubble="true"]')?.textContent,
+      ).toContain("Canonical first submission is visible.");
       expect(sessionFirstSubmissionOwner.getSnapshot().submissions).toHaveLength(1);
-      await waitFor(() =>
-        expect(sessionFirstSubmissionOwner.getSnapshot().submissions).toHaveLength(0),
-      );
+      await advancePresentationFrame();
+      expect(sessionFirstSubmissionOwner.getSnapshot().submissions).toHaveLength(1);
+      await advancePresentationFrame();
+      expect(sessionFirstSubmissionOwner.getSnapshot().submissions).toHaveLength(0);
+      expect(view.container.querySelectorAll('[data-user-message-bubble="true"]')).toHaveLength(1);
+      expect(
+        view.container.querySelector('[data-user-message-bubble="true"]')?.textContent,
+      ).toContain("Canonical first submission is visible.");
     } finally {
       view.unmount();
       sessionFirstSubmissionOwner.dispose();
+      requestFrame.mockRestore();
+      cancelFrame.mockRestore();
     }
   });
 

@@ -10,7 +10,7 @@ type Surface = readonly [
 ];
 
 /**
- * Executable inventory for production TypeScript version declarations.
+ * Executable inventory for production version declarations.
  * Same-build request, receipt, snapshot, and intent DTOs do not belong here.
  */
 const VERSION_SURFACES: readonly Surface[] = [
@@ -57,12 +57,6 @@ const VERSION_SURFACES: readonly Surface[] = [
     "reject unknown output schemas",
   ],
   [
-    "crates/nodex-cli/src/view.rs:VIEW_QUERY_SCHEMA_VERSION",
-    "runtimeCompatibility",
-    "CLI View query output",
-    "reject unknown output schemas",
-  ],
-  [
     "crates/nodex-core-contracts/src/administration.rs:STORE_ADMINISTRATION_CONTRACT_VERSION",
     "runtimeCompatibility",
     "Store Administration Module",
@@ -102,6 +96,12 @@ const VERSION_SURFACES: readonly Surface[] = [
     "crates/nodex-core-contracts/src/library.rs:LIBRARY_CONTRACT_VERSION",
     "runtimeCompatibility",
     "Library Module",
+    "negotiate generated Module requirements",
+  ],
+  [
+    "crates/nodex-core-contracts/src/query.rs:QUERY_CONTRACT_VERSION",
+    "runtimeCompatibility",
+    "Query Module",
     "negotiate generated Module requirements",
   ],
   [
@@ -291,6 +291,12 @@ const VERSION_SURFACES: readonly Surface[] = [
     "decode exact recipe versions",
   ],
   [
+    "crates/nodex-core/src/library/block_transfer.rs:PAGE_RELOCATION_UNDO_RECIPE_VERSION",
+    "durableFormat",
+    "Page relocation history",
+    "reject unsupported persisted inverse recipes",
+  ],
+  [
     "crates/nodex-core/src/library/page_projection.rs:PAGE_DRAFT_VERSION",
     "durableFormat",
     "Library Page draft",
@@ -381,10 +387,40 @@ const VERSION_SURFACES: readonly Surface[] = [
     "pin the reference input",
   ],
   [
+    "src/main/agent-backend/acp/ClaudeAcpAgentDefinition.ts:CLAUDE_ACP_PACKAGE_VERSION",
+    "runtimeCompatibility",
+    "Claude ACP installation",
+    "verify the installed package against the pinned agent definition",
+  ],
+  [
+    "src/main/browser-use/chrome/ChromeNativeHostInstaller.ts:APP_SERVER_PROTOCOL_VERSION",
+    "runtimeCompatibility",
+    "Chrome native host registry app-server protocol",
+    "advertise the supported app-server peer protocol",
+  ],
+  [
+    "src/main/browser-use/chrome/ChromeNativeHostInstaller.ts:NATIVE_HOST_PROTOCOL_VERSION",
+    "runtimeCompatibility",
+    "Chrome native host protocol",
+    "advertise the supported native host peer protocol",
+  ],
+  [
+    "src/main/browser-use/chrome/ChromeNativeHostInstaller.ts:NATIVE_HOST_REGISTRY_SCHEMA_VERSION",
+    "durableFormat",
+    "Chrome native host registry",
+    "validate and rewrite the installed registry format",
+  ],
+  [
     "src/main/browser/browser-credential-vault.ts:FILE_SCHEMA_VERSION",
     "durableFormat",
     "browser credential vault",
     "decode or reject files",
+  ],
+  [
+    "src/main/codex-runtime/CodexAppServerCapabilities.ts:CODEX_APP_SERVER_CAPABILITY_MINIMUM_VERSIONS",
+    "runtimeCompatibility",
+    "Codex app-server capabilities",
+    "enable protocol features only for verified compatible server versions",
   ],
   [
     "src/main/codex/bundled-desktop-tool-marketplace.ts:MATERIALIZATION_SCHEMA_VERSION",
@@ -463,6 +499,18 @@ const VERSION_SURFACES: readonly Surface[] = [
     "durableFormat",
     "authorized delivery packet",
     "decode delivery evidence",
+  ],
+  [
+    "src/shared/browser-runtime-metadata.ts:BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION",
+    "runtimeCompatibility",
+    "Browser runtime product support",
+    "enforce the minimum supported macOS release",
+  ],
+  [
+    "src/shared/browser-runtime-metadata.ts:LEGACY_BROWSER_RUNTIME_SCHEMA_VERSION",
+    "durableFormat",
+    "Browser runtime manifest decoder",
+    "normalize the supported prior manifest format",
   ],
   [
     "src/shared/codex-queued-follow-up-state.ts:CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION",
@@ -577,6 +625,12 @@ const VERSION_SURFACES: readonly Surface[] = [
     "durableFormat",
     "recipient delivery",
     "decode durable records",
+  ],
+  [
+    "src/shared/renderer-delivery-transport.ts:RENDERER_DELIVERY_WIRE_VERSION",
+    "runtimeCompatibility",
+    "Renderer delivery transport",
+    "reject unsupported bounded transfer envelopes",
   ],
   [
     "src/shared/workbench-panel-layout.ts:WORKBENCH_PANEL_LAYOUT_VERSION",
