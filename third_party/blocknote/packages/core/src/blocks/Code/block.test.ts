@@ -400,6 +400,7 @@ describe("Code block deletion boundaries", () => {
       },
     ]);
     editor.setTextCursorPosition("after", "start");
+    const before = editor.document;
 
     expect(pressKey(editor, "Backspace")).toBe(true);
 
@@ -409,6 +410,12 @@ describe("Code block deletion boundaries", () => {
       { type: "text", text: "alphabeta", styles: {} },
     ]);
     expect(editor.document[1]).toMatchObject({ id: "child", type: "paragraph" });
+    const merged = editor.document;
+
+    expect(editor.undo()).toBe(true);
+    expect(editor.document).toEqual(before);
+    expect(editor.redo()).toBe(true);
+    expect(editor.document).toEqual(merged);
   });
 
   it("treats Backspace at the start of code as a handled no-op", () => {

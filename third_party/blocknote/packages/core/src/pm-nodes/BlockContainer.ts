@@ -1,6 +1,7 @@
 import { Node } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
-import { Plugin } from "@tiptap/pm/state";
+import { Plugin, type Transaction } from "@tiptap/pm/state";
+import { ReplaceStep } from "@tiptap/pm/transform";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 import type { BlockNoteEditor } from "../editor/BlockNoteEditor.js";
@@ -22,13 +23,9 @@ const BlockAttributes: Record<string, string> = {
  * in decoration equality also prevents ProseMirror's recreateWrapper fast path
  * from transplanting identical child NodeViews into a different Block.
  */
-const collectBlockIdentityDecorations = (
-  doc: PMNode,
-  from = 0,
-  to = doc.content.size,
-) => {
+const collectBlockIdentityDecorations = (doc: PMNode) => {
   const decorations: Decoration[] = [];
-  doc.nodesBetween(from, to, (node, pos) => {
+  doc.descendants((node, pos) => {
     if (node.type.name !== "blockContainer") return;
     decorations.push(
       Decoration.node(pos, pos + node.nodeSize, {}, { blockId: node.attrs.id }),
@@ -36,6 +33,23 @@ const collectBlockIdentityDecorations = (
   });
   return decorations;
 };
+
+/** Inline replacements preserve the Block tree; structural edits derive identities anew. */
+const preservesBlockStructure = (transaction: Transaction): boolean =>
+  transaction.steps.every((step, index) => {
+    if (
+      !(step instanceof ReplaceStep) ||
+      step.slice.openStart !== 0 ||
+      step.slice.openEnd !== 0 ||
+      !step.slice.content.content.every((node) => node.isInline)
+    ) {
+      return false;
+    }
+    const before = transaction.docs[index];
+    const $from = before.resolve(step.from);
+    const $to = before.resolve(step.to);
+    return $from.parent.isTextblock && $from.sameParent($to);
+  });
 
 const applySemanticAttributes = (
   element: HTMLElement,
@@ -108,28 +122,17 @@ export const BlockContainer = Node.create<{
           apply: (transaction, previous) => {
             if (!transaction.docChanged) return previous;
             const doc = transaction.doc;
-            const range = transaction.changedRange();
-            if (!range) {
-              return DecorationSet.create(
-                doc,
-                collectBlockIdentityDecorations(doc),
-              );
+            if (preservesBlockStructure(transaction)) {
+              // Typing keeps the identity tree intact and must not rescan the Page.
+              return previous.map(transaction.mapping, doc);
             }
-
-            // Keep typing local: map unaffected identities, then refresh the
-            // changed range and its ancestor containers (nodesBetween includes
-            // those ancestors). Do not rescan the whole Page on each keystroke.
-            const mapped = previous.map(transaction.mapping, doc);
-            const next = collectBlockIdentityDecorations(
+            // A lift or merge can move nested decoration boundaries outside
+            // their former parent. These are derived Block identities, not
+            // positional annotations to carry through a structural mapping.
+            return DecorationSet.create(
               doc,
-              range.from,
-              range.to,
+              collectBlockIdentityDecorations(doc),
             );
-            const positions = new Set(next.map((decoration) => decoration.from));
-            const replaced = mapped
-              .find(range.from, range.to)
-              .filter((decoration) => positions.has(decoration.from));
-            return mapped.remove(replaced).add(doc, next);
           },
         },
         props: {
