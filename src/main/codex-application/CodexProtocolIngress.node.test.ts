@@ -56,6 +56,46 @@ it.effect("preserves FIFO within a causal key while another key progresses", () 
   }),
 );
 
+it.effect("drains a saturated one-permit ingress through source completion", () =>
+  Effect.gen(function* () {
+    const observed: number[] = [];
+    yield* runBoundedCausalIngress({
+      source: Stream.fromIterable(Array.from({ length: 64 }, (_, index) => index)),
+      key: (value) => `thread-${value % 2}`,
+      dispatch: (value) =>
+        Effect.sync(() => {
+          observed.push(value);
+        }),
+      capacity: 1,
+    });
+    assert.deepEqual(
+      observed,
+      Array.from({ length: 64 }, (_, index) => index),
+    );
+  }),
+);
+
+it.effect("a dispatch failure interrupts sibling work while ingress is saturated", () =>
+  Effect.gen(function* () {
+    const blockedStarted = yield* Deferred.make<void>();
+    const blockedInterrupted = yield* Deferred.make<void>();
+    const result = yield* runBoundedCausalIngress({
+      source: Stream.make("blocked", "failed", "pending"),
+      key: (value) => value,
+      dispatch: (value) =>
+        value === "blocked"
+          ? Deferred.succeed(blockedStarted, undefined).pipe(
+              Effect.andThen(Effect.never),
+              Effect.onInterrupt(() => Deferred.succeed(blockedInterrupted, undefined)),
+            )
+          : Deferred.await(blockedStarted).pipe(Effect.andThen(Effect.die("dispatch failed"))),
+      capacity: 2,
+    }).pipe(Effect.exit);
+    assert.isTrue(Exit.isFailure(result));
+    yield* Deferred.await(blockedInterrupted);
+  }),
+);
+
 it.effect("turns an unexpected canonical ingress exit into runtime-fatal health", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();

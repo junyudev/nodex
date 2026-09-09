@@ -1,8 +1,9 @@
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
-import * as Deferred from "effect/Deferred";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FiberHandle from "effect/FiberHandle";
+import * as PubSub from "effect/PubSub";
 import type * as Scope from "effect/Scope";
 
 // This is a cross-process liveness deadline, not a renderer frame/flush budget.
@@ -11,7 +12,7 @@ export const DEFAULT_CODEX_OWNER_NOTIFICATION_DRAIN_TIMEOUT = 30_000;
 interface DrainState {
   sentSequence: number;
   ackSequence: number;
-  changed: Deferred.Deferred<void, CodexOwnerNotificationDrainOwnerChanged>;
+  retired: "owner-changed" | "cleared" | null;
 }
 
 export interface CodexOwnerNotificationDrainRuntimeOptions {
@@ -60,7 +61,7 @@ export class CodexOwnerNotificationDrainRuntime extends Context.Service<
 const emptyState = (): DrainState => ({
   sentSequence: 0,
   ackSequence: 0,
-  changed: Deferred.makeUnsafe<void, CodexOwnerNotificationDrainOwnerChanged>(),
+  retired: null,
 });
 
 export const make = (
@@ -68,6 +69,14 @@ export const make = (
 ): Effect.Effect<CodexOwnerNotificationDrainRuntime["Service"], never, Scope.Scope> =>
   Effect.gen(function* () {
     const states = new Map<string, DrainState>();
+    // Sequence admission remains synchronous with renderer publication. The
+    // scoped wakeup carries no authority: each subscriber rechecks its captured
+    // state and prefix, so one sliding signal safely coalesces any ACK burst.
+    const progress = yield* PubSub.sliding<void>(1);
+    const runWakeup = yield* FiberHandle.makeRuntime<never, never, void>();
+    const notifyProgress = (): void => {
+      runWakeup(PubSub.publish(progress, undefined).pipe(Effect.asVoid));
+    };
 
     const stateFor = (conversationId: string): DrainState => {
       const existing = states.get(conversationId);
@@ -77,18 +86,21 @@ export const make = (
       return state;
     };
 
-    const notifyProgress = (state: DrainState): void => {
-      const changed = state.changed;
-      state.changed = Deferred.makeUnsafe<void, CodexOwnerNotificationDrainOwnerChanged>();
-      Deferred.doneUnsafe(changed, Effect.void);
-    };
-
     const awaitPrefix = Effect.fn("CodexOwnerNotificationDrainRuntime.awaitPrefix")(function* (
+      conversationId: string,
       state: DrainState,
       sentSequence: number,
     ) {
-      while (state.ackSequence < sentSequence) yield* Deferred.await(state.changed);
-    });
+      // Subscribe before inspecting state, closing the check/sleep arrival race.
+      const subscription = yield* PubSub.subscribe(progress);
+      while (state.ackSequence < sentSequence) {
+        if (state.retired === "cleared") return yield* Effect.interrupt;
+        if (state.retired === "owner-changed") {
+          return yield* new CodexOwnerNotificationDrainOwnerChanged({ conversationId });
+        }
+        yield* PubSub.take(subscription);
+      }
+    }, Effect.scoped);
 
     // Each caller owns its deadline and immutable prefix. Later notifications and canceled
     // callers cannot extend or shorten another operation's synchronization boundary.
@@ -100,7 +112,7 @@ export const make = (
         if (!state) return Effect.void;
         const sentSequence = state.sentSequence;
         if (state.ackSequence >= sentSequence) return Effect.void;
-        return awaitPrefix(state, sentSequence).pipe(
+        return awaitPrefix(conversationId, state, sentSequence).pipe(
           Effect.timeoutOrElse({
             duration: options.timeout ?? DEFAULT_CODEX_OWNER_NOTIFICATION_DRAIN_TIMEOUT,
             orElse: () => {
@@ -128,22 +140,12 @@ export const make = (
       const state = states.get(conversationId);
       states.delete(conversationId);
       if (!state) return;
-      Deferred.doneUnsafe(
-        state.changed,
-        interrupt
-          ? Effect.interrupt
-          : Effect.fail(new CodexOwnerNotificationDrainOwnerChanged({ conversationId })),
-      );
+      state.retired = interrupt ? "cleared" : "owner-changed";
+      notifyProgress();
     };
 
     yield* Effect.addFinalizer(() =>
-      Effect.gen(function* () {
-        const completions = [...states.values()].map((state) => state.changed);
-        states.clear();
-        yield* Effect.forEach(completions, Deferred.interrupt, {
-          discard: true,
-        });
-      }),
+      Effect.sync(() => states.clear()).pipe(Effect.andThen(PubSub.shutdown(progress))),
     );
 
     return CodexOwnerNotificationDrainRuntime.of({
@@ -172,7 +174,7 @@ export const make = (
           return false;
         }
         state.ackSequence = sequence;
-        notifyProgress(state);
+        notifyProgress();
         return true;
       },
       awaitCurrent,

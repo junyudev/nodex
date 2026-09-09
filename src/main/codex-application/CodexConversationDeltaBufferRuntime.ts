@@ -1,6 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FiberHandle from "effect/FiberHandle";
+import * as FiberSet from "effect/FiberSet";
 import type * as Scope from "effect/Scope";
 import {
   CODEX_COMMAND_OUTPUT_FLUSH_INTERVAL_MS,
@@ -77,7 +78,7 @@ export const make = (
     const outputTimer = yield* FiberHandle.make<void, never>();
     const frameScheduler = makeEffectTimerScheduler(yield* FiberHandle.runtime(frameTimer)());
     const outputScheduler = makeEffectTimerScheduler(yield* FiberHandle.runtime(outputTimer)());
-    const runFork = Effect.runForkWith(yield* Effect.context());
+    const runLog = yield* FiberSet.makeRuntime<never, void, never>();
     const terminalObservedAtMsByConversation = new Map<string, number>();
 
     const groupByConversation = <TUpdate extends { readonly conversationId: string }>(
@@ -112,7 +113,7 @@ export const make = (
         });
         for (const outcome of outcomes) {
           if (outcome.disposition === "applied") continue;
-          runFork(
+          runLog(
             Effect.logWarning("Skipping frame-text delta at canonical raw boundary").pipe(
               Effect.annotateLogs({
                 threadId,
