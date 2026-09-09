@@ -1,3 +1,4 @@
+import { AvatarHideIcon, AvatarCloseIcon } from "../../components/shared/icons/avatar-icons";
 import {
   useEffect,
   useRef,
@@ -187,27 +188,6 @@ function PetGlyph() {
   );
 }
 
-function HideIcon() {
-  return (
-    <svg aria-hidden="true" className="size-3.5" viewBox="0 0 16 16" fill="none">
-      <path d="M3 5.5 8 10l5-4.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg aria-hidden="true" className="size-3.5" viewBox="0 0 16 16" fill="none">
-      <path
-        d="m4.5 4.5 7 7m0-7-7 7"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeWidth="1.5"
-      />
-    </svg>
-  );
-}
-
 export function AvatarOverlayRoot() {
   const frameRef = useRef<HTMLElement>(null);
   const dragRef = useRef<AvatarDragState | null>(null);
@@ -375,7 +355,7 @@ export function AvatarOverlayRoot() {
                 onClick={() => reportEvent({ type: "hide" })}
                 type="button"
               >
-                <HideIcon />
+                <AvatarHideIcon />
               </button>
               <button
                 aria-label="Close desktop pet"
@@ -383,7 +363,7 @@ export function AvatarOverlayRoot() {
                 onClick={() => reportEvent({ type: "close" })}
                 type="button"
               >
-                <CloseIcon />
+                <AvatarCloseIcon />
               </button>
             </div>
           </div>

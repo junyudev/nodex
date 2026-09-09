@@ -184,18 +184,16 @@ test("native Workbench tools arrange, read and safely edit the exact authorized 
           nfm: "This Page stays in the original group.",
         });
         await invokeIpc(page, "codex:permission:mode:set", draft.projectId, "full-access");
-        threadId = await sendAgentPrompt(
-          page,
-          draft.projectSessionId,
-          "WORKBENCH_CONTROL_PROBE",
-        );
+        threadId = await sendAgentPrompt(page, draft.projectSessionId, "WORKBENCH_CONTROL_PROBE");
         await waitForFinalMarker(page, "WORKBENCH_CONTROL_OK");
         await waitForCompletedAgentTurn(page, threadId, 60_000);
         await expect(page.getByRole("tab", { name: "Workbench Page", exact: true })).toBeVisible();
         expect((await seed.readPage(draft.projectId, pageId)).title).toBe("Workbench Page");
       } catch (error) {
         const snapshot = threadId
-          ? await invokeIpc(harness.page, "codex:thread:snapshot:request", threadId).catch(() => null)
+          ? await invokeIpc(harness.page, "codex:thread:snapshot:request", threadId).catch(
+              () => null,
+            )
           : null;
         throw new Error(
           `${error instanceof Error ? error.message : String(error)}\n${JSON.stringify(snapshot).slice(-48_000)}\n${await readBoundedElectronRuntimeLogs(harness.profile)}`,

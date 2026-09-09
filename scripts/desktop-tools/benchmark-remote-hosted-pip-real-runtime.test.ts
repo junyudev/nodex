@@ -182,7 +182,7 @@ describe("Remote Hosted PiP real-runtime benchmark", () => {
         windowCycleCount: 100,
       }),
     ).resolves.toMatchObject({
-      reason: "runtime-root-not-provided",
+      reason: process.platform === "darwin" ? "runtime-root-not-provided" : "platform-unsupported",
       schemaVersion: 2,
       status: "skipped",
     });
