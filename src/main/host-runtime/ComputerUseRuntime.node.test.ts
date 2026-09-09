@@ -363,3 +363,40 @@ it.effect("keeps runtime availability best-effort when config publication fails"
     yield* Scope.close(scope, Exit.void);
   }),
 );
+
+it.effect(
+  "releases a late launched helper when its request is interrupted during Profile close",
+  () =>
+    Effect.gen(function* () {
+      const fixture = makeRuntimeFixture();
+      const launchStarted = yield* Deferred.make<void>();
+      const finishLaunch = yield* Deferred.make<void>();
+      const harness = makeHost({
+        spawnService: () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(launchStarted, undefined);
+            yield* Deferred.await(finishLaunch);
+            return 8123;
+          }),
+      });
+      const { runtime, scope } = yield* buildRuntime({
+        ...fixture,
+        host: harness.host,
+        terminateManagedServiceOnDispose: true,
+      });
+      yield* runtime.ensureReady;
+      const request = yield* Effect.forkChild(
+        harness.request()("ensureService", { service: "computer-use" }),
+      );
+      yield* Deferred.await(launchStarted);
+      const interrupting = yield* Effect.forkChild(Fiber.interrupt(request));
+      const closing = yield* Effect.forkChild(Scope.close(scope, Exit.void));
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(finishLaunch, undefined);
+      yield* Fiber.join(interrupting);
+      yield* Fiber.join(closing);
+      assert.isTrue(Exit.isFailure(yield* Fiber.await(request)));
+      assert.deepEqual(harness.terminate.mock.calls, [[8123]]);
+      assert.strictEqual(runtime.managedServiceSnapshot().status, "closed");
+    }),
+);
