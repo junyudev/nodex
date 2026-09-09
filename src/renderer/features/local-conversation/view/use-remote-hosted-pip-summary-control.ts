@@ -1,3 +1,4 @@
+import { remoteHostedPipRuntime } from "@/lib/remote-hosted-pip-runtime";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RemoteHostedPipTaskStateSnapshot } from "../../../../shared/remote-hosted-pip";
 import type {
@@ -34,10 +35,7 @@ export function useRemoteHostedPipSummaryControl(
   useEffect(() => {
     let accepting = true;
     const refresh = async (): Promise<void> => {
-      const next = (await window.api?.invoke("remote-hosted-pip:snapshot").catch(() => null)) as
-        | RemoteHostedPipTaskStateSnapshot
-        | null
-        | undefined;
+      const next = await remoteHostedPipRuntime.snapshot().catch(() => null);
       if (!accepting || !next) return;
       setSnapshot((current) => selectNewerSnapshot(current, next));
     };
@@ -72,17 +70,13 @@ export function useRemoteHostedPipSummaryControl(
 
   const onToggleSummaryComputerUsePip = useCallback(
     (nextVisible: boolean) => {
-      if (!activeThreadId) return;
-      void window.api
-        ?.invoke("remote-hosted-pip:task-visibility:set", {
+      if (!activeThreadId || !window.api) return;
+      void remoteHostedPipRuntime
+        .setTaskVisibility({
           taskId: activeThreadId,
           visibility: nextVisible ? "shown" : "hidden",
         })
-        .then((next) =>
-          setSnapshot((current) =>
-            selectNewerSnapshot(current, next as RemoteHostedPipTaskStateSnapshot),
-          ),
-        )
+        .then((next) => setSnapshot((current) => selectNewerSnapshot(current, next)))
         .catch(() => undefined);
     },
     [activeThreadId],
