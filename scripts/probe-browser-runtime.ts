@@ -546,6 +546,35 @@ async function probeBrowserRuntimePromise(
         },
       ),
     );
+  } catch (error) {
+    // Native helper failures are otherwise reduced to a tool error after its process exits.
+    // Limit diagnostics to this disposable Profile, never an installed application's logs.
+    process.stderr.write(
+      `Browser runtime managed service: ${JSON.stringify(computerUseRuntime.managedServiceSnapshot())}\n`,
+    );
+    try {
+      const diagnostics = execFileSync(
+        "/usr/bin/log",
+        [
+          "show",
+          "--style",
+          "compact",
+          "--last",
+          "2m",
+          "--info",
+          "--debug",
+          "--predicate",
+          `processImagePath BEGINSWITH ${JSON.stringify(stateHome + path.sep)}`,
+        ],
+        { encoding: "utf8", timeout: 10_000, maxBuffer: 256 * 1024 },
+      );
+      process.stderr.write(
+        `Browser runtime native diagnostics:\n${diagnostics.slice(-64 * 1024)}\n`,
+      );
+    } catch (diagnosticError) {
+      process.stderr.write(`Browser runtime diagnostics unavailable: ${String(diagnosticError)}\n`);
+    }
+    throw error;
   } finally {
     await cleanupBrowserRuntime({
       closeNativePipeServer: () => callbacks.runPromise(Scope.close(nativePipeScope, Exit.void)),

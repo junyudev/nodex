@@ -321,6 +321,8 @@ isolation stays enabled, and suites do not compete through aggregate parallelism
 Before execution, the aggregate prepares its union of required Cargo targets
 once. Standalone native suites prepare themselves. Cargo checks freshness and
 returns the executable paths, including when `CARGO_TARGET_DIR` is customized.
+Ordinary suites use development builds; stress suites use optimized release
+builds so performance evidence measures the shipped native execution profile.
 Bridge tests run the prepared executable directly; test bodies never invoke
 Cargo. Reuse binaries, but always create fresh writable Profiles and stores.
 Cancellation terminates only this command's descendants, including detached Core

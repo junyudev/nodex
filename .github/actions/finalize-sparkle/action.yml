@@ -33,7 +33,6 @@ runs:
         path: ${{ runner.temp }}/architecture
 
     - name: Fetch verified compatible update history
-      id: history
       env:
         GH_TOKEN: ${{ github.token }}
         RELEASE_ARCH: ${{ inputs.architecture }}
@@ -42,18 +41,17 @@ runs:
       run: |
         set -euo pipefail
         build_version="$(node -p "require('${RUNNER_TEMP}/architecture/architecture-build.json').releaseIdentity.buildVersion")"
-        history_dirs="$(vp run release:fetch:sparkle-history -- \
+        vp run release:fetch:sparkle-history -- \
           --arch "${RELEASE_ARCH}" \
           --channel "${{ inputs.channel }}" \
           --build-version "${build_version}" \
           --version "${RELEASE_VERSION}" \
           --repo "${GITHUB_REPOSITORY}" \
-          --output "${RUNNER_TEMP}/sparkle-history")"
-        echo "directories=${history_dirs}" >> "${GITHUB_OUTPUT}"
+          --output "${RUNNER_TEMP}/sparkle-history" \
+          --manifest "${RUNNER_TEMP}/sparkle-history.json"
 
     - name: Finalize signed appcast and deltas
       env:
-        HISTORY_DIRS: ${{ steps.history.outputs.directories }}
         RELEASE_ARCH: ${{ inputs.architecture }}
         RELEASE_SOURCE_SHA: ${{ inputs.source_sha }}
         RELEASE_VERSION: ${{ inputs.version }}
@@ -78,10 +76,8 @@ runs:
           --source-sha "${RELEASE_SOURCE_SHA}"
           --version "${RELEASE_VERSION}"
           --output "${SPARKLE_OUTPUT}"
+          --history-manifest "${RUNNER_TEMP}/sparkle-history.json"
         )
-        if [[ -n "${HISTORY_DIRS}" ]]; then
-          sparkle_args+=(--history-dirs "${HISTORY_DIRS}")
-        fi
         vp run release:finalize:sparkle -- "${sparkle_args[@]}"
 
     - name: Summarize signed update set

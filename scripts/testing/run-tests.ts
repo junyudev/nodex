@@ -85,6 +85,7 @@ export async function runTests(
   }
   const prepared = await (context.prepare ?? prepareNativeArtifacts)([...new Set(requirements)], {
     repositoryRoot: context.repositoryRoot,
+    profile: selection.tier === "stress" ? "release" : "dev",
     env: environment,
     signal: context.signal,
   });
