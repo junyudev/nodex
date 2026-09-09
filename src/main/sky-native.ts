@@ -96,7 +96,8 @@ export function inspectSkyNativeCapabilities(
   ) as unknown as Readonly<Record<SkyNativeCapabilityGroup, boolean>>;
 }
 
-function hasRequiredExports(
+/** Checks the verified manifest independently of native loading and host support. */
+export function matchesSkyNativeExportContract(
   value: unknown,
   expectedExportContract: readonly string[],
 ): value is SkyNativeAddon {
@@ -120,7 +121,7 @@ export function loadSkyNativeAddon(
   if (!expectedExports || expectedExports.length === 0) return null;
   try {
     const addon = requireFromMain(verifiedAddonPath) as unknown;
-    return hasRequiredExports(addon, expectedExports) ? addon : null;
+    return matchesSkyNativeExportContract(addon, expectedExports) ? addon : null;
   } catch {
     return null;
   }
