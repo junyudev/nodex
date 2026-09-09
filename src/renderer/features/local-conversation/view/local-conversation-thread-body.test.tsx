@@ -652,11 +652,11 @@ describe("LocalConversationThreadBody", () => {
     await settleAsyncRender();
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Open task" }));
+      fireEvent.click(view.getByRole("button", { name: "Open chat" }));
       await Promise.resolve();
     });
 
-    expect(openedThreads.join(",")).toBe("thread-created");
+    expect(openedThreads).toEqual(["thread-created"]);
   });
 
   test("lets the shared scroll layout own viewport and content wrappers", async () => {
