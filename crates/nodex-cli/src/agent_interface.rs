@@ -1284,7 +1284,7 @@ pub struct MachineHelpSummary {
 #[serde(untagged)]
 pub enum MachineHelpDocument {
     Index(MachineHelpIndex),
-    Command(MachineHelp),
+    Command(Box<MachineHelp>),
 }
 
 pub fn capabilities() -> Result<Value, CliError> {
@@ -1316,9 +1316,9 @@ pub fn machine_help(arguments: &[OsString]) -> Result<MachineHelpDocument, CliEr
         .filter(|metadata| starts_with_path(&tokens, metadata.path))
         .max_by_key(|metadata| metadata.path.len())
     {
-        return Ok(MachineHelpDocument::Command(machine_help_for(
+        return Ok(MachineHelpDocument::Command(Box::new(machine_help_for(
             metadata, selection,
-        )));
+        ))));
     }
 
     let prefix = tokens.iter().map(String::as_str).collect::<Vec<_>>();

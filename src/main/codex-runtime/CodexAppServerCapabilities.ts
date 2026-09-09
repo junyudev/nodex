@@ -10,17 +10,17 @@ const NON_NUMERIC_IDENTIFIER = "(?:\\d*[A-Za-z-][0-9A-Za-z-]*)";
 const PRERELEASE_IDENTIFIER = `(?:${NUMERIC_IDENTIFIER}|${NON_NUMERIC_IDENTIFIER})`;
 const PRERELEASE = `${PRERELEASE_IDENTIFIER}(?:\\.${PRERELEASE_IDENTIFIER})*`;
 const BUILD = "[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*";
-const SEMANTIC_VERSION = `${NUMERIC_IDENTIFIER}\\.${NUMERIC_IDENTIFIER}\\.${NUMERIC_IDENTIFIER}(?:-${PRERELEASE})?(?:\\+${BUILD})?`;
+const SEMANTIC_VERSION_PATTERN_SOURCE = `${NUMERIC_IDENTIFIER}\\.${NUMERIC_IDENTIFIER}\\.${NUMERIC_IDENTIFIER}(?:-${PRERELEASE})?(?:\\+${BUILD})?`;
 
-const EXACT_SEMANTIC_VERSION = new RegExp(`^(${SEMANTIC_VERSION})$`, "u");
+const EXACT_SEMANTIC_VERSION_PATTERN = new RegExp(`^(${SEMANTIC_VERSION_PATTERN_SOURCE})$`, "u");
 // initialize.userAgent is generated as originator/server-version, where originator is the
 // client's name, not a fixed Codex product name. Only inspect its leading product token.
-const ORIGINATOR_USER_AGENT_VERSION = new RegExp(
-  `^[^/();\\r\\n]+/v?(${SEMANTIC_VERSION})(?=$|[\\s;)])`,
+const ORIGINATOR_USER_AGENT_VERSION_PATTERN = new RegExp(
+  `^[^/();\\r\\n]+/v?(${SEMANTIC_VERSION_PATTERN_SOURCE})(?=$|[\\s;)])`,
   "u",
 );
-const CODEX_USER_AGENT_VERSION = new RegExp(
-  `(?:^|[\\s;(])(?:Codex Desktop|codex-cli|codex_cli_rs|codex-app-server)[/\\s]+v?(${SEMANTIC_VERSION})(?=$|[\\s;)])`,
+const CODEX_USER_AGENT_VERSION_PATTERN = new RegExp(
+  `(?:^|[\\s;(])(?:Codex Desktop|codex-cli|codex_cli_rs|codex-app-server)[/\\s]+v?(${SEMANTIC_VERSION_PATTERN_SOURCE})(?=$|[\\s;)])`,
   "iu",
 );
 
@@ -105,7 +105,7 @@ export class CodexAppServerCapabilities extends Context.Service<
 >()("nodex/main/codex-runtime/CodexAppServerCapabilities") {}
 
 const parseSemanticVersion = (value: string): ParsedSemanticVersion | null => {
-  const match = EXACT_SEMANTIC_VERSION.exec(value);
+  const match = EXACT_SEMANTIC_VERSION_PATTERN.exec(value);
   if (!match) return null;
 
   const coreAndPrerelease = value.split("+", 1)[0]!;
@@ -174,12 +174,12 @@ export function extractCodexAppServerVersion(userAgent: string | null | undefine
   const normalized = userAgent?.trim();
   if (!normalized) return null;
 
-  const exact = EXACT_SEMANTIC_VERSION.exec(normalized);
+  const exact = EXACT_SEMANTIC_VERSION_PATTERN.exec(normalized);
   if (exact?.[1]) return exact[1];
 
   return (
-    ORIGINATOR_USER_AGENT_VERSION.exec(normalized)?.[1] ??
-    CODEX_USER_AGENT_VERSION.exec(normalized)?.[1] ??
+    ORIGINATOR_USER_AGENT_VERSION_PATTERN.exec(normalized)?.[1] ??
+    CODEX_USER_AGENT_VERSION_PATTERN.exec(normalized)?.[1] ??
     null
   );
 }

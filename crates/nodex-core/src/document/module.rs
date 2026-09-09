@@ -3712,13 +3712,13 @@ impl OwnedDocumentModule {
                         StoreErrorCode::RevisionConflict,
                         "This edit conflicts with a structural change. A recovery copy is available.",
                         false,
-                    ).with_recovery(CoreErrorRecovery::DocumentRecoveryArtifact {
+                    ).with_recovery(CoreErrorRecovery::DocumentRecoveryArtifact(Box::new(nodex_core_contracts::DocumentRecoveryArtifactReference {
                         artifact_id,
                         document_id: authority.head.id.clone(),
                         store_epoch: StoreEpoch(store_epoch.clone()),
                         generation: authority.head.generation,
                         update_id: job.operation_id.clone(),
-                    }));
+                    }))));
                 }
                 let PreparedUpdate::Apply {
                     file_restore,
@@ -11196,23 +11196,16 @@ mod tests {
             "{}",
             recovery.message
         );
-        let CoreErrorRecovery::DocumentRecoveryArtifact {
-            ref artifact_id,
-            ref document_id,
-            ref update_id,
-            generation,
-            ..
-        } = recovery.recovery
-        else {
+        let CoreErrorRecovery::DocumentRecoveryArtifact(ref artifact) = recovery.recovery else {
             panic!("Structural rejection must include typed recovery evidence");
         };
-        assert!(artifact_id.starts_with("document-recovery:"));
-        assert_eq!(document_id, DOCUMENT_ID);
-        assert_eq!(update_id, "update:stale-across-barrier");
-        assert_eq!(generation, 1);
+        assert!(artifact.artifact_id.starts_with("document-recovery:"));
+        assert_eq!(artifact.document_id, DOCUMENT_ID);
+        assert_eq!(artifact.update_id, "update:stale-across-barrier");
+        assert_eq!(artifact.generation, 1);
         let artifact_read = OwnedDocumentRead::RecoveryArtifact {
             document_id: DOCUMENT_ID.to_owned(),
-            artifact_id: artifact_id.clone(),
+            artifact_id: artifact.artifact_id.clone(),
             store_epoch: StoreEpoch(STORE_EPOCH.to_owned()),
             generation: 1,
         };
@@ -11518,7 +11511,7 @@ mod tests {
         assert_eq!(recovery.code, CoreErrorCode::RevisionConflict);
         assert!(matches!(
             recovery.recovery,
-            CoreErrorRecovery::DocumentRecoveryArtifact { .. }
+            CoreErrorRecovery::DocumentRecoveryArtifact(_)
         ));
         seeded
             .kernel

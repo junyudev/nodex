@@ -8276,39 +8276,25 @@
             }
           },
           {
-            "type": "object",
-            "required": [
-              "artifact_id",
-              "document_id",
-              "store_epoch",
-              "generation",
-              "update_id",
-              "kind"
-            ],
-            "properties": {
-              "artifact_id": {
-                "type": "string"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DocumentRecoveryArtifactReference"
               },
-              "document_id": {
-                "type": "string"
-              },
-              "generation": {
-                "type": "integer",
-                "format": "int64"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "document_recovery_artifact"
-                ]
-              },
-              "store_epoch": {
-                "$ref": "#/components/schemas/StoreEpoch"
-              },
-              "update_id": {
-                "type": "string"
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "document_recovery_artifact"
+                    ]
+                  }
+                }
               }
-            }
+            ]
           },
           {
             "type": "object",
@@ -15222,6 +15208,35 @@
           },
           "update_hash": {
             "type": "string"
+          },
+          "update_id": {
+            "type": "string"
+          }
+        }
+      },
+      "DocumentRecoveryArtifactReference": {
+        "type": "object",
+        "description": "Exact coordinates for retrieving a rejected Document update.",
+        "required": [
+          "artifact_id",
+          "document_id",
+          "store_epoch",
+          "generation",
+          "update_id"
+        ],
+        "properties": {
+          "artifact_id": {
+            "type": "string"
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "store_epoch": {
+            "$ref": "#/components/schemas/StoreEpoch"
           },
           "update_id": {
             "type": "string"

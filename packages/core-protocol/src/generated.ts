@@ -2013,16 +2013,10 @@ export interface components {
             /** @enum {string} */
             readonly kind: "database_view_order_preparation";
             readonly view_id: string;
-        } | {
-            readonly artifact_id: string;
-            readonly document_id: string;
-            /** Format: int64 */
-            readonly generation: number;
+        } | (components["schemas"]["DocumentRecoveryArtifactReference"] & {
             /** @enum {string} */
             readonly kind: "document_recovery_artifact";
-            readonly store_epoch: components["schemas"]["StoreEpoch"];
-            readonly update_id: string;
-        } | {
+        }) | {
             /** Format: int32 */
             readonly actual: number;
             /** @enum {string} */
@@ -3771,6 +3765,15 @@ export interface components {
             readonly store_epoch: components["schemas"]["StoreEpoch"];
             readonly update: readonly number[];
             readonly update_hash: string;
+            readonly update_id: string;
+        };
+        /** @description Exact coordinates for retrieving a rejected Document update. */
+        readonly DocumentRecoveryArtifactReference: {
+            readonly artifact_id: string;
+            readonly document_id: string;
+            /** Format: int64 */
+            readonly generation: number;
+            readonly store_epoch: components["schemas"]["StoreEpoch"];
             readonly update_id: string;
         };
         /** @enum {string} */

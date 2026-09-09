@@ -1546,7 +1546,7 @@ mod tests {
         read_only_provenance.authority.turn_id = "turn:read-only".to_owned();
         let mut read_only_plan = plan_request.clone();
         if let LibraryRead::PlanAgentResourceAccess { provenance, .. } = &mut read_only_plan.read {
-            *provenance = Box::new(read_only_provenance.clone());
+            **provenance = read_only_provenance.clone();
         }
         let LibraryReadValue::AgentResourceAccessPlan { value } = module
             .read(&context, read_only_plan)
@@ -6266,7 +6266,7 @@ mod tests {
                 },
             )
             .expect("edit source after wrapper promotion");
-        let source_conflict = library
+        let restored_move = library
             .apply(
                 &context,
                 ModuleApplyRequest {
@@ -6278,8 +6278,17 @@ mod tests {
                     },
                 },
             )
-            .expect_err("source edit must fence Block transfer Undo");
-        assert_eq!(source_conflict.code, CoreErrorCode::RevisionConflict);
+            .expect("Undo preserves unrelated source edits");
+        assert_eq!(
+            restored_move
+                .committed
+                .value
+                .block_transfer_undo
+                .as_ref()
+                .expect("move Undo result")
+                .removed_page_ids,
+            vec![moved_wrapper_page_id.clone()]
+        );
 
         let wrap_intent = LibraryBlockTransferLogicalIntent {
             actor: serde_json::json!({ "kind": "test" }),
@@ -7284,20 +7293,13 @@ mod tests {
                     "SELECT document_id FROM pages WHERE block_id = ?1", [&roots.0], |row| row.get(0),
                 )?;
                 assert_eq!(promoted_child, (promoted_document, 2));
-                let moved_wrapper_body = connection
-                    .prepare(
-                        "SELECT entry.block_id, block.placement_revision \
-                         FROM document_block_index entry \
-                         JOIN blocks block ON block.id = entry.block_id \
-                         WHERE entry.document_id = (SELECT document_id FROM pages WHERE block_id = ?1) ORDER BY entry.ordinal",
-                    )?
-                    .query_map([moved_wrapper_page_id], |row| {
-                        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-                    })?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
                 assert_eq!(
-                    moved_wrapper_body,
-                    vec![(roots.2.clone(), 2), (MOVE_WRAP_CHILD.to_owned(), 2)],
+                    connection.query_row(
+                        "SELECT lifecycle FROM blocks WHERE id = ?1",
+                        [moved_wrapper_page_id],
+                        |row| row.get::<_, String>(0),
+                    )?,
+                    "deleted"
                 );
                 let move_wrapper_source_blocks = connection
                     .prepare(
@@ -7308,7 +7310,7 @@ mod tests {
                     .collect::<rusqlite::Result<Vec<_>>>()?;
                 assert_eq!(
                     move_wrapper_source_blocks,
-                    vec![MOVE_WRAP_SIBLING.to_owned()],
+                    vec![roots.2.clone(), MOVE_WRAP_CHILD.to_owned(), MOVE_WRAP_SIBLING.to_owned()],
                 );
                 let move_wrapper_source_tree = connection.query_row(
                     "SELECT block_tree_json FROM document_materializations WHERE document_id = ?1",
