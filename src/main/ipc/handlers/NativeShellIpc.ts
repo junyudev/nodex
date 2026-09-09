@@ -33,6 +33,7 @@ const menuTemplate = (
   onSelect: (id: string) => void,
   rasterizedIcons: ReadonlyMap<string, string>,
   scaleFactor: number,
+  platform: string,
 ): MenuItemConstructorOptions[] =>
   items.map((item) => {
     if (item.type === "separator") return { type: "separator" };
@@ -48,7 +49,7 @@ const menuTemplate = (
               )
             : undefined
         : undefined;
-    if (process.platform === "darwin" && item.iconKey) icon?.setTemplateImage(true);
+    if (platform === "darwin" && item.iconKey) icon?.setTemplateImage(true);
     const base = {
       id: item.id,
       label: item.label,
@@ -61,7 +62,7 @@ const menuTemplate = (
     if (item.type === "submenu") {
       return {
         ...base,
-        submenu: menuTemplate(item.submenu, onSelect, rasterizedIcons, scaleFactor),
+        submenu: menuTemplate(item.submenu, onSelect, rasterizedIcons, scaleFactor, platform),
       };
     }
     if (item.type === "checkbox") {
@@ -214,6 +215,7 @@ export const live: Layer.Layer<
                     },
                     rasterizedIcons,
                     scaleFactor,
+                    config.platform,
                   ),
                 );
                 menu.popup({

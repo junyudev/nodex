@@ -43,15 +43,15 @@ it.effect("owns trusted window ingress and validates new-window requests", () =>
     yield* Layer.buildWithScope(
       live({
         showEmojiPanel: () => true,
-        runtimeCapabilities: {
-          enabledDevelopmentFeatures: ["database-page-reorder-menu"],
-        },
       }).pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(ApplicationWindowRuntime, applicationWindows),
             Layer.succeed(ElectronIpc, ipc),
-            mainConfigLayer({ rendererUrl: "http://localhost:5173" }),
+            mainConfigLayer({
+              rendererUrl: "http://localhost:5173",
+              environment: { NODEX_DEV_ENABLED_FEATURES: "database-page-reorder-menu" },
+            }),
             Layer.succeed(WindowRuntime, windows),
             Layer.succeed(
               ApplicationMenuRuntime,

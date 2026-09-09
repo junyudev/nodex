@@ -2,10 +2,10 @@ import { describe, expect, test } from "vitest";
 import {
   CodexRendererConversationRegistry,
   makeCodexRendererConversationRegistryState,
-} from "../../codex-application/CodexRendererConversationRegistry";
-import type { ConversationEntityState } from "../../codex-application/internal/ConversationEntityState";
-import { ConversationEntityMap } from "../../codex-application/internal/ConversationEntityMap";
-import { applyCodexHistoryResidencyPins } from "./CodexRendererIpc";
+} from "./CodexRendererConversationRegistry";
+import type { ConversationEntityState } from "./internal/ConversationEntityState";
+import { ConversationEntityMap } from "./internal/ConversationEntityMap";
+import { applyCodexHistoryResidencyPins } from "./CodexRendererConversationCoordinator";
 
 function makeHarness() {
   const calls: unknown[] = [];
@@ -28,7 +28,7 @@ function makeHarness() {
   return { calls, conversations, rendererConversations };
 }
 
-describe("Codex history residency pin IPC", () => {
+describe("Codex renderer history residency pins", () => {
   test("admits a bounded owner viewport and preserves the topology generation fence", () => {
     const harness = makeHarness();
     const result = applyCodexHistoryResidencyPins({

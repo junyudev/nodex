@@ -42,7 +42,9 @@ export const live = (
         (() => {
           try {
             return {
-              enabledDevelopmentFeatures: [...parseDevelopmentFeatureEnvironment(process.env)],
+              enabledDevelopmentFeatures: [
+                ...parseDevelopmentFeatureEnvironment(config.environment),
+              ],
             } satisfies AppRuntimeCapabilities;
           } catch {
             return { enabledDevelopmentFeatures: [] } satisfies AppRuntimeCapabilities;

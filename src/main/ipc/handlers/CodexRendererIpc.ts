@@ -11,17 +11,12 @@ import {
   parseCodexUserInputAutoResolutionActivityInput,
   parseCodexUserInputAutoResolutionTarget,
 } from "../../../shared/codex-user-input-auto-resolution";
-import {
-  parseCodexHistoryResidencyPinsInput,
-  type CodexHistoryResidencyPinsInput,
-  type CodexHistoryResidencyPinsResult,
-} from "../../../shared/codex-history-residency-pins";
+import type { CodexHistoryResidencyPinsInput } from "../../../shared/codex-history-residency-pins";
 import { MainConfig } from "../../app/MainConfig";
 import { CodexAppProtocolTools } from "../../codex-application/CodexAppProtocolTools";
 import { CodexRendererConversationCoordinator } from "../../codex-application/CodexRendererConversationCoordinator";
 import { CodexRendererConversationRegistry } from "../../codex-application/CodexRendererConversationRegistry";
 import { CodexUserInputAutoResolution } from "../../codex-application/CodexUserInputAutoResolution";
-import { ConversationEntityMap } from "../../codex-application/internal/ConversationEntityMap";
 import type { RendererClientWebContents } from "../../codex/renderer-client-runtime-contracts";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -57,43 +52,11 @@ export const routeRendererDeliveryAcknowledgment = (
     Effect.catch(() => Effect.void),
   );
 
-export const applyCodexHistoryResidencyPins = (input: {
-  readonly rawInput: unknown;
-  readonly clientId: string;
-  readonly conversations: ConversationEntityMap["Service"];
-  readonly rendererConversations: CodexRendererConversationRegistry["Service"];
-}): CodexHistoryResidencyPinsResult => {
-  const pins = parseCodexHistoryResidencyPinsInput(input.rawInput);
-  if (!pins) return { status: "invalid" };
-  const isCleanup = pins.turnIds.length === 0 && pins.islandIds.length === 0;
-  if (!isCleanup) {
-    if (input.rendererConversations.getOwnerClientId(pins.threadId) !== input.clientId) {
-      return { status: "notOwner" };
-    }
-    if (!input.rendererConversations.isClientPresenting(pins.threadId, input.clientId)) {
-      return { status: "notPresenting" };
-    }
-  }
-  const conversation = input.conversations.current(pins.threadId);
-  if (!conversation) return { status: "notLoaded" };
-  if (conversation.generation !== pins.expectedConversationGeneration) {
-    return { status: "staleGeneration" };
-  }
-  return conversation.setHistoryResidencyPins({
-    clientId: input.clientId,
-    expectedTopologyGeneration: pins.expectedTopologyGeneration,
-    expectedHistoryMutationRevision: pins.expectedHistoryMutationRevision,
-    turnIds: pins.turnIds,
-    islandIds: pins.islandIds,
-  });
-};
-
 export const live: Layer.Layer<
   never,
   never,
   | CodexRendererConversationCoordinator
   | CodexRendererConversationRegistry
-  | ConversationEntityMap
   | CodexAppProtocolTools
   | CodexUserInputAutoResolution
   | ElectronIpc
@@ -107,7 +70,6 @@ export const live: Layer.Layer<
     const coordinator = yield* CodexRendererConversationCoordinator;
     const codexAppTools = yield* CodexAppProtocolTools;
     const rendererConversations = yield* CodexRendererConversationRegistry;
-    const conversations = yield* ConversationEntityMap;
     const userInputAutoResolution = yield* CodexUserInputAutoResolution;
     const windows = yield* WindowRuntime;
     const rendererClients = yield* RendererClientRuntime;
@@ -202,14 +164,7 @@ export const live: Layer.Layer<
       "codex:thread:history-residency-pins:set",
       (event, input: CodexHistoryResidencyPinsInput) =>
         authorize(event).pipe(
-          Effect.map((clientId) =>
-            applyCodexHistoryResidencyPins({
-              rawInput: input,
-              clientId,
-              conversations,
-              rendererConversations,
-            }),
-          ),
+          Effect.map((clientId) => coordinator.setHistoryResidencyPins(clientId, input)),
         ),
     );
     yield* handleControl("codex:thread-owner:stream-state:publish", (event, input) =>
