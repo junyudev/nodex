@@ -94,6 +94,31 @@ it.effect("each drain waits only for the notification prefix captured by that ca
   }),
 );
 
+it.effect("coalesces an ACK burst without losing any captured Thread prefix", () =>
+  Effect.gen(function* () {
+    const runtime = yield* make({ timeout: "1 second" });
+    const threadIds = Array.from({ length: 64 }, (_, index) => `thread-${index}`);
+    const waits = yield* Effect.forEach(threadIds, (threadId) => {
+      runtime.next(threadId);
+      return Effect.forkChild(runtime.awaitCurrent(threadId), { startImmediately: true });
+    });
+
+    // No Effect yield between these acknowledgements: a single pending wakeup
+    // must cover every Thread rather than retaining one payload per ACK.
+    for (const threadId of threadIds) assert.isTrue(runtime.ack(threadId, 1));
+    yield* Effect.forEach(waits, Fiber.join, { discard: true });
+
+    runtime.next(threadIds[0]);
+    const later = yield* Effect.forkChild(runtime.awaitCurrent(threadIds[0]), {
+      startImmediately: true,
+    });
+    yield* Effect.yieldNow;
+    assert.isUndefined(later.pollUnsafe());
+    assert.isTrue(runtime.ack(threadIds[0], 2));
+    yield* Fiber.join(later);
+  }),
+);
+
 it.effect("reports the captured prefix and actual ACK on timeout without forging consumption", () =>
   Effect.gen(function* () {
     const runtime = yield* make({ timeout: "1 second" });

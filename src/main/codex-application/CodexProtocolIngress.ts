@@ -54,8 +54,11 @@ export const runBoundedCausalIngress = <A, E, R>(input: {
   readonly capacity: number;
 }): Effect.Effect<void, E, R> =>
   Effect.gen(function* () {
-    const messages = yield* Queue.unbounded<CausalIngressMessage<A>>();
-    const permits = yield* Semaphore.make(Math.max(1, Math.floor(input.capacity)));
+    const capacity = Math.max(1, Math.floor(input.capacity));
+    // Each Enqueue or Completed owns one permit until completion is consumed.
+    // Only SourceEnded is uncharged; backpressure retains the same residency bound.
+    const messages = yield* Queue.bounded<CausalIngressMessage<A>>(capacity + 1);
+    const permits = yield* Semaphore.make(capacity);
     const lanes = new Map<string, CausalIngressLane<A>>();
     let sourceEnded = false;
 
