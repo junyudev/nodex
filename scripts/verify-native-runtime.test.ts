@@ -12,8 +12,14 @@ import {
   isPackagedAppReady,
   parseMacCodeSigningEntitlements,
   removePrivateTemporaryDirectory,
+  resolveNodexNativeCodeObjects,
   selectPackagedSmokeProjectId,
 } from "./verify-native-runtime";
+import { NATIVE_RUNTIME_BINARY_PATHS, parseNativeRuntimeManifest } from "./native-runtime-manifest";
+import {
+  isPreservedBrowserRuntimeVendorCode,
+  isPreservedCodexRuntimeVendorCode,
+} from "./sign-macos-runtime.mjs";
 import {
   acquireIsolatedRunLease,
   markIsolatedRunClaimReady,
@@ -31,6 +37,37 @@ afterEach(() => {
 });
 
 describe("packaged native runtime verification", () => {
+  test("keeps Nodex signature and entitlement verification disjoint from preserved vendor code", () => {
+    const appPath = "/signed/Nodex.app";
+    const manifest = parseNativeRuntimeManifest({
+      schemaVersion: 4,
+      productVersion: "0.2.3",
+      minimumMacOS: "15.0",
+      targetArch: "arm64",
+      targetPlatform: "darwin",
+      rustTarget: "aarch64-apple-darwin",
+      binaries: Object.entries(NATIVE_RUNTIME_BINARY_PATHS).map(([name, bundlePath]) => ({
+        name,
+        bundlePath,
+        file: name,
+        sourceSize: 1,
+        sourceSha256: "a".repeat(64),
+      })),
+    });
+    const codeObjects = resolveNodexNativeCodeObjects(appPath, manifest);
+    expect(codeObjects).toHaveLength(manifest.binaries.length + 1);
+    expect(codeObjects).toContain(
+      path.join(appPath, "Contents/Resources/native/nodex-clipboard.node"),
+    );
+    for (const artifactPath of codeObjects) {
+      expect(isPreservedCodexRuntimeVendorCode(appPath, artifactPath)).toBe(false);
+      expect(isPreservedBrowserRuntimeVendorCode(appPath, artifactPath)).toBe(false);
+    }
+    const ripgrep = path.join(appPath, "Contents/Resources/codex-path/rg");
+    expect(isPreservedCodexRuntimeVendorCode(appPath, ripgrep)).toBe(true);
+    expect(codeObjects).not.toContain(ripgrep);
+  });
+
   test("parses boolean capabilities from codesign entitlement output", () => {
     expect(
       parseMacCodeSigningEntitlements(`

@@ -341,6 +341,11 @@ Computer Use helper. Run deep strict `codesign` verification after restoring
 that closure and resealing Nodex, then require Gatekeeper assessment,
 notarization, stapling, and the architecture-specific runtime probe from the
 extracted final ZIP. Do not replace the vendor teams with the outer Nodex team.
+The Codex package executables, including `codex-path/rg`, are verified against
+the release lock's upstream team by the Codex runtime verifier. The native
+verifier's Nodex signature and entitlement inventory contains only the native
+runtime manifest binaries and Nodex clipboard bridge; it must remain disjoint
+from the signing hook's preserved vendor inventory.
 
 `vp run test:all` remains a compatibility alias for `verify:source`.
 

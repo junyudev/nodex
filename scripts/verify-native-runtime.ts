@@ -30,6 +30,7 @@ import {
   readNativeRuntimeManifest,
   sha256File,
   type NativeRuntimeArchitecture,
+  type NativeRuntimeManifest,
 } from "./native-runtime-manifest";
 import {
   compareMacosVersions,
@@ -375,7 +376,10 @@ const verifySignatures = (
 ): void => {
   const helperApp = join(appPath, "Contents/Helpers/Nodex Service.app");
   const appSignature = signatureDetails(appPath);
-  const nestedSignatures = [...binaryPaths.map(signatureDetails), signatureDetails(helperApp)];
+  const nestedSignatures = [...binaryPaths, helperApp].map((artifactPath) => ({
+    artifactPath,
+    ...signatureDetails(artifactPath),
+  }));
   run("codesign", ["--verify", "--deep", "--strict", "--verbose=2", appPath], "Verify app seal");
   if (!requireDeveloperId) return;
   if (appSignature.adhoc || !appSignature.teamIdentifier) {
@@ -383,7 +387,9 @@ const verifySignatures = (
   }
   for (const signature of nestedSignatures) {
     if (signature.adhoc || signature.teamIdentifier !== appSignature.teamIdentifier) {
-      throw new Error("Native runtime signature is inconsistent with the enclosing Nodex.app");
+      throw new Error(
+        `Native runtime signature for ${signature.artifactPath} has team ${signature.teamIdentifier ?? "<none>"}, expected enclosing Nodex.app team ${appSignature.teamIdentifier}`,
+      );
     }
   }
 };
@@ -1351,6 +1357,15 @@ const launchAppSmoke = async (appPath: string, expectedCoreSha256: string): Prom
   }
 };
 
+/** Vendor tools retain their upstream identity and are verified by verifyCodexRuntime. */
+export const resolveNodexNativeCodeObjects = (
+  appPath: string,
+  manifest: NativeRuntimeManifest,
+): readonly string[] => [
+  ...manifest.binaries.map(({ bundlePath }) => join(appPath, "Contents", bundlePath)),
+  join(appPath, "Contents/Resources/native/nodex-clipboard.node"),
+];
+
 export function verifyPackagedNativeRuntimeStructure(
   options: PackagedNativeRuntimeStructureOptions,
 ): PackagedNativeRuntimeIdentity {
@@ -1398,7 +1413,7 @@ export function verifyPackagedNativeRuntimeStructure(
       `Native runtime manifest is ${manifest.targetArch}, expected ${options.targetArch}`,
     );
   }
-  const nativeBinaryPaths = manifest.binaries.map((binary) => {
+  for (const binary of manifest.binaries) {
     const binaryPath = join(contentsPath, ...binary.bundlePath.split("/"));
     assertRegularExecutable(binaryPath);
     const metadata = statSync(binaryPath);
@@ -1406,16 +1421,14 @@ export function verifyPackagedNativeRuntimeStructure(
       throw new Error(`Native runtime manifest identity mismatch for ${binary.name}`);
     }
     assertMachO(binaryPath, options.targetArch, manifest.minimumMacOS);
-    return binaryPath;
-  });
+  }
   const cliRipgrep = join(contentsPath, "Resources/codex-path/rg");
   assertRegularExecutable(cliRipgrep);
   assertMachOArchitecture(cliRipgrep, options.targetArch);
-  nativeBinaryPaths.push(cliRipgrep);
   const clipboardBridge = join(contentsPath, "Resources/native/nodex-clipboard.node");
   assertRegularExecutable(clipboardBridge);
   assertMachO(clipboardBridge, options.targetArch, manifest.minimumMacOS);
-  nativeBinaryPaths.push(clipboardBridge);
+  const nativeBinaryPaths = resolveNodexNativeCodeObjects(appPath, manifest);
   const sparkleCodeObjects = verifySparkleRuntime(appPath, options);
   const computerUseInfo = join(
     contentsPath,
