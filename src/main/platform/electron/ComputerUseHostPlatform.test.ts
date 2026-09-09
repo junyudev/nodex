@@ -169,6 +169,7 @@ it.effect("restores the prior canonical helper when post-swap verification fails
   }),
 );
 
+/* oxlint-disable effecttsgo/async-function, effecttsgo/process-env -- This boundary test launches real child processes and verifies ambient environment isolation. */
 test("launches native helpers with isolated Profile and locked runtime environments", async () => {
   const root = makeTemporaryRoot();
   const addonPath = path.join(root, "addon.cjs");
@@ -211,3 +212,5 @@ module.exports.spawnComputerUseService = async (executable) => {
   assert.strictEqual(process.env.CODEX_HOME, inheritedHome);
   assert.strictEqual(process.env.CODEX_CLI_PATH, inheritedCli);
 });
+
+/* oxlint-enable effecttsgo/async-function, effecttsgo/process-env */

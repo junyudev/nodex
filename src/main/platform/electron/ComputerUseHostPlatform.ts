@@ -337,6 +337,7 @@ addon.spawnComputerUseService(process.argv[2]).then((pid) => {
 }).catch(() => { process.exitCode = 1; });
 `;
 
+// oxlint-disable-next-line effecttsgo/async-function -- Native process and receipt-file acquisition is a Node platform boundary.
 export async function spawnComputerUseServiceInContext(
   addonPath: string,
   executablePath: string,
