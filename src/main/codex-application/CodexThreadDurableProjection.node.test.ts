@@ -6,13 +6,15 @@ import { CoreModuleResponseError } from "../core-client/core-client";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
+import type { CodexCanonicalConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
+import { CodexAutoThreadTitle } from "./CodexAutoThreadTitle";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import {
   CodexSidebarSyncRuntime,
   type CodexSidebarSyncNotification,
 } from "./CodexSidebarSyncRuntime";
-import { make } from "./CodexThreadDurableProjection";
+import { make, resolveCodexThreadAddedTitlePrompt } from "./CodexThreadDurableProjection";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
 type CoreThread = Extract<
@@ -56,7 +58,7 @@ const coreThread = (overrides: Partial<CoreThread> = {}): CoreThread =>
     ...overrides,
   }) satisfies CoreThread;
 
-const appThread = (turns: readonly Turn[]): Thread => ({
+const appThread = (turns: readonly Turn[], overrides: Partial<Thread> = {}): Thread => ({
   model: null,
   reasoningEffort: null,
   id: "thread-a",
@@ -85,6 +87,7 @@ const appThread = (turns: readonly Turn[]): Thread => ({
   agentRole: null,
   gitInfo: null,
   name: "Thread A",
+  ...overrides,
   turns: [...turns],
 });
 
@@ -101,6 +104,38 @@ const missingThread = (threadId: string) =>
       recovery: { kind: "none" },
     }),
   });
+
+const noOpAutoTitle = CodexAutoThreadTitle.of({
+  scheduleFirstTurn: () => Effect.void,
+  scheduleAddedThread: () => Effect.void,
+});
+
+it("uses a child spawn prompt and never guesses from an unavailable parent", () => {
+  const child = appThread([], {
+    id: "child-thread",
+    parentThreadId: "parent-thread",
+    preview: "child preview",
+  });
+  const parentCanonical = {
+    turns: [
+      {
+        items: [
+          {
+            type: "collabAgentToolCall",
+            receiverThreadIds: ["child-thread"],
+            prompt: "Investigate the parser regression",
+          },
+        ],
+      },
+    ],
+  } as unknown as CodexCanonicalConversationState;
+
+  assert.strictEqual(
+    resolveCodexThreadAddedTitlePrompt(child, parentCanonical),
+    "Investigate the parser regression",
+  );
+  assert.strictEqual(resolveCodexThreadAddedTitlePrompt(child, null), "");
+});
 
 it.effect(
   "accepts status that arrives before Thread identity without issuing a partial update",
@@ -124,6 +159,7 @@ it.effect(
           CodexApplicationEventHub,
           CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
         ),
+        Effect.provideService(CodexAutoThreadTitle, noOpAutoTitle),
         Effect.provideService(
           CodexConversationProjection,
           CodexConversationProjection.of({} as CodexConversationProjection["Service"]),
@@ -197,6 +233,7 @@ it.effect("serially commits archive and delete observations before scheduling si
           publish: (event) => events.push(event),
         }),
       ),
+      Effect.provideService(CodexAutoThreadTitle, noOpAutoTitle),
       Effect.provideService(
         CodexConversationProjection,
         CodexConversationProjection.of({} as CodexConversationProjection["Service"]),
@@ -296,6 +333,7 @@ it.effect("invalidates the durable root after deleting a nested Subagent", () =>
           publish: (event) => events.push(event),
         }),
       ),
+      Effect.provideService(CodexAutoThreadTitle, noOpAutoTitle),
       Effect.provideService(
         CodexConversationProjection,
         CodexConversationProjection.of({} as CodexConversationProjection["Service"]),
@@ -344,6 +382,9 @@ it.effect("never treats thread/started as a history transport", () =>
   Effect.gen(function* () {
     const stored = coreThread();
     const hydrated: Array<Parameters<CodexConversationProjection["Service"]["hydrate"]>[0]> = [];
+    const addedTitleInputs: Array<
+      Parameters<CodexAutoThreadTitle["Service"]["scheduleAddedThread"]>[0]
+    > = [];
     const workspace: CoreModuleClients["workspace"] = {
       read: () => Effect.succeed({ value: { kind: "thread", thread: stored } } as never),
       apply: () => Effect.succeed({} as never),
@@ -352,6 +393,13 @@ it.effect("never treats thread/started as a history transport", () =>
       Effect.provideService(
         CodexApplicationEventHub,
         CodexApplicationEventHub.of({ events: Stream.empty, publish: () => undefined }),
+      ),
+      Effect.provideService(
+        CodexAutoThreadTitle,
+        CodexAutoThreadTitle.of({
+          scheduleFirstTurn: () => Effect.void,
+          scheduleAddedThread: (input) => Effect.sync(() => addedTitleInputs.push(input)),
+        }),
       ),
       Effect.provideService(
         CodexConversationProjection,
@@ -414,5 +462,8 @@ it.effect("never treats thread/started as a history transport", () =>
     assert.strictEqual(hydrated[0]?.pagination.loadedTurnCount, 0);
     assert.isFalse(hydrated[0]?.pagination.hasLoadedOldest);
     assert.strictEqual(hydrated[0]?.pagination.itemsView, "notLoaded");
+    assert.deepEqual(addedTitleInputs, [
+      { threadId: "thread-a", prompt: "notification preview", cwd: "/repo", serviceName: null },
+    ]);
   }),
 );

@@ -16,6 +16,7 @@ import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { CodexAutomationRunAcceptance } from "./CodexAutomationRunAcceptance";
+import { CodexAutoThreadTitle } from "./CodexAutoThreadTitle";
 import { CodexConversationMaterialization } from "./CodexConversationMaterialization";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexTurnAuthority } from "./CodexTurnAuthority";
@@ -186,6 +187,13 @@ const makeHarness = (input: {
     } as unknown as CoreModuleClients);
     const commands: CodexTurnCommandsService = yield* make.pipe(
       Effect.provideService(CodexAutomationRunAcceptance, automation),
+      Effect.provideService(
+        CodexAutoThreadTitle,
+        CodexAutoThreadTitle.of({
+          scheduleFirstTurn: () => Effect.void,
+          scheduleAddedThread: () => Effect.void,
+        }),
+      ),
       Effect.provideService(CodexConversationMaterialization, materialization),
       Effect.provideService(CodexConversationProjection, projection),
       Effect.provideService(CodexGateway, gateway),

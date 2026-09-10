@@ -11,6 +11,7 @@ import type { TurnStartResponse } from "@nodex/codex-app-server-protocol/v2/Turn
 import type {
   CodexCanonicalLiveTurnParams,
   CodexLiveFileAttachment,
+  CodexPromptTextAttachmentInput,
   CodexRendererConversationResumeResult,
   CodexReviewDiffCommentAttachment,
   CodexThreadGoalDraftInput,
@@ -41,6 +42,10 @@ export interface CodexFreshThreadLaunch {
     CodexReviewDiffCommentAttachment
   >;
   readonly turnStartParams: CodexFreshThreadLaunchTurnStartParams;
+  readonly autoTitlePrompt: string;
+  readonly autoTitleServiceName?: string | null;
+  readonly autoTitlePastedTextAttachments?: readonly CodexPromptTextAttachmentInput[];
+  readonly skipAutoTitleGeneration: boolean;
   readonly verifiedBuiltinFullAccess: boolean;
   readonly executionReadOnly: boolean;
   readonly goalObjective: string;
@@ -191,8 +196,8 @@ export const make: Effect.Effect<
 
   const startFirstTurn = (launch: CodexFreshThreadLaunch) => {
     const { attachments: _attachments, ...request } = launch.turnStartParams;
-    return turns
-      .acceptPreparedRendererTurn({
+    return Effect.gen(function* () {
+      const response = yield* turns.acceptPreparedRendererTurn({
         ...(launch.presentationClaim ? { presentationClaim: launch.presentationClaim } : {}),
         threadId: launch.threadId,
         projectId: launch.projectId,
@@ -201,13 +206,18 @@ export const make: Effect.Effect<
         verifiedBuiltinFullAccess: launch.verifiedBuiltinFullAccess,
         executionReadOnly: launch.executionReadOnly,
         startedAtMs: launch.startedAt,
-      })
-      .pipe(
-        Effect.tap(() => completion.accepted(launch)),
-        Effect.onExit((exit) =>
-          Exit.isFailure(exit) ? Effect.sync(() => completion.failed(launch)) : Effect.void,
-        ),
-      );
+        autoTitlePrompt: launch.autoTitlePrompt,
+        serviceName: launch.autoTitleServiceName,
+        autoTitlePastedTextAttachments: launch.autoTitlePastedTextAttachments,
+        skipAutoTitleGeneration: launch.skipAutoTitleGeneration,
+      });
+      yield* completion.accepted(launch);
+      return response;
+    }).pipe(
+      Effect.onExit((exit) =>
+        Exit.isFailure(exit) ? Effect.sync(() => completion.failed(launch)) : Effect.void,
+      ),
+    );
   };
 
   const lookup = (

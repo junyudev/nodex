@@ -85,7 +85,7 @@ const preparedPrompt = (
     pendingInputItems: [],
     fileAttachments: [...entry.startConversationParamsInput.fileAttachments],
     addedFiles: [...entry.startConversationParamsInput.addedFiles],
-    pastedTextAttachments: [],
+    pastedTextAttachments: [...(entry.startConversationParamsInput.pastedTextAttachments ?? [])],
     commentAttachments: [...entry.startConversationParamsInput.commentAttachments],
     agentConfigs: [],
   };
@@ -336,6 +336,11 @@ export const make: Effect.Effect<
         presentationClaim,
         clientUserMessageId: entry.firstSubmission.clientUserMessageId,
         preparedPrompt: preparedPrompt(entry, prompt),
+        autoTitlePastedTextAttachments: [
+          ...(entry.startConversationParamsInput.pastedTextAttachments ?? []),
+          ...(entry.threadGoalDraft?.pastedTextAttachments ?? []),
+        ],
+        skipAutoTitleGeneration: entry.skipAutoTitleGeneration === true || initialTitle.length > 0,
         model:
           executionProfile?.modelId ??
           params.model ??
@@ -346,6 +351,9 @@ export const make: Effect.Effect<
         collaborationMode: collaborationMode(params.collaborationMode),
         permissionMode: permissionMode(params.agentMode),
         agentConfigPermissionMode: params.agentConfigPermissionMode,
+        ...(entry.skipAutoTitleGeneration === undefined
+          ? {}
+          : { skipAutoTitleGeneration: entry.skipAutoTitleGeneration }),
         ...(worktreeInit ? { worktreeInit } : {}),
       });
       if (!turn) {

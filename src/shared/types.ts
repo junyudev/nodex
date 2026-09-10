@@ -2995,6 +2995,8 @@ export type CodexSafetyBufferingState = Pick<
 export interface CodexTurnSummary {
   threadId: string;
   turnId: string | null;
+  /** Stable local occurrence identity while a nullable optimistic Turn binds to a server id. */
+  entityKey?: string;
   status: CodexTurnStatus;
   errorMessage?: string;
   diff?: string;

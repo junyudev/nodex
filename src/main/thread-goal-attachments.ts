@@ -11,6 +11,7 @@ import type {
   CodexThreadGoalPastedTextAttachmentInput,
 } from "../shared/types";
 import { COMPOSER_PASTED_TEXT_MAX_BYTES } from "../shared/pasted-text-attachments";
+import { CODEX_PASTED_TEXT_EXCERPT_MAX_CHARS } from "../shared/codex-thread-title";
 
 const THREAD_GOAL_ATTACHMENTS_DIR = "attachments";
 const PASTED_TEXT_ATTACHMENT_FILE = "pasted-text.txt";
@@ -18,7 +19,6 @@ const PASTED_TEXT_ATTACHMENT_REGISTRY_FILE = "pasted-text-attachments.json";
 const PASTED_TEXT_ATTACHMENT_LABEL = "Pasted text.txt";
 const PASTED_TEXT_FALLBACK_PREVIEW = "Pasted text";
 const PASTED_TEXT_PREVIEW_MAX_CODE_UNITS = 80;
-const PASTED_TEXT_EXCERPT_MAX_CODE_UNITS = 2000;
 const THREAD_GOAL_OBJECTIVE_FILE = "goal-objective.md";
 const THREAD_GOAL_OBJECTIVE_PREFIX = "Read the Codex goal objective file at ";
 const THREAD_GOAL_OBJECTIVE_SUFFIX = " before continuing.";
@@ -105,7 +105,7 @@ export class PastedTextAttachmentManager {
       data: Buffer.from(input.text, "utf8"),
       filename: PASTED_TEXT_ATTACHMENT_FILE,
       label: input.label ?? PASTED_TEXT_ATTACHMENT_LABEL,
-      textExcerpt: input.text.trim().slice(0, PASTED_TEXT_EXCERPT_MAX_CODE_UNITS),
+      textExcerpt: input.text.trim().slice(0, CODEX_PASTED_TEXT_EXCERPT_MAX_CHARS),
     });
 
     return {

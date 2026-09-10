@@ -1870,18 +1870,34 @@ function applyOwnerCanonicalTurnProjection(
 
     const targetTurnId = afterTurn.protocol.id;
     const sourceTurnId = beforeTurn ? beforeTurn.protocol.id : targetTurnId;
-    const sourceTurnKey = buildCodexTurnOccurrenceKey(sourceTurnId, turnIndex);
-    const targetTurnKey = buildCodexTurnOccurrenceKey(targetTurnId, turnIndex);
+    const sourceTurnKey = buildCodexTurnOccurrenceKey(
+      sourceTurnId,
+      turnIndex,
+      beforeTurn?.sidecar.entityKey,
+    );
+    const targetTurnKey = buildCodexTurnOccurrenceKey(
+      targetTurnId,
+      turnIndex,
+      afterTurn.sidecar.entityKey,
+    );
     const indexedOwnerTurn = nextConversation.turns[turnIndex];
     let ownerTurnIndex = indexedOwnerTurn ? turnIndex : -1;
     if (ownerTurnIndex < 0) {
       const boundIds = new Set(
         [targetTurnId, sourceTurnId].filter((turnId): turnId is string => turnId !== null),
       );
-      if (boundIds.size > 0) {
+      const boundEntityKeys = new Set(
+        [afterTurn.sidecar.entityKey, beforeTurn?.sidecar.entityKey].filter(
+          (entityKey): entityKey is string => entityKey !== undefined,
+        ),
+      );
+      if (boundIds.size > 0 || boundEntityKeys.size > 0) {
         ownerTurnIndex = nextConversation.turns.findIndex((turn) => {
           const turnId = getOwnerTurnId(turn);
-          return turnId !== null && boundIds.has(turnId);
+          return (
+            (turn.entityKey !== undefined && boundEntityKeys.has(turn.entityKey)) ||
+            (turnId !== null && boundIds.has(turnId))
+          );
         });
       }
       if (ownerTurnIndex < 0) {
@@ -1977,6 +1993,9 @@ function applyOwnerCanonicalTurnProjection(
     const nextTurn: CodexConversationTurn = {
       ...currentTurn,
       turnId: targetTurnId,
+      ...(afterTurn.sidecar.entityKey === undefined
+        ? {}
+        : { entityKey: afterTurn.sidecar.entityKey }),
       status: afterTurn.protocol.status,
       errorMessage: afterTurn.protocol.error?.message ?? undefined,
       diff: afterTurn.sidecar.diff ?? undefined,
@@ -2410,7 +2429,7 @@ function materializeOwnerCanonicalTurn(
 
   const projection = applyCodexLifecycleProjectionDiff({
     threadId: currentTurn.threadId,
-    turnKey: buildCodexTurnOccurrenceKey(turnId, turnIndex),
+    turnKey: buildCodexTurnOccurrenceKey(turnId, turnIndex, canonicalTurn.sidecar.entityKey),
     beforeTurn: previousCanonicalTurn,
     afterTurn: canonicalTurn,
     currentViews: currentTurn.items.map(projectConversationItemToIdentityView),
@@ -2433,6 +2452,9 @@ function materializeOwnerCanonicalTurn(
   return {
     ...currentTurn,
     turnId,
+    ...(canonicalTurn.sidecar.entityKey === undefined
+      ? {}
+      : { entityKey: canonicalTurn.sidecar.entityKey }),
     status: canonicalTurn.protocol.status,
     errorMessage: canonicalTurn.protocol.error?.message ?? undefined,
     diff: canonicalTurn.sidecar.diff ?? undefined,
@@ -2478,6 +2500,9 @@ function buildOwnerCanonicalTurnPlaceholder(
   return {
     threadId,
     turnId: canonicalTurn.protocol.id,
+    ...(canonicalTurn.sidecar.entityKey === undefined
+      ? {}
+      : { entityKey: canonicalTurn.sidecar.entityKey }),
     status: canonicalTurn.protocol.status,
     errorMessage: canonicalTurn.protocol.error?.message ?? undefined,
     itemIds: [],
@@ -5931,6 +5956,7 @@ export class CodexAppServerManager {
       threadId,
       clientUserMessageId,
       canonicalParams,
+      optimisticNotifyMode: "sync",
       request: () =>
         this.ownerAppServerRequestClient.startTurn(threadId, {
           presentationTicket,

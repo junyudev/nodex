@@ -49,6 +49,14 @@ import {
   make as makeCodexThreadTitlePersistence,
 } from "../codex-application/CodexThreadTitlePersistence";
 import {
+  CodexThreadDescriptionPersistence,
+  make as makeCodexThreadDescriptionPersistence,
+} from "../codex-application/CodexThreadDescriptionPersistence";
+import {
+  CodexAutoThreadTitle,
+  make as makeCodexAutoThreadTitle,
+} from "../codex-application/CodexAutoThreadTitle";
+import {
   CodexConversationHistoryRuntime,
   make as makeCodexConversationHistoryRuntime,
 } from "../codex-application/CodexConversationHistoryRuntime";
@@ -426,6 +434,18 @@ const titlePersistence = Layer.effect(
   CodexThreadTitlePersistence,
   makeCodexThreadTitlePersistence,
 ).pipe(Layer.provideMerge(foundations));
+const threadDescriptions = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    return Layer.succeed(
+      CodexThreadDescriptionPersistence,
+      makeCodexThreadDescriptionPersistence(makePersistedAtomStore(config.nodexHome)),
+    );
+  }),
+);
+const autoThreadTitle = Layer.effect(CodexAutoThreadTitle, makeCodexAutoThreadTitle).pipe(
+  Layer.provideMerge(Layer.merge(titlePersistence, threadDescriptions)),
+);
 const history = Layer.effect(
   CodexConversationHistoryRuntime,
   makeCodexConversationHistoryRuntime,
@@ -471,7 +491,7 @@ const turnPreparation = Layer.effect(CodexTurnPreparation, makeCodexTurnPreparat
   Layer.provideMerge(Layer.mergeAll(agentConfig, inputAssets)),
 );
 const turnCommands = Layer.effect(CodexTurnCommands, makeCodexTurnCommands).pipe(
-  Layer.provideMerge(turnPreparation),
+  Layer.provideMerge(Layer.merge(turnPreparation, autoThreadTitle)),
 );
 const queuedFollowUps = Layer.effect(CodexQueuedFollowUps, makeCodexQueuedFollowUps).pipe(
   Layer.provideMerge(turnCommands),
@@ -537,7 +557,7 @@ const conversationFork = Layer.effect(CodexConversationFork, makeCodexConversati
 const conversationCreation = Layer.effect(
   CodexConversationCreation,
   makeCodexConversationCreation,
-).pipe(Layer.provideMerge(conversationFork));
+).pipe(Layer.provideMerge(Layer.merge(conversationFork, autoThreadTitle)));
 const pendingWorktrees = Layer.effect(
   CodexPendingWorktreeRuntime,
   makeCodexPendingWorktreeRuntime,
@@ -594,9 +614,11 @@ const sideChatCommands = Layer.effect(CodexSideChatCommands, makeCodexSideChatCo
 const sessionThreadLaunch = Layer.effect(
   CodexSessionThreadLaunch,
   makeCodexSessionThreadLaunch,
-).pipe(Layer.provideMerge(sideChatCommands));
+).pipe(Layer.provideMerge(Layer.merge(sideChatCommands, autoThreadTitle)));
 const protocolTools = Layer.effect(CodexAppProtocolTools, makeCodexAppProtocolTools).pipe(
-  Layer.provideMerge(Layer.merge(sessionThreadLaunch, readThreadHistory)),
+  Layer.provideMerge(
+    Layer.merge(Layer.merge(sessionThreadLaunch, readThreadHistory), threadDescriptions),
+  ),
 );
 const automationInbox = codexAutomationInboxLive.pipe(Layer.provideMerge(protocolTools));
 const oneShotServerRequests = codexOneShotServerRequestsLive.pipe(
@@ -613,7 +635,7 @@ const conversationLifecycle = Layer.effect(
   makeCodexConversationLifecycle,
 ).pipe(Layer.provideMerge(automationTurnCompletion));
 const durableProjection = codexThreadDurableProjectionLive.pipe(
-  Layer.provideMerge(conversationLifecycle),
+  Layer.provideMerge(Layer.merge(conversationLifecycle, autoThreadTitle)),
 );
 const notificationEffects = codexProtocolNotificationEffectsLive.pipe(
   Layer.provideMerge(durableProjection),

@@ -3,10 +3,12 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import type { Thread } from "@nodex/codex-app-server-protocol/v2";
 import {
   createCodexCanonicalHydratedConversationState,
   createCodexCanonicalWorkspacePermissionContext,
 } from "../../shared/codex-conversation-state/codex-conversation-state";
+import type { CodexCanonicalConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { extractCodexThreadSubagentMetadata } from "../../shared/codex-subagent-metadata";
 import type { CodexServerNotification } from "../codex-runtime/CodexApplicationProtocol";
 import { CoreModuleResponseError } from "../core-client/core-client";
@@ -14,6 +16,7 @@ import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
+import { CodexAutoThreadTitle } from "./CodexAutoThreadTitle";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
 import { buildCoreWorkspaceThreadSummary, parseThreadStatus } from "./CodexThreadCatalogProjection";
@@ -102,6 +105,34 @@ const metadataOnlyPagination = () => ({
 });
 
 /**
+ * Mirrors CodexElectron's `onThreadAdded`: a root Thread uses its preview, while a subagent Thread
+ * uses only the spawn prompt that created it. If that parent context is not resident, the reference
+ * implementation intentionally produces no title input instead of guessing from the child preview.
+ */
+export const resolveCodexThreadAddedTitlePrompt = (
+  thread: Pick<Thread, "id" | "parentThreadId" | "preview" | "source">,
+  parentCanonical: CodexCanonicalConversationState | null,
+): string => {
+  const parentThreadId = extractCodexThreadSubagentMetadata(thread).parentThreadId;
+  if (parentThreadId) {
+    if (!parentCanonical) return "";
+    for (const turn of [...parentCanonical.turns].reverse()) {
+      for (const item of turn.items) {
+        if (
+          item.type === "collabAgentToolCall" &&
+          item.receiverThreadIds.includes(thread.id) &&
+          item.prompt?.trim()
+        ) {
+          return item.prompt.trim();
+        }
+      }
+    }
+    return "";
+  }
+  return thread.preview.trim();
+};
+
+/**
  * Owns the durable/sidebar meaning of app-server Thread observations. The caller serializes this
  * Effect in the same per-Thread lane as conversation reduction, so deletion and archival cannot
  * race a late item or turn notification.
@@ -111,12 +142,14 @@ export const make: Effect.Effect<
   never,
   | CodexApplicationEventHub
   | CodexConversationProjection
+  | CodexAutoThreadTitle
   | CodexSidebarSyncRuntime
   | ConversationEntityMap
   | CoreModules
 > = Effect.gen(function* () {
   const events = yield* CodexApplicationEventHub;
   const conversationsProjection = yield* CodexConversationProjection;
+  const autoTitle = yield* CodexAutoThreadTitle;
   const sidebar = yield* CodexSidebarSyncRuntime;
   const conversations = yield* ConversationEntityMap;
   const core = yield* CoreModules;
@@ -207,35 +240,48 @@ export const make: Effect.Effect<
     publishSummary(persisted);
 
     // thread/started is an identity and metadata notification, never a history transport.
-    // A duplicate notification must not replace an already bounded canonical projection.
-    if (conversations.current(id)?.readCanonicalState()) return;
+    // A duplicate notification must not replace an already bounded canonical projection, but it
+    // still participates in the reference onThreadAdded title fallback below.
+    if (!conversations.current(id)?.readCanonicalState()) {
+      const permissions = createCodexCanonicalWorkspacePermissionContext(persisted.writable_roots);
+      const canonical = yield* Effect.try({
+        try: () =>
+          createCodexCanonicalHydratedConversationState(thread, {
+            model: persisted.model_id ?? "",
+            reasoningEffort: persisted.reasoning_effort ?? null,
+            cwd: persisted.cwd || thread.cwd || "/",
+            approvalPolicy: permissions.approvalPolicy,
+            approvalsReviewer: permissions.approvalsReviewer,
+            sandboxPolicy: permissions.sandboxPolicy,
+            activePermissionProfile: permissions.activePermissionProfile,
+            runtimeWorkspaceRoots: [...permissions.runtimeWorkspaceRoots],
+            pendingRequests: conversations.current(id)?.readServerRequests() ?? [],
+            hasUnreadTurn: persisted.has_unread_turn,
+          }),
+        catch: (cause) => error("hydrate", id, cause),
+      });
+      yield* conversationsProjection
+        .hydrate({
+          threadId: id,
+          summary: buildCoreWorkspaceThreadSummary(persisted),
+          canonical,
+          pagination: metadataOnlyPagination(),
+          observedAtMs,
+        })
+        .pipe(Effect.mapError((cause) => error("hydrate", id, cause)));
+    }
 
-    const permissions = createCodexCanonicalWorkspacePermissionContext(persisted.writable_roots);
-    const canonical = yield* Effect.try({
-      try: () =>
-        createCodexCanonicalHydratedConversationState(thread, {
-          model: persisted.model_id ?? "",
-          reasoningEffort: persisted.reasoning_effort ?? null,
-          cwd: persisted.cwd || thread.cwd || "/",
-          approvalPolicy: permissions.approvalPolicy,
-          approvalsReviewer: permissions.approvalsReviewer,
-          sandboxPolicy: permissions.sandboxPolicy,
-          activePermissionProfile: permissions.activePermissionProfile,
-          runtimeWorkspaceRoots: [...permissions.runtimeWorkspaceRoots],
-          pendingRequests: conversations.current(id)?.readServerRequests() ?? [],
-          hasUnreadTurn: persisted.has_unread_turn,
-        }),
-      catch: (cause) => error("hydrate", id, cause),
-    });
-    yield* conversationsProjection
-      .hydrate({
+    if (thread.ephemeral !== true && thread.threadSource !== "system") {
+      yield* autoTitle.scheduleAddedThread({
         threadId: id,
-        summary: buildCoreWorkspaceThreadSummary(persisted),
-        canonical,
-        pagination: metadataOnlyPagination(),
-        observedAtMs,
-      })
-      .pipe(Effect.mapError((cause) => error("hydrate", id, cause)));
+        prompt: resolveCodexThreadAddedTitlePrompt(
+          thread,
+          parentId ? (conversations.current(parentId)?.readCanonicalState() ?? null) : null,
+        ),
+        cwd: thread.cwd ?? persisted.cwd ?? null,
+        serviceName: persisted.service_name ?? null,
+      });
+    }
   });
 
   const observe = Effect.fn("CodexThreadDurableProjection.observe")(function* (

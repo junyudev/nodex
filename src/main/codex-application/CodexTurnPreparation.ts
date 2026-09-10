@@ -30,6 +30,7 @@ import type {
   CodexLiveFileAttachment,
   CodexPreparedPrompt,
   CodexPromptInput,
+  CodexPromptTextAttachmentInput,
   CodexQueuedFollowUp,
   CodexReasoningEffort,
   CodexReviewDiffCommentAttachment,
@@ -72,6 +73,10 @@ export interface CodexTurnStartPlan {
   readonly verifiedBuiltinFullAccess: boolean;
   readonly executionReadOnly: boolean;
   readonly promptText: string;
+  readonly serviceName?: string | null;
+  readonly autoTitlePastedTextAttachments: readonly CodexPromptTextAttachmentInput[];
+  readonly isFirstTurn: boolean;
+  readonly skipAutoTitleGeneration: boolean;
   readonly startedAtMs: number;
   readonly worktreeInit?: CodexCanonicalWorktreeInitItem;
 }
@@ -121,6 +126,9 @@ export interface CodexTurnStartPreparationInput {
     /** Preserves the content-origin safety check after new-task preflight consumes the atom. */
     readonly agentConfigPermissionMode?: boolean;
     readonly responsesapiClientMetadata?: TurnStartParams["responsesapiClientMetadata"];
+    /** Title-only pasted sources that must not be inserted into the actual turn twice. */
+    readonly autoTitlePastedTextAttachments?: readonly CodexPromptTextAttachmentInput[];
+    readonly skipAutoTitleGeneration?: boolean;
     readonly worktreeInit?: CodexCanonicalWorktreeInitItem;
   };
   readonly rendererOwnsState: boolean;
@@ -481,6 +489,16 @@ export const make: Effect.Effect<
             permission.state.sandbox,
         }),
         promptText: prepared.promptText,
+        serviceName: state.snapshot?.serviceName ?? null,
+        autoTitlePastedTextAttachments: [
+          ...(input.overrides?.autoTitlePastedTextAttachments ?? prepared.pastedTextAttachments),
+        ],
+        // Metadata-only resumes intentionally have no resident turns. Their non-empty preview is
+        // the durable signal that this is a follow-up, not a fresh first-turn title callback.
+        isFirstTurn:
+          state.canonical.turns.length === 0 &&
+          (state.snapshot?.threadPreview.trim().length ?? 0) === 0,
+        skipAutoTitleGeneration: input.overrides?.skipAutoTitleGeneration === true,
         startedAtMs,
         ...(input.overrides?.worktreeInit ? { worktreeInit: input.overrides.worktreeInit } : {}),
       } satisfies CodexTurnStartPlan;

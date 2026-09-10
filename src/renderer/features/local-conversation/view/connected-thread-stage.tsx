@@ -1055,7 +1055,7 @@ export function ConnectedThreadStage({
   const newestCanonicalRequest = conversation?.canonicalRequests?.at(-1) ?? null;
   const latestTurn = turns.at(-1) ?? null;
   const latestTurnKey = latestTurn
-    ? buildCodexTurnOccurrenceKey(latestTurn.turnId, turns.length - 1)
+    ? buildCodexTurnOccurrenceKey(latestTurn.turnId, turns.length - 1, latestTurn.entityKey)
     : null;
   const markActiveConversationAsRead = useCallback(
     (requireWindowFocus: boolean) => {
