@@ -28,6 +28,7 @@ export const buildCodexCanonicalTurnSummary = (
 ): CodexTurnSummary => ({
   threadId,
   turnId: turn.protocol.id,
+  ...(turn.sidecar.entityKey === undefined ? {} : { entityKey: turn.sidecar.entityKey }),
   status: turn.protocol.status,
   ...(turn.protocol.error?.message === undefined
     ? {}
@@ -99,7 +100,11 @@ const projectTurn = (input: {
   const currentTranscript = existing?.items ?? [];
   const projection = applyCodexLifecycleProjectionDiff({
     threadId: input.conversation.threadId,
-    turnKey: buildCodexTurnOccurrenceKey(afterTurn.protocol.id, input.turnIndex),
+    turnKey: buildCodexTurnOccurrenceKey(
+      afterTurn.protocol.id,
+      input.turnIndex,
+      afterTurn.sidecar.entityKey,
+    ),
     beforeTurn: input.before.turns[input.turnIndex] ?? null,
     afterTurn,
     currentViews: currentTranscript.map(projectTranscriptEntryToItemView),

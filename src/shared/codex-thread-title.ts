@@ -6,6 +6,9 @@ import { decodeXmlCharacterReferences } from "./xml-character-references";
 export { projectCodexMarkdownToPlainText } from "./codex-markdown-text";
 
 export const CODEX_THREAD_TITLE_PROMPT_MAX_CHARS = 2_000;
+/** Bounded context retained for title generation when a prompt includes pasted text. */
+export const CODEX_PASTED_TEXT_EXCERPT_MAX_CHARS = 2_000;
+export const CODEX_THREAD_DESCRIPTION_MAX_CHARS = 100;
 export const CODEX_MANUAL_THREAD_TITLE_MAX_CHARS = 60;
 const CODEX_REQUEST_MARKER = "## My request for Codex:";
 const CODEX_APPSHOT_PATTERN_SOURCE = String.raw`<appshot\b([^>]*)>([\s\S]*?)<\/appshot>|<appshot\b([^>]*)>`;
@@ -554,6 +557,16 @@ export function normalizeCodexGeneratedThreadTitle(
   return normalizedTitle.length > 36
     ? `${normalizedTitle.slice(0, 35).trimEnd()}…`
     : normalizedTitle;
+}
+
+export function normalizeCodexGeneratedThreadDescription(
+  rawDescription: string | null | undefined,
+): string | null {
+  const normalizedDescription = rawDescription?.replace(/\s+/g, " ").trim() ?? "";
+  if (!normalizedDescription) return null;
+  return normalizedDescription.length > CODEX_THREAD_DESCRIPTION_MAX_CHARS
+    ? normalizedDescription.slice(0, CODEX_THREAD_DESCRIPTION_MAX_CHARS).trimEnd()
+    : normalizedDescription;
 }
 
 export function normalizeCodexManualThreadTitle(

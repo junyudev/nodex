@@ -126,6 +126,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
     expect(turn?.protocol.status).toBe("inProgress");
     expect(turn?.sidecar.turnStartedAtMs).toBe(42);
     expect(turn?.sidecar.params.clientUserMessageId).toBe("client-message");
+    expect(turn?.sidecar.entityKey).toBe("turn-local:client-message");
     expect(turn?.items.length).toBe(0);
   });
 
@@ -177,6 +178,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
     expect(bound.turns[0]?.protocol.durationMs).toBe(null);
     expect(bound.turns[0]?.sidecar.turnStartedAtMs).toBe(42);
     expect(bound.turns[0]?.sidecar.params.input[0]?.type).toBe("text");
+    expect(bound.turns[0]?.sidecar.entityKey).toBe("turn-local:client-message");
     expect(bound.turns[0]?.items).toStrictEqual(withWorktreeInit.turns[0]?.items);
   });
 

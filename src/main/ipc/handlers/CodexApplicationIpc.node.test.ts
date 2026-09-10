@@ -171,6 +171,7 @@ it.effect("registers application channels directly against their owning modules"
     const attachments = CodexAttachments.of({
       createPastedText: () => Effect.die("unused"),
       readPastedText: () => Effect.die("unused"),
+      getTextExcerpts: () => Effect.die("unused"),
       removePastedText: () => Effect.die("unused"),
       materializePastedText: () => Effect.die("unused"),
       cleanupGoalSources: () => Effect.die("unused"),

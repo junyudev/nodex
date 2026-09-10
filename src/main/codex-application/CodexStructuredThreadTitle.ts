@@ -25,7 +25,8 @@ import {
   CODEX_THREAD_TITLE_MODEL,
   CODEX_THREAD_TITLE_OUTPUT_SCHEMA,
   CODEX_THREAD_TITLE_TIMEOUT_MS,
-  parseGeneratedThreadTitleResponse,
+  parseGeneratedThreadMetadataResponse,
+  type CodexGeneratedThreadMetadata,
 } from "../codex/thread-title-generator";
 import { CodexInternalThreadRegistry } from "./CodexInternalThreadRegistry";
 import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
@@ -106,6 +107,10 @@ export class CodexStructuredThreadTitle extends Context.Service<
     readonly generate: (
       input: CodexStructuredThreadTitleInput,
     ) => Effect.Effect<string | null, CodexStructuredThreadTitleError>;
+    /** Optional richer result retained for title descriptions without breaking title-only callers. */
+    readonly generateMetadata?: (
+      input: CodexStructuredThreadTitleInput,
+    ) => Effect.Effect<CodexGeneratedThreadMetadata | null, CodexStructuredThreadTitleError>;
   }
 >()("nodex/main/codex-application/CodexStructuredThreadTitle") {}
 
@@ -379,7 +384,7 @@ export const make = (
       threadId: string,
       turnId: string,
       notifications: TitleNotificationInbox,
-    ): Effect.Effect<string | null, CodexStructuredThreadTitleError> =>
+    ): Effect.Effect<CodexGeneratedThreadMetadata | null, CodexStructuredThreadTitleError> =>
       Effect.gen(function* () {
         const chunks: string[] = [];
         let outputBytes = 0;
@@ -396,7 +401,7 @@ export const make = (
             }
             return yield* Effect.try({
               try: () =>
-                parseGeneratedThreadTitleResponse(chunks.length === 0 ? null : chunks.join("")),
+                parseGeneratedThreadMetadataResponse(chunks.length === 0 ? null : chunks.join("")),
               catch: (cause) => requestError("result parsing", cause, threadId),
             });
           }
@@ -565,20 +570,24 @@ export const make = (
         }),
       );
 
-    return CodexStructuredThreadTitle.of({
-      generate: (input) =>
-        Effect.raceFirst(
-          run(input),
-          closed.await.pipe(
-            Effect.andThen(
-              Effect.fail(
-                new CodexStructuredThreadTitleError({
-                  reason: "runtime-closed",
-                  message: "The structured thread title runtime is closing",
-                }),
-              ),
+    const generateMetadata = (input: CodexStructuredThreadTitleInput) =>
+      Effect.raceFirst(
+        run(input),
+        closed.await.pipe(
+          Effect.andThen(
+            Effect.fail(
+              new CodexStructuredThreadTitleError({
+                reason: "runtime-closed",
+                message: "The structured thread title runtime is closing",
+              }),
             ),
           ),
         ),
+      );
+
+    return CodexStructuredThreadTitle.of({
+      generateMetadata,
+      generate: (input) =>
+        generateMetadata(input).pipe(Effect.map((metadata) => metadata?.title ?? null)),
     });
   });

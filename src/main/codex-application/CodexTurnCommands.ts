@@ -16,6 +16,7 @@ import type * as Scope from "effect/Scope";
 import type {
   CodexCanonicalWorktreeInitItem,
   CodexPreparedPrompt,
+  CodexPromptTextAttachmentInput,
   CodexSteerTurnInput,
   CodexSteerTurnResult,
   CodexTurnStartOptions,
@@ -29,6 +30,7 @@ import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLi
 import { CodexAutomationRunAcceptance } from "./CodexAutomationRunAcceptance";
 import { CodexConversationMaterialization } from "./CodexConversationMaterialization";
 import { CodexConversationProjection } from "./CodexConversationProjection";
+import { CodexAutoThreadTitle } from "./CodexAutoThreadTitle";
 import { CodexTurnAuthority, type CodexTurnAuthorityLaunch } from "./CodexTurnAuthority";
 import {
   CodexTurnPresentation,
@@ -51,6 +53,8 @@ export type CodexTurnStartOverrides = CodexTurnStartOptions & {
   readonly clientUserMessageId?: string;
   readonly preparedPrompt?: CodexPreparedPrompt;
   readonly responsesapiClientMetadata?: TurnStartParams["responsesapiClientMetadata"];
+  readonly autoTitlePastedTextAttachments?: readonly CodexPromptTextAttachmentInput[];
+  readonly skipAutoTitleGeneration?: boolean;
   readonly worktreeInit?: CodexCanonicalWorktreeInitItem;
 };
 
@@ -63,6 +67,10 @@ export interface CodexPreparedRendererTurn {
   readonly verifiedBuiltinFullAccess: boolean;
   readonly executionReadOnly: boolean;
   readonly startedAtMs: number;
+  readonly autoTitlePrompt: string;
+  readonly serviceName?: string | null;
+  readonly autoTitlePastedTextAttachments?: readonly CodexPromptTextAttachmentInput[];
+  readonly skipAutoTitleGeneration: boolean;
 }
 
 export class CodexTurnCommandError extends Schema.TaggedError<CodexTurnCommandError>()(
@@ -166,6 +174,7 @@ export const make: Effect.Effect<
   never,
   | CodexConversationProjection
   | CodexConversationMaterialization
+  | CodexAutoThreadTitle
   | CodexAutomationRunAcceptance
   | CodexGateway
   | CodexTurnAuthority
@@ -181,6 +190,7 @@ export const make: Effect.Effect<
   const projectLifecycle = yield* ProjectRuntimeLifecycleRuntime;
   const automationRuns = yield* CodexAutomationRunAcceptance;
   const materialization = yield* CodexConversationMaterialization;
+  const autoTitle = yield* CodexAutoThreadTitle;
   const projection = yield* CodexConversationProjection;
   const preparation = yield* CodexTurnPreparation;
   const authority = yield* CodexTurnAuthority;
@@ -446,6 +456,18 @@ export const make: Effect.Effect<
       })
       .pipe(Effect.mapError((cause) => commandError("start", threadId, cause)));
 
+  const scheduleFirstTurnTitle = (plan: CodexTurnStartPlan) =>
+    plan.isFirstTurn
+      ? autoTitle.scheduleFirstTurn({
+          threadId: plan.threadId,
+          prompt: plan.promptText,
+          cwd: plan.request.cwd ?? null,
+          serviceName: plan.serviceName,
+          pastedTextAttachments: plan.autoTitlePastedTextAttachments,
+          skipAutoTitleGeneration: plan.skipAutoTitleGeneration,
+        })
+      : Effect.void;
+
   const startInLane = (
     threadId: string,
     prompt: string,
@@ -456,7 +478,11 @@ export const make: Effect.Effect<
     const execute = () =>
       prepareStart(threadId, prompt, overrides, rendererOwnsState).pipe(
         Effect.flatMap((plan) =>
-          startTransaction(plan, { acceptAutomationRun, projectOptimisticTurn: true }),
+          scheduleFirstTurnTitle(plan).pipe(
+            Effect.andThen(
+              startTransaction(plan, { acceptAutomationRun, projectOptimisticTurn: true }),
+            ),
+          ),
         ),
       );
     if (rendererOwnsState) return execute();
@@ -668,18 +694,33 @@ export const make: Effect.Effect<
         Effect.withSpan("CodexTurnCommands.startAutomation", { attributes: { threadId } }),
       ),
     acceptPreparedRendererTurn: (plan) =>
-      conversations
-        .runCommand(
-          plan.threadId,
-          startTransaction({
-            ...plan,
-            canonicalParams: null,
-            currentCollaborationModel: "",
-            settings: {} as CodexTurnStartPlan["settings"],
-            permissionContext: null,
-            rendererOwnsState: true,
-            promptText: "",
-          }),
+      autoTitle
+        .scheduleFirstTurn({
+          threadId: plan.threadId,
+          prompt: plan.autoTitlePrompt,
+          cwd: plan.request.cwd ?? null,
+          serviceName: plan.serviceName,
+          pastedTextAttachments: plan.autoTitlePastedTextAttachments,
+          skipAutoTitleGeneration: plan.skipAutoTitleGeneration,
+        })
+        .pipe(
+          Effect.andThen(
+            conversations.runCommand(
+              plan.threadId,
+              startTransaction({
+                ...plan,
+                canonicalParams: null,
+                currentCollaborationModel: "",
+                settings: {} as CodexTurnStartPlan["settings"],
+                permissionContext: null,
+                rendererOwnsState: true,
+                promptText: plan.autoTitlePrompt,
+                autoTitlePastedTextAttachments: plan.autoTitlePastedTextAttachments ?? [],
+                isFirstTurn: true,
+                skipAutoTitleGeneration: plan.skipAutoTitleGeneration,
+              }),
+            ),
+          ),
         )
         .pipe(
           Effect.map((result) => result as TurnStartResponse),

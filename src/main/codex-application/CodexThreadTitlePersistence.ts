@@ -23,6 +23,12 @@ export interface CodexThreadTitlePersistenceInput {
 
 export interface CodexThreadTitleSetCommand extends CodexThreadTitlePersistenceInput {
   readonly normalization: "manual" | "trim";
+  /** Applies only while the Core title still has this value; null means untitled. */
+  readonly expectedName?: string | null;
+  /** Applies only to a thread that has no committed title. */
+  readonly onlyIfUntitled?: boolean;
+  /** Projects the title locally without writing the app-server or Core. */
+  readonly persist?: boolean;
 }
 
 export class CodexThreadTitlePersistenceEffectError extends Data.TaggedError(
@@ -147,6 +153,15 @@ export const make: Effect.Effect<
     });
   });
 
+  const currentName = Effect.fn("CodexThreadTitlePersistence.currentName")(function* (
+    threadId: string,
+    committedName: string | null,
+  ) {
+    const projectionState = yield* projection.read(threadId).pipe(Effect.mapError(titleError));
+    const projectedName = projectionState.snapshot?.threadName?.trim() || null;
+    return projectedName ?? (committedName?.trim() || null);
+  });
+
   const setRemote = (input: CodexThreadTitlePersistenceInput) =>
     gateway
       .requestForThread(input.threadId, "thread/name/set", input)
@@ -199,20 +214,27 @@ export const make: Effect.Effect<
     const persisted = { threadId: normalized.threadId, name: normalized.name };
     return runSerial(
       normalized.threadId,
-      requireCodexThread(normalized.threadId).pipe(
-        Effect.andThen(project(normalized)),
-        Effect.andThen(
-          setRemote(persisted).pipe(
-            Effect.catch((error) => logFailure("app-server", persisted, error)),
-            Effect.andThen(
-              persistWorkspace(persisted).pipe(
-                Effect.catch((error) => logFailure("project-workspace", persisted, error)),
-              ),
+      Effect.gen(function* () {
+        const thread = yield* requireCodexThread(normalized.threadId);
+        const observedName = yield* currentName(normalized.threadId, thread.thread_name ?? null);
+        const expectedName =
+          normalized.expectedName === undefined
+            ? undefined
+            : normalized.expectedName?.trim() || null;
+        if (normalized.onlyIfUntitled && observedName !== null) return false;
+        if (expectedName !== undefined && observedName !== expectedName) return false;
+        yield* project(normalized);
+        if (normalized.persist === false) return true;
+        yield* setRemote(persisted).pipe(
+          Effect.catch((error) => logFailure("app-server", persisted, error)),
+          Effect.andThen(
+            persistWorkspace(persisted).pipe(
+              Effect.catch((error) => logFailure("project-workspace", persisted, error)),
             ),
           ),
-        ),
-        Effect.as(true),
-      ),
+        );
+        return true;
+      }),
     );
   };
 
@@ -224,12 +246,21 @@ export const make: Effect.Effect<
     const persisted = { threadId: normalized.threadId, name: normalized.name };
     return runSerial(
       normalized.threadId,
-      requireCodexThread(normalized.threadId).pipe(
-        Effect.andThen(project(normalized)),
-        Effect.andThen(setRemote(persisted)),
-        Effect.andThen(persistWorkspace(persisted)),
-        Effect.as(true),
-      ),
+      Effect.gen(function* () {
+        const thread = yield* requireCodexThread(normalized.threadId);
+        const observedName = yield* currentName(normalized.threadId, thread.thread_name ?? null);
+        const expectedName =
+          normalized.expectedName === undefined
+            ? undefined
+            : normalized.expectedName?.trim() || null;
+        if (normalized.onlyIfUntitled && observedName !== null) return false;
+        if (expectedName !== undefined && observedName !== expectedName) return false;
+        yield* project(normalized);
+        if (normalized.persist === false) return true;
+        yield* setRemote(persisted);
+        yield* persistWorkspace(persisted);
+        return true;
+      }),
     );
   };
 

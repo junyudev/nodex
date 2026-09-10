@@ -7,6 +7,7 @@ import type {
   CodexAgentMode,
   ConversationFirstSubmissionIdentity,
   CodexLiveFileAttachment,
+  CodexPromptTextAttachmentInput,
   CodexReviewDiffCommentAttachment,
   CodexReasoningEffort,
   CodexThreadGoalFrozenDraft,
@@ -94,6 +95,7 @@ export interface CodexPendingStartConversationParamsInput {
   readonly cwd: string;
   readonly fileAttachments: readonly CodexLiveFileAttachment[];
   readonly addedFiles: readonly CodexLiveFileAttachment[];
+  readonly pastedTextAttachments?: readonly CodexPromptTextAttachmentInput[];
   readonly agentMode: CodexAgentMode;
   /** Keeps content-origin permission checks active after the NFM sidecar is consumed. */
   readonly agentConfigPermissionMode?: boolean;

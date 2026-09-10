@@ -224,6 +224,7 @@ export const make: Effect.Effect<
         threadStartHostId: gateway.localHostId,
         threadGoalDraft: frozenGoal,
         heartbeatAutomation: input.heartbeatAutomation ?? null,
+        skipAutoTitleGeneration: input.skipAutoTitleGeneration,
         sourceConversationId: null,
         sourceCollaborationMode: null,
         startConversationParamsInput: {
@@ -233,6 +234,9 @@ export const make: Effect.Effect<
           cwd: sourceWorkspaceRoot,
           fileAttachments: [],
           addedFiles: [],
+          ...(input.promptInput?.textAttachments?.length
+            ? { pastedTextAttachments: [...input.promptInput.textAttachments] }
+            : {}),
           agentMode: input.permissionMode ?? "auto",
           agentConfigPermissionMode: input.agentConfigPermissionMode,
           shouldSendPermissionOverrides: true,
@@ -456,6 +460,12 @@ export const make: Effect.Effect<
         rawGoalDraft: input.threadGoalDraft ?? null,
         heartbeatAutomation: input.heartbeatAutomation ?? null,
       };
+      const skipAutoTitleGeneration =
+        input.skipAutoTitleGeneration === true || Boolean(input.threadName?.trim());
+      const skipAutoTitleOverride =
+        input.skipAutoTitleGeneration === undefined && !skipAutoTitleGeneration
+          ? undefined
+          : skipAutoTitleGeneration;
       const detail = detailFromSnapshot(snapshot);
       if (context.ownerClientId) {
         const plan = yield* preparation
@@ -473,6 +483,9 @@ export const make: Effect.Effect<
                 ? {}
                 : { agentConfigPermissionMode: input.agentConfigPermissionMode }),
               collaborationMode: input.collaborationMode,
+              ...(skipAutoTitleOverride === undefined
+                ? {}
+                : { skipAutoTitleGeneration: skipAutoTitleOverride }),
             },
             rendererOwnsState: true,
           })
@@ -499,6 +512,10 @@ export const make: Effect.Effect<
           clientUserMessageId: plan.clientUserMessageId,
           canonicalParams: plan.canonicalParams,
           turnStartParams: { ...plan.request, attachments: [] },
+          autoTitlePrompt: plan.promptText,
+          autoTitleServiceName: plan.serviceName,
+          autoTitlePastedTextAttachments: plan.autoTitlePastedTextAttachments,
+          skipAutoTitleGeneration,
           verifiedBuiltinFullAccess: plan.verifiedBuiltinFullAccess,
           executionReadOnly: plan.executionReadOnly,
         };
@@ -526,6 +543,9 @@ export const make: Effect.Effect<
           ? {}
           : { agentConfigPermissionMode: input.agentConfigPermissionMode }),
         collaborationMode: input.collaborationMode,
+        ...(skipAutoTitleOverride === undefined
+          ? {}
+          : { skipAutoTitleGeneration: skipAutoTitleOverride }),
       });
       if (!turn) {
         return yield* fail("first-turn", input.sessionId, new Error("Invalid first Turn"));

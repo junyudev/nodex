@@ -27,6 +27,7 @@ import {
 } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexAgentConfigRuntime } from "./CodexAgentConfigRuntime";
+import { CodexAutoThreadTitle } from "./CodexAutoThreadTitle";
 import { CodexFreshThreadLaunchRuntime } from "./CodexFreshThreadLaunchRuntime";
 import { CodexPendingWorktreeRuntime } from "./CodexPendingWorktreeRuntime";
 import { make, type CodexSessionThreadLaunchContext } from "./CodexSessionThreadLaunch";
@@ -265,6 +266,13 @@ const harness = (
       ),
       Effect.provideService(CodexThreadDirectory, directory),
       Effect.provideService(CodexTurnCommands, turns),
+      Effect.provideService(
+        CodexAutoThreadTitle,
+        CodexAutoThreadTitle.of({
+          scheduleFirstTurn: () => Effect.void,
+          scheduleAddedThread: () => Effect.void,
+        }),
+      ),
       Effect.provideService(CodexThreadLaunchCompletion, completion),
       Effect.provideService(
         ThreadCreationRuntime,

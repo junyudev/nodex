@@ -297,6 +297,75 @@ it.effect("surfaces required failure and releases the Thread lane", () =>
   }),
 );
 
+it.effect("guards generated titles against the local-only provisional projection", () =>
+  Effect.gen(function* () {
+    const calls: string[] = [];
+    const persistence = yield* harness({
+      committedTitle: "",
+      request: ((_threadId, _method, params) =>
+        Effect.sync(() =>
+          calls.push(`remote:${(params as { name: string }).name}`),
+        )) as CodexGateway["Service"]["requestForThread"],
+      onCoreApply: (_threadId, name) => calls.push(`workspace:${name}`),
+    });
+
+    assert.isTrue(
+      yield* persistence.set({
+        threadId: "thread-1",
+        name: "Prompt preview",
+        normalization: "trim",
+        onlyIfUntitled: true,
+        persist: false,
+      }),
+    );
+    assert.isTrue(
+      yield* persistence.set({
+        threadId: "thread-1",
+        name: "Generated title",
+        normalization: "trim",
+        expectedName: "Prompt preview",
+      }),
+    );
+    assert.deepEqual(calls, ["remote:Generated title", "workspace:Generated title"]);
+  }),
+);
+
+it.effect("does not overwrite a manual title after provisional generation", () =>
+  Effect.gen(function* () {
+    const calls: string[] = [];
+    const persistence = yield* harness({
+      committedTitle: "",
+      request: ((_threadId, _method, params) =>
+        Effect.sync(() =>
+          calls.push(`remote:${(params as { name: string }).name}`),
+        )) as CodexGateway["Service"]["requestForThread"],
+    });
+
+    yield* persistence.set({
+      threadId: "thread-1",
+      name: "Prompt preview",
+      normalization: "trim",
+      onlyIfUntitled: true,
+      persist: false,
+    });
+    yield* persistence.set({
+      threadId: "thread-1",
+      name: "Manual title",
+      normalization: "trim",
+      persist: false,
+    });
+    assert.isFalse(
+      yield* persistence.set({
+        threadId: "thread-1",
+        name: "Generated title",
+        normalization: "trim",
+        expectedName: "Prompt preview",
+      }),
+    );
+    assert.deepEqual(calls, []);
+  }),
+);
+
 it.effect("delivers titles and durable summaries without exporting conversation internals", () =>
   Effect.gen(function* () {
     const delivered: CodexApplicationEvent[] = [];

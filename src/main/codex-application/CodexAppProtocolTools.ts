@@ -44,6 +44,7 @@ import { CodexSessionThreadLaunch } from "./CodexSessionThreadLaunch";
 import { CodexSidebarSectionSync } from "./CodexSidebarSectionSync";
 import { CodexThreadCatalog } from "./CodexThreadCatalog";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
+import { CodexThreadDescriptionPersistence } from "./CodexThreadDescriptionPersistence";
 import { CodexThreadHandoffRuntime } from "./CodexThreadHandoffRuntime";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
 import { CodexTurnCommands } from "./CodexTurnCommands";
@@ -51,6 +52,7 @@ import { ConversationCommands } from "./ConversationCommands";
 
 const SAME_DIRECTORY_FORK_CONTINUATION =
   "The fork contains completed history only. If the source thread was running, the active turn and unfinished response are not in the child. Send a follow-up message to threadId only if the task requires work to continue there.";
+const CODEX_THREAD_SUMMARY_MAX_CHARS = 300;
 
 type CoreSidebarSectionItem = Extract<
   ProjectWorkspaceReadSnapshot["value"],
@@ -364,6 +366,7 @@ export const make: Effect.Effect<
   | CodexSessionThreadLaunch
   | CodexSidebarSectionSync
   | CodexThreadCatalog
+  | CodexThreadDescriptionPersistence
   | CodexThreadDirectory
   | CodexThreadHandoffRuntime
   | CodexThreadTitlePersistence
@@ -381,6 +384,7 @@ export const make: Effect.Effect<
   const sessionLaunch = yield* CodexSessionThreadLaunch;
   const sectionSync = yield* CodexSidebarSectionSync;
   const catalog = yield* CodexThreadCatalog;
+  const descriptions = yield* CodexThreadDescriptionPersistence;
   const directory = yield* CodexThreadDirectory;
   const handoffs = yield* CodexThreadHandoffRuntime;
   const titles = yield* CodexThreadTitlePersistence;
@@ -704,10 +708,32 @@ export const make: Effect.Effect<
         const listed = query
           ? (yield* catalog.searchPalette({ query, limit })).map(({ thread }) => thread)
           : yield* catalog.listPalette({ scope: "sidebar" });
+        const descriptionByThreadId = new Map(
+          yield* Effect.forEach(listed, (thread) =>
+            descriptions.get(thread.threadId).pipe(
+              Effect.catchCause(() => Effect.succeed(null)),
+              Effect.map((description) => [thread.threadId, description] as const),
+            ),
+          ),
+        );
+        const summaryFor = (thread: (typeof listed)[number]): string | null => {
+          const description = descriptionByThreadId.get(thread.threadId)?.trim();
+          if (description) return description.slice(0, CODEX_THREAD_SUMMARY_MAX_CHARS);
+          const preview = thread.preview.trim();
+          return preview && preview !== (thread.title?.trim() ?? "")
+            ? preview.slice(0, CODEX_THREAD_SUMMARY_MAX_CHARS)
+            : null;
+        };
         const threads = listed
           .filter((thread) =>
             query
-              ? [thread.threadId, thread.title, thread.preview, thread.projectName]
+              ? [
+                  thread.threadId,
+                  thread.title,
+                  thread.preview,
+                  summaryFor(thread),
+                  thread.projectName,
+                ]
                   .join(" ")
                   .toLowerCase()
                   .includes(query)
@@ -764,6 +790,7 @@ export const make: Effect.Effect<
           projectId: thread.projectId,
           title: thread.title,
           preview: thread.preview,
+          summary: summaryFor(thread),
           hostId: CODEX_APP_LOCAL_HOST_ID,
           status: {
             type: thread.statusType,
@@ -811,6 +838,11 @@ export const make: Effect.Effect<
                 projectId: session.project_id ?? null,
                 title: session.display_title,
                 preview: thread?.thread_preview ?? "",
+                summary:
+                  thread?.thread_preview &&
+                  thread.thread_preview.trim() !== session.display_title.trim()
+                    ? thread.thread_preview.slice(0, CODEX_THREAD_SUMMARY_MAX_CHARS)
+                    : null,
                 hostId: thread?.execution_host_id ?? null,
                 status: thread
                   ? {

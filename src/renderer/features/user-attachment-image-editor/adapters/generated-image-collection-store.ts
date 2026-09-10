@@ -87,7 +87,7 @@ export function projectGeneratedImageCanonicalGroups(
       items: turn.items,
     });
     if (!output.shouldRender) return [];
-    const id = `${buildCodexTurnOccurrenceKey(turn.turnId, turnIndex)}:generated-image-gallery`;
+    const id = `${buildCodexTurnOccurrenceKey(turn.turnId, turnIndex, turn.entityKey)}:generated-image-gallery`;
     const turnStartedAtMs = resolveGroupStartedAt(turn);
     return [
       {

@@ -246,7 +246,7 @@ function createVisibleConversationTurnEntry(input: {
   isMostRecentTurn: boolean;
   renderRevision: VisibleConversationTurnRenderRevision;
 }): VisibleConversationTurnEntry {
-  const turnKey = buildCodexTurnOccurrenceKey(input.turn.turnId, input.index);
+  const turnKey = buildCodexTurnOccurrenceKey(input.turn.turnId, input.index, input.turn.entityKey);
   const cachedTurn = visibleTurnEntriesByTurn.get(input.turn);
   const candidates =
     cachedTurn !== undefined &&
@@ -427,7 +427,7 @@ export function selectConversationSearchUnits(
   if (!conversation) return [];
 
   return conversation.turns.flatMap((turn, turnIndex) => {
-    const turnKey = buildCodexTurnOccurrenceKey(turn.turnId, turnIndex);
+    const turnKey = buildCodexTurnOccurrenceKey(turn.turnId, turnIndex, turn.entityKey);
     return turn.items
       .filter(
         (item) =>

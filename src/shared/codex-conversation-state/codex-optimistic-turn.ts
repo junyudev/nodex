@@ -138,6 +138,7 @@ function mergeSplitOptimisticTurn(
     sidecar: {
       ...optimistic.sidecar,
       ...bound.sidecar,
+      entityKey: optimistic.sidecar.entityKey ?? bound.sidecar.entityKey,
       params: optimistic.sidecar.params,
       turnStartedAtMs: optimistic.sidecar.turnStartedAtMs ?? bound.sidecar.turnStartedAtMs,
     },
@@ -172,6 +173,10 @@ export function appendCodexCanonicalOptimisticTurn(
     },
     items,
     sidecar: {
+      entityKey:
+        input.params.clientUserMessageId === null
+          ? undefined
+          : `turn-local:${input.params.clientUserMessageId}`,
       params: input.params,
       diff: null,
       turnStartedAtMs: input.startedAtMs ?? Date.now(),

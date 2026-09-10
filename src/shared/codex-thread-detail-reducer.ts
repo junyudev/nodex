@@ -32,6 +32,7 @@ export function mergeCodexTurnSummary(
       existing.interruptedCommandExecutionItemIds ?? [],
       incoming.interruptedCommandExecutionItemIds ?? [],
     ),
+    entityKey: incoming.entityKey ?? existing.entityKey,
     tokenUsage: incoming.tokenUsage ?? existing.tokenUsage,
   };
 }
@@ -45,14 +46,14 @@ export function mergeCodexTurnSummaries(
 
   const cachedByTurnId = new Map(
     cachedTurns.map((turn, turnIndex) => [
-      buildCodexTurnOccurrenceKey(turn.turnId, turnIndex),
+      buildCodexTurnOccurrenceKey(turn.turnId, turnIndex, turn.entityKey),
       turn,
     ]),
   );
   const seen = new Set<string>();
 
   const merged = incomingTurns.map((turn, turnIndex) => {
-    const turnKey = buildCodexTurnOccurrenceKey(turn.turnId, turnIndex);
+    const turnKey = buildCodexTurnOccurrenceKey(turn.turnId, turnIndex, turn.entityKey);
     seen.add(turnKey);
     const cached = cachedByTurnId.get(turnKey);
     if (!cached) return turn;
@@ -60,7 +61,7 @@ export function mergeCodexTurnSummaries(
   });
 
   for (const [turnIndex, cached] of cachedTurns.entries()) {
-    if (seen.has(buildCodexTurnOccurrenceKey(cached.turnId, turnIndex))) continue;
+    if (seen.has(buildCodexTurnOccurrenceKey(cached.turnId, turnIndex, cached.entityKey))) continue;
     merged.push(cached);
   }
 

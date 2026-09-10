@@ -105,7 +105,7 @@ async function ensureConversationAvailable(conversationId: string): Promise<void
 }
 
 function exportEntry(turn: CodexConversationTurn, index: number): VisibleConversationTurnEntry {
-  const turnKey = buildCodexTurnOccurrenceKey(turn.turnId, index);
+  const turnKey = buildCodexTurnOccurrenceKey(turn.turnId, index, turn.entityKey);
   return {
     turn,
     turnId: turn.turnId,

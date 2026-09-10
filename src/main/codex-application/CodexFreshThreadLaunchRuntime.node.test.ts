@@ -7,6 +7,7 @@ import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
 import type { CodexConversationSnapshot } from "../../shared/types";
 import { makeConversationEntityStateRegistry } from "./internal/ConversationEntityState";
+import { CodexAutoThreadTitle } from "./CodexAutoThreadTitle";
 import {
   make,
   type CodexFreshThreadLaunch,
@@ -134,6 +135,13 @@ const makeHarness = (options: HarnessOptions = {}) => {
     Effect.provideService(CodexRendererConversationCoordinator, coordinator),
     Effect.provideService(CodexThreadLaunchCompletion, completion),
     Effect.provideService(CodexTurnCommands, turns),
+    Effect.provideService(
+      CodexAutoThreadTitle,
+      CodexAutoThreadTitle.of({
+        scheduleFirstTurn: () => Effect.void,
+        scheduleAddedThread: () => Effect.void,
+      }),
+    ),
   );
   return { adoptionCalls: () => adoptionCalls, failures, runtime, acceptedPlans };
 };

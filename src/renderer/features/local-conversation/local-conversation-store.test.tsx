@@ -13804,6 +13804,74 @@ describe("local-conversation-store", () => {
     }
   });
 
+  test("owner follow-up user row is rendered before transport settles", async () => {
+    invokeCalls = [];
+    invokeRecords = [];
+    hostMessageListener = null;
+    rendererClientRequestListener = null;
+    threadListByProject = {};
+    resumeThreadResult = {
+      ...buildConversation("thread-1", "project-1"),
+      turns: [],
+    };
+
+    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+      await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+
+    const manager = new CodexAppServerManager("default");
+    let renderedTurnCount = 0;
+    let transportStarted = false;
+    let renderedTurnCountAtTransportStart = -1;
+    const startDeferred: { resolve?: () => void } = {};
+    ownerTurnStartHandler = () => {
+      transportStarted = true;
+      renderedTurnCountAtTransportStart = renderedTurnCount;
+    };
+    ownerTurnStartGate = () =>
+      new Promise<void>((resolve) => {
+        startDeferred.resolve = resolve;
+      });
+
+    function FollowUpProbe() {
+      renderedTurnCount = useSyncExternalStore(
+        (listener) => manager.addConversationCallback("thread-1", listener),
+        () => manager.readConversation("thread-1")?.turns.length ?? 0,
+      );
+      return createElement("div", null, String(renderedTurnCount));
+    }
+
+    const probe = render(createElement(FollowUpProbe));
+    try {
+      await manager.requestThreadStreamResume("thread-1");
+      await settleAsyncRender();
+      const startPromise = manager.startTurn("thread-1", "Follow up immediately", {
+        permissionMode: "auto",
+      });
+
+      await act(async () => {
+        for (let index = 0; index < 20; index += 1) {
+          await settleAsyncRender();
+          if (transportStarted) break;
+        }
+      });
+
+      expect(transportStarted).toBe(true);
+      expect(renderedTurnCountAtTransportStart).toBe(1);
+      if (!startDeferred.resolve) throw new Error("Expected deferred owner start");
+      startDeferred.resolve();
+      await act(async () => {
+        await startPromise;
+      });
+    } finally {
+      probe.unmount();
+      ownerTurnStartHandler = null;
+      ownerTurnStartGate = null;
+      resumeThreadResult = null;
+      manager.destroy();
+    }
+  });
+
   test("owner optimistic params and turn/start use the same explicit intelligence", async () => {
     invokeCalls = [];
     invokeRecords = [];

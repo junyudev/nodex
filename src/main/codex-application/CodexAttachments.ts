@@ -37,6 +37,9 @@ export class CodexAttachments extends Context.Service<
     readonly readPastedText: (
       file: CodexLiveFileAttachment,
     ) => Effect.Effect<string, CodexAttachmentsError>;
+    readonly getTextExcerpts: (
+      files: readonly CodexLiveFileAttachment[] | null | undefined,
+    ) => Effect.Effect<readonly string[], CodexAttachmentsError>;
     readonly removePastedText: (
       file: CodexLiveFileAttachment,
     ) => Effect.Effect<void, CodexAttachmentsError>;
@@ -73,6 +76,8 @@ export const live = (attachmentsRoot: string): Layer.Layer<CodexAttachments> =>
         createPastedText: (input) =>
           attempt("create-pasted-text", () => pastedText.createRawSource(input)),
         readPastedText: (file) => attempt("read-pasted-text", () => pastedText.readRawSource(file)),
+        getTextExcerpts: (files) =>
+          attempt("get-pasted-text-excerpts", () => pastedText.getTextExcerpts(files)),
         removePastedText: (file) =>
           attempt("remove-pasted-text", () => pastedText.remove(file.path)),
         materializePastedText: (attachments) =>

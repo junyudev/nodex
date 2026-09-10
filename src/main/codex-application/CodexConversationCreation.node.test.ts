@@ -34,6 +34,7 @@ import { CodexThreadLaunchCompletion } from "./CodexThreadLaunchCompletion";
 import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
 import { transparentThreadCreationRuntime } from "./ThreadCreationRuntime.test-support";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
+import { CodexAutoThreadTitle } from "./CodexAutoThreadTitle";
 import { CodexTurnCommands } from "./CodexTurnCommands";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
 
@@ -221,6 +222,13 @@ it.effect.each([
           Effect.provideService(
             CodexThreadTitlePersistence,
             CodexThreadTitlePersistence.of({ set: unsupported } as never),
+          ),
+          Effect.provideService(
+            CodexAutoThreadTitle,
+            CodexAutoThreadTitle.of({
+              scheduleFirstTurn: () => Effect.void,
+              scheduleAddedThread: () => Effect.void,
+            }),
           ),
           Effect.provideService(
             CodexTurnCommands,

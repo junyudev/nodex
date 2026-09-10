@@ -75,7 +75,11 @@ export const projectCodexConversationTurn = (input: {
   const turnId = input.afterTurn.protocol.id;
   const projection = applyCodexLifecycleProjectionDiff({
     threadId: input.threadId,
-    turnKey: buildCodexTurnOccurrenceKey(turnId, input.turnIndex),
+    turnKey: buildCodexTurnOccurrenceKey(
+      turnId,
+      input.turnIndex,
+      input.afterTurn.sidecar.entityKey,
+    ),
     beforeTurn: input.beforeTurn,
     afterTurn: input.afterTurn,
     currentViews: input.current?.items.map(asCurrentView) ?? [],
@@ -89,6 +93,9 @@ export const projectCodexConversationTurn = (input: {
     ...input.current,
     threadId: input.threadId,
     turnId,
+    ...(input.afterTurn.sidecar.entityKey === undefined
+      ? {}
+      : { entityKey: input.afterTurn.sidecar.entityKey }),
     status: input.afterTurn.protocol.status,
     errorMessage: input.afterTurn.protocol.error?.message ?? undefined,
     ...(input.afterTurn.sidecar.diff === null
@@ -155,10 +162,15 @@ export const projectCodexConversationSnapshot = (input: {
           ? beforeAtIndex
           : (input.before?.turns.find((turn) => turn.protocol.id === turnId) ?? null);
       const currentAtIndex = conversation.turns[turnIndex] ?? null;
+      const entityKey = afterTurn.sidecar.entityKey;
       const current =
+        (entityKey !== undefined && currentAtIndex?.entityKey === entityKey) ||
         currentAtIndex?.turnId === turnId
           ? currentAtIndex
-          : (conversation.turns.find((turn) => turn.turnId === turnId) ?? null);
+          : (conversation.turns.find(
+              (turn) =>
+                (entityKey !== undefined && turn.entityKey === entityKey) || turn.turnId === turnId,
+            ) ?? null);
       if (beforeTurn === afterTurn && current) return current;
       return projectCodexConversationTurn({
         threadId: conversation.threadId,
