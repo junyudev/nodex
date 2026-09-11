@@ -1,7 +1,3 @@
-import {
-  parseCodexHistoryResidencyPinsInput,
-  type CodexHistoryResidencyPinsResult,
-} from "../../shared/codex-history-residency-pins";
 import type { RequestId } from "@nodex/codex-app-server-protocol";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -47,10 +43,6 @@ import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
 export interface CodexRendererConversationCoordinatorService {
-  readonly setHistoryResidencyPins: (
-    clientId: string,
-    input: unknown,
-  ) => CodexHistoryResidencyPinsResult;
   readonly readRendererState: (conversationId: string) => {
     readonly acceptedConversation: CodexConversationSnapshot | null;
     readonly checkpoint: CodexThreadStreamCheckpoint | null;
@@ -154,38 +146,6 @@ const asOwnerRequest = (request: unknown): CodexThreadOwnerServerRequest | null 
     default:
       return null;
   }
-};
-
-export const applyCodexHistoryResidencyPins = (input: {
-  readonly rawInput: unknown;
-  readonly clientId: string;
-  readonly conversations: ConversationEntityMap["Service"];
-  readonly rendererConversations: CodexRendererConversationRegistry["Service"];
-}): CodexHistoryResidencyPinsResult => {
-  const pins = parseCodexHistoryResidencyPinsInput(input.rawInput);
-  if (!pins) return { status: "invalid" };
-  const isCleanup = pins.turnIds.length === 0 && pins.islandIds.length === 0;
-  if (!isCleanup) {
-    if (input.rendererConversations.getOwnerClientId(pins.threadId) !== input.clientId) {
-      return { status: "notOwner" };
-    }
-    if (!input.rendererConversations.isClientPresenting(pins.threadId, input.clientId)) {
-      return { status: "notPresenting" };
-    }
-  }
-  const conversation = input.conversations.current(pins.threadId);
-  if (!conversation) return { status: "notLoaded" };
-  if (conversation.generation !== pins.expectedConversationGeneration) {
-    return { status: "staleGeneration" };
-  }
-  return conversation.setHistoryResidencyPins({
-    clientId: input.clientId,
-    projectReplica: !input.rendererConversations.hasOwner(pins.threadId),
-    expectedTopologyGeneration: pins.expectedTopologyGeneration,
-    expectedHistoryMutationRevision: pins.expectedHistoryMutationRevision,
-    turnIds: pins.turnIds,
-    islandIds: pins.islandIds,
-  });
 };
 
 export const make: Effect.Effect<
@@ -375,13 +335,6 @@ export const make: Effect.Effect<
   };
 
   const service: CodexRendererConversationCoordinatorService = {
-    setHistoryResidencyPins: (clientId, rawInput) =>
-      applyCodexHistoryResidencyPins({
-        rawInput,
-        clientId,
-        conversations,
-        rendererConversations: registry,
-      }),
     readRendererState: (conversationId) => {
       const state = aggregate(conversationId)?.read();
       return {
@@ -526,9 +479,6 @@ export const make: Effect.Effect<
         yield* Effect.forEach(result.viewConversationIds, autoResolution.reevaluatePresentation, {
           discard: true,
         });
-        for (const conversationId of result.viewConversationIds) {
-          aggregate(conversationId)?.clearHistoryResidencyPins(clientId);
-        }
         for (const conversationId of result.ownerConversationIds) {
           ownerNotificationDrain.release(conversationId);
           pendingRequests.rejectDispatchedDynamicForThread(
@@ -619,6 +569,9 @@ export const make: Effect.Effect<
       ) {
         return reject("owner-notification-sequence-mismatch");
       }
+      if (input.recoveryOnly && registry.hasFollowersOrPendingReconnect(input.conversationId)) {
+        return reject("followers-present");
+      }
       const result = applyCodexThreadOwnerPublication({
         current,
         expectedOwnerEpoch: ownerEpoch,
@@ -651,6 +604,7 @@ export const make: Effect.Effect<
         return reject("owner-notification-sequence-mismatch");
       }
       registry.invalidateSnapshotBarriers(input.conversationId);
+      if (input.recoveryOnly) return { accepted: true, checkpoint };
       events.publish({
         kind: "hostMessage",
         value: {

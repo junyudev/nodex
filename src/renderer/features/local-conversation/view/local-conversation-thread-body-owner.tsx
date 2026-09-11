@@ -35,7 +35,6 @@ import {
   hydrateLocalPersistedHistoryOccurrence,
   publishLocalConversationHistoryMutation,
   requestLocalConversationHistoryPage,
-  setLocalConversationHistoryResidencyPins,
 } from "../local-conversation-store";
 import { selectVisibleConversationTurnEntries } from "../selectors";
 import type {
@@ -78,10 +77,6 @@ import {
   type LocalConversationSearchTarget,
 } from "./local-conversation-persisted-search";
 import { projectLocalConversationLegacyHistoryRows } from "./local-conversation-history-gap";
-import {
-  createLocalConversationHistoryResidencyPinPublisher,
-  type LocalConversationHistoryResidencyPinPublisher,
-} from "./local-conversation-history-residency-pins";
 import { LocalConversationSelectedTextSideChatOverlay } from "./local-conversation-selected-text-side-chat-overlay";
 import {
   LocalConversationPromptRail,
@@ -437,12 +432,6 @@ export function LocalConversationThreadBodyOwner({
   const setupProgressLogRef = useRef<HTMLDivElement>(null);
   const contentRootRef = useRef<HTMLDivElement | null>(null);
   const listApiRef = useRef<LocalConversationVirtualizedTurnListApi | null>(null);
-  const historyResidencyPinPublisherRef =
-    useRef<LocalConversationHistoryResidencyPinPublisher | null>(null);
-  historyResidencyPinPublisherRef.current ??= createLocalConversationHistoryResidencyPinPublisher({
-    publish: setLocalConversationHistoryResidencyPins,
-  });
-  const historyResidencyPinPublisher = historyResidencyPinPublisherRef.current;
   const [forkDialogState, setForkDialogState] = useState<{
     threadId: string;
     turnId: string;
@@ -560,11 +549,7 @@ export function LocalConversationThreadBodyOwner({
       virtualizedEntries,
     ],
   );
-  const hasCanonicalHistoryTopology =
-    canonicalHistoryRows !== undefined &&
-    conversationEntityGeneration !== undefined &&
-    historyTopologyGeneration !== undefined &&
-    historyMutationRevision !== undefined;
+
   const historyTurnItemsRefs = useMemo(() => {
     if (historyTopologyGeneration === undefined) return {};
     return Object.fromEntries(
@@ -588,67 +573,6 @@ export function LocalConversationThreadBodyOwner({
       }),
     );
   }, [historyItemWindowsByTurnId, historyTopologyGeneration, turnItemsPaginationById]);
-  useEffect(() => {
-    if (
-      !threadId ||
-      !hasCanonicalHistoryTopology ||
-      conversationEntityGeneration === undefined ||
-      historyTopologyGeneration === undefined ||
-      historyMutationRevision === undefined
-    ) {
-      historyResidencyPinPublisher.clear();
-      return;
-    }
-    historyResidencyPinPublisher.setTarget({
-      threadId,
-      conversationGeneration: conversationEntityGeneration,
-      generation: historyTopologyGeneration,
-      historyMutationRevision,
-    });
-  }, [
-    hasCanonicalHistoryTopology,
-    historyResidencyPinPublisher,
-    conversationEntityGeneration,
-    historyTopologyGeneration,
-    historyMutationRevision,
-    threadId,
-  ]);
-  useEffect(
-    () => () => {
-      // React Strict Mode replays effects without recreating the component instance. Clear the
-      // active target while keeping the publisher reusable for the replayed setup.
-      historyResidencyPinPublisher.clear();
-    },
-    [historyResidencyPinPublisher],
-  );
-  const handleVisibleHistoryTurnIdsChange = useCallback(
-    (turnIds: readonly string[]) => {
-      if (
-        !threadId ||
-        !hasCanonicalHistoryTopology ||
-        conversationEntityGeneration === undefined ||
-        historyTopologyGeneration === undefined ||
-        historyMutationRevision === undefined
-      ) {
-        return;
-      }
-      historyResidencyPinPublisher.observe({
-        threadId,
-        conversationGeneration: conversationEntityGeneration,
-        generation: historyTopologyGeneration,
-        historyMutationRevision,
-        turnIds,
-      });
-    },
-    [
-      hasCanonicalHistoryTopology,
-      historyResidencyPinPublisher,
-      conversationEntityGeneration,
-      historyTopologyGeneration,
-      historyMutationRevision,
-      threadId,
-    ],
-  );
   const userMessageNavigationItems = useMemo(
     () =>
       buildThreadUserMessageNavigationItems(turnEntries, {
@@ -1271,7 +1195,6 @@ export function LocalConversationThreadBodyOwner({
               onLoadHistoryBoundary={handleLoadHistoryBoundary}
               historyTurnItemsRefs={historyTurnItemsRefs}
               onLoadHistoryTurnItems={handleLoadHistoryTurnItems}
-              onVisibleHistoryTurnIdsChange={handleVisibleHistoryTurnIdsChange}
               scrollElement={scrollElement}
               onApiChange={(api) => {
                 listApiRef.current = api;

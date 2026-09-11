@@ -1318,93 +1318,138 @@ async function dispatchQueueOwnerProjection(
 }
 
 describe("local-conversation-store", () => {
-  test("dedupes history reads and preserves owner updates received while the page is pending", async () => {
-    invokeCalls = [];
-    invokeRecords = [];
-    hostMessageListener = null;
-    threadListByProject = {};
-    const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
-      await import("./local-conversation-store");
-    const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
-    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+  test.each([false, true])(
+    "dedupes history reads and preserves owner updates across a follower race: %s",
+    async (followerJoins) => {
+      invokeCalls = [];
+      invokeRecords = [];
+      hostMessageListener = null;
+      threadListByProject = {};
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      const { dispatchCodexAppServerMessage } = await import("./app-server-message-bus");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
 
-    const manager = new CodexAppServerManager("default");
-    const partial = {
-      ...buildConversation("thread-older", "project-1"),
-      turns: [
-        {
-          threadId: "thread-older",
-          turnId: "turn-latest",
-          status: "completed" as const,
-          itemIds: [],
-          items: [],
-        },
-      ],
-    };
-    const fixture = buildExactOlderHistoryPageFixture({
-      partial,
-      loaded: {
-        ...partial,
+      const manager = new CodexAppServerManager("default");
+      const partial = {
+        ...buildConversation("thread-older", "project-1"),
         turns: [
           {
             threadId: "thread-older",
-            turnId: "turn-older",
-            status: "completed",
+            turnId: "turn-latest",
+            status: "completed" as const,
             itemIds: [],
             items: [],
           },
-          ...partial.turns,
         ],
-      },
-    });
-    resumeThreadResult = fixture.before;
-    await manager.requestThreadStreamResume("thread-older");
-    let resolvePage: (page: CodexConversationHistoryPageResult) => void = () => {};
-    historyPageResult = new Promise<CodexConversationHistoryPageResult>((resolve) => {
-      resolvePage = resolve;
-    });
-    invokeRecords = [];
-
-    const firstLoad = manager.requestHistoryPage(fixture.request);
-    const secondLoad = manager.requestHistoryPage(fixture.request);
-    await flushAsyncWork();
-
-    expect(
-      String(invokeCalls.filter((call) => call === "codex:thread:history-page:load").length),
-    ).toBe("1");
-
-    dispatchCodexAppServerMessage("thread-owner-notification", {
-      hostId: "default",
-      sequence: 1,
-      notification: {
-        method: "thread/name/updated",
-        params: {
-          threadId: "thread-older",
-          threadName: "Updated while history was loading",
+      };
+      const fixture = buildExactOlderHistoryPageFixture({
+        partial,
+        loaded: {
+          ...partial,
+          turns: [
+            {
+              threadId: "thread-older",
+              turnId: "turn-older",
+              status: "completed",
+              itemIds: [],
+              items: [],
+            },
+            ...partial.turns,
+          ],
         },
-      },
-    });
-    expect(manager.readConversation("thread-older")?.threadName).toBe(
-      "Updated while history was loading",
-    );
-    resolvePage(fixture.page);
-    await firstLoad;
-    await secondLoad;
+      });
+      resumeThreadResult = fixture.before;
+      await manager.requestThreadStreamResume("thread-older");
+      dispatchCodexAppServerMessage("thread-stream-followers-changed", {
+        hostId: "default",
+        conversationId: "thread-older",
+        ownerClientId: "renderer-owner",
+        followerClientIds: [],
+        membershipEpoch: 2,
+      });
+      let resolvePage: (page: CodexConversationHistoryPageResult) => void = () => {};
+      historyPageResult = new Promise<CodexConversationHistoryPageResult>((resolve) => {
+        resolvePage = resolve;
+      });
+      invokeRecords = [];
 
-    const conversation = manager.readConversation("thread-older");
-    expect(conversation?.turns.map((turn) => turn.turnId)).toEqual(["turn-older", "turn-latest"]);
-    expect(conversation?.historyMutationRevision).toBe(1);
-    expect(conversation?.threadName).toBe("Updated while history was loading");
-    const publication = invokeRecords.find(
-      (record) => record.channel === "codex:thread-owner:stream-state:publish",
-    )?.args[0] as { change?: { conversationState?: CodexConversationSnapshot } } | undefined;
-    expect(publication?.change?.conversationState?.threadName).toBe(
-      "Updated while history was loading",
-    );
-    manager.destroy();
-    resumeThreadResult = null;
-    historyPageResult = null;
-  });
+      const firstLoad = manager.requestHistoryPage(fixture.request);
+      const secondLoad = manager.requestHistoryPage(fixture.request);
+      await flushAsyncWork();
+
+      expect(
+        String(invokeCalls.filter((call) => call === "codex:thread:history-page:load").length),
+      ).toBe("1");
+
+      dispatchCodexAppServerMessage("thread-owner-notification", {
+        hostId: "default",
+        sequence: 1,
+        notification: {
+          method: "thread/name/updated",
+          params: {
+            threadId: "thread-older",
+            threadName: "Updated while history was loading",
+          },
+        },
+      });
+      expect(manager.readConversation("thread-older")?.threadName).toBe(
+        "Updated while history was loading",
+      );
+      let publicationAttempts = 0;
+      ownerStreamPublishHandler = () => {
+        publicationAttempts += 1;
+        if (followerJoins && publicationAttempts === 1) {
+          return { accepted: false, reason: "followers-present", recovery: null };
+        }
+        return true;
+      };
+      resolvePage(fixture.page);
+      await firstLoad;
+      await secondLoad;
+
+      const conversation = manager.readConversation("thread-older");
+      expect(conversation?.turns.map((turn) => turn.turnId)).toEqual(["turn-older", "turn-latest"]);
+      expect(conversation?.historyMutationRevision).toBe(1);
+      expect(conversation?.threadName).toBe("Updated while history was loading");
+      const publication = invokeRecords.find(
+        (record) => record.channel === "codex:thread-owner:stream-state:publish",
+      )?.args[0] as { change?: { conversationState?: CodexConversationSnapshot } } | undefined;
+      expect(publication).toMatchObject({ recoveryOnly: true });
+      const checkpointPublication = publication as unknown as {
+        baseCheckpoint: { revision: number };
+        checkpoint: { revision: number };
+      };
+      expect(checkpointPublication.checkpoint.revision).toBe(
+        checkpointPublication.baseCheckpoint.revision,
+      );
+      expect(publication?.change?.conversationState?.threadName).toBe(
+        "Updated while history was loading",
+      );
+      const publications = invokeRecords.filter(
+        (record) => record.channel === "codex:thread-owner:stream-state:publish",
+      );
+      expect(publications).toHaveLength(followerJoins ? 2 : 1);
+      if (followerJoins) {
+        const retry = publications[1]?.args[0] as {
+          recoveryOnly?: true;
+          checkpoint: { revision: number };
+          change: { conversationState: CodexConversationSnapshot };
+        };
+        expect(retry.recoveryOnly).toBeUndefined();
+        expect(retry.checkpoint.revision).toBe(checkpointPublication.checkpoint.revision + 1);
+        expect(retry.change.conversationState.threadName).toBe("Updated while history was loading");
+        expect(retry.change.conversationState.turns.map((turn) => turn.turnId)).toEqual([
+          "turn-older",
+          "turn-latest",
+        ]);
+      }
+      ownerStreamPublishHandler = null;
+      manager.destroy();
+      resumeThreadResult = null;
+      historyPageResult = null;
+    },
+  );
 
   test("keeps live state local without followers and supplies a fresh snapshot when one attaches", async () => {
     const { CodexAppServerManager, __resetLocalConversationStoreForTests } =

@@ -55,12 +55,6 @@ import {
   prependCodexHistoryItemPage,
   type CodexHistoryItemWindow,
 } from "../../../shared/codex-conversation-state/codex-history-item-window";
-import {
-  DEFAULT_CODEX_ACTIVE_HISTORY_MAX_APPROXIMATE_BYTES,
-  DEFAULT_CODEX_ACTIVE_HISTORY_MAX_TURNS,
-  retainCodexHistoryResidency,
-  type CodexHistoryResidencyLimits,
-} from "../../../shared/codex-conversation-state/codex-history-residency";
 import type { ThreadGoal, Turn } from "@nodex/codex-app-server-protocol/v2";
 import {
   CODEX_PENDING_MANUAL_CONTEXT_COMPACTION_ITEM_ID,
@@ -117,7 +111,6 @@ import {
 } from "../CodexConversationServerRequestProjection";
 import { projectCodexConversationSnapshot } from "../CodexConversationSnapshotProjection";
 import { projectCodexConversationDocument } from "../../../shared/codex-conversation-document";
-import { projectCodexConversationHistoryResidency } from "../CodexConversationHistoryResidencyProjection";
 import { projectCodexConversationHistoryItemWindows } from "../CodexConversationHistoryProjection";
 import type { CodexHydratedHistoryItemSegment } from "../CodexHistoryPageAdapter";
 import { cappedApproximateValueBytes } from "../../../shared/codex-bounded-value-size";
@@ -200,15 +193,6 @@ export type CodexConversationHistoryPageCommitResult =
   | { readonly status: "staleGeneration" | "staleTarget" }
   | { readonly status: "rejected"; readonly reason: string };
 
-export type CodexConversationHistoryResidencyPinResult =
-  | { readonly status: "staleGeneration" }
-  | {
-      readonly status: "applied";
-      readonly evictedTurnIds: readonly string[];
-      readonly limitsSatisfied: boolean;
-      readonly mutation?: CodexConversationHistoryMutation;
-    };
-
 interface MutableConversationEntityState {
   readonly generation: number;
   canonicalState: CodexCanonicalConversationState | null;
@@ -232,14 +216,7 @@ interface MutableConversationEntityState {
   historyGeneration: number;
   historyEntityRevision: number;
   historyMutationRevision: number;
-  historyVisibleIslandIdsByClient: Map<string, Set<string>>;
-  historyVisibleTurnIdsByClient: Map<string, Set<string>>;
-  historyRevealedTurnIds: Map<string, number>;
-  activeSearchHistoryIslandId: string | null;
-  historyPageLoadLeases: Map<
-    string,
-    { readonly islandIds: readonly string[]; readonly turnIds: readonly string[] }
-  >;
+  historyPageLoadLeases: Set<string>;
   resumeEventBuffer: CodexApplicationProtocolOccurrence[] | null;
   resumeEventBufferBytes: number;
   threadStartEventBuffer: CodexApplicationProtocolOccurrence[] | null;
@@ -352,22 +329,9 @@ export interface ConversationEntityState {
     readonly observedAtMs: number;
     readonly projectReplica: boolean;
   }) => CodexConversationHistoryPageCommitResult;
-  /** Pins the exact target while its one physical page is outside the causal lane. */
+  /** Admits one exact target while its physical page is outside the causal lane. */
   readonly beginHistoryPageLoad: (request: CodexConversationHistoryPageRequest) => boolean;
   readonly endHistoryPageLoad: (request: CodexConversationHistoryPageRequest) => void;
-  /**
-   * Replaces renderer-visible residency pins for one exact topology generation. Search navigation
-   * owns a default pin until this explicit viewport seam supersedes it.
-   */
-  readonly setHistoryResidencyPins: (input: {
-    readonly clientId: string;
-    readonly projectReplica?: boolean;
-    readonly expectedTopologyGeneration: number;
-    readonly expectedHistoryMutationRevision: number;
-    readonly islandIds: readonly string[];
-    readonly turnIds: readonly string[];
-  }) => CodexConversationHistoryResidencyPinResult;
-  readonly clearHistoryResidencyPins: (clientId: string) => void;
   /** Replaces pagination when a canonical hydration installs a new history window. */
   readonly initializeHistory: (
     pagination: CodexConversationTurnPagination,
@@ -604,12 +568,6 @@ export interface ConversationEntityStateRegistry {
   readonly markAllNeedsResume: () => readonly string[];
 }
 
-export interface ConversationEntityStateRegistryOptions {
-  readonly historyResidencyLimits?: Partial<CodexHistoryResidencyLimits>;
-  readonly historyTailTurnCount?: number;
-  readonly historyRevealLeaseLimits?: Partial<CodexHistoryResidencyLimits>;
-}
-
 const pendingManualCompaction: CodexCanonicalContextCompactionItem = {
   type: "contextCompaction",
   id: CODEX_PENDING_MANUAL_CONTEXT_COMPACTION_ITEM_ID,
@@ -619,21 +577,16 @@ const pendingManualCompaction: CodexCanonicalContextCompactionItem = {
 
 const MAX_BUFFERED_PROTOCOL_OCCURRENCES = 1_024;
 const MAX_BUFFERED_PROTOCOL_BYTES = 16 * 1024 * 1024;
-const MAX_HISTORY_REVEAL_LEASE_TURNS = 32;
-const MAX_HISTORY_REVEAL_LEASE_APPROXIMATE_BYTES = 16 * 1024 * 1024;
 
 /** Avoid a payload-sized JSON string while deciding whether a deferred occurrence fits. */
 const protocolOccurrenceBytes = (occurrence: CodexApplicationProtocolOccurrence): number =>
   cappedApproximateValueBytes(occurrence, MAX_BUFFERED_PROTOCOL_BYTES);
 
 const canonicalTurnBytes = (turn: CodexCanonicalTurnState): number =>
-  cappedApproximateValueBytes(turn, DEFAULT_CODEX_ACTIVE_HISTORY_MAX_APPROXIMATE_BYTES);
+  cappedApproximateValueBytes(turn, Number.MAX_SAFE_INTEGER);
 
 const canonicalTurnMetadataBytes = (turn: CodexCanonicalTurnState): number =>
-  cappedApproximateValueBytes(
-    { ...turn, items: [] },
-    DEFAULT_CODEX_ACTIVE_HISTORY_MAX_APPROXIMATE_BYTES,
-  );
+  cappedApproximateValueBytes({ ...turn, items: [] }, Number.MAX_SAFE_INTEGER);
 
 type PersistedCanonicalTurn = CodexCanonicalTurnState & {
   readonly protocol: CodexCanonicalTurnState["protocol"] & { readonly id: string };
@@ -965,11 +918,7 @@ const initialAggregate = (generation: number): MutableConversationEntityState =>
   historyGeneration: 0,
   historyEntityRevision: 0,
   historyMutationRevision: 0,
-  historyVisibleIslandIdsByClient: new Map(),
-  historyVisibleTurnIdsByClient: new Map(),
-  historyRevealedTurnIds: new Map(),
-  activeSearchHistoryIslandId: null,
-  historyPageLoadLeases: new Map(),
+  historyPageLoadLeases: new Set(),
   resumeEventBuffer: null,
   resumeEventBufferBytes: 0,
   threadStartEventBuffer: null,
@@ -987,19 +936,7 @@ const cloneHistoryTransaction = (
   turnPagination: { ...aggregate.turnPagination },
   turnItemsPaginationById: { ...aggregate.turnItemsPaginationById },
   historyItemWindowsByTurnId: new Map(aggregate.historyItemWindowsByTurnId),
-  historyVisibleIslandIdsByClient: new Map(
-    [...aggregate.historyVisibleIslandIdsByClient].map(([key, ids]) => [key, new Set(ids)]),
-  ),
-  historyVisibleTurnIdsByClient: new Map(
-    [...aggregate.historyVisibleTurnIdsByClient].map(([key, ids]) => [key, new Set(ids)]),
-  ),
-  historyRevealedTurnIds: new Map(aggregate.historyRevealedTurnIds),
-  historyPageLoadLeases: new Map(
-    [...aggregate.historyPageLoadLeases].map(([key, lease]) => [
-      key,
-      { islandIds: [...lease.islandIds], turnIds: [...lease.turnIds] },
-    ]),
-  ),
+  historyPageLoadLeases: new Set(aggregate.historyPageLoadLeases),
   preHydrationServerRequests: [...aggregate.preHydrationServerRequests],
   resumeEventBuffer: aggregate.resumeEventBuffer ? [...aggregate.resumeEventBuffer] : null,
   threadStartEventBuffer: aggregate.threadStartEventBuffer
@@ -1036,9 +973,7 @@ const snapshot = (aggregate: MutableConversationEntityState): ConversationEntity
  * Creates the private per-Thread canonical state owned by ConversationEntityMap.
  * Its interface exposes semantic state transitions rather than mutable records or generic reducers.
  */
-export function makeConversationEntityStateRegistry(
-  options: ConversationEntityStateRegistryOptions = {},
-): ConversationEntityStateRegistry {
+export function makeConversationEntityStateRegistry(): ConversationEntityStateRegistry {
   const aggregates = new Map<string, MutableConversationEntityState>();
   const capabilities = new Map<string, ConversationEntityState>();
   let nextGeneration = 1;
@@ -1070,10 +1005,6 @@ export function makeConversationEntityStateRegistry(
     aggregate.historyGeneration = 0;
     aggregate.historyEntityRevision = 0;
     aggregate.historyMutationRevision = 0;
-    aggregate.historyVisibleIslandIdsByClient.clear();
-    aggregate.historyVisibleTurnIdsByClient.clear();
-    aggregate.historyRevealedTurnIds.clear();
-    aggregate.activeSearchHistoryIslandId = null;
     aggregate.historyPageLoadLeases.clear();
     aggregate.resumeEventBuffer = null;
     aggregate.resumeEventBufferBytes = 0;
@@ -1137,40 +1068,6 @@ export function makeConversationEntityStateRegistry(
       state.revision = input.revision;
       state.checkpoint = checkpoint;
       return replica;
-    };
-
-    const leaseHistoryRevealedTurns = (
-      turnIds: readonly string[],
-      revision: number,
-      state: MutableConversationEntityState = aggregate,
-    ): void => {
-      for (const turnId of turnIds) {
-        state.historyRevealedTurnIds.delete(turnId);
-        state.historyRevealedTurnIds.set(turnId, revision);
-      }
-      const leasedBytes = (): number =>
-        [...state.historyRevealedTurnIds.keys()].reduce(
-          (bytes, turnId) =>
-            bytes + (state.historyTopology.entitiesByKey[turnId]?.approximateBytes ?? 0),
-          0,
-        );
-      const maxTurns = Math.max(
-        1,
-        options.historyRevealLeaseLimits?.maxTurns ?? MAX_HISTORY_REVEAL_LEASE_TURNS,
-      );
-      const maxApproximateBytes = Math.max(
-        1,
-        options.historyRevealLeaseLimits?.maxApproximateBytes ??
-          MAX_HISTORY_REVEAL_LEASE_APPROXIMATE_BYTES,
-      );
-      while (
-        state.historyRevealedTurnIds.size > 1 &&
-        (state.historyRevealedTurnIds.size > maxTurns || leasedBytes() > maxApproximateBytes)
-      ) {
-        const oldestTurnId = state.historyRevealedTurnIds.keys().next().value;
-        if (typeof oldestTurnId !== "string") break;
-        state.historyRevealedTurnIds.delete(oldestTurnId);
-      }
     };
 
     const readOrSeedHistoryItemWindow = (
@@ -1264,7 +1161,6 @@ export function makeConversationEntityStateRegistry(
         });
       }
       reconcileCanonicalHistory("live", liveTurnIds);
-      enforceHistoryResidency(projectReplica);
       return true;
     };
 
@@ -1284,170 +1180,6 @@ export function makeConversationEntityStateRegistry(
         liveTurnIds,
         revision: aggregate.historyEntityRevision,
       });
-    };
-
-    const operationHistoryProtection = (
-      state: MutableConversationEntityState = aggregate,
-    ): {
-      readonly islandIds: Set<string>;
-      readonly turnIds: Set<string>;
-    } => {
-      const islandIds = new Set<string>();
-      const turnIds = new Set(state.historyRevealedTurnIds.keys());
-      if (state.activeSearchHistoryIslandId) {
-        islandIds.add(state.activeSearchHistoryIslandId);
-      }
-      for (const lease of state.historyPageLoadLeases.values()) {
-        for (const islandId of lease.islandIds) islandIds.add(islandId);
-        for (const turnId of lease.turnIds) turnIds.add(turnId);
-      }
-      return { islandIds, turnIds };
-    };
-
-    const admitHistoryViewportPins = (
-      input: {
-        readonly islandIds: readonly string[];
-        readonly turnIds: readonly string[];
-      },
-      state: MutableConversationEntityState = aggregate,
-    ): { readonly islandIds: Set<string>; readonly turnIds: Set<string> } => {
-      const operationPins = operationHistoryProtection(state);
-      const admittedIslandIds = new Set<string>();
-      const admittedTurnIds = new Set<string>();
-      const fits = (): boolean =>
-        !retainCodexHistoryResidency(state.historyTopology, {
-          limits: {
-            maxTurns:
-              options.historyResidencyLimits?.maxTurns ?? DEFAULT_CODEX_ACTIVE_HISTORY_MAX_TURNS,
-            maxApproximateBytes:
-              options.historyResidencyLimits?.maxApproximateBytes ??
-              DEFAULT_CODEX_ACTIVE_HISTORY_MAX_APPROXIMATE_BYTES,
-          },
-          ...(options.historyTailTurnCount === undefined
-            ? {}
-            : { tailTurnCount: options.historyTailTurnCount }),
-          protectedIslandIds: new Set([...operationPins.islandIds, ...admittedIslandIds]),
-          protectedEntityKeys: new Set([...operationPins.turnIds, ...admittedTurnIds]),
-        }).protectedResidencyExceedsLimits;
-
-      if (!fits()) return { islandIds: admittedIslandIds, turnIds: admittedTurnIds };
-      for (const turnId of input.turnIds) {
-        admittedTurnIds.add(turnId);
-        if (fits()) continue;
-        admittedTurnIds.delete(turnId);
-      }
-      for (const islandId of input.islandIds) {
-        admittedIslandIds.add(islandId);
-        if (fits()) continue;
-        admittedIslandIds.delete(islandId);
-      }
-      return { islandIds: admittedIslandIds, turnIds: admittedTurnIds };
-    };
-
-    const enforceHistoryResidency = (
-      projectReplica: boolean,
-      state: MutableConversationEntityState = aggregate,
-    ) => {
-      const canonicalState = state.canonicalState;
-      if (!canonicalState) return null;
-      const protectedIslandIds = new Set(
-        [...state.historyVisibleIslandIdsByClient.values()].flatMap((values) => [...values]),
-      );
-      if (state.activeSearchHistoryIslandId) {
-        protectedIslandIds.add(state.activeSearchHistoryIslandId);
-      }
-      const protectedTurnIds = new Set([
-        ...[...state.historyVisibleTurnIdsByClient.values()].flatMap((values) => [...values]),
-        ...state.historyRevealedTurnIds.keys(),
-      ]);
-      for (const lease of state.historyPageLoadLeases.values()) {
-        for (const islandId of lease.islandIds) protectedIslandIds.add(islandId);
-        for (const turnId of lease.turnIds) protectedTurnIds.add(turnId);
-      }
-      const retention = retainCodexHistoryResidency(state.historyTopology, {
-        ...(options.historyResidencyLimits ? { limits: options.historyResidencyLimits } : {}),
-        ...(options.historyTailTurnCount === undefined
-          ? {}
-          : { tailTurnCount: options.historyTailTurnCount }),
-        protectedIslandIds,
-        protectedEntityKeys: protectedTurnIds,
-      });
-      const residentTurnIds = new Set(Object.keys(retention.topology.entitiesByKey));
-      const hasNonResidentCanonicalTurn = (
-        state: CodexCanonicalConversationState | null | undefined,
-      ) =>
-        state?.turns.some(
-          (turn) => turn.protocol.id !== null && !residentTurnIds.has(turn.protocol.id),
-        ) ?? false;
-      const hasNonResidentConversation = (conversation: CodexConversationSnapshot | null) =>
-        conversation !== null &&
-        (conversation.turns.some(
-          (turn) => turn.turnId !== null && !residentTurnIds.has(turn.turnId),
-        ) ||
-          hasNonResidentCanonicalTurn(conversation.canonicalState) ||
-          Object.keys(conversation.turnItemsPaginationById ?? {}).some(
-            (turnId) => !residentTurnIds.has(turnId),
-          ) ||
-          Object.keys(conversation.historyItemWindowsByTurnId ?? {}).some(
-            (turnId) => !residentTurnIds.has(turnId),
-          ));
-      const requiresProjection =
-        retention.evictedEntityKeys.length > 0 ||
-        hasNonResidentCanonicalTurn(canonicalState) ||
-        Object.keys(state.turnItemsPaginationById).some((turnId) => !residentTurnIds.has(turnId)) ||
-        hasNonResidentConversation(state.snapshot) ||
-        hasNonResidentConversation(state.acceptedReplica?.conversation ?? null);
-      state.historyTopology = retention.topology;
-      if (!requiresProjection) return retention;
-
-      const projection = projectCodexConversationHistoryResidency({
-        canonicalState,
-        conversationPagination: state.turnPagination,
-        turnItemsPaginationById: state.turnItemsPaginationById,
-        topology: retention.topology,
-      });
-      const snapshotBefore = state.snapshot;
-      const replicaBefore = state.acceptedReplica;
-      state.canonicalState = projection.canonicalState;
-      state.turnPagination = projection.turnPagination;
-      state.turnItemsPaginationById = { ...projection.turnItemsPaginationById };
-      for (const turnId of state.historyItemWindowsByTurnId.keys()) {
-        if (!residentTurnIds.has(turnId)) state.historyItemWindowsByTurnId.delete(turnId);
-      }
-      const projectResidentConversation = (
-        conversation: CodexConversationSnapshot,
-      ): CodexConversationSnapshot => ({
-        ...projection.projectConversation(conversation),
-        historyItemWindowsByTurnId: Object.fromEntries(
-          Object.entries(conversation.historyItemWindowsByTurnId ?? {}).filter(([turnId]) =>
-            residentTurnIds.has(turnId),
-          ),
-        ),
-      });
-      if (snapshotBefore) {
-        state.snapshot = projectResidentConversation(snapshotBefore);
-      }
-      if (replicaBefore && projectReplica) {
-        acceptReplica(
-          {
-            conversation: projectResidentConversation(replicaBefore.conversation),
-            ownerEpoch: replicaBefore.checkpoint.ownerEpoch,
-            // Residency is part of the semantic mutation already being accepted. Advancing a
-            // private extra revision would strand the owner on an unknowable checkpoint.
-            revision: state.revision,
-          },
-          state,
-        );
-      }
-      if (
-        state.activeSearchHistoryIslandId &&
-        !state.historyTopology.islands.some(
-          (island) => island.id === state.activeSearchHistoryIslandId,
-        )
-      ) {
-        state.activeSearchHistoryIslandId = null;
-      }
-      return retention;
     };
 
     const installQueuedFollowUpProjection = (
@@ -1629,25 +1361,8 @@ export function makeConversationEntityStateRegistry(
             ? { status: "staleTarget" }
             : { status: "rejected", reason: transitioned.error.message };
         }
-        const releasedCanonicalCount = transitioned.releasedSegments.reduce(
-          (count, segment) => count + segment.items.canonicalItems.length,
-          0,
-        );
-        const releasedRendererCount = transitioned.releasedSegments.reduce(
-          (count, segment) => count + segment.items.rendererItems.length,
-          0,
-        );
-        const retainedCanonical =
-          target.items.edge === "older"
-            ? turn.items.slice(0, turn.items.length - releasedCanonicalCount)
-            : turn.items.slice(releasedCanonicalCount);
-        const retainedRenderer =
-          target.items.edge === "older"
-            ? currentRendererTurn.items.slice(
-                0,
-                currentRendererTurn.items.length - releasedRendererCount,
-              )
-            : currentRendererTurn.items.slice(releasedRendererCount);
+        const retainedCanonical = turn.items;
+        const retainedRenderer = currentRendererTurn.items;
         const canonicalItems =
           target.items.edge === "older"
             ? [...itemPage.canonicalItems, ...retainedCanonical]
@@ -1680,7 +1395,6 @@ export function makeConversationEntityStateRegistry(
             itemsView: pagination.itemsView,
             windowMutation: {
               wireSegment: transitioned.wireSegment,
-              releasedSegmentIds: transitioned.releasedSegmentIds,
             },
           },
         ];
@@ -1732,13 +1446,8 @@ export function makeConversationEntityStateRegistry(
       const previousTurnIds = new Set(
         persistedCanonicalTurns(before).map((turn) => turn.protocol.id),
       );
-      const revealedTurnIds =
-        target.kind === "turnItems"
-          ? [target.items.turnId]
-          : input.turnIds.filter((turnId) => !previousTurnIds.has(turnId));
       const historyRows = flattenCodexHistoryTopology(nextTopology);
       state.historyMutationRevision += 1;
-      leaseHistoryRevealedTurns(revealedTurnIds, state.historyMutationRevision, state);
       let boundaryItemWindowSnapshots: Readonly<
         Record<string, CodexConversationHistoryItemWindowSnapshot>
       > | null = null;
@@ -1848,7 +1557,6 @@ export function makeConversationEntityStateRegistry(
           state,
         );
       }
-      enforceHistoryResidency(input.projectReplica, state);
       const afterSnapshot = state.snapshot;
       if (!afterSnapshot) {
         return { status: "rejected", reason: "History snapshot disappeared during commit" };
@@ -1927,20 +1635,8 @@ export function makeConversationEntityStateRegistry(
         ...input.itemsPaginationByTurnId,
       };
       targetState.historyTopology = inserted.topology;
-      if (input.islandId.startsWith("prompt-rail:")) {
-        for (const island of targetState.historyTopology.islands) {
-          if (!island.id.startsWith("prompt-rail:") || island.id === input.islandId) continue;
-          for (const entry of island.entries) {
-            targetState.historyRevealedTurnIds.delete(entry.entityKey);
-          }
-        }
-      }
-      if (input.islandId.startsWith("search:")) {
-        targetState.activeSearchHistoryIslandId = input.islandId;
-      }
       const historyRows = flattenCodexHistoryTopology(targetState.historyTopology);
       targetState.historyMutationRevision += 1;
-      leaseHistoryRevealedTurns(input.turnIds, targetState.historyMutationRevision, targetState);
       if (targetState.snapshot) {
         targetState.snapshot = {
           ...projectCodexConversationSnapshot({
@@ -1976,7 +1672,6 @@ export function makeConversationEntityStateRegistry(
           targetState,
         );
       }
-      enforceHistoryResidency(input.projectReplica, targetState);
       const afterSnapshot = targetState.snapshot;
       if (!afterSnapshot) {
         return { status: "rejected", reason: "History snapshot disappeared during commit" };
@@ -1998,87 +1693,6 @@ export function makeConversationEntityStateRegistry(
       };
     };
 
-    const setHistoryResidencyPins = (
-      input: Parameters<ConversationEntityState["setHistoryResidencyPins"]>[0],
-      targetState: MutableConversationEntityState,
-    ): CodexConversationHistoryResidencyPinResult => {
-      if (targetState.historyTopology.generation !== input.expectedTopologyGeneration) {
-        return { status: "staleGeneration" };
-      }
-      const beforeSnapshot = targetState.snapshot;
-      const requestedVisibleIslandIds = new Set(input.islandIds);
-      const requestedVisibleTurnIds = new Set(input.turnIds);
-      // A revision-matched viewport observation acknowledges the page reveal lease. Search
-      // islands use the stronger overlap handoff below so tail observations cannot release them.
-      for (const [turnId, revision] of targetState.historyRevealedTurnIds) {
-        const visibleThroughIsland = targetState.historyTopology.islands.some(
-          (island) =>
-            requestedVisibleIslandIds.has(island.id) &&
-            island.entries.some((entry) => entry.entityKey === turnId),
-        );
-        if (
-          revision <= input.expectedHistoryMutationRevision &&
-          (requestedVisibleTurnIds.has(turnId) || visibleThroughIsland)
-        ) {
-          targetState.historyRevealedTurnIds.delete(turnId);
-        }
-      }
-      const activeSearchIslandId = targetState.activeSearchHistoryIslandId;
-      const activeSearchIsland = activeSearchIslandId
-        ? targetState.historyTopology.islands.find((island) => island.id === activeSearchIslandId)
-        : null;
-      if (
-        activeSearchIslandId &&
-        (requestedVisibleIslandIds.has(activeSearchIslandId) ||
-          activeSearchIsland?.entries.some((entry) => requestedVisibleTurnIds.has(entry.entityKey)))
-      ) {
-        targetState.activeSearchHistoryIslandId = null;
-      }
-      if (input.islandIds.length === 0 && input.turnIds.length === 0) {
-        targetState.historyVisibleIslandIdsByClient.delete(input.clientId);
-        targetState.historyVisibleTurnIdsByClient.delete(input.clientId);
-      } else {
-        // The renderer registry has one owner. Replacing stale client state here is a second
-        // boundary against owner handoff races and prevents client-count-multiplied pin unions.
-        targetState.historyVisibleIslandIdsByClient.clear();
-        targetState.historyVisibleTurnIdsByClient.clear();
-        const admitted = admitHistoryViewportPins(input, targetState);
-        if (admitted.islandIds.size > 0) {
-          targetState.historyVisibleIslandIdsByClient.set(input.clientId, admitted.islandIds);
-        }
-        if (admitted.turnIds.size > 0) {
-          targetState.historyVisibleTurnIdsByClient.set(input.clientId, admitted.turnIds);
-        }
-      }
-      const retained = enforceHistoryResidency(false, targetState);
-      const projectedSnapshot = targetState.snapshot;
-      let mutation: CodexConversationHistoryMutation | null = null;
-      if (beforeSnapshot && projectedSnapshot && projectedSnapshot !== beforeSnapshot) {
-        targetState.historyMutationRevision += 1;
-        targetState.snapshot = {
-          ...projectedSnapshot,
-          historyMutationRevision: targetState.historyMutationRevision,
-        };
-        mutation = buildCodexConversationHistoryMutation({
-          before: beforeSnapshot,
-          after: targetState.snapshot,
-          origin: {
-            kind: "residency",
-            threadId,
-            expectedConversationGeneration: targetState.generation,
-            expectedTopologyGeneration: input.expectedTopologyGeneration,
-            expectedHistoryMutationRevision: input.expectedHistoryMutationRevision,
-          },
-        });
-      }
-      return {
-        status: "applied",
-        evictedTurnIds: retained?.evictedEntityKeys ?? [],
-        limitsSatisfied: retained?.limitsSatisfied ?? true,
-        ...(mutation ? { mutation } : {}),
-      };
-    };
-
     const runHistoryTransaction = <T extends { readonly status: string }>(
       projectReplica: boolean,
       operation: (state: MutableConversationEntityState) => T,
@@ -2089,13 +1703,6 @@ export function makeConversationEntityStateRegistry(
       if ("mutation" in result && result.mutation) {
         pendingHistoryTransaction = { state: proposed, baseline: aggregate.canonicalState };
         return result;
-      }
-      // Pin observations without a visible eviction do not require an owner snapshot.
-      if (result.status === "applied") {
-        aggregate.historyVisibleIslandIdsByClient = proposed.historyVisibleIslandIdsByClient;
-        aggregate.historyVisibleTurnIdsByClient = proposed.historyVisibleTurnIdsByClient;
-        aggregate.historyRevealedTurnIds = proposed.historyRevealedTurnIds;
-        aggregate.activeSearchHistoryIslandId = proposed.activeSearchHistoryIslandId;
       }
       return result;
     };
@@ -2117,7 +1724,6 @@ export function makeConversationEntityStateRegistry(
           historyMutationRevision: aggregate.historyMutationRevision,
           queuedFollowUps: aggregate.queuedFollowUps,
         };
-        enforceHistoryResidency(false);
       },
       seedHasUnreadTurn: (hasUnreadTurn) => {
         if (aggregate.canonicalState) return;
@@ -2227,10 +1833,7 @@ export function makeConversationEntityStateRegistry(
           ) {
             return false;
           }
-          aggregate.historyPageLoadLeases.set(key, {
-            islandIds: [],
-            turnIds: [target.items.turnId],
-          });
+          aggregate.historyPageLoadLeases.add(key);
           return true;
         }
         const island = aggregate.historyTopology.islands.find(
@@ -2245,10 +1848,7 @@ export function makeConversationEntityStateRegistry(
         ) {
           return false;
         }
-        aggregate.historyPageLoadLeases.set(key, {
-          islandIds: [target.boundary.islandId],
-          turnIds: island?.entries.map((entry) => entry.entityKey) ?? [],
-        });
+        aggregate.historyPageLoadLeases.add(key);
         return true;
       },
       endHistoryPageLoad: (request) => {
@@ -2256,22 +1856,10 @@ export function makeConversationEntityStateRegistry(
       },
       commitHistoryPage: (input) =>
         runHistoryTransaction(input.projectReplica, (state) => commitHistoryPage(input, state)),
-      setHistoryResidencyPins: (input) =>
-        runHistoryTransaction(input.projectReplica ?? true, (state) =>
-          setHistoryResidencyPins(input, state),
-        ),
-      clearHistoryResidencyPins: (clientId) => {
-        aggregate.historyVisibleIslandIdsByClient.delete(clientId);
-        aggregate.historyVisibleTurnIdsByClient.delete(clientId);
-      },
       initializeHistory: (pagination, loadedTurnCount, itemsPaginationByTurnId = {}) => {
         aggregate.historyGeneration += 1;
         aggregate.historyEntityRevision += 1;
         aggregate.historyMutationRevision += 1;
-        aggregate.historyVisibleIslandIdsByClient.clear();
-        aggregate.historyVisibleTurnIdsByClient.clear();
-        aggregate.historyRevealedTurnIds.clear();
-        aggregate.activeSearchHistoryIslandId = null;
         aggregate.historyPageLoadLeases.clear();
         aggregate.historyItemWindowsByTurnId.clear();
         aggregate.turnPagination = { ...pagination, loadedTurnCount };
@@ -2294,7 +1882,6 @@ export function makeConversationEntityStateRegistry(
             historyMutationRevision: aggregate.historyMutationRevision,
           };
         }
-        enforceHistoryResidency(false);
       },
       beginHistoryLoad: (loadedTurnCount) => {
         const pagination = aggregate.turnPagination;
@@ -2366,9 +1953,6 @@ export function makeConversationEntityStateRegistry(
         }
         const before = aggregate.canonicalState;
         if (!before) return false;
-        const beforeTurnIds = new Set(
-          persistedCanonicalTurns(before).map((turn) => turn.protocol.id),
-        );
         aggregate.canonicalState = state;
         if (aggregate.snapshot) {
           aggregate.snapshot = projectCodexConversationSnapshot({
@@ -2384,12 +1968,6 @@ export function makeConversationEntityStateRegistry(
             ...aggregate.turnItemsPaginationById,
             ...itemsPaginationByTurnId,
           };
-        }
-        const revealedTurnIds = persistedCanonicalTurns(state).flatMap((turn) =>
-          beforeTurnIds.has(turn.protocol.id) ? [] : [turn.protocol.id],
-        );
-        if (revealedTurnIds.length > 0) {
-          leaseHistoryRevealedTurns(revealedTurnIds, aggregate.historyMutationRevision);
         }
         reconcileCanonicalHistory("history");
         if (aggregate.snapshot) {
@@ -2417,7 +1995,6 @@ export function makeConversationEntityStateRegistry(
             revision: aggregate.revision + 1,
           });
         }
-        enforceHistoryResidency(projectReplica);
         return true;
       },
       failHistoryLoad: (fence) => {
@@ -2512,7 +2089,6 @@ export function makeConversationEntityStateRegistry(
           ...aggregate.turnItemsPaginationById,
           [fence.turnId]: { ...pagination, isLoadingOlder: false },
         };
-        leaseHistoryRevealedTurns([fence.turnId], aggregate.historyMutationRevision);
         reconcileCanonicalHistory("history");
         if (aggregate.snapshot) {
           aggregate.snapshot = {
@@ -2537,7 +2113,6 @@ export function makeConversationEntityStateRegistry(
             revision: aggregate.revision + 1,
           });
         }
-        enforceHistoryResidency(projectReplica);
         return true;
       },
       failTurnItemsHistoryLoad: (fence) => {
@@ -3194,7 +2769,6 @@ export function makeConversationEntityStateRegistry(
             historyTopologyGeneration: aggregate.historyTopology.generation,
           };
         }
-        enforceHistoryResidency(false);
         return aggregate.canonicalState ?? acceptedState;
       },
       replaceServerRequests: (requests) => {
@@ -3214,7 +2788,6 @@ export function makeConversationEntityStateRegistry(
       },
       acceptReplica: (input) => {
         const accepted = acceptReplica(input);
-        enforceHistoryResidency(true);
         return aggregate.acceptedReplica ?? accepted;
       },
       acceptOwnerReplica: ({ conversation, checkpoint }) => {
@@ -3264,10 +2837,6 @@ export function makeConversationEntityStateRegistry(
           aggregate.historyMutationRevision = proposed.historyMutationRevision;
           aggregate.historyEntityRevision = proposed.historyEntityRevision;
           aggregate.historyTopology = proposed.historyTopology;
-          aggregate.historyRevealedTurnIds = new Map(proposed.historyRevealedTurnIds);
-          aggregate.historyVisibleIslandIdsByClient = proposed.historyVisibleIslandIdsByClient;
-          aggregate.historyVisibleTurnIdsByClient = proposed.historyVisibleTurnIdsByClient;
-          aggregate.activeSearchHistoryIslandId = proposed.activeSearchHistoryIslandId;
           aggregate.historyItemWindowsByTurnId = new Map(
             Object.entries(conversation.historyItemWindowsByTurnId ?? {}).flatMap(
               ([turnId, window]) => {
@@ -3312,7 +2881,6 @@ export function makeConversationEntityStateRegistry(
       advanceReplica: (input) => {
         const baseRevision = aggregate.revision;
         const accepted = acceptReplica({ ...input, revision: baseRevision + 1 });
-        enforceHistoryResidency(true);
         return { baseRevision, replica: aggregate.acceptedReplica ?? accepted };
       },
       clearReplica: () => {

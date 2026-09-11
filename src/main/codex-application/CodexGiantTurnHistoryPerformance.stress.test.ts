@@ -7,7 +7,6 @@ import {
 } from "../../shared/codex-conversation-state/codex-conversation-state";
 import {
   createCodexHistoryItemWindow,
-  DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS,
   type CodexHistoryItemSegment,
 } from "../../shared/codex-conversation-state/codex-history-item-window";
 import {
@@ -73,7 +72,6 @@ interface PageMeasurement {
   readonly request: PhysicalItemRequest;
   readonly mutationBytes: number;
   readonly wireItems: number;
-  readonly releasedSegmentIds: readonly string[];
   readonly residentItems: number;
   readonly residentApproximateBytes: number;
   readonly unchangedCanonicalPayloadReads: number;
@@ -590,7 +588,6 @@ const measure = (logicalItemCount: number): Effect.Effect<GiantTurnMeasurement> 
             request: physicalRequest,
             mutationBytes,
             wireItems: itemMutation.windowMutation.wireSegment.items.itemIds.length,
-            releasedSegmentIds: itemMutation.windowMutation.releasedSegmentIds,
             residentItems: residency.ids.length,
             residentApproximateBytes: residency.approximateBytes,
             unchangedCanonicalPayloadReads: reads.canonical - canonicalReadsBefore,
@@ -603,69 +600,16 @@ const measure = (logicalItemCount: number): Effect.Effect<GiantTurnMeasurement> 
           assert.strictEqual(result.mutation.turnItems.length, 1);
           assert.isTrue(page.ownerFollowerAccepted);
           assert.isAtMost(page.mutationBytes, MUTATION_MAX_BYTES);
-          assert.isAtMost(page.residentItems, DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxItems);
-          assert.isAtMost(
-            page.residentApproximateBytes,
-            DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxApproximateBytes,
-          );
           pages.push(page);
           return result;
         });
 
-      const older = yield* load("older");
-      const olderSegmentId = older.mutation.turnItems[0]!.windowMutation.wireSegment.segmentId;
-      assert.deepEqual(requests, [
-        {
-          cursor: olderCursor(residentStart),
-          limit: ITEMS_PER_PAGE,
-          sortDirection: "desc",
-        },
-      ]);
-      assert.deepEqual(pages[0]?.releasedSegmentIds, [
-        `resident:${logicalItemCount - ITEMS_PER_PAGE}-${logicalItemCount - 1}`,
-      ]);
+      yield* load("older");
+      assert.strictEqual(requests.length, 1);
       assert.strictEqual(pages[0]?.wireItems, ITEMS_PER_PAGE);
-      assertContiguous(receiver, olderStart, logicalItemCount - ITEMS_PER_PAGE - 1);
-      assert.deepEqual(receiver.historyItemWindowsByTurnId?.[TURN_ID]?.newerBoundary, {
-        status: "available",
-        cursor: newerCursor(logicalItemCount - ITEMS_PER_PAGE - 1),
-      });
-
-      yield* load("newer");
-      assert.deepEqual(requests[1], {
-        cursor: newerCursor(logicalItemCount - ITEMS_PER_PAGE - 1),
-        limit: ITEMS_PER_PAGE,
-        sortDirection: "asc",
-      });
-      assert.strictEqual(pages[1]?.wireItems, ITEMS_PER_PAGE - 1);
-      assert.deepEqual(pages[1]?.releasedSegmentIds, [olderSegmentId]);
-      assertContiguous(receiver, residentStart, logicalItemCount - 2);
-      assert.strictEqual(
-        snapshotResidency(receiver).ids.filter(
-          (id) => id === itemId(logicalItemCount - ITEMS_PER_PAGE - 1),
-        ).length,
-        1,
-      );
-      assert.deepEqual(receiver.historyItemWindowsByTurnId?.[TURN_ID]?.newerBoundary, {
-        status: "available",
-        cursor: newerCursor(logicalItemCount - 2),
-      });
-
-      yield* load("newer");
-      assert.deepEqual(requests[2], {
-        cursor: newerCursor(logicalItemCount - 2),
-        limit: ITEMS_PER_PAGE,
-        sortDirection: "asc",
-      });
-      assert.strictEqual(pages[2]?.wireItems, 1);
-      assert.deepEqual(pages[2]?.releasedSegmentIds, []);
-      const continuity = assertContiguous(receiver, residentStart, logicalItemCount - 1);
-      assert.strictEqual(
-        snapshotResidency(receiver).ids.filter((id) => id === itemId(logicalItemCount - 2)).length,
-        1,
-      );
+      const continuity = assertContiguous(receiver, olderStart, logicalItemCount - 1);
       const final = snapshotResidency(receiver);
-      assert.strictEqual(final.olderCursor, olderCursor(residentStart));
+      assert.strictEqual(final.olderCursor, olderCursor(olderStart));
       assert.strictEqual(final.newerBoundary, "exhausted");
 
       return {
@@ -682,18 +626,14 @@ const measure = (logicalItemCount: number): Effect.Effect<GiantTurnMeasurement> 
   );
 
 it.effect(
-  "keeps a production giant Turn bounded through older eviction and exact inclusive-anchor reload",
+  "retains the live tail while prepending older items beyond the initial hydration budget",
   () =>
     Effect.gen(function* () {
       const measurements = yield* Effect.forEach([700, 10_000], measure, { concurrency: 1 });
       for (const measurement of measurements) {
-        assert.strictEqual(measurement.physicalRequests, 3);
-        assert.strictEqual(measurement.pages.length, 3);
-        assert.strictEqual(measurement.finalResidentItems, RESIDENT_ITEMS);
-        assert.isAtMost(
-          measurement.finalResidentApproximateBytes,
-          DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxApproximateBytes,
-        );
+        assert.strictEqual(measurement.physicalRequests, 1);
+        assert.strictEqual(measurement.pages.length, 1);
+        assert.strictEqual(measurement.finalResidentItems, RESIDENT_ITEMS + ITEMS_PER_PAGE);
         assert.strictEqual(measurement.finalNewerBoundary, "exhausted");
         assert.strictEqual(measurement.duplicateItems, 0);
         assert.strictEqual(measurement.skippedItems, 0);
@@ -714,7 +654,6 @@ it.effect(
       process.stdout.write(
         `\nNODEX_LAZY_HISTORY_ACCEPTANCE ${JSON.stringify({
           kind: "production-giant-turn-cycle",
-          itemWindowLimits: DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS,
           mutationMaxBytes: MUTATION_MAX_BYTES,
           measurements,
         })}\n`,

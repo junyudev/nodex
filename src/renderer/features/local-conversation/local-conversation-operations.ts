@@ -48,7 +48,6 @@ const controlChannels = [
   "codex:thread:history-export:next",
   "codex:thread:history-export:start",
   "codex:thread:history-page:load",
-  "codex:thread:history-residency-pins:set",
   "codex:thread:history-search:hydrate",
   "codex:thread:resume-buffer:release",
   "codex:thread:resume:request",

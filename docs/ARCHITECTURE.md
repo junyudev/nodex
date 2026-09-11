@@ -824,9 +824,8 @@ Conversation history inside the private Entity is a sparse topology of islands, 
 explicit boundaries. Turn pages and per-Turn item pages merge atomically under host-generation and
 cursor fences. The renderer owner serializes visible history commits with its publication stream;
 Main prepares history proposals without advancing the owned document's cursors, then mirrors the
-accepted owner revision without substituting its recovery projection. Visible/search/live entities
-are pinned while
-opaque retention cuts remain inert rather than inventing a cursor. Renderer gaps request one page
+accepted owner revision without substituting its recovery projection. Loaded entities remain resident for the owner lifetime; viewport geometry is not a retention authority.
+Unproven boundaries remain inert rather than inventing a cursor. Renderer gaps request one page
 through the current owner, and persisted search hydrates only a bounded island around the selected
 occurrence.
 

@@ -17,15 +17,9 @@ import { CodexRendererConversationRegistry } from "./CodexRendererConversationRe
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
 export const DEFAULT_RENDERER_OWNER_RETENTION = "1 hour";
-export const DEFAULT_RENDERER_OWNER_MAX_RETAINED = 4;
-export const DEFAULT_RENDERER_OWNER_MAX_RETAINED_APPROXIMATE_BYTES = 32 * 1024 * 1024;
 export const DEFAULT_RENDERER_OWNER_RETRY = "15 seconds";
 
-export type CodexRendererOwnerCleanupReason =
-  | "inactive-owner-retention"
-  | "inactive-owner-retained-limit"
-  | "inactive-owner-retained-byte-limit"
-  | "inactive-owner-retry";
+export type CodexRendererOwnerCleanupReason = "inactive-owner-retention" | "inactive-owner-retry";
 
 export class CodexRendererOwnerRetentionError extends Data.TaggedError(
   "CodexRendererOwnerRetentionError",
@@ -38,70 +32,7 @@ interface TrackedCandidate {
 
 export interface CodexRendererOwnerRetentionOptions {
   readonly retention?: Duration.Input;
-  readonly maxRetained?: number;
-  readonly maxRetainedApproximateBytes?: number;
   readonly retry?: Duration.Input;
-}
-
-export interface CodexRendererOwnerRetentionCandidate {
-  readonly conversationId: string;
-  readonly candidateSince: number;
-  readonly generation: number;
-  readonly approximateBytes: number;
-}
-
-export interface CodexRendererOwnerRetentionOverflow {
-  readonly conversationId: string;
-  readonly generation: number;
-  readonly reason: Extract<
-    CodexRendererOwnerCleanupReason,
-    "inactive-owner-retained-limit" | "inactive-owner-retained-byte-limit"
-  >;
-}
-
-const retainedBytes = (value: number): number => {
-  if (!Number.isFinite(value) || value < 0) return Number.MAX_SAFE_INTEGER;
-  return Math.floor(value);
-};
-
-/** Oldest-first pressure policy shared by production cleanup and its boundary tests. */
-export function selectCodexRendererOwnerRetentionOverflow(input: {
-  readonly candidates: readonly CodexRendererOwnerRetentionCandidate[];
-  readonly maxRetained: number;
-  readonly maxRetainedApproximateBytes: number;
-}): readonly CodexRendererOwnerRetentionOverflow[] {
-  const ordered = [...input.candidates].sort((left, right) => {
-    const since = left.candidateSince - right.candidateSince;
-    return since !== 0 ? since : left.conversationId.localeCompare(right.conversationId);
-  });
-  const countLimit = Math.max(0, Math.floor(input.maxRetained));
-  const byteLimit = retainedBytes(input.maxRetainedApproximateBytes);
-  let retainedCount = ordered.length;
-  let retainedApproximateBytes = ordered.reduce(
-    (total, candidate) =>
-      Math.min(Number.MAX_SAFE_INTEGER, total + retainedBytes(candidate.approximateBytes)),
-    0,
-  );
-  const overflow: CodexRendererOwnerRetentionOverflow[] = [];
-
-  for (const candidate of ordered) {
-    const countExceeded = retainedCount > countLimit;
-    const bytesExceeded = retainedApproximateBytes > byteLimit;
-    if (!countExceeded && !bytesExceeded) break;
-    overflow.push({
-      conversationId: candidate.conversationId,
-      generation: candidate.generation,
-      reason: countExceeded
-        ? "inactive-owner-retained-limit"
-        : "inactive-owner-retained-byte-limit",
-    });
-    retainedCount -= 1;
-    retainedApproximateBytes = Math.max(
-      0,
-      retainedApproximateBytes - retainedBytes(candidate.approximateBytes),
-    );
-  }
-  return overflow;
 }
 
 export class CodexRendererOwnerRetention extends Context.Service<
@@ -134,13 +65,6 @@ export const make = (
     const rendererConversations = yield* CodexRendererConversationRegistry;
     const retention = options.retention ?? DEFAULT_RENDERER_OWNER_RETENTION;
     const retry = options.retry ?? DEFAULT_RENDERER_OWNER_RETRY;
-    const maxRetained = Math.max(
-      0,
-      Math.floor(options.maxRetained ?? DEFAULT_RENDERER_OWNER_MAX_RETAINED),
-    );
-    const maxRetainedApproximateBytes = retainedBytes(
-      options.maxRetainedApproximateBytes ?? DEFAULT_RENDERER_OWNER_MAX_RETAINED_APPROXIMATE_BYTES,
-    );
     const candidates = yield* Ref.make(HashMap.empty<string, TrackedCandidate>());
     const nextGeneration = yield* Ref.make(0);
     const timers = yield* FiberMap.make<string, void>();
@@ -313,24 +237,6 @@ export const make = (
               Math.max(0, Duration.toMillis(retention) - elapsed),
               "inactive-owner-retention",
             );
-          }
-
-          const tracked = [...HashMap.entries(yield* Ref.get(candidates))].map(
-            ([id, trackedCandidate]) => ({
-              conversationId: id,
-              candidateSince: trackedCandidate.candidateSince,
-              generation: trackedCandidate.generation,
-              approximateBytes:
-                conversations.current(id)?.readHistoryTopology().residency.approximateBytes ?? 0,
-            }),
-          );
-          for (const overflow of selectCodexRendererOwnerRetentionOverflow({
-            candidates: tracked,
-            maxRetained,
-            maxRetainedApproximateBytes,
-          })) {
-            yield* FiberMap.remove(timers, overflow.conversationId);
-            yield* startCleanup(overflow.conversationId, overflow.generation, overflow.reason);
           }
         }),
       );
