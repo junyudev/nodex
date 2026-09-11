@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vite-plus/test";
-import { within } from "@testing-library/react";
+import { describe, expect, test, vi } from "vite-plus/test";
+import { act, fireEvent, within } from "@testing-library/react";
 
 import { plainTextToPortableRichText } from "../../../shared/block-documents/portable-rich-text";
 import type { BoardSummary, DatabasePageSummary, Project } from "@/lib/types";
@@ -115,4 +115,50 @@ describe("PanelDestinationPickerSurface", () => {
     expect(otherRow.querySelector("svg")).not.toBeNull();
     expect(otherRow.querySelector("[title]")).toBeNull();
   });
+});
+
+test("composition confirmation does not open a destination", async () => {
+  const onAccept = vi.fn();
+  const view = render(
+    <TestQueryProvider>
+      <PanelDestinationPickerSurface
+        projects={[makeProject("current", "Current Project")]}
+        boardMap={
+          new Map([
+            [
+              "current",
+              {
+                columns: [
+                  {
+                    id: "triage",
+                    name: "Triage",
+                    cards: [makePage("one", "ONE-1", "One", "triage")],
+                  },
+                ],
+              },
+            ],
+          ])
+        }
+        databaseDescriptorMap={new Map()}
+        loading={false}
+        scope="page-only"
+        currentProjectId="current"
+        onAccept={onAccept}
+        onClose={() => undefined}
+      />
+    </TestQueryProvider>,
+  );
+  const input = view.getByRole("combobox");
+  await act(async () => {
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    await Promise.resolve();
+  });
+  expect(onAccept).not.toHaveBeenCalled();
+  await act(async () => {
+    fireEvent.keyDown(input, { key: "Enter" });
+    await Promise.resolve();
+  });
+  expect(onAccept).toHaveBeenCalledOnce();
 });

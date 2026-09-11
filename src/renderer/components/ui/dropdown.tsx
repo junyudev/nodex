@@ -1,3 +1,5 @@
+import { mergeProps } from "@base-ui/react/merge-props";
+import { handleMenuEditorKeyDown } from "./menu-keyboard";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import {
   forwardRef,
@@ -218,7 +220,7 @@ const NodexDropdownSubmenuContent = forwardRef<HTMLDivElement, NodexDropdownSubm
               : "data-closed:invisible data-closed:pointer-events-none",
             className,
           )}
-          {...props}
+          {...mergeProps({ onKeyDown: handleMenuEditorKeyDown }, props)}
           data-nodex-keyboard-scope="local"
         >
           <NodexFloatingLayerProvider zIndex={layerIndex}>{children}</NodexFloatingLayerProvider>
@@ -432,7 +434,7 @@ export const NodexDropdownContent = forwardRef<HTMLDivElement, NodexDropdownCont
             resolveDropdownSurfaceClass(surface),
             className,
           )}
-          {...props}
+          {...mergeProps({ onKeyDown: handleMenuEditorKeyDown }, props)}
           data-nodex-keyboard-scope="local"
         >
           <NodexFloatingLayerProvider zIndex={layerIndex}>{children}</NodexFloatingLayerProvider>

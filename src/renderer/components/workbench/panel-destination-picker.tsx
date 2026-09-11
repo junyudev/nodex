@@ -461,6 +461,10 @@ export function PanelDestinationPickerSurface({
   );
 
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) {
+      event.stopPropagation();
+      return;
+    }
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setFocusedRowId((currentRowId) =>
