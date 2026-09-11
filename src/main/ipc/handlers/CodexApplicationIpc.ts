@@ -1,4 +1,4 @@
-import { isAbsolute } from "node:path";
+import { isAbsoluteSearchPath } from "../../../shared/file-search-paths";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -159,13 +159,16 @@ const parseComposerInventoryCwds = (
   if (
     typeof input !== "object" ||
     input === null ||
+    typeof input.hostId !== "string" ||
+    !input.hostId.trim() ||
+    input.hostId.length > 256 ||
     !Array.isArray(input.cwds) ||
     input.cwds.length > 32 ||
     input.cwds.some(
       (cwd) =>
         typeof cwd !== "string" ||
         cwd.length > 4_096 ||
-        (cwd.trim().length > 0 && !isAbsolute(cwd.trim())),
+        (cwd.trim().length > 0 && !isAbsoluteSearchPath(cwd.trim())),
     )
   ) {
     throw new Error("Invalid composer inventory input");
@@ -185,7 +188,7 @@ const parseComposerPluginActivation = (
   ) {
     throw new Error("Invalid composer plugin activation input");
   }
-  return { id: input.id.trim(), cwds: parseComposerInventoryCwds(input) };
+  return { hostId: input.hostId, id: input.id.trim(), cwds: parseComposerInventoryCwds(input) };
 };
 
 const parseFeedbackUpload = (input: FeedbackUploadParams) => ({
@@ -406,7 +409,7 @@ export const live: Layer.Layer<
       "codex:composer-plugins:list",
       (_event, input: CodexComposerPluginListInput) =>
         validate("composer-plugins-list", () => parseComposerInventoryCwds(input)).pipe(
-          Effect.flatMap(composer.listPlugins),
+          Effect.flatMap((cwds) => composer.listPlugins({ hostId: input.hostId, cwds })),
         ),
     );
     yield* ipc.handlePlainCommand(
@@ -424,7 +427,11 @@ export const live: Layer.Layer<
           if (input.forceReload !== undefined && typeof input.forceReload !== "boolean")
             throw new Error("Invalid skills force reload flag");
           return cwds;
-        }).pipe(Effect.flatMap((cwds) => composer.listSkills(cwds, input.forceReload))),
+        }).pipe(
+          Effect.flatMap((cwds) =>
+            composer.listSkills({ hostId: input.hostId, cwds, forceReload: input.forceReload }),
+          ),
+        ),
     );
     yield* ipc.handleQuery("codex:hooks:list", (_event, input: CodexHooksListInput) =>
       composer.listHooks(input),

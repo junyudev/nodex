@@ -1,4 +1,4 @@
-import { isAbsolute } from "node:path";
+import { randomUUID } from "node:crypto";
 import type { IpcMainInvokeEvent } from "electron";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -6,23 +6,20 @@ import * as FiberMap from "effect/FiberMap";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import {
-  ComposerFileSearchStartSchema,
-  ComposerFileSearchStopSchema,
-  ComposerFileSearchUpdateSchema,
-} from "../../../shared/schemas/composer-file-search";
+  FileSearchStartSchema,
+  FileSearchStopSchema,
+  FileSearchUpdateSchema,
+} from "../../../shared/schemas/file-search";
 import { MainConfig } from "../../app/MainConfig";
-import {
-  makeComposerFileSearchSession,
-  type ComposerFileSearchSession,
-} from "../../codex-application/ComposerFileSearch";
+import { makeFileSearchSession, type FileSearchSession } from "../../codex-application/FileSearch";
 import { CodexGateway } from "../../codex-runtime/CodexGateway";
 import { safeSendToWebContents } from "../../ipc-safe-send";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 
-export class ComposerFileSearchIpcError extends Schema.TaggedError<ComposerFileSearchIpcError>()(
-  "ComposerFileSearchIpcError",
+export class FileSearchIpcError extends Schema.TaggedError<FileSearchIpcError>()(
+  "FileSearchIpcError",
   {
     cause: Schema.Defect(),
   },
@@ -40,32 +37,28 @@ export const live: Layer.Layer<
     const windows = yield* WindowRuntime;
     const gateway = yield* CodexGateway;
     const lifetimes = yield* FiberMap.make<string>();
-    const sessions = new Map<string, ComposerFileSearchSession>();
+    const sessions = new Map<string, FileSearchSession>();
     const keyFor = (event: IpcMainInvokeEvent, sessionId: string) =>
       `${event.sender.id}\0${sessionId}`;
     const authorize = (event: IpcMainInvokeEvent) =>
       Effect.try({
         try: () => {
-          requireTrustedAppRendererSender(event, "Composer file search", config.rendererUrl);
+          requireTrustedAppRendererSender(event, "File search", config.rendererUrl);
           if (!windows.has(event.sender.id) || event.sender.isDestroyed())
-            throw new Error("Composer file search requires an active Nodex window");
+            throw new Error("File search requires an active Nodex window");
         },
-        catch: (cause) => new ComposerFileSearchIpcError({ cause }),
+        catch: (cause) => new FileSearchIpcError({ cause }),
       });
     const parse = <A>(read: () => A) =>
-      Effect.try({ try: read, catch: (cause) => new ComposerFileSearchIpcError({ cause }) });
+      Effect.try({ try: read, catch: (cause) => new FileSearchIpcError({ cause }) });
 
-    yield* ipc.handleControl("codex:composer-file-search:start", (event, raw) =>
+    yield* ipc.handleControl("file-search:start", (event, raw) =>
       authorize(event).pipe(
         Effect.andThen(
           Effect.gen(function* () {
-            const input = yield* parse(() => ComposerFileSearchStartSchema.parse(raw));
-            if (input.roots.some((root) => !isAbsolute(root)))
-              return yield* new ComposerFileSearchIpcError({
-                cause: new Error("Search roots must be absolute paths"),
-              });
+            const input = yield* parse(() => FileSearchStartSchema.parse(raw));
             const key = keyFor(event, input.sessionId);
-            const ready = yield* Deferred.make<void, ComposerFileSearchIpcError>();
+            const ready = yield* Deferred.make<void, FileSearchIpcError>();
             const destroyed = Effect.callback<never>((resume) => {
               if (event.sender.isDestroyed()) {
                 resume(Effect.interrupt);
@@ -77,12 +70,17 @@ export const live: Layer.Layer<
             });
             const lifecycle = Effect.scoped(
               Effect.gen(function* () {
-                const session = yield* makeComposerFileSearchSession(input, (notification) =>
-                  Effect.sync(() => {
-                    safeSendToWebContents(event.sender, "codex:composer-file-search:event", [
-                      notification,
-                    ]);
-                  }),
+                const session = yield* makeFileSearchSession(
+                  { ...input, sessionId: randomUUID() },
+                  (notification) =>
+                    Effect.sync(() => {
+                      safeSendToWebContents(event.sender, "file-search:event", [
+                        {
+                          ...notification,
+                          params: { ...notification.params, sessionId: input.sessionId },
+                        },
+                      ]);
+                    }),
                 );
                 yield* Effect.acquireRelease(
                   Effect.sync(() => sessions.set(key, session)),
@@ -98,7 +96,7 @@ export const live: Layer.Layer<
               Effect.provideService(CodexGateway, gateway),
               Effect.raceFirst(destroyed),
               Effect.catchCause((cause) =>
-                Deferred.fail(ready, new ComposerFileSearchIpcError({ cause })).pipe(Effect.asVoid),
+                Deferred.fail(ready, new FileSearchIpcError({ cause })).pipe(Effect.asVoid),
               ),
             );
             yield* FiberMap.run(lifetimes, key, lifecycle, { startImmediately: true });
@@ -107,26 +105,26 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.handleControl("codex:composer-file-search:update", (event, raw) =>
+    yield* ipc.handleControl("file-search:update", (event, raw) =>
       authorize(event).pipe(
         Effect.andThen(
           Effect.gen(function* () {
-            const input = yield* parse(() => ComposerFileSearchUpdateSchema.parse(raw));
+            const input = yield* parse(() => FileSearchUpdateSchema.parse(raw));
             const session = sessions.get(keyFor(event, input.sessionId));
             if (!session)
-              return yield* new ComposerFileSearchIpcError({
-                cause: new Error("Composer file search session is not owned by this window"),
+              return yield* new FileSearchIpcError({
+                cause: new Error("File search session is not owned by this window"),
               });
             yield* session.update(input.query);
           }),
         ),
       ),
     );
-    yield* ipc.handleControl("codex:composer-file-search:stop", (event, raw) =>
+    yield* ipc.handleControl("file-search:stop", (event, raw) =>
       authorize(event).pipe(
         Effect.andThen(
           Effect.gen(function* () {
-            const input = yield* parse(() => ComposerFileSearchStopSchema.parse(raw));
+            const input = yield* parse(() => FileSearchStopSchema.parse(raw));
             yield* FiberMap.remove(lifetimes, keyFor(event, input.sessionId));
           }),
         ),

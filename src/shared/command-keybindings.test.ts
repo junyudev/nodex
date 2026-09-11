@@ -370,7 +370,7 @@ describe("command keybindings", () => {
     expect(byId.get("openCommandMenu")?.title).toBe("Open command palette");
     expect(byId.get("toggleTerminal")?.title).toBe("Open terminal tab");
     expect(byId.get("searchChats")?.available).toBe(true);
-    expect(byId.get("searchFiles")?.available).toBe(false);
+    expect(byId.get("searchFiles")?.available).toBe(true);
     expect(byId.get("toggleBrowserPanel")?.available).toBe(false);
   });
 

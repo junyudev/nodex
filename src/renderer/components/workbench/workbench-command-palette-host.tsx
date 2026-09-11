@@ -1,7 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
 import { composerContextOperations } from "@/features/local-conversation/composer-context-operations";
-import { queryKeys } from "@/lib/query-keys";
+import { codexComposerSkillsListQueryOptions } from "@/lib/query-options";
+import { useSelectedWorkspaceSearchContext } from "@/lib/workbench-ui-scopes";
 import type { Dispatch, SetStateAction } from "react";
 import { copyConversationMarkdown } from "@/features/local-conversation/copy-conversation-markdown";
 import type { useWorkbenchPanelCommandRouter } from "@/lib/use-workbench-panel-command-router";
@@ -36,7 +37,10 @@ type PanelCommands = Pick<
   ReturnType<typeof useWorkbenchPanelCommandRouter>,
   "dispatchPanelAction" | "resolveActivePanelCapabilities"
 >;
-type PanelOpeners = Pick<ReturnType<typeof useWorkbenchPanelOpeners>, "openPageTab">;
+type PanelOpeners = Pick<
+  ReturnType<typeof useWorkbenchPanelOpeners>,
+  "openPageTab" | "openWorkspaceFileTab"
+>;
 type SidebarCommands = Pick<
   ReturnType<typeof useWorkbenchSidebarController>,
   "archiveSession" | "openRenameSessionDialog" | "toggleSessionPin"
@@ -102,9 +106,13 @@ export function WorkbenchCommandPaletteHost({
   onOpenSessionInNewWindow,
 }: WorkbenchCommandPaletteHostProps) {
   const queryClient = useQueryClient();
+  const workspaceSearchContext = useSelectedWorkspaceSearchContext();
   const pageCreateTargetResolution = usePageCreateTargetResolution(activeProjectId);
   const panelCapabilities = panelCommands.resolveActivePanelCapabilities("right");
   const commandContext: Omit<CommandPaletteShellCommandContext, "isMac" | "showMockCommands"> = {
+    canReloadSkills: workspaceSearchContext !== null,
+    canSearchFiles:
+      workspaceSearchContext?.hostId === "default" && workspaceSearchContext.roots.length > 0,
     canGoBack: canNavigateBack,
     canGoForward: canNavigateForward,
     canStartNewChat: true,
@@ -209,14 +217,12 @@ export function WorkbenchCommandPaletteHost({
       sessionCommands.requestContentSearchOpen("command_palette");
     },
     forceReloadSkills: () => {
-      const cwd =
-        activeSession?.thread?.cwd ??
-        projects.find((project) => project.id === activeProjectId)?.primaryWorkspaceRoot;
+      if (!workspaceSearchContext) return;
+      const { hostId, skillRoots } = workspaceSearchContext;
+      const options = codexComposerSkillsListQueryOptions(skillRoots, hostId);
       void composerContextOperations
-        .reloadSkills(cwd ? [cwd] : [])
-        .then(() =>
-          queryClient.invalidateQueries({ queryKey: queryKeys.codexComposerSkills.all() }),
-        )
+        .reloadSkills(hostId, skillRoots)
+        .then((skills) => queryClient.setQueryData(options.queryKey, skills))
         .catch((error: unknown) => {
           toast.danger(error instanceof Error ? error.message : "Could not reload skills");
         });
@@ -237,6 +243,16 @@ export function WorkbenchCommandPaletteHost({
       projects={projects}
       activeProjectId={activeProjectId}
       recentPageSessions={recentPageSessions}
+      fileSearchScope={workspaceSearchContext?.hostId === "default" ? workspaceSearchContext : null}
+      onOpenFile={(file) => {
+        void panelOpeners.openWorkspaceFileTab({
+          path: file.fsPath,
+          title: file.label,
+          workspaceRoot: file.root,
+          panelId: "right",
+          mode: "preview",
+        });
+      }}
       commandContext={commandContext}
       commandHandlers={commandHandlers}
       onOpenChange={setOpen}

@@ -124,8 +124,8 @@ export interface RendererTransport {
   subscribeDesktopNotificationActions: (
     callback: (payload: import("./types").DesktopNotificationActionInvocation) => void,
   ) => () => void;
-  subscribeComposerFileSearchEvents: (
-    callback: (event: import("../../shared/composer-file-search").ComposerFileSearchEvent) => void,
+  subscribeFileSearchEvents: (
+    callback: (event: import("../../shared/file-search").FileSearchEvent) => void,
   ) => () => void;
   subscribeWorkspaceFileChanges: (
     callback: (event: import("../../shared/types").WorkspaceFileChangedEvent) => void,

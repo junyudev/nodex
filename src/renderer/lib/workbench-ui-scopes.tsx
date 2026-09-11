@@ -1,3 +1,4 @@
+import type { WorkspaceSearchContext } from "./workspace-search-context";
 import { useCallback, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import type { ProjectSession } from "../../shared/types";
 import {
@@ -67,6 +68,37 @@ const selectedRouteScopeHandleAtom = scopedAtom<ScopeHandle | null>(appScope, nu
 export const appShellHeaderContentAtom = scopedAtom<ReactNode>(RouteScope, null, {
   debugLabel: "app-shell-header-content",
 });
+
+const workspaceSearchContextAtom = scopedAtom<WorkspaceSearchContext | null>(RouteScope, null, {
+  debugLabel: "workspace-search-context",
+});
+
+export function WorkspaceSearchContextRegistrar({
+  context,
+}: {
+  readonly context: WorkspaceSearchContext | null;
+}) {
+  const setContext = useSetScopedAtom(workspaceSearchContextAtom);
+  useLayoutEffect(() => {
+    setContext(context);
+    return () => setContext(null);
+  }, [context, setContext]);
+  return null;
+}
+
+export function useSelectedWorkspaceSearchContext() {
+  const selectedRoute = useScopedAtomValue(selectedRouteScopeHandleAtom);
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      selectedRoute?.sub(workspaceSearchContextAtom, listener) ?? (() => undefined),
+    [selectedRoute],
+  );
+  const getSnapshot = useCallback(
+    () => selectedRoute?.get(workspaceSearchContextAtom) ?? null,
+    [selectedRoute],
+  );
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
 
 export class IdentityPromotionConflict extends Error {
   constructor(readonly stableKeys: readonly ThreadScopeStableKey[]) {

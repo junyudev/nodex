@@ -3431,17 +3431,7 @@ function HydratedThreadComposer({
     alternateShortcutKeys,
   });
   const contextSuggestionOpen = suggestionState.active && suggestionState.kind === "at-mention";
-  const composerPluginCwds = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          [model.cwd, model.projectWorkspacePath].flatMap((candidate) =>
-            candidate?.trim() ? [candidate.trim()] : [],
-          ),
-        ),
-      ),
-    [model.cwd, model.projectWorkspacePath],
-  );
+  const composerPluginCwds = model.workspaceSearchContext?.skillRoots ?? [];
   const addContextControl = (
     <ComposerAddContextTrigger
       open={contextSuggestionOpen}
@@ -3733,7 +3723,8 @@ function HydratedThreadComposer({
           chatGptConversations={model.composerChatGptConversations ?? []}
           chatGptConversationsAvailable={model.composerChatGptConversationsAvailable === true}
           chatGptConversationsLoading={model.composerChatGptConversationsLoading}
-          workspaceRoot={model.cwd ?? model.projectWorkspacePath ?? null}
+          onCompleteQuery={(query) => promptEditorRef.current?.completeSuggestionQuery(query)}
+          fileSearchScope={model.workspaceSearchContext}
           pluginCwds={composerPluginCwds}
           projectId={model.projectId}
           projectSelector={

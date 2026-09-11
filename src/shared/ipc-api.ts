@@ -1,7 +1,7 @@
-import type { FuzzyFileSearchSessionStartParams } from "@nodex/codex-app-server-protocol";
+import type { FileSearchStartInput } from "./file-search";
 import type { FuzzyFileSearchSessionUpdateParams } from "@nodex/codex-app-server-protocol";
 import type { FuzzyFileSearchSessionStopParams } from "@nodex/codex-app-server-protocol";
-import type { ComposerFileSearchEvent } from "./composer-file-search";
+import type { FileSearchEvent } from "./file-search";
 import type { CodexThreadHandoffSnapshot } from "./codex-thread-handoff";
 import type { DictationStreamingConnectInfo } from "./dictation-streaming";
 import type {
@@ -455,8 +455,6 @@ import type {
   WorkspaceFileReadResult,
   WorkspaceFileRequest,
   WorkspaceFileTextReadInput,
-  WorkspaceFileSearchInput,
-  WorkspaceFileSearchResult,
   WorkspaceFileWatchStartResult,
   WorkspaceFileWatchStopInput,
   WorkspaceFileWriteInput,
@@ -1422,21 +1420,17 @@ export interface IpcApi {
     args: [input: WorkspaceDirectoryEntriesInput];
     result: WorkspaceDirectoryEntriesResult;
   };
-  "codex:composer-file-search:start": {
-    args: [input: FuzzyFileSearchSessionStartParams];
+  "file-search:start": {
+    args: [input: FileSearchStartInput];
     result: void;
   };
-  "codex:composer-file-search:update": {
+  "file-search:update": {
     args: [input: FuzzyFileSearchSessionUpdateParams];
     result: void;
   };
-  "codex:composer-file-search:stop": {
+  "file-search:stop": {
     args: [input: FuzzyFileSearchSessionStopParams];
     result: void;
-  };
-  "workspace-file-search": {
-    args: [input: WorkspaceFileSearchInput];
-    result: WorkspaceFileSearchResult;
   };
   "read-file": {
     args: [input: WorkspaceFileTextReadInput];
@@ -2653,7 +2647,7 @@ export interface IpcEvents {
   "terminal-error": TerminalErrorEvent;
   "terminal-exit": TerminalExitEvent;
   "terminal-view-lease-revoked": TerminalViewLeaseRevokedEvent;
-  "codex:composer-file-search:event": ComposerFileSearchEvent;
+  "file-search:event": FileSearchEvent;
   "codex:event": CodexEvent;
   "codex:host-message": CodexHostMessage;
   "codex:user-input:auto-resolution:changed": CodexUserInputAutoResolutionChange;

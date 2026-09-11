@@ -52,16 +52,20 @@ export const readComposerPermissionState = async (
 
 /** Owns the typed transport used to discover and activate composer context sources. */
 export const composerContextOperations = {
-  reloadSkills: async (cwds: readonly string[]) =>
-    await invokeRendererQuery("codex:composer-skills:list", { cwds: [...cwds], forceReload: true }),
+  reloadSkills: async (hostId: string, cwds: readonly string[]) =>
+    await invokeRendererQuery("codex:composer-skills:list", {
+      hostId,
+      cwds: [...cwds],
+      forceReload: true,
+    }),
 
   readAppshotTarget: async () => await invokeRendererQuery("codex:composer-appshot:target"),
 
   searchChatGptConversations: async (query: string) =>
     await invokeRendererQuery("codex:composer-chatgpt-conversations:list", { query }),
 
-  activatePlugin: async (id: string, cwds: readonly string[]) =>
-    await invokePlainCommand(activateComposerPluginCommand, { id, cwds: [...cwds] }),
+  activatePlugin: async (id: string, hostId: string, cwds: readonly string[]) =>
+    await invokePlainCommand(activateComposerPluginCommand, { id, hostId, cwds: [...cwds] }),
 
   pickFiles: pickComposerFiles,
 

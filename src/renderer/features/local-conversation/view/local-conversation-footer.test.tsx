@@ -26,6 +26,11 @@ const render = (ui: Parameters<typeof renderWithMaitai>[0]) =>
 
 function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
   return {
+    workspaceSearchContext: {
+      hostId: "default",
+      roots: ["/tmp/project"],
+      skillRoots: ["/tmp/project"],
+    },
     projectId: "project_1",
     hostId: "default",
     projectWorkspacePath: "/tmp/project",

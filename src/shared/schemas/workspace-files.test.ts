@@ -3,7 +3,6 @@ import {
   WorkspaceDirectoryEntriesInputSchema,
   WorkspaceFileMetadataInputSchema,
   WorkspaceFileRequestSchema,
-  WorkspaceFileSearchInputSchema,
   WorkspaceFileTextReadInputSchema,
   WorkspaceFileWriteInputSchema,
 } from "./workspace-files";
@@ -58,31 +57,6 @@ describe("workspace file IPC schemas", () => {
       WorkspaceFileMetadataInputSchema.parse({
         path: "/worktree/file.ts",
         contentSampleByteLimit: 0,
-      }),
-    ).toThrow();
-  });
-
-  test("bounds root-wide workspace file search", () => {
-    expect(
-      WorkspaceFileSearchInputSchema.parse({
-        hostId: "local",
-        workspaceRoot: "/workspace",
-        query: "needle",
-        maxResults: 200,
-        maxVisitedEntries: 100_000,
-      }),
-    ).toEqual({
-      hostId: "local",
-      workspaceRoot: "/workspace",
-      query: "needle",
-      maxResults: 200,
-      maxVisitedEntries: 100_000,
-    });
-    expect(() =>
-      WorkspaceFileSearchInputSchema.parse({
-        workspaceRoot: "/workspace",
-        query: "needle",
-        maxResults: 1_001,
       }),
     ).toThrow();
   });

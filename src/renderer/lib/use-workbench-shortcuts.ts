@@ -226,6 +226,10 @@ export function handleWorkbenchShortcut(
     return true;
   }
 
+  if (matchesCommandShortcut(e, actions, "searchFiles", isMac)) {
+    actions.onRequestCommandPalette?.({ mode: "files" });
+    return true;
+  }
   if (matchesCommandShortcut(e, actions, "searchPages", isMac)) {
     actions.onRequestCommandPalette?.({ mode: "pages" });
     return true;

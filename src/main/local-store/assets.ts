@@ -1,3 +1,4 @@
+import * as asyncFs from "node:fs/promises";
 import * as fs from "fs";
 import * as path from "path";
 import { createHash, randomUUID } from "node:crypto";
@@ -127,24 +128,28 @@ function resolveStoredExtension(fileName: string, mimeType: string): string {
   return textExtension ?? "";
 }
 
-function writeAssetBytesAtRoot(assetsRootPath: string, fileName: string, bytes: Buffer): string {
+async function writeAssetBytesAtRoot(
+  assetsRootPath: string,
+  fileName: string,
+  bytes: Buffer,
+): Promise<string> {
   const absolutePath = resolveAssetPathInRoot(assetsRootPath, fileName);
   const stagingRootPath = `${path.resolve(assetsRootPath)}.staging`;
-  fs.mkdirSync(assetsRootPath, { recursive: true, mode: 0o700 });
-  fs.mkdirSync(stagingRootPath, { recursive: true, mode: 0o700 });
-  const temporaryName = `.${fileName}.${process.pid}.${randomUUID()}.tmp`;
-  const temporaryPath = resolveAssetPathInRoot(stagingRootPath, temporaryName);
-  let fileDescriptor: number | null = null;
+  await asyncFs.mkdir(assetsRootPath, { recursive: true, mode: 0o700 });
+  await asyncFs.mkdir(stagingRootPath, { recursive: true, mode: 0o700 });
+  const temporaryPath = resolveAssetPathInRoot(
+    stagingRootPath,
+    `.${fileName}.${process.pid}.${randomUUID()}.tmp`,
+  );
+  const handle = await asyncFs.open(temporaryPath, "wx", 0o600);
   try {
-    fileDescriptor = fs.openSync(temporaryPath, "wx", 0o600);
-    fs.writeFileSync(fileDescriptor, bytes);
-    fs.fsyncSync(fileDescriptor);
-    fs.closeSync(fileDescriptor);
-    fileDescriptor = null;
-    fs.renameSync(temporaryPath, absolutePath);
+    await handle.writeFile(bytes);
+    await handle.sync();
+    await handle.close();
+    await asyncFs.rename(temporaryPath, absolutePath);
   } finally {
-    if (fileDescriptor !== null) fs.closeSync(fileDescriptor);
-    if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath);
+    await handle.close();
+    await asyncFs.rm(temporaryPath, { force: true });
   }
   return absolutePath;
 }
@@ -292,16 +297,16 @@ function normalizeMimeType(mimeType: string): string {
   return normalized && normalized.length > 0 ? normalized : "application/octet-stream";
 }
 
-function buildFolderManifest(
+async function buildFolderManifest(
   rootPath: string,
   maxEntries = 100,
   maxDepth = 3,
-): ManagedFolderManifest {
+): Promise<ManagedFolderManifest> {
   const entries: ManagedFolderManifestEntry[] = [];
   const normalizedRootPath = path.resolve(rootPath);
   let truncated = false;
 
-  const visit = (currentPath: string, depth: number): void => {
+  const visit = async (currentPath: string, depth: number): Promise<void> => {
     if (entries.length >= maxEntries) {
       truncated = true;
       return;
@@ -311,11 +316,8 @@ function buildFolderManifest(
       return;
     }
 
-    const children = fs
-      .readdirSync(currentPath, { withFileTypes: true })
-      .sort((left, right) => left.name.localeCompare(right.name));
-
-    for (const child of children) {
+    const directory = await asyncFs.opendir(currentPath);
+    for await (const child of directory) {
       if (entries.length >= maxEntries) {
         truncated = true;
         return;
@@ -325,11 +327,11 @@ function buildFolderManifest(
       const relativeChildPath = path.relative(normalizedRootPath, absoluteChildPath) || child.name;
       if (child.isDirectory()) {
         entries.push({ path: relativeChildPath, kind: "folder" });
-        visit(absoluteChildPath, depth + 1);
+        await visit(absoluteChildPath, depth + 1);
         continue;
       }
 
-      const stats = fs.statSync(absoluteChildPath);
+      const stats = await asyncFs.stat(absoluteChildPath);
       entries.push({
         path: relativeChildPath,
         kind: "file",
@@ -338,7 +340,7 @@ function buildFolderManifest(
     }
   };
 
-  visit(normalizedRootPath, 1);
+  await visit(normalizedRootPath, 1);
 
   return {
     rootName: path.basename(normalizedRootPath),
@@ -346,7 +348,7 @@ function buildFolderManifest(
     maxEntries,
     maxDepth,
     truncated,
-    entries,
+    entries: entries.sort((left, right) => left.path.localeCompare(right.path)),
   };
 }
 
@@ -374,10 +376,10 @@ function normalizeAssetUploadInput(input: ManagedAssetUploadInput): {
   };
 }
 
-function saveUploadedImageAtRoot(
+async function saveUploadedImageAtRoot(
   input: ManagedAssetUploadInput,
   assetsRootPath: string,
-): ManagedImageSaveResult {
+): Promise<ManagedImageSaveResult> {
   const upload = normalizeAssetUploadInput(input);
   if (!isSupportedImageMimeType(upload.mimeType)) {
     throw new Error(`Unsupported image type: ${upload.mimeType || "unknown"}`);
@@ -389,7 +391,7 @@ function saveUploadedImageAtRoot(
 
   const extension = IMAGE_MIME_TO_EXTENSION[upload.mimeType] ?? "";
   const fileName = `${crypto.randomUUID()}${extension}`;
-  writeAssetBytesAtRoot(assetsRootPath, fileName, upload.bytes);
+  await writeAssetBytesAtRoot(assetsRootPath, fileName, upload.bytes);
 
   return {
     source: getAssetSource(fileName),
@@ -397,10 +399,10 @@ function saveUploadedImageAtRoot(
   };
 }
 
-function saveUploadedResourceAtRoot(
+async function saveUploadedResourceAtRoot(
   input: ManagedAssetUploadInput,
   assetsRootPath: string,
-): ManagedResourceSaveResult {
+): Promise<ManagedResourceSaveResult> {
   const upload = normalizeAssetUploadInput(input);
   if (upload.bytes.byteLength > MAX_RESOURCE_UPLOAD_BYTES) {
     throw new Error("Resource exceeds 64MB upload limit");
@@ -413,7 +415,7 @@ function saveUploadedResourceAtRoot(
   );
   const extension = resolveStoredExtension(upload.name, normalizedMimeType);
   const fileName = `${crypto.randomUUID()}${extension}`;
-  writeAssetBytesAtRoot(assetsRootPath, fileName, upload.bytes);
+  await writeAssetBytesAtRoot(assetsRootPath, fileName, upload.bytes);
 
   return {
     source: getAssetSource(fileName),
@@ -424,25 +426,21 @@ function saveUploadedResourceAtRoot(
   };
 }
 
-function materializeLocalResourceAtRoot(
+async function materializeLocalResourceAtRoot(
   localPath: string,
   assetsRootPath: string,
-): ManagedResourceSaveResult {
+): Promise<ManagedResourceSaveResult> {
   const trimmedLocalPath = localPath.trim();
   if (!path.isAbsolute(trimmedLocalPath)) {
     throw new Error("Local resource path must be absolute");
   }
   const normalizedLocalPath = path.resolve(trimmedLocalPath);
-  if (!fs.existsSync(normalizedLocalPath)) {
-    throw new Error("Local resource not found");
-  }
-
-  const stats = fs.statSync(normalizedLocalPath);
+  const stats = await asyncFs.stat(normalizedLocalPath);
   if (stats.isDirectory()) {
-    const manifest = buildFolderManifest(normalizedLocalPath);
+    const manifest = await buildFolderManifest(normalizedLocalPath);
     const manifestBytes = Buffer.from(JSON.stringify(manifest, null, 2), "utf8");
     const fileName = `${crypto.randomUUID()}.json`;
-    writeAssetBytesAtRoot(assetsRootPath, fileName, manifestBytes);
+    await writeAssetBytesAtRoot(assetsRootPath, fileName, manifestBytes);
     return {
       source: getAssetSource(fileName),
       fileName,
@@ -459,8 +457,10 @@ function materializeLocalResourceAtRoot(
   const mimeType = inferMimeTypeFromLocalPath(normalizedLocalPath);
   const extension = resolveStoredExtension(normalizedLocalPath, mimeType);
   const fileName = `${crypto.randomUUID()}${extension}`;
-  const fileBytes = fs.readFileSync(normalizedLocalPath);
-  writeAssetBytesAtRoot(assetsRootPath, fileName, fileBytes);
+  const fileBytes = await asyncFs.readFile(normalizedLocalPath);
+  if (fileBytes.byteLength > MAX_RESOURCE_UPLOAD_BYTES)
+    throw new Error("Resource exceeds 64MB upload limit");
+  await writeAssetBytesAtRoot(assetsRootPath, fileName, fileBytes);
 
   return {
     source: getAssetSource(fileName),
@@ -591,9 +591,11 @@ export interface TemporaryAssetsService {
   readonly materializeCanvasImage: (
     input: ManagedAssetUploadInput,
   ) => ManagedCanvasImageMaterializationResult;
-  readonly saveUploadedImage: (input: ManagedAssetUploadInput) => ManagedImageSaveResult;
-  readonly saveUploadedResource: (input: ManagedAssetUploadInput) => ManagedResourceSaveResult;
-  readonly materializeLocalResource: (localPath: string) => ManagedResourceSaveResult;
+  readonly saveUploadedImage: (input: ManagedAssetUploadInput) => Promise<ManagedImageSaveResult>;
+  readonly saveUploadedResource: (
+    input: ManagedAssetUploadInput,
+  ) => Promise<ManagedResourceSaveResult>;
+  readonly materializeLocalResource: (localPath: string) => Promise<ManagedResourceSaveResult>;
   readonly readManagedAssetImage: (source: string) => ManagedAssetImageBytes;
   readonly readManagedAssetPreview: (input: ManagedAssetPreviewInput) => ManagedAssetPreview;
 }

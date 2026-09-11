@@ -17,11 +17,13 @@ it.effect("keeps temporary media outside the Core Blob namespace", () =>
         const media = yield* TemporaryAssets;
         assert.throws(() => media.resolveAssetPath("retained.png"));
         assert.throws(() => media.readManagedAssetImage("nodex://assets/retained.png"));
-        const saved = media.saveUploadedImage({
-          name: "capture.png",
-          mimeType: "image/png",
-          bytes: new TextEncoder().encode("temporary capture"),
-        });
+        const saved = yield* Effect.promise(() =>
+          media.saveUploadedImage({
+            name: "capture.png",
+            mimeType: "image/png",
+            bytes: new TextEncoder().encode("temporary capture"),
+          }),
+        );
         const resolved = media.resolveAssetPath(saved.fileName);
         assert.strictEqual(path.dirname(resolved), path.join(home, "cache", "media"));
         assert.strictEqual(fs.readFileSync(resolved, "utf8"), "temporary capture");

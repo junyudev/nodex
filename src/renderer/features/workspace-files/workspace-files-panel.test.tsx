@@ -1,3 +1,4 @@
+import { createFileSearchFixture } from "../../test/file-search-fixture";
 import { afterAll, beforeAll, beforeEach, describe, expect, vi, test } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { useState } from "react";
@@ -55,6 +56,8 @@ const fileContents: Record<string, string> = {
   [LARGE_MARKDOWN_FILE]: `# Large\n\n${"linked content\n".repeat(20_000)}`,
 };
 
+let fileSearch = createFileSearchFixture(Object.values(directoryEntries).flat());
+
 const invoke = async (channel: string, ...args: unknown[]) => {
   invokeCalls.push([channel, ...args]);
   if (channel === "workspace-directory-entries") {
@@ -96,26 +99,7 @@ const invoke = async (channel: string, ...args: unknown[]) => {
       mimeType: input.path.endsWith(".png") ? "image/png" : "application/pdf",
     };
   }
-  if (channel === "workspace-file-search") {
-    const input = args[0] as { query: string };
-    const matches = Object.values(directoryEntries)
-      .flat()
-      .filter(
-        (candidate) =>
-          candidate.type === "file" &&
-          candidate.path.toLowerCase().includes(input.query.toLowerCase()),
-      )
-      .map((candidate) => ({
-        path: candidate.path,
-        kind: "file" as const,
-        score: 0,
-      }));
-    return {
-      matches,
-      ancestorDirectories: [],
-      truncated: false,
-    };
-  }
+  if (channel.startsWith("file-search:")) return fileSearch.invoke(channel, args[0]);
   if (channel === "read-file") {
     const input = args[0] as { path: string };
     const content = fileContents[input.path] ?? "";
@@ -261,7 +245,8 @@ afterAll(() => {
 });
 
 beforeEach(() => {
-  installWindowApi({ invoke, on: () => () => undefined });
+  fileSearch = createFileSearchFixture(Object.values(directoryEntries).flat());
+  installWindowApi({ invoke, on: fileSearch.on });
   invokeCalls = [];
   openFileTabCalls = [];
   pdfPreviewProps = null;

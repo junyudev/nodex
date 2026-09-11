@@ -1,4 +1,5 @@
 import type { HookStats } from "./projection/hook-stats";
+import type { WorkspaceSearchContext } from "@/lib/workspace-search-context";
 import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
 import type { ReactNode } from "react";
 import type { ThreadGoal, FeedbackUploadParams } from "@nodex/codex-app-server-protocol/v2";
@@ -216,6 +217,7 @@ export interface ThreadOpenThreadContext {
 }
 
 export interface ThreadStageRouteInput {
+  readonly projectWorkspaceRoots?: readonly string[];
   projectId: string | null;
   sessionId?: string | null;
   threadPinned?: boolean;
@@ -1113,6 +1115,7 @@ export interface ThreadBodySurfaceModel {
 }
 
 export interface ThreadFooterModel {
+  readonly workspaceSearchContext: WorkspaceSearchContext | null;
   projectId: string | null;
   hostId: string;
   projectWorkspacePath?: string | null;

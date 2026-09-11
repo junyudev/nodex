@@ -1,5 +1,6 @@
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import type { Dirent } from "node:fs";
-import { copyFile, open, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { copyFile, open, opendir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import type {
   WorkspaceDirectoryEntriesInput,
@@ -10,17 +11,12 @@ import type {
   WorkspaceFileMetadataInput,
   WorkspaceFileReadResult,
   WorkspaceFileRequest,
-  WorkspaceFileSearchInput,
-  WorkspaceFileSearchMatch,
-  WorkspaceFileSearchResult,
   WorkspaceFileTextReadInput,
   WorkspaceFileWriteInput,
   WorkspaceFileWriteResult,
 } from "../shared/types";
 
 const DEFAULT_CONTENT_SAMPLE_BYTES = 8_192;
-const DEFAULT_SEARCH_MAX_RESULTS = 200;
-const DEFAULT_SEARCH_MAX_VISITED_ENTRIES = 100_000;
 const EXPECTED_FILE_SYSTEM_ERROR_CODES = new Set([
   "EACCES",
   "EBUSY",
@@ -173,125 +169,6 @@ async function resolveWorkspaceDirectory(input: WorkspaceDirectoryEntriesInput):
   };
 }
 
-function scoreWorkspaceFileSearchMatch(path: string, normalizedQuery: string): number | null {
-  const normalizedPath = path.toLocaleLowerCase();
-  const normalizedName = basename(path).toLocaleLowerCase();
-  if (normalizedName === normalizedQuery) return 0;
-  if (normalizedName.startsWith(normalizedQuery)) return 10 + normalizedName.length;
-  const nameIndex = normalizedName.indexOf(normalizedQuery);
-  if (nameIndex >= 0) return 100 + nameIndex * 4 + normalizedName.length;
-  const pathIndex = normalizedPath.indexOf(normalizedQuery);
-  if (pathIndex < 0) return null;
-  return 1_000 + pathIndex * 2 + normalizedPath.length;
-}
-
-function addWorkspaceFileSearchAncestors(path: string, target: Set<string>): void {
-  const segments = path.split("/");
-  for (let index = 1; index < segments.length; index += 1) {
-    target.add(segments.slice(0, index).join("/"));
-  }
-}
-
-export async function searchWorkspaceFiles(
-  input: WorkspaceFileSearchInput,
-): Promise<WorkspaceFileSearchResult> {
-  const normalizedQuery = input.query.trim().toLocaleLowerCase();
-  if (!normalizedQuery) {
-    return { matches: [], ancestorDirectories: [], truncated: false };
-  }
-
-  const maxResults = input.maxResults ?? DEFAULT_SEARCH_MAX_RESULTS;
-  const maxVisitedEntries = input.maxVisitedEntries ?? DEFAULT_SEARCH_MAX_VISITED_ENTRIES;
-  const root = await resolveWorkspaceDirectory({
-    hostId: input.hostId,
-    workspaceRoot: input.workspaceRoot,
-    directoryPath: "",
-    includeHidden: true,
-  });
-  const queue: Array<{ directoryPath: string; resolvedPath: string }> = [
-    {
-      directoryPath: "",
-      resolvedPath: root.resolvedDirectoryPath,
-    },
-  ];
-  const matches: WorkspaceFileSearchMatch[] = [];
-  const ancestorDirectories = new Set<string>();
-  const visitedRealDirectories = new Set<string>([root.realWorkspaceRoot]);
-  let visitedEntries = 0;
-  let truncated = false;
-  let traversalLimitReached = false;
-  let queueIndex = 0;
-
-  while (queueIndex < queue.length) {
-    const directory = queue[queueIndex];
-    queueIndex += 1;
-    if (!directory) break;
-    const entries = await readdir(directory.resolvedPath, { withFileTypes: true }).catch(
-      (error: unknown) => {
-        const code = readErrorCode(error);
-        if (code && EXPECTED_FILE_SYSTEM_ERROR_CODES.has(code)) return [];
-        throw error;
-      },
-    );
-    entries.sort((left, right) =>
-      left.name.localeCompare(right.name, undefined, {
-        sensitivity: "base",
-        numeric: true,
-      }),
-    );
-
-    for (const entry of entries) {
-      visitedEntries += 1;
-      if (visitedEntries > maxVisitedEntries) {
-        truncated = true;
-        traversalLimitReached = true;
-        break;
-      }
-
-      const relativePath = directory.directoryPath
-        ? `${directory.directoryPath}/${entry.name}`
-        : entry.name;
-      const resolvedPath = join(directory.resolvedPath, entry.name);
-      const mappedEntry = await mapDirectoryEntry({
-        entry,
-        realWorkspaceRoot: root.realWorkspaceRoot,
-        resolvedDirectoryPath: directory.resolvedPath,
-        resolvedWorkspaceRoot: root.resolvedWorkspaceRoot,
-      });
-      if (!mappedEntry) continue;
-
-      if (mappedEntry.type === "directory") {
-        const realDirectoryPath = await realpath(resolvedPath).catch(() => null);
-        if (!realDirectoryPath || visitedRealDirectories.has(realDirectoryPath)) continue;
-        visitedRealDirectories.add(realDirectoryPath);
-        queue.push({ directoryPath: relativePath, resolvedPath });
-        continue;
-      }
-
-      const score = scoreWorkspaceFileSearchMatch(relativePath, normalizedQuery);
-      if (score === null) continue;
-      matches.push({ path: relativePath, kind: "file", score });
-      matches.sort(
-        (left, right) => left.score - right.score || left.path.localeCompare(right.path),
-      );
-      if (matches.length > maxResults) {
-        matches.pop();
-        truncated = true;
-      }
-    }
-    if (traversalLimitReached) break;
-  }
-
-  for (const match of matches) {
-    addWorkspaceFileSearchAncestors(match.path, ancestorDirectories);
-  }
-  return {
-    matches,
-    ancestorDirectories: [...ancestorDirectories].sort(),
-    truncated,
-  };
-}
-
 async function mapDirectoryEntry(input: {
   entry: Dirent;
   realWorkspaceRoot: string;
@@ -319,40 +196,84 @@ async function mapDirectoryEntry(input: {
   };
 }
 
+const directoryNameCollator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+
 function sortDirectoryEntries(
   left: WorkspaceFileDirectoryEntry,
   right: WorkspaceFileDirectoryEntry,
 ): number {
   if (left.type !== right.type) return left.type === "directory" ? -1 : 1;
-  return left.name.localeCompare(right.name, undefined, { sensitivity: "base", numeric: true });
+  return directoryNameCollator.compare(left.name, right.name);
 }
 
+const DIRECTORY_BATCH_SIZE = 256;
+
+async function mergeDirectoryEntries(
+  left: readonly WorkspaceFileDirectoryEntry[],
+  right: readonly WorkspaceFileDirectoryEntry[],
+): Promise<WorkspaceFileDirectoryEntry[]> {
+  const merged: WorkspaceFileDirectoryEntry[] = [];
+  let a = 0;
+  let b = 0;
+  while (a < left.length || b < right.length) {
+    const takeLeft =
+      b === right.length || (a < left.length && sortDirectoryEntries(left[a]!, right[b]!) <= 0);
+    merged.push(takeLeft ? left[a++]! : right[b++]!);
+    if (merged.length % DIRECTORY_BATCH_SIZE === 0) await yieldToEventLoop();
+  }
+  return merged;
+}
+
+/** Bound filesystem concurrency and CPU slices so a wide directory cannot monopolize Main. */
 export async function listWorkspaceDirectoryEntries(
   input: WorkspaceDirectoryEntriesInput,
 ): Promise<WorkspaceDirectoryEntriesResult> {
   const resolved = await resolveWorkspaceDirectory(input);
-  const directoryEntries = await readdir(resolved.resolvedDirectoryPath, { withFileTypes: true });
-  const visibleEntries = directoryEntries.filter(
-    (entry) => input.includeHidden === true || !entry.name.startsWith("."),
-  );
-  const mappedEntries = await Promise.all(
-    visibleEntries.map((entry) =>
-      mapDirectoryEntry({
-        entry,
-        realWorkspaceRoot: resolved.realWorkspaceRoot,
-        resolvedDirectoryPath: resolved.resolvedDirectoryPath,
-        resolvedWorkspaceRoot: resolved.resolvedWorkspaceRoot,
-      }),
-    ),
-  );
-  const entries = mappedEntries
-    .filter((entry): entry is WorkspaceFileDirectoryEntry => entry !== null)
-    .filter((entry) => input.directoriesOnly !== true || entry.type === "directory")
-    .sort(sortDirectoryEntries);
-
+  const directory = await opendir(resolved.resolvedDirectoryPath);
+  let runs: WorkspaceFileDirectoryEntry[][] = [];
+  let pending: Dirent[] = [];
+  const flush = async () => {
+    const mapped = await Promise.all(
+      pending.map((entry) =>
+        mapDirectoryEntry({
+          entry,
+          realWorkspaceRoot: resolved.realWorkspaceRoot,
+          resolvedDirectoryPath: resolved.resolvedDirectoryPath,
+          resolvedWorkspaceRoot: resolved.resolvedWorkspaceRoot,
+        }),
+      ),
+    );
+    runs.push(
+      mapped
+        .filter(
+          (entry): entry is WorkspaceFileDirectoryEntry =>
+            entry !== null && (input.directoriesOnly !== true || entry.type === "directory"),
+        )
+        .sort(sortDirectoryEntries),
+    );
+    pending = [];
+    await yieldToEventLoop();
+  };
+  for await (const entry of directory) {
+    if (input.includeHidden !== true && entry.name.startsWith(".")) continue;
+    pending.push(entry);
+    if (pending.length === DIRECTORY_BATCH_SIZE) await flush();
+  }
+  if (pending.length > 0) await flush();
+  while (runs.length > 1) {
+    const next: WorkspaceFileDirectoryEntry[][] = [];
+    for (let index = 0; index < runs.length; index += 2) {
+      next.push(
+        runs[index + 1]
+          ? await mergeDirectoryEntries(runs[index]!, runs[index + 1]!)
+          : runs[index]!,
+      );
+    }
+    runs = next;
+  }
   return {
     directoryPath: resolved.directoryPath,
-    entries,
+    entries: runs[0] ?? [],
     parentPath: getParentDirectoryPath(resolved.directoryPath),
   };
 }

@@ -218,7 +218,6 @@ type QueryEndpointPolicy =
   | "thread-terminal-snapshot"
   | "window-sessions:bootstrap"
   | "workspace-directory-entries"
-  | "workspace-file-search"
   | "workspace:tasks:list"
   | "worktrees:environments:config:read"
   | "worktrees:environments:configs:list"
@@ -320,9 +319,9 @@ type ControlEndpointPolicy =
   | "terminal-resize"
   | "terminal-take-over-view"
   | "terminal-write"
-  | "codex:composer-file-search:start"
-  | "codex:composer-file-search:update"
-  | "codex:composer-file-search:stop"
+  | "file-search:start"
+  | "file-search:update"
+  | "file-search:stop"
   | "workspace-file-watch:start"
   | "workspace-file-watch:stop";
 

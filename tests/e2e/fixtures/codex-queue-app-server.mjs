@@ -315,6 +315,10 @@ const handle = (message) => {
         const files = params.query === "fzmt" ? [
           {root: session.roots[0], path: "src/fuzzy-match.ts", file_name: "fuzzy-match.ts", match_type: "file", score: 10, indices: null},
           {root: session.roots[0], path: "node_modules/fuzzy-match.ts", file_name: "fuzzy-match.ts", match_type: "file", score: 10, indices: null},
+        ] : params.query === "fzdir" ? [
+          {root: session.roots[0], path: "src", file_name: "src", match_type: "directory", score: 10, indices: null},
+        ] : params.query === "src/" ? [
+          {root: session.roots[0], path: "src/fuzzy-match.ts", file_name: "fuzzy-match.ts", match_type: "file", score: 10, indices: null},
         ] : [];
         notify("fuzzyFileSearch/sessionUpdated", {sessionId: params.sessionId, query: params.query, files});
         notify("fuzzyFileSearch/sessionCompleted", {sessionId: params.sessionId});

@@ -1,3 +1,5 @@
+import { resolveWorkspaceSearchContext } from "@/lib/workspace-search-context";
+import { DEFAULT_CODEX_HOST_ID } from "../../../../shared/codex-host";
 import {
   useCallback,
   useEffect,
@@ -8,7 +10,10 @@ import {
   type ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AppShellHeaderContentRegistrar } from "@/lib/workbench-ui-scopes";
+import {
+  AppShellHeaderContentRegistrar,
+  WorkspaceSearchContextRegistrar,
+} from "@/lib/workbench-ui-scopes";
 import { resolveCodexElectronDisplayThreadTitle } from "../../../../shared/codex-thread-title";
 import { buildCodexTurnOccurrenceKey } from "../../../../shared/codex-turn-identity";
 import { buildComposerShellModel } from "../projection/build-composer-shell-model";
@@ -507,19 +512,45 @@ export function ConnectedThreadStageFooter({
   const account = useLocalConversationAccount();
   const dictation = useCodexDictationState();
   const permissionState = useCodexPermissionState(input.projectId);
-  const composerPluginCwds = useMemo(
+  const workspaceSearchContext = useMemo(
     () =>
-      Array.from(
-        new Set(
-          [cwd, input.projectWorkspacePath].flatMap((candidate) =>
-            candidate?.trim() ? [candidate.trim()] : [],
-          ),
-        ),
-      ),
-    [cwd, input.projectWorkspacePath],
+      resolveWorkspaceSearchContext({
+        hostId,
+        projectRoots:
+          hostId === DEFAULT_CODEX_HOST_ID
+            ? (input.projectWorkspaceRoots ??
+              (input.projectWorkspacePath ? [input.projectWorkspacePath] : []))
+            : (conversationSnapshot?.canonicalState?.sidecar.hydrationContext?.currentPermissions
+                .runtimeWorkspaceRoots ?? []),
+        executionCwd: cwd ?? input.newThreadTarget?.runInEnvironmentPath ?? null,
+        workspaceBrowserRoot: conversationSnapshot?.projectlessWorkspaceBrowserRoot ?? null,
+        isWorktree:
+          Boolean(summaryFields.managedWorktreePath) ||
+          input.newThreadTarget?.runInTarget === "newWorktree",
+        isCloud: input.newThreadTarget?.runInTarget === "cloud",
+      }),
+    [
+      hostId,
+      input.projectWorkspaceRoots,
+      input.projectWorkspacePath,
+      cwd,
+      input.newThreadTarget?.runInEnvironmentPath,
+      input.newThreadTarget?.runInTarget,
+      conversationSnapshot?.projectlessWorkspaceBrowserRoot,
+      conversationSnapshot?.canonicalState?.sidecar.hydrationContext?.currentPermissions
+        .runtimeWorkspaceRoots,
+      summaryFields.managedWorktreePath,
+    ],
   );
-  const composerPluginsQuery = useQuery(codexComposerPluginsListQueryOptions(composerPluginCwds));
-  const composerSkillsQuery = useQuery(codexComposerSkillsListQueryOptions(composerPluginCwds));
+  const composerPluginCwds = workspaceSearchContext?.skillRoots ?? [];
+  const composerPluginsQuery = useQuery({
+    ...codexComposerPluginsListQueryOptions(composerPluginCwds, hostId),
+    enabled: workspaceSearchContext !== null,
+  });
+  const composerSkillsQuery = useQuery({
+    ...codexComposerSkillsListQueryOptions(composerPluginCwds, hostId),
+    enabled: workspaceSearchContext !== null,
+  });
   const composerAppsQuery = useQuery(mcpAppsQueryOptions());
   const composerSitesQuery = useQuery(codexComposerSitesListQueryOptions());
   const composerChatGptConversationsQuery = useQuery(
@@ -633,6 +664,7 @@ export function ConnectedThreadStageFooter({
   );
   const model = useMemo<ThreadFooterModel>(
     () => ({
+      workspaceSearchContext,
       projectId: input.projectId,
       hostId,
       projectWorkspacePath: input.projectWorkspacePath ?? null,
@@ -774,6 +806,7 @@ export function ConnectedThreadStageFooter({
       permissionState,
       input.projectId,
       input.projectWorkspacePath,
+      workspaceSearchContext,
       hostId,
       input.reasoningEffortOptions,
       input.selectedPersonality,
@@ -794,25 +827,30 @@ export function ConnectedThreadStageFooter({
   );
 
   return (
-    <LocalConversationFooter
-      model={model}
-      actions={actionsWithComposerCapabilityRefresh}
-      worktreeRuntimeAvailable={worktreeRuntimeAvailable}
-      errorMessage={errorMessage}
-      onErrorMessage={onErrorMessage}
-      variant={variant}
-      rightPanelComposerOverlay={{
-        enabled: rightPanelComposerOverlayEnabled,
-        compact: rightPanelComposerOverlayCompact,
-        documentBottomKey: rightPanelComposerOverlayDocumentBottomKey,
-        isAtDocumentBottom: rightPanelComposerOverlayAtDocumentBottom,
-        target: rightPanelComposerOverlayTarget,
-        visibility: rightPanelComposerOverlayVisibility,
-        leadingContent: rightPanelComposerLeadingContent,
-      }}
-      planSidePanelState={input.planSidePanelState ?? null}
-      turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-    />
+    <>
+      {!input.sideChatContext ? (
+        <WorkspaceSearchContextRegistrar context={workspaceSearchContext} />
+      ) : null}
+      <LocalConversationFooter
+        model={model}
+        actions={actionsWithComposerCapabilityRefresh}
+        worktreeRuntimeAvailable={worktreeRuntimeAvailable}
+        errorMessage={errorMessage}
+        onErrorMessage={onErrorMessage}
+        variant={variant}
+        rightPanelComposerOverlay={{
+          enabled: rightPanelComposerOverlayEnabled,
+          compact: rightPanelComposerOverlayCompact,
+          documentBottomKey: rightPanelComposerOverlayDocumentBottomKey,
+          isAtDocumentBottom: rightPanelComposerOverlayAtDocumentBottom,
+          target: rightPanelComposerOverlayTarget,
+          visibility: rightPanelComposerOverlayVisibility,
+          leadingContent: rightPanelComposerLeadingContent,
+        }}
+        planSidePanelState={input.planSidePanelState ?? null}
+        turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+      />
+    </>
   );
 }
 

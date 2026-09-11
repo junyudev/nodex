@@ -434,9 +434,9 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload as DesktopNotificationActionInvocation);
       });
     },
-    subscribeComposerFileSearchEvents(callback) {
-      return bridge.on("codex:composer-file-search:event", (event) => {
-        callback(event as import("../../shared/composer-file-search").ComposerFileSearchEvent);
+    subscribeFileSearchEvents(callback) {
+      return bridge.on("file-search:event", (event) => {
+        callback(event as import("../../shared/file-search").FileSearchEvent);
       });
     },
     subscribeWorkspaceFileChanges(

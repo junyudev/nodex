@@ -1,22 +1,23 @@
-import type { ComposerFileSearchEvent } from "../../../shared/composer-file-search";
+import type { FileSearchEvent, FileSearchScope } from "../../shared/file-search";
 import { invokeRendererControl } from "@/lib/renderer-command";
 import { resolveRendererTransport } from "@/lib/renderer-transport";
 
-export interface ComposerFileSearchController {
+export interface FileSearchController {
   readonly update: (query: string) => Promise<void>;
   readonly stop: () => Promise<void>;
 }
 
 /** One lazy native session per mounted search scope; edits reuse the index and closing stops it. */
-export function createComposerFileSearchSession(input: {
-  readonly roots: readonly string[];
-  readonly onEvent: (event: ComposerFileSearchEvent) => void;
-}): ComposerFileSearchController {
+export function createFileSearchSession(
+  input: FileSearchScope & {
+    readonly onEvent: (event: FileSearchEvent) => void;
+  },
+): FileSearchController {
   const sessionId = crypto.randomUUID();
   let start: Promise<void> | null = null;
   let stopped = false;
   let latestQuery = "";
-  const unsubscribe = resolveRendererTransport().subscribeComposerFileSearchEvents((event) => {
+  const unsubscribe = resolveRendererTransport().subscribeFileSearchEvents((event) => {
     if (stopped || event.params.sessionId !== sessionId) return;
     if (event.method === "fuzzyFileSearch/sessionUpdated" && event.params.query !== latestQuery)
       return;
@@ -24,8 +25,9 @@ export function createComposerFileSearchSession(input: {
   });
   const ensureStarted = (): Promise<void> => {
     if (start) return start;
-    const request = invokeRendererControl("codex:composer-file-search:start", {
+    const request = invokeRendererControl("file-search:start", {
       sessionId,
+      hostId: input.hostId,
       roots: [...input.roots],
     });
     start = request.catch((error: unknown) => {
@@ -38,10 +40,10 @@ export function createComposerFileSearchSession(input: {
     update: async (query) => {
       if (stopped) return;
       latestQuery = query;
-      if (!query && !start) return;
+      if (!query) return;
       await ensureStarted();
       if (stopped || latestQuery !== query) return;
-      await invokeRendererControl("codex:composer-file-search:update", { sessionId, query });
+      await invokeRendererControl("file-search:update", { sessionId, query });
     },
     stop: async () => {
       if (stopped) return;
@@ -49,7 +51,7 @@ export function createComposerFileSearchSession(input: {
       unsubscribe();
       if (!start) return;
       await start.catch(() => undefined);
-      await invokeRendererControl("codex:composer-file-search:stop", { sessionId });
+      await invokeRendererControl("file-search:stop", { sessionId });
     },
   };
 }

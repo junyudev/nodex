@@ -1,7 +1,9 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
+import { opendir, stat, access } from "node:fs/promises";
+import { promisify } from "node:util";
 import {
   FILE_LINK_OPENER_OPTIONS,
   normalizeFileLinkOpenerId,
@@ -145,125 +147,100 @@ function firstExistingPath(paths: string[]): string | null {
   return null;
 }
 
-function findBundleByPrefix(prefix: string): string | null {
+async function findBundleByPrefix(prefix: string): Promise<string | null> {
   const normalizedPrefix = prefix.toLowerCase();
-
   for (const root of APPLICATIONS_DIRECTORIES) {
-    let entries: string[];
-    try {
-      entries = readdirSync(root);
-    } catch {
-      continue;
+    const directory = await opendir(root).catch(() => null);
+    if (!directory) continue;
+    for await (const entry of directory) {
+      const name = entry.name.toLowerCase();
+      if (name.startsWith(normalizedPrefix) && name.endsWith(".app")) return join(root, entry.name);
     }
-
-    const match = entries.find(
-      (entry) =>
-        entry.toLowerCase().startsWith(normalizedPrefix) && entry.toLowerCase().endsWith(".app"),
-    );
-    if (!match) continue;
-
-    const bundlePath = join(root, match);
-    if (existsSync(bundlePath)) return bundlePath;
   }
-
   return null;
 }
 
-function findExecutableInBundle(bundlePrefix: string, executableName: string): string | null {
-  const bundle = findBundleByPrefix(bundlePrefix);
+async function findExecutableInBundle(
+  bundlePrefix: string,
+  executableName: string,
+): Promise<string | null> {
+  const bundle = await findBundleByPrefix(bundlePrefix);
   if (!bundle) return null;
-
   const executablePath = join(bundle, "Contents", "MacOS", executableName);
-  return existsSync(executablePath) ? executablePath : null;
-}
-
-function runWhich(command: string): string | null {
-  const result = spawnSync("which", [command], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  if (result.status !== 0) return null;
-
-  const output = result.stdout.trim();
-  return output.length > 0 ? output : null;
-}
-
-function compareFileMtimeDesc(a: string, b: string): number {
-  const aTime = statSync(a).mtimeMs;
-  const bTime = statSync(b).mtimeMs;
-  return bTime - aTime;
-}
-
-function scanJetBrainsToolboxExecutable(executableName: string): string | null {
-  const toolboxRoot = join(
-    homedir(),
-    "Library",
-    "Application Support",
-    "JetBrains",
-    "Toolbox",
-    "apps",
+  return await access(executablePath).then(
+    () => executablePath,
+    () => null,
   );
-  if (!existsSync(toolboxRoot)) return null;
+}
 
-  const candidates: string[] = [];
+const execFileAsync = promisify(execFile);
+async function readCommandOutput(command: string, args: string[]): Promise<string | null> {
+  const result = await execFileAsync(command, args, {
+    encoding: "utf8",
+    timeout: 2_000,
+    maxBuffer: 64 * 1024,
+  }).catch(() => null);
+  return result?.stdout.trim() || null;
+}
+const runWhich = (command: string) => readCommandOutput("which", [command]);
 
-  function visit(currentPath: string): void {
-    let entries: string[];
-    try {
-      entries = readdirSync(currentPath);
-    } catch {
-      return;
-    }
-
-    for (const entry of entries) {
-      const nextPath = join(currentPath, entry);
-      let stats;
-      try {
-        stats = statSync(nextPath);
-      } catch {
+/** One asynchronous walk discovers all Toolbox editors; symlink directories cannot create cycles. */
+export async function discoverToolboxExecutables(
+  root: string,
+  executableNames: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  const candidates = new Map<string, { path: string; mtime: number }>();
+  const pending = [root];
+  const inspectBundle = async (bundle: string) => {
+    for (const name of executableNames) {
+      const path = join(bundle, "Contents", "MacOS", name);
+      const metadata = await stat(path).catch(() => null);
+      if (!metadata?.isFile() || metadata.mtimeMs <= (candidates.get(name)?.mtime ?? -Infinity))
         continue;
-      }
-
-      if (stats.isDirectory()) {
-        if (entry.endsWith(".app")) {
-          const executablePath = join(nextPath, "Contents", "MacOS", executableName);
-          if (existsSync(executablePath)) {
-            candidates.push(executablePath);
-          }
-          continue;
-        }
-
-        visit(nextPath);
-      }
+      candidates.set(name, { path, mtime: metadata.mtimeMs });
+    }
+  };
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    const directory = await opendir(current).catch(() => null);
+    if (!directory) continue;
+    for await (const entry of directory) {
+      if (!entry.isDirectory()) continue;
+      const path = join(current, entry.name);
+      if (entry.name.endsWith(".app")) await inspectBundle(path);
+      else pending.push(path);
     }
   }
-
-  visit(toolboxRoot);
-
-  if (candidates.length === 0) return null;
-  candidates.sort(compareFileMtimeDesc);
-  return candidates[0];
+  return new Map([...candidates].map(([name, candidate]) => [name, candidate.path]));
 }
 
-function detectJetBrainsExecutable(
+const scanJetBrainsToolboxExecutables = () =>
+  discoverToolboxExecutables(
+    join(homedir(), "Library", "Application Support", "JetBrains", "Toolbox", "apps"),
+    [...new Set(Object.values(JETBRAINS_APP_CONFIG).map((config) => config.executableName))],
+  );
+
+async function detectJetBrainsExecutable(
   fixedPaths: string[],
   bundlePrefix: string,
   executableName: string,
-): string | null {
+  readToolbox = scanJetBrainsToolboxExecutables,
+): Promise<string | null> {
   return (
     firstExistingPath(fixedPaths) ??
-    findExecutableInBundle(bundlePrefix, executableName) ??
-    scanJetBrainsToolboxExecutable(executableName)
+    (await findExecutableInBundle(bundlePrefix, executableName)) ??
+    (await readToolbox()).get(executableName) ??
+    null
   );
 }
 
-function openInJetBrainsApp(
+async function openInJetBrainsApp(
   openerId: JetBrainsFileLinkOpenerId,
   targetPath: string,
   position: NormalizedFileLinkPosition | null,
 ): Promise<boolean> {
   const config = JETBRAINS_APP_CONFIG[openerId];
-  const executable = detectJetBrainsExecutable(
+  const executable = await detectJetBrainsExecutable(
     config.fixedPaths,
     config.bundlePrefix,
     config.executableName,
@@ -276,8 +253,8 @@ function openInJetBrainsApp(
   return runSpawn(executable, args);
 }
 
-function detectCursorCliPaths(): CursorCliPaths | null {
-  const bundle = findBundleByPrefix("Cursor");
+async function detectCursorCliPaths(): Promise<CursorCliPaths | null> {
+  const bundle = await findBundleByPrefix("Cursor");
   if (!bundle) return null;
 
   const electronBin = join(bundle, "Contents", "MacOS", "Cursor");
@@ -290,36 +267,19 @@ function detectCursorCliPaths(): CursorCliPaths | null {
   };
 }
 
-function detectXcodePaths(): XcodePaths | null {
-  const appPath = findBundleByPrefix("Xcode");
-  let xedPath: string | null = null;
-
-  const developerDirResult = spawnSync("xcode-select", ["-p"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  });
-  const developerDir = developerDirResult.status === 0 ? developerDirResult.stdout.trim() : "";
-  if (developerDir) {
-    const candidate = join(developerDir, "usr", "bin", "xed");
-    if (existsSync(candidate)) xedPath = candidate;
-  }
-
-  if (!xedPath && appPath) {
-    const candidate = join(appPath, "Contents", "Developer", "usr", "bin", "xed");
-    if (existsSync(candidate)) xedPath = candidate;
-  }
-
-  if (!appPath && !xedPath) return null;
-
-  return {
-    appPath,
-    xedPath,
-  };
+async function detectXcodePaths(): Promise<XcodePaths | null> {
+  const appPath = await findBundleByPrefix("Xcode");
+  const developerDir = await readCommandOutput("xcode-select", ["-p"]);
+  const xedPath = firstExistingPath([
+    ...(developerDir ? [join(developerDir, "usr", "bin", "xed")] : []),
+    ...(appPath ? [join(appPath, "Contents", "Developer", "usr", "bin", "xed")] : []),
+  ]);
+  return appPath || xedPath ? { appPath, xedPath } : null;
 }
 
-function detectZedExecutable(): string | null {
+async function detectZedExecutable(): Promise<string | null> {
   return (
-    runWhich("zed") ??
+    (await runWhich("zed")) ??
     firstExistingPath([
       "/Applications/Zed.app/Contents/MacOS/zed",
       "/Applications/Zed Preview.app/Contents/MacOS/zed",
@@ -329,7 +289,7 @@ function detectZedExecutable(): string | null {
   );
 }
 
-function detectZedBundleFromExecutable(executablePath: string): string | null {
+async function detectZedBundleFromExecutable(executablePath: string): Promise<string | null> {
   const marker = "/Contents/MacOS/";
   const index = executablePath.indexOf(marker);
   if (index > 0) {
@@ -371,22 +331,22 @@ function escapeForAppleScript(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-function resolveTerminalEditorCommand(): string | null {
+async function resolveTerminalEditorCommand(): Promise<string | null> {
   const explicit = process.env.VISUAL?.trim() || process.env.EDITOR?.trim();
   if (explicit) return explicit;
 
   for (const candidate of ["nvim", "vim", "nano", "less"]) {
-    const resolvedCommand = runWhich(candidate);
+    const resolvedCommand = await runWhich(candidate);
     if (resolvedCommand) return resolvedCommand;
   }
 
   return null;
 }
 
-function buildEditorShellCommand(path: string): string | null {
+async function buildEditorShellCommand(path: string): Promise<string | null> {
   if (!existsSync(path) || isDirectory(path)) return null;
 
-  const editorCommand = resolveTerminalEditorCommand();
+  const editorCommand = await resolveTerminalEditorCommand();
   if (!editorCommand) return null;
 
   const parentDirectory = dirname(path);
@@ -397,7 +357,7 @@ async function openFileInTerminalLikeTarget(
   openerId: "terminal" | "iterm2" | "ghostty",
   path: string,
 ): Promise<boolean> {
-  const shellCommand = buildEditorShellCommand(path);
+  const shellCommand = await buildEditorShellCommand(path);
   if (!shellCommand) return false;
 
   if (openerId === "terminal") {
@@ -434,43 +394,36 @@ function buildCursorEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-function findNearestXcodeContainer(startPath: string): string | null {
+async function findNearestXcodeContainer(startPath: string): Promise<string | null> {
   let currentDirectory = dirname(resolve(startPath));
-
   while (true) {
-    let entries: string[];
-    try {
-      entries = readdirSync(currentDirectory);
-    } catch {
-      break;
+    const directory = await opendir(currentDirectory).catch(() => null);
+    if (!directory) return null;
+    let project: string | null = null;
+    let hasPackage = false;
+    for await (const entry of directory) {
+      if (entry.name.endsWith(".xcworkspace")) return join(currentDirectory, entry.name);
+      if (entry.name.endsWith(".xcodeproj")) project ??= join(currentDirectory, entry.name);
+      if (entry.name === "Package.swift") hasPackage = true;
     }
-
-    const workspace = entries.find((entry) => entry.endsWith(".xcworkspace"));
-    if (workspace) return join(currentDirectory, workspace);
-
-    const project = entries.find((entry) => entry.endsWith(".xcodeproj"));
-    if (project) return join(currentDirectory, project);
-
-    if (entries.includes("Package.swift")) return currentDirectory;
-
-    const parentDirectory = dirname(currentDirectory);
-    if (parentDirectory === currentDirectory) break;
-    currentDirectory = parentDirectory;
+    if (project) return project;
+    if (hasPackage) return currentDirectory;
+    const parent = dirname(currentDirectory);
+    if (parent === currentDirectory) return null;
+    currentDirectory = parent;
   }
-
-  return null;
 }
 
 async function openInXcode(
   path: string,
   position: NormalizedFileLinkPosition | null,
 ): Promise<boolean> {
-  const detectedPaths = detectXcodePaths();
+  const detectedPaths = await detectXcodePaths();
   if (!detectedPaths) return false;
 
   if (detectedPaths.xedPath) {
     const args: string[] = [];
-    const containerPath = findNearestXcodeContainer(path);
+    const containerPath = await findNearestXcodeContainer(path);
     if (containerPath) {
       args.push("--project", containerPath);
     }
@@ -494,11 +447,11 @@ async function openInZed(
   path: string,
   position: NormalizedFileLinkPosition | null,
 ): Promise<boolean> {
-  const detectedExecutable = detectZedExecutable();
+  const detectedExecutable = await detectZedExecutable();
   if (!detectedExecutable) return false;
 
   const locationArg = formatOpenFileLocation(path, position);
-  const bundlePath = detectZedBundleFromExecutable(detectedExecutable);
+  const bundlePath = await detectZedBundleFromExecutable(detectedExecutable);
 
   if (bundlePath) {
     const openedInApp = await runSpawn("open", ["-a", bundlePath, path]);
@@ -506,7 +459,7 @@ async function openInZed(
 
     if (!position) return true;
 
-    const zedCli = runWhich("zed");
+    const zedCli = await runWhich("zed");
     if (!zedCli) return true;
 
     await runSpawn(zedCli, [locationArg]);
@@ -530,13 +483,27 @@ let availableFileLinkOpenersCache: {
   readonly openers: readonly FileLinkOpenerId[];
 } | null = null;
 
-export function listAvailableFileLinkOpeners(): FileLinkOpenerId[] {
+let availableFileLinkOpenersPending: Promise<FileLinkOpenerId[]> | null = null;
+
+/** Concurrent menus share discovery while asynchronous filesystem and process calls keep Main available. */
+export async function listAvailableFileLinkOpeners(): Promise<FileLinkOpenerId[]> {
+  if (availableFileLinkOpenersCache && availableFileLinkOpenersCache.expiresAt > Date.now())
+    return [...availableFileLinkOpenersCache.openers];
+  availableFileLinkOpenersPending ??= discoverAvailableFileLinkOpeners().finally(() => {
+    availableFileLinkOpenersPending = null;
+  });
+  return [...(await availableFileLinkOpenersPending)];
+}
+
+async function discoverAvailableFileLinkOpeners(): Promise<FileLinkOpenerId[]> {
   if (process.platform !== "darwin") return [];
   if (availableFileLinkOpenersCache && availableFileLinkOpenersCache.expiresAt > Date.now()) {
     return [...availableFileLinkOpenersCache.openers];
   }
 
-  const isAvailable = (openerId: FileLinkOpenerId): boolean => {
+  let toolboxScan: ReturnType<typeof scanJetBrainsToolboxExecutables> | null = null;
+  const readToolbox = () => (toolboxScan ??= scanJetBrainsToolboxExecutables());
+  const isAvailable = async (openerId: FileLinkOpenerId): Promise<boolean> => {
     switch (openerId) {
       case "vscode":
         return Boolean(
@@ -553,12 +520,12 @@ export function listAvailableFileLinkOpeners(): FileLinkOpenerId[] {
           ]),
         );
       case "cursor":
-        return detectCursorCliPaths() !== null;
+        return (await detectCursorCliPaths()) !== null;
       case "bbedit":
-        return findBundleByPrefix("BBEdit") !== null;
+        return (await findBundleByPrefix("BBEdit")) !== null;
       case "sublimeText":
         return Boolean(
-          runWhich("subl") ??
+          (await runWhich("subl")) ??
           firstExistingPath(["/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl"]),
         );
       case "windsurf":
@@ -582,7 +549,7 @@ export function listAvailableFileLinkOpeners(): FileLinkOpenerId[] {
       case "warp":
         return Boolean(firstExistingPath(["/Applications/Warp.app"]));
       case "xcode":
-        return detectXcodePaths() !== null;
+        return (await detectXcodePaths()) !== null;
       case "androidStudio":
       case "intellij":
       case "goland":
@@ -591,19 +558,25 @@ export function listAvailableFileLinkOpeners(): FileLinkOpenerId[] {
       case "webstorm": {
         const config = JETBRAINS_APP_CONFIG[openerId];
         return Boolean(
-          detectJetBrainsExecutable(config.fixedPaths, config.bundlePrefix, config.executableName),
+          await detectJetBrainsExecutable(
+            config.fixedPaths,
+            config.bundlePrefix,
+            config.executableName,
+            readToolbox,
+          ),
         );
       }
       case "zed":
-        return detectZedExecutable() !== null;
+        return (await detectZedExecutable()) !== null;
       case "textmate":
-        return findBundleByPrefix("TextMate") !== null;
+        return (await findBundleByPrefix("TextMate")) !== null;
     }
   };
 
-  const openers = FILE_LINK_OPENER_OPTIONS.flatMap((option) =>
-    isAvailable(option.id) ? [option.id] : [],
-  );
+  const openers: FileLinkOpenerId[] = [];
+  for (const option of FILE_LINK_OPENER_OPTIONS) {
+    if (await isAvailable(option.id)) openers.push(option.id);
+  }
   availableFileLinkOpenersCache = {
     expiresAt: Date.now() + AVAILABLE_FILE_LINK_OPENERS_CACHE_TTL_MS,
     openers,
@@ -641,7 +614,7 @@ export async function openFileLinkTarget(
     }
 
     case "cursor": {
-      const cursorPaths = detectCursorCliPaths();
+      const cursorPaths = await detectCursorCliPaths();
       if (!cursorPaths) return false;
       return runSpawn(cursorPaths.electronBin, [cursorPaths.cliJs, "--goto", locationArg], {
         env: buildCursorEnv(),
@@ -649,14 +622,17 @@ export async function openFileLinkTarget(
     }
 
     case "bbedit":
-      if (!findBundleByPrefix("BBEdit") && !firstExistingPath(["/Applications/BBEdit.app"])) {
+      if (
+        !(await findBundleByPrefix("BBEdit")) &&
+        !firstExistingPath(["/Applications/BBEdit.app"])
+      ) {
         return false;
       }
       return runSpawn("open", ["-a", "BBEdit", target.path]);
 
     case "sublimeText": {
       const executable =
-        runWhich("subl") ??
+        (await runWhich("subl")) ??
         firstExistingPath(["/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl"]);
       if (!executable) return false;
       return runSpawn(executable, [locationArg]);
@@ -723,7 +699,10 @@ export async function openFileLinkTarget(
       return openInZed(target.path, position);
 
     case "textmate":
-      if (!findBundleByPrefix("TextMate") && !firstExistingPath(["/Applications/TextMate.app"])) {
+      if (
+        !(await findBundleByPrefix("TextMate")) &&
+        !firstExistingPath(["/Applications/TextMate.app"])
+      ) {
         return false;
       }
       return runSpawn("open", [

@@ -57,14 +57,14 @@ describe("asset service", () => {
   });
 
   test("saveUploadedImage rejects resources outside the raster allowlist", async () => {
-    await withFixture(() => {
-      expect(() =>
+    await withFixture(async () => {
+      await expect(
         assetService.saveUploadedImage({
           name: "vector.svg",
           mimeType: "image/svg+xml",
           bytes: new TextEncoder().encode("<svg />"),
         }),
-      ).toThrow("Unsupported image type");
+      ).rejects.toThrow("Unsupported image type");
     });
   });
 
@@ -86,11 +86,11 @@ describe("asset service", () => {
   });
 
   test("materializeLocalResource copies a local file into managed assets", async () => {
-    await withFixture(() => {
+    await withFixture(async () => {
       const localFilePath = path.join(fixtureRoot, "fixture.md");
       fs.writeFileSync(localFilePath, "# title\n");
 
-      const result = assetService.materializeLocalResource(localFilePath);
+      const result = await assetService.materializeLocalResource(localFilePath);
       const absolutePath = path.join(fixtureRoot, "assets", result.fileName);
 
       expect(result.source).toBe(`nodex://assets/${result.fileName}`);
@@ -102,7 +102,7 @@ describe("asset service", () => {
   });
 
   test("materializeLocalResource stores truncated folder manifests for directories", async () => {
-    await withFixture(() => {
+    await withFixture(async () => {
       const folderPath = path.join(fixtureRoot, "folder");
       const nestedLevelOne = path.join(folderPath, "a");
       const nestedLevelTwo = path.join(nestedLevelOne, "b");
@@ -113,7 +113,7 @@ describe("asset service", () => {
       fs.writeFileSync(path.join(folderPath, "root.txt"), "root");
       fs.writeFileSync(path.join(nestedLevelFour, "too-deep.txt"), "deep");
 
-      const result = assetService.materializeLocalResource(folderPath);
+      const result = await assetService.materializeLocalResource(folderPath);
       const manifestPath = path.join(fixtureRoot, "assets", result.fileName);
       const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
         rootName: string;
@@ -150,15 +150,31 @@ describe("asset service", () => {
     });
   });
 
+  test("bounds a wide folder manifest to its entry budget", async () => {
+    await withFixture(async () => {
+      const folder = path.join(fixtureRoot, "wide");
+      fs.mkdirSync(folder);
+      for (let index = 0; index < 150; index++)
+        fs.writeFileSync(path.join(folder, `${index}.txt`), "");
+      const result = await assetService.materializeLocalResource(folder);
+      const manifest = JSON.parse(
+        fs.readFileSync(path.join(fixtureRoot, "assets", result.fileName), "utf8"),
+      );
+      expect(manifest.entries).toHaveLength(100);
+      expect(manifest.truncated).toBe(true);
+      expect(new Set(manifest.entries.map((entry: { path: string }) => entry.path)).size).toBe(100);
+    });
+  });
+
   test("readManagedAssetPreview bounds text and rejects image resources", async () => {
-    await withFixture(() => {
+    await withFixture(async () => {
       const text = Array.from({ length: 205 }, (_, index) => `line-${index}`).join("\n");
-      const textAsset = assetService.saveUploadedResource({
+      const textAsset = await assetService.saveUploadedResource({
         name: "notes.txt",
         mimeType: "text/plain",
         bytes: new TextEncoder().encode(text),
       });
-      const imageAsset = assetService.saveUploadedImage({
+      const imageAsset = await assetService.saveUploadedImage({
         name: "diagram.png",
         mimeType: "image/png",
         bytes: new TextEncoder().encode("png"),
@@ -181,8 +197,8 @@ describe("asset service", () => {
   });
 
   test("managed image reads reject non-images and symlinks", async () => {
-    await withFixture(() => {
-      const textAsset = assetService.saveUploadedResource({
+    await withFixture(async () => {
+      const textAsset = await assetService.saveUploadedResource({
         name: "notes.txt",
         mimeType: "text/plain",
         bytes: new TextEncoder().encode("hello"),

@@ -1,6 +1,6 @@
 import type { FuzzyFileSearchResult } from "@nodex/codex-app-server-protocol";
 import { expect, test } from "vite-plus/test";
-import { projectComposerFileSearchResults } from "./composer-file-search-results";
+import { projectFileSearchResults } from "./file-search-results";
 const file = (path: string, kind: "file" | "directory" = "file"): FuzzyFileSearchResult => ({
   root: "/repo",
   path,
@@ -11,7 +11,7 @@ const file = (path: string, kind: "file" | "directory" = "file"): FuzzyFileSearc
 });
 
 test("filters generated path segments, ranks by filename, and preserves directory mentions", () => {
-  const results = projectComposerFileSearchResults(
+  const results = projectFileSearchResults(
     [
       file("src/abc-helper.ts"),
       file("node_modules/pkg/abc.ts"),
@@ -21,8 +21,12 @@ test("filters generated path segments, ranks by filename, and preserves director
       file("dist/abc.ts"),
     ],
     "abc",
+    ["/repo"],
   );
   expect(results[0]).toEqual({
+    root: "/repo",
+    relativePath: "src/abc",
+    directoryPath: "src",
     path: "src/abc",
     fsPath: "/repo/src/abc",
     label: "abc",
@@ -32,5 +36,22 @@ test("filters generated path segments, ranks by filename, and preserves director
     "src/abc",
     "src/abc-dist.ts",
     "src/abc-helper.ts",
+  ]);
+});
+
+test("distinguishes equal relative paths across roots and labels their containing workspace", () => {
+  const results = projectFileSearchResults(
+    [
+      { ...file("src/abc.ts"), root: "/one" },
+      { ...file("src/abc.ts"), root: "/two" },
+    ],
+    "abc",
+    ["/one", "/two"],
+  );
+  expect(
+    results.map(({ path, fsPath, directoryPath }) => ({ path, fsPath, directoryPath })),
+  ).toEqual([
+    { path: "/one/src/abc.ts", fsPath: "/one/src/abc.ts", directoryPath: "one/src" },
+    { path: "/two/src/abc.ts", fsPath: "/two/src/abc.ts", directoryPath: "two/src" },
   ]);
 });

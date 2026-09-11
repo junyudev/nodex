@@ -1,14 +1,15 @@
-import type { FuzzyFileSearchSessionStartParams } from "@nodex/codex-app-server-protocol";
+import { resolveRendererHostId } from "./renderer-host-identity";
+import type { FileSearchStartInput } from "../../shared/file-search";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import type { ComposerFileSearchEvent } from "../../shared/composer-file-search";
+import type { FileSearchEvent } from "../../shared/file-search";
 import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
 import { codexRuntimeError, type CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 
-export interface ComposerFileSearchSession {
+export interface FileSearchSession {
   readonly update: (query: string) => Effect.Effect<void, CodexRuntimeError>;
 }
 
@@ -18,16 +19,18 @@ const isMissingSession = (error: CodexRuntimeError): boolean =>
   error.cause.message.toLowerCase().includes("fuzzy file search session not found");
 
 /** The native app-server owns indexing and matching; this Scope owns its subscription and stop. */
-export const makeComposerFileSearchSession = (
-  input: FuzzyFileSearchSessionStartParams,
-  onEvent: (event: ComposerFileSearchEvent) => Effect.Effect<void>,
-): Effect.Effect<ComposerFileSearchSession, CodexRuntimeError, CodexGateway | Scope.Scope> =>
+export const makeFileSearchSession = (
+  input: FileSearchStartInput,
+  onEvent: (event: FileSearchEvent) => Effect.Effect<void>,
+): Effect.Effect<FileSearchSession, CodexRuntimeError, CodexGateway | Scope.Scope> =>
   Effect.gen(function* () {
     const gateway = yield* CodexGateway;
     const scope = yield* Scope.Scope;
-    const hostId = gateway.localHostId;
+    const { hostId: rendererHostId, ...params } = input;
+    const hostId = resolveRendererHostId(rendererHostId, gateway.localHostId);
     const lane = yield* Semaphore.make(1);
     let generation: number | null = null;
+    let attemptedGeneration: number | null = null;
     let latestQuery: string | null = null;
 
     const start = Effect.gen(function* () {
@@ -35,17 +38,18 @@ export const makeComposerFileSearchSession = (
       const connection = yield* gateway.connection(hostId);
       if (connection.kind !== "ready") {
         return yield* codexRuntimeError({
-          operation: "composer-file-search.start",
+          operation: "file-search.start",
           reason: "session-lost",
           retryable: true,
           hostId,
         });
       }
       if (generation === connection.generation) return connection;
+      attemptedGeneration = connection.generation;
       yield* gateway.requestOnHost(
         hostId,
         "fuzzyFileSearch/sessionStart",
-        input,
+        params,
         codexGatewayGenerationFence(connection),
       );
       generation = connection.generation;
@@ -70,7 +74,7 @@ export const makeComposerFileSearchSession = (
                 Effect.catch((error) => {
                   if (!isMissingSession(error)) return Effect.fail(error);
                   return gateway
-                    .requestOnHost(hostId, "fuzzyFileSearch/sessionStart", input, fence)
+                    .requestOnHost(hostId, "fuzzyFileSearch/sessionStart", params, fence)
                     .pipe(
                       Effect.andThen(
                         gateway.requestOnHost(
@@ -87,6 +91,25 @@ export const makeComposerFileSearchSession = (
         );
       });
 
+    // A cancelled or uncertain start may already have allocated the native index.
+    yield* Effect.addFinalizer(() => {
+      if (attemptedGeneration === null) return Effect.void;
+      return gateway
+        .requestOnHost(
+          hostId,
+          "fuzzyFileSearch/sessionStop",
+          { sessionId: input.sessionId },
+          {
+            expectedHostId: hostId,
+            expectedGeneration: attemptedGeneration,
+          },
+        )
+        .pipe(
+          Effect.catch((error) => Effect.logWarning("Could not stop file search", error)),
+          Effect.asVoid,
+        );
+    });
+
     yield* gateway.events.pipe(
       Stream.runForEach((event) => {
         if (event.kind === "connection") {
@@ -98,9 +121,7 @@ export const makeComposerFileSearchSession = (
           )
             return Effect.void;
           return updateQuery(latestQuery).pipe(
-            Effect.catch((error) =>
-              Effect.logWarning("Could not restore composer file search", error),
-            ),
+            Effect.catch((error) => Effect.logWarning("Could not restore file search", error)),
           );
         }
         if (event.hostId !== hostId || event.generation !== generation) return Effect.void;
@@ -132,23 +153,7 @@ export const makeComposerFileSearchSession = (
       }),
       Effect.forkScoped({ startImmediately: true }),
     );
-    yield* Effect.acquireRelease(start, () => {
-      if (generation === null) return Effect.void;
-      return gateway
-        .requestOnHost(
-          hostId,
-          "fuzzyFileSearch/sessionStop",
-          { sessionId: input.sessionId },
-          {
-            expectedHostId: hostId,
-            expectedGeneration: generation,
-          },
-        )
-        .pipe(
-          Effect.catch((error) => Effect.logWarning("Could not stop composer file search", error)),
-          Effect.asVoid,
-        );
-    });
+    yield* start;
     return {
       update: (query) => updateQuery(query).pipe(Effect.forkIn(scope), Effect.flatMap(Fiber.join)),
     };

@@ -50,6 +50,8 @@ export type CommandPaletteShellCommandHandlers = Record<CommandPaletteShellComma
 
 export interface CommandPaletteShellCommandContext {
   canGoBack: boolean;
+  canSearchFiles?: boolean;
+  canReloadSkills?: boolean;
   canGoForward: boolean;
   canStartNewChat: boolean;
   canStartNewChatInProject: boolean;
@@ -171,6 +173,19 @@ export function buildCommandPaletteCommands(
       : [];
 
   return [
+    command(
+      "searchFiles",
+      "Suggested",
+      "Search files",
+      "Search workspace files",
+      ["search", "files", "workspace"],
+      1188,
+      {
+        disabled: context.canSearchFiles === false,
+        disabledReason:
+          context.canSearchFiles === false ? "Select a task with a local workspace" : undefined,
+      },
+    ),
     command(
       "searchChats",
       "Suggested",
@@ -622,6 +637,11 @@ export function buildCommandPaletteCommands(
       "Reload installed skills",
       ["skills", "reload"],
       650,
+      {
+        disabled: context.canReloadSkills === false,
+        disabledReason:
+          context.canReloadSkills === false ? "Select a task to reload its skills" : undefined,
+      },
     ),
     command(
       "manageTasks",

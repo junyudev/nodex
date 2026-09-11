@@ -1,3 +1,6 @@
+import { useFileSearch } from "@/lib/use-file-search";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import { FileTreeFilter } from "@/components/ui/file-tree-filter";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import {
@@ -29,7 +32,6 @@ import {
   workspaceDirectoryQueryOptions,
   workspaceFileBinaryQueryOptions,
   workspaceFileMetadataQueryOptions,
-  workspaceFileSearchQueryOptions,
   workspaceFileTextQueryOptions,
 } from "@/lib/query-options";
 import type { Project, ProjectSession, WorkspaceFileDirectoryEntry } from "@/lib/types";
@@ -442,19 +444,29 @@ export function WorkspaceFilesPanel({
   const navigationStateRef = useRef(navigationState);
   const navigationWriteTimeoutRef = useRef<number | null>(null);
   const initialTabStateRef = useRef(normalizeWorkspaceFilesTabState(tab.state));
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
-  const [searchResult, setSearchResult] = useState<{
-    readonly hostId: string;
-    readonly workspaceRoot: string;
-    readonly paths: WorkspaceFileTreePath[];
-  } | null>(null);
-  const searchPaths =
-    searchResult?.hostId === hostId && searchResult.workspaceRoot === workspaceRoot
-      ? searchResult.paths
-      : null;
-  const [searchPending, setSearchPending] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const searchGenerationRef = useRef(0);
+  const debouncedSearchQuery = useDebouncedValue(navigationState.searchQuery.trim(), 100);
+  const search = useFileSearch({
+    enabled: Boolean(workspaceRoot),
+    query: debouncedSearchQuery,
+    scope: workspaceRoot
+      ? { hostId: hostId === "local" ? DEFAULT_CODEX_HOST_ID : hostId, roots: [workspaceRoot] }
+      : null,
+  });
+  const searchPending =
+    search.loading || debouncedSearchQuery !== navigationState.searchQuery.trim();
+  const searchError = search.error;
+  const searchPaths: WorkspaceFileTreePath[] = [];
+  const searchDirectories = new Set<string>();
+  for (const match of search.matches) {
+    const segments = match.relativePath.split("/");
+    for (let index = 1; index < segments.length; index += 1)
+      searchDirectories.add(segments.slice(0, index).join("/"));
+    if (match.kind === "directory") searchDirectories.add(match.relativePath);
+    else searchPaths.push({ path: match.relativePath, kind: "file" });
+  }
+  searchPaths.unshift(
+    ...Array.from(searchDirectories, (path) => ({ path, kind: "directory" as const })),
+  );
   const persistedTabStateRef = useRef<WorkspaceFilesTabState>(initialTabStateRef.current);
   const [treeWidth, setTreeWidth] = useState(
     initialTabStateRef.current.treeWidth ?? WORKSPACE_TREE_DEFAULT_WIDTH,
@@ -622,57 +634,6 @@ export function WorkspaceFilesPanel({
       });
     }
   }, [directoryPaths, hostId, queryClient, workspaceRoot]);
-
-  useEffect(() => {
-    const normalizedQuery = navigationState.searchQuery.trim();
-    setSearchError(null);
-    const generation = searchGenerationRef.current + 1;
-    searchGenerationRef.current = generation;
-    if (!workspaceRoot || !normalizedQuery) {
-      setDebouncedSearchQuery("");
-      setSearchResult(null);
-      setSearchPending(false);
-      return;
-    }
-
-    setSearchPending(true);
-    const timeout = window.setTimeout(() => {
-      setDebouncedSearchQuery(normalizedQuery);
-      void queryClient
-        .fetchQuery(
-          workspaceFileSearchQueryOptions({
-            hostId,
-            workspaceRoot,
-            query: normalizedQuery,
-          }),
-        )
-        .then((result) => {
-          if (searchGenerationRef.current !== generation) return;
-          setSearchResult({
-            hostId,
-            workspaceRoot,
-            paths: [
-              ...result.ancestorDirectories.map((path) => ({
-                path,
-                kind: "directory" as const,
-              })),
-              ...result.matches.map((match) => ({
-                path: match.path,
-                kind: "file" as const,
-              })),
-            ],
-          });
-          setSearchPending(false);
-        })
-        .catch((error: unknown) => {
-          if (searchGenerationRef.current !== generation) return;
-          setSearchResult({ hostId, workspaceRoot, paths: [] });
-          setSearchPending(false);
-          setSearchError(error instanceof Error ? error.message : "Unable to search files");
-        });
-    }, 150);
-    return () => window.clearTimeout(timeout);
-  }, [hostId, navigationState.searchQuery, queryClient, workspaceRoot]);
 
   useEffect(() => {
     if (!selectedPath) {

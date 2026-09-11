@@ -1,3 +1,4 @@
+import { buildAppHostFilesystemUrl } from "../../shared/app-protocol";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -22,12 +23,15 @@ const makeGateway = (
     requestRawForThread: () => Effect.die(new Error("Unsupported raw request")),
     events: Stream.empty,
     requestLocal,
-    requestOnHost: (_hostId, method, params) => requestLocal(method, params),
+    requestOnHost: (hostId, method, params) => {
+      assert.strictEqual(hostId, "local");
+      return requestLocal(method, params);
+    },
     requestForThread: (_threadId, method, params) => requestLocal(method, params),
     notifyLocal: unsupported,
     connection: () => unsupported(),
     connectionChanges: () => Stream.empty,
-    awaitReady: () => Effect.void,
+    awaitReady: (hostId) => Effect.sync(() => assert.strictEqual(hostId, "local")),
     reconcileHost: unsupported,
     removeHost: unsupported,
     restartHost: unsupported,
@@ -209,16 +213,20 @@ it.effect("projects models, plugins, and skills through one composer interface",
       },
       { name: "Plan", mode: "plan", model: "model-a", reasoningEffort: null },
     ]);
-    const plugins = yield* catalog.listPlugins([" /repo ", "/repo"]);
+    const plugins = yield* catalog.listPlugins({ hostId: "default", cwds: [" /repo ", "/repo"] });
     assert.strictEqual(plugins[0]?.id, "browser@openai-bundled");
-    const skills = yield* catalog.listSkills(["/repo"]);
+    const skills = yield* catalog.listSkills({ hostId: "default", cwds: ["/repo"] });
     assert.strictEqual(skills[0]?.path, "/skills/pdf/SKILL.md");
-    yield* catalog.listSkills([]);
-    yield* catalog.listSkills(["/repo"], true);
+    yield* catalog.listSkills({ hostId: "default", cwds: [] });
+    yield* catalog.listSkills({ hostId: "default", cwds: ["/repo"], forceReload: true });
     assert.deepEqual(skillsRequests[2], { cwds: ["/repo"], forceReload: true });
     assert.deepEqual(skillsRequests.slice(0, 2), [{ cwds: ["/repo"] }, {}]);
     assert.isFalse(Object.hasOwn(skillsRequests[1] as object, "cwds"));
-    yield* catalog.activatePlugin({ id: "browser@openai-bundled", cwds: ["/repo"] });
+    yield* catalog.activatePlugin({
+      hostId: "local",
+      id: "browser@openai-bundled",
+      cwds: ["/repo"],
+    });
     assert.deepEqual(yield* catalog.listHooks({ hostId: "default", cwds: ["/repo"] }), {
       data: [],
     });
@@ -360,4 +368,59 @@ it.effect("uninstalls only an unambiguous user plugin and verifies the installed
       assert.deepStrictEqual(removed, ["same@one"]);
     }),
   ),
+);
+
+it.effect("routes skill inventory and its icon paths to the selected host", () =>
+  Effect.gen(function* () {
+    const calls: Array<{ hostId: string; method: string; params: unknown }> = [];
+    const remotePath = "C:\\skills\\PDF\\SKILL.md";
+    const iconPath = "C:\\skills\\PDF\\icon.svg";
+    const gateway = makeGateway(() => Effect.die("must not read local inventory"));
+    const remoteGateway = CodexGateway.of({
+      ...gateway,
+      awaitReady: (hostId) => Effect.sync(() => assert.strictEqual(hostId, "remote-a")),
+      requestOnHost: ((hostId: string, method: string, params: unknown) => {
+        calls.push({ hostId, method, params });
+        return Effect.succeed({
+          data: [
+            {
+              cwd: "C:\\repo",
+              errors: [],
+              skills: [
+                {
+                  name: "PDF",
+                  description: "Read PDFs",
+                  path: remotePath,
+                  scope: "user",
+                  enabled: true,
+                  interface: { iconSmall: iconPath },
+                },
+              ],
+            },
+          ],
+        });
+      }) as CodexGateway["Service"]["requestOnHost"],
+    });
+    const scope = yield* Scope.make();
+    const context = yield* Layer.buildWithScope(
+      composerCatalogLive.pipe(Layer.provide(Layer.succeed(CodexGateway, remoteGateway))),
+      scope,
+    );
+    const catalog = Context.get(context, ComposerCatalog);
+    const skills = yield* catalog.listSkills({
+      hostId: "remote-a",
+      cwds: ["C:\\repo"],
+      forceReload: true,
+    });
+    assert.deepEqual(calls, [
+      {
+        hostId: "remote-a",
+        method: "skills/list",
+        params: { cwds: ["C:\\repo"], forceReload: true },
+      },
+    ]);
+    assert.strictEqual(skills[0]?.path, remotePath);
+    assert.strictEqual(skills[0]?.iconUrl, buildAppHostFilesystemUrl("remote-a", iconPath));
+    yield* Scope.close(scope, Exit.void);
+  }),
 );

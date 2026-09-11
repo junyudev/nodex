@@ -232,7 +232,7 @@ entries own optional export fibers; Core's immutable export bindings retain
 version and access authority independently of Cut/Paste history. Export and
 native text enhancement never gate source LocalCommit admission.
 
-Composer file indexing and fuzzy matching belong to the native Codex app-server. Main owns only renderer-scoped session controls, generation fences, and notification routing; the renderer owns current-query presentation. Skill inventory changes flow from native notifications to workspace-keyed renderer cache invalidation. See [Composer behavior](product-specs/codex-thread-transcript-behavior.md#composer-shell).
+Workspace file indexing and fuzzy matching across Composer, Files, and Command Palette belong to the native Codex app-server. Main owns only renderer-scoped session controls, generation fences, and notification routing; the renderer owns current-query presentation. Skill inventory changes flow from native notifications to host-and-roots-keyed renderer cache invalidation. Host-qualified assets use a scoped reader registered by the Codex runtime with the app protocol; protocol serving never guesses a local path for a remote host. See [Composer behavior](product-specs/codex-thread-transcript-behavior.md#composer-shell).
 
 Native filesystem watching is one scoped Stream Adapter around synchronous `fs.watch`; readiness,
 changes, and typed failure flow through the Stream, and stream finalization closes the native handle.

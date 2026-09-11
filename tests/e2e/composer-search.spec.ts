@@ -57,6 +57,17 @@ test("keeps native search sessions responsive and discovers live skill changes",
       "data-mention-fs-path",
       path.join(harness.profile.runRoot, "src/fuzzy-match.ts"),
     );
+    await composer.fill("@fzdir");
+    await expect(page.locator("[data-add-context-row]").filter({ hasText: "src" })).toHaveCount(1);
+    await composer.press("Tab");
+    await expect(composer).toHaveText("@src/");
+    await expect(composer.locator('[data-composer-mention="true"]')).toHaveCount(0);
+    await expect(page.getByText("fuzzy-match.ts", { exact: true })).toHaveCount(1);
+    await composer.press("Enter");
+    await expect(composer.locator('[data-mention-kind="file"]')).toHaveAttribute(
+      "data-mention-fs-path",
+      path.join(harness.profile.runRoot, "src/fuzzy-match.ts"),
+    );
     await composer.fill("@live-added-skill");
     const skillDirectory = path.join(harness.profile.runRoot, ".agents/skills/live-added-skill");
     await mkdir(skillDirectory, { recursive: true });
@@ -94,6 +105,12 @@ test("keeps native search sessions responsive and discovers live skill changes",
       body: JSON.stringify(elapsed),
       contentType: "application/json",
     });
+  } catch (error) {
+    await testInfo.attach("runtime-requests", {
+      body: await readFile(path.join(harness.profile.runRoot, ".fake-codex/requests.jsonl")),
+      contentType: "text/plain",
+    });
+    throw error;
   } finally {
     await harness.close();
   }

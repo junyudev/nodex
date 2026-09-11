@@ -1,3 +1,4 @@
+import type { FileSearchScope, FileSearchMatch } from "../../../shared/file-search";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   NodexDialog as Dialog,
@@ -10,6 +11,7 @@ import {
   type CommandPaletteCommand,
   type CommandPalettePage,
   type CommandPaletteThread,
+  type CommandPaletteFile,
 } from "@/lib/command-palette";
 import {
   buildCommandPaletteCommands,
@@ -25,6 +27,8 @@ import type { RecentPageSession } from "@/lib/use-workbench-profile-preferences"
 import { CommandPaletteSurface, type CommandPaletteSurfaceHandle } from "./command-palette-surface";
 
 interface CommandPaletteProps {
+  fileSearchScope?: FileSearchScope | null;
+  onOpenFile?: (file: FileSearchMatch) => void;
   open: boolean;
   openTriggerTick: number;
   initialMode?: CommandMenuMode;
@@ -39,7 +43,11 @@ interface CommandPaletteProps {
   onOpenThread: (threadId: string) => void;
 }
 
-type PaletteItem = CommandPaletteCommand | CommandPalettePage | CommandPaletteThread;
+type PaletteItem =
+  | CommandPaletteCommand
+  | CommandPalettePage
+  | CommandPaletteThread
+  | CommandPaletteFile;
 
 function isMacPlatform(): boolean {
   return typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
@@ -58,6 +66,8 @@ export function CommandPalette({
   onOpenChange,
   onOpenPage,
   onOpenThread,
+  fileSearchScope,
+  onOpenFile,
 }: CommandPaletteProps) {
   const isMac = isMacPlatform();
   const { threads, loading: threadsLoading } = useCommandPaletteThreadItems({
@@ -97,6 +107,10 @@ export function CommandPalette({
   }, []);
 
   const handleExecute = (item: PaletteItem) => {
+    if (item.kind === "file") {
+      onOpenFile?.(item.file);
+      return;
+    }
     if (item.kind === "page") {
       onOpenPage(item.projectId, item.page.id, item.page.title);
       return;
@@ -146,6 +160,7 @@ export function CommandPalette({
           openTriggerTick={openTriggerTick}
           mode={mode}
           initialQuery={initialQuery}
+          fileSearchScope={fileSearchScope}
           commands={commands}
           projects={projects}
           activeProjectId={activeProjectId}

@@ -48,6 +48,20 @@ describe("local File import", () => {
     }
   });
 
+  test("rejects a wide folder once its file budget is exceeded", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-file-budget-"));
+    try {
+      await Promise.all(
+        Array.from({ length: 101 }, (_, index) =>
+          fs.writeFile(path.join(root, `${index}.txt`), ""),
+        ),
+      );
+      await expect(collectLocalFileCandidates([root])).rejects.toThrow("100 File batch limit");
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("reads through one no-follow file handle and rejects direct symlinks", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "nodex-page-file-import-"));
     try {

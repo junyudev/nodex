@@ -85,9 +85,8 @@ export async function collectLocalFileCandidates(
   };
 
   const visitDirectory = async (directoryPath: string, logicalPath: string): Promise<void> => {
-    const entries = await fs.readdir(directoryPath, { withFileTypes: true });
-    entries.sort((left, right) => left.name.localeCompare(right.name, "en"));
-    for (const entry of entries) {
+    const entries = await fs.opendir(directoryPath);
+    for await (const entry of entries) {
       const entryPath = path.join(directoryPath, entry.name);
       const entryLogicalPath = `${logicalPath}/${entry.name}`;
       if (entry.isSymbolicLink()) {
@@ -127,5 +126,5 @@ export async function collectLocalFileCandidates(
     throw new Error(`${rootName} is not a regular file or folder`);
   }
 
-  return candidates;
+  return candidates.sort((left, right) => left.logicalPath.localeCompare(right.logicalPath, "en"));
 }
