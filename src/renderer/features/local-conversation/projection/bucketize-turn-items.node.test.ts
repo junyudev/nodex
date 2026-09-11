@@ -617,7 +617,7 @@ describe("bucketizeTurnItems", () => {
     ).toBe("Editing files");
   });
 
-  test("routes leading hooks into preUserItems and trailing hooks into postAssistantItems", () => {
+  test("keeps hook metadata out of transcript buckets without disturbing user and assistant placement", () => {
     const buckets = bucketizeTurnItems({
       items: [
         buildItem({ id: "hook_pre", type: "hook" }),
@@ -628,10 +628,11 @@ describe("bucketizeTurnItems", () => {
       turnStatus: "completed",
     });
 
-    expect(buckets.preUserItems.map((item) => item.id).join(",")).toBe("hook_pre");
+    expect(buckets.preUserItems).toEqual([]);
     expect(buckets.userItems.map((item) => item.id).join(",")).toBe("user_1");
     expect(buckets.assistantItem?.id ?? "").toBe("assistant_1");
-    expect(buckets.postAssistantItems.map((item) => item.id).join(",")).toBe("hook_post");
+    expect(buckets.postAssistantItems).toEqual([]);
+    expect(buckets.agentItems).toEqual([]);
   });
 
   test("keeps completed MCP elicitation rows in generic agent items", () => {

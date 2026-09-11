@@ -1,3 +1,4 @@
+import { buildHookStats, type HookStats } from "./hook-stats";
 import type {
   CodexConversationTurn,
   ProtocolAppInfo,
@@ -48,6 +49,10 @@ interface BuildTurnViewModelInput {
   endResourcePaths?: readonly string[];
   subagentActivityState?: ThreadTurnSubagentActivityState;
 }
+
+type TurnActionInput = Pick<BuildTurnViewModelInput, "canForkTurn" | "isStreamingTurn" | "turn"> & {
+  hookStats: HookStats | null;
+};
 
 const EMPTY_SUBAGENT_ACTIVITY_STATE: ThreadTurnSubagentActivityState = {
   hasActivity: false,
@@ -166,7 +171,11 @@ function resolveAssistantMessageSentAt(turn: CodexConversationTurn | null): numb
 
 function applyUserMessageActions(
   userItems: ThreadTranscriptBlockModel[],
-  input: Pick<BuildTurnViewModelInput, "canEditTurnUserPrefix" | "turn">,
+  input: Pick<BuildTurnViewModelInput, "canEditTurnUserPrefix" | "turn"> & {
+    hookStats: HookStats | null;
+    fallbackHookStats: HookStats | null;
+    isTurnPrefix?: boolean;
+  },
 ): ThreadTranscriptBlockModel[] {
   if (userItems.length === 0) return userItems;
 
@@ -181,12 +190,18 @@ function applyUserMessageActions(
         }
       : {}),
     userMessageActions: {
+      hookStats:
+        block.entry.deliveryStatus === "not-sent"
+          ? input.fallbackHookStats
+          : block.entry.hookFeedback === true
+            ? input.hookStats
+            : null,
       canEdit:
         Boolean(input.canEditTurnUserPrefix) &&
         block.entry.hookFeedback !== true &&
         index === userItems.length - 1,
       sentAtMs:
-        block.entry.deliveryStatus === "not-sent"
+        block.entry.deliveryStatus === "not-sent" || input.isTurnPrefix === false
           ? null
           : resolveUserMessageSentAt(input.turn, index),
     },
@@ -256,7 +271,7 @@ function expandUserBlocksWithAttachmentStrips(
 
 function buildAssistantMessageActionsModel(
   assistantItem: ThreadTranscriptBlockModel | null,
-  input: Pick<BuildTurnViewModelInput, "canForkTurn" | "isStreamingTurn" | "turn">,
+  input: TurnActionInput,
 ): ThreadAssistantMessageActionsModel | null {
   if (!assistantItem || assistantItem.type !== "assistantMessage") return null;
   if (assistantItem.entry.assistantPhase === "commentary") return null;
@@ -267,9 +282,11 @@ function buildAssistantMessageActionsModel(
   const canFork = isCompleted && Boolean(input.canForkTurn);
   const canRate = isCompleted && hasCopyableContent;
 
-  if (!canFork && !(isCompleted && hasCopyableContent)) return null;
+  const hookStats = isCompleted ? input.hookStats : null;
+  if (!canFork && !(isCompleted && hasCopyableContent) && !hookStats) return null;
 
   return {
+    ...(hookStats ? { hookStats } : {}),
     copyText: hasCopyableContent && isCompleted ? copyText : null,
     sentAtMs: resolveAssistantMessageSentAt(input.turn),
     canRate,
@@ -279,7 +296,7 @@ function buildAssistantMessageActionsModel(
 
 function applyAssistantMessageActions(
   assistantItem: ThreadTranscriptBlockModel | null,
-  input: Pick<BuildTurnViewModelInput, "canForkTurn" | "isStreamingTurn" | "turn">,
+  input: TurnActionInput,
 ): ThreadTranscriptBlockModel | null {
   if (!assistantItem || assistantItem.type !== "assistantMessage") return assistantItem;
 
@@ -307,7 +324,7 @@ function applyAssistantAfterBlocks(
 
 function buildDeferredAssistantActionsBlock(
   assistantItem: ThreadTranscriptBlockModel | null,
-  input: Pick<BuildTurnViewModelInput, "canForkTurn" | "isStreamingTurn" | "turn">,
+  input: TurnActionInput,
 ): ThreadAssistantActionsBlockModel | null {
   if (!assistantItem || assistantItem.type !== "assistantMessage") return null;
 
@@ -323,6 +340,31 @@ function buildDeferredAssistantActionsBlock(
     type: "assistantActions",
     entry: assistantItem.entry,
     actions,
+  };
+}
+
+function buildGeneratedImageActionsBlock(
+  source: ThreadTranscriptBlockModel | undefined,
+  input: TurnActionInput,
+): ThreadAssistantActionsBlockModel | null {
+  if (!source || input.isStreamingTurn) return null;
+  const canFork = Boolean(input.canForkTurn);
+  if (!input.hookStats && !canFork) return null;
+  return {
+    id: `${source.id}:actions`,
+    turnId: source.turnId,
+    createdAt: source.createdAt,
+    updatedAt: source.updatedAt,
+    searchableText: "",
+    type: "assistantActions",
+    entry: source.entry,
+    actions: {
+      copyText: null,
+      sentAtMs: null,
+      canRate: false,
+      canFork,
+      ...(input.hookStats ? { hookStats: input.hookStats } : {}),
+    },
   };
 }
 
@@ -382,7 +424,7 @@ function decorateAssistantBlock(
   block: ThreadTranscriptBlockModel,
   latestAssistantId: string | null,
   assistantSearchUnitKey: string,
-  input: Pick<BuildTurnViewModelInput, "canForkTurn" | "isStreamingTurn" | "turn"> & {
+  input: TurnActionInput & {
     includeActions: boolean;
     assistantAfterBlocks?: ThreadBlockModel[];
   },
@@ -404,6 +446,10 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
   if (turnKey === null) {
     throw new Error("A nullable local turn requires its occurrence key");
   }
+  const actionInput: TurnActionInput = {
+    ...input,
+    hookStats: input.isStreamingTurn ? null : buildHookStats(input.turn?.hookRuns),
+  };
   const workedForItem = input.workedForItem ?? null;
   const workedForTiming = input.workedForTiming ?? null;
   const workedDurationMs = input.workedDurationMs ?? null;
@@ -439,7 +485,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     buckets.assistantItem === null
       ? null
       : decorateAssistantBlock(buckets.assistantItem, latestAssistantId, assistantSearchUnitKey, {
-          ...input,
+          ...actionInput,
           includeActions: true,
           assistantAfterBlocks: [
             ...(generatedImageGalleryBlock ? [generatedImageGalleryBlock] : []),
@@ -450,13 +496,20 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
   const nextAgentItems = buckets.agentItems.map((block): ThreadAgentItemModel => {
     if (block.type === "assistantMessage") {
       return decorateAssistantBlock(block, latestAssistantId, assistantSearchUnitKey, {
-        ...input,
+        ...actionInput,
         includeActions: false,
       });
     }
     if (block.type === "userMessage") {
+      const [userBlock] = applyUserMessageActions([block], {
+        turn: input.turn,
+        canEditTurnUserPrefix: false,
+        hookStats: actionInput.hookStats,
+        fallbackHookStats: null,
+        isTurnPrefix: false,
+      });
       return withSearchUnitKey(
-        block,
+        userBlock ?? block,
         userSearchUnitKeyByBlockId.get(block.id) ?? `${turnKey}:user:0`,
       );
     }
@@ -471,7 +524,10 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
         ) ?? buckets.latestAssistantMessage);
   const deferredAssistantActionsBlock =
     nextAssistantItem === null
-      ? buildDeferredAssistantActionsBlock(nextLatestAssistantMessage, input)
+      ? (buildDeferredAssistantActionsBlock(nextLatestAssistantMessage, actionInput) ??
+        (generatedImageGalleryBlock
+          ? buildGeneratedImageActionsBlock(buckets.toolOutputItems[0], actionInput)
+          : null))
       : null;
 
   buckets = {
@@ -483,7 +539,12 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
           userSearchUnitKeyByBlockId.get(block.id) ?? `${turnKey}:user:${index}`,
         ),
       ),
-      input,
+      {
+        ...input,
+        hookStats: actionInput.hookStats,
+        fallbackHookStats:
+          !nextAssistantItem && !generatedImageGalleryBlock ? actionInput.hookStats : null,
+      },
     ),
     assistantItem: nextAssistantItem,
     agentItems: nextAgentItems,

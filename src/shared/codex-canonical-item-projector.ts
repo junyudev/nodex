@@ -1229,6 +1229,14 @@ export function projectCodexCanonicalVisibleTurnItemViews(
   });
 }
 
+export function isCodexCanonicalTurnPromptBlocked(turn: CodexCanonicalTurnState): boolean {
+  return (
+    turn.sidecar.hookRuns?.some(
+      ({ run }) => run.eventName === "userPromptSubmit" && run.status === "blocked",
+    ) === true
+  );
+}
+
 /**
  * Projects the complete canonical turn, including the app-owned user input
  * retained in turn params. The raw item projector remains the lower-level
@@ -1243,10 +1251,7 @@ export function projectCodexCanonicalTurnViews(
     throw new Error("A null-id canonical turn requires its occurrence key");
   }
 
-  const blocked =
-    input.turn.sidecar.hookRuns?.some(
-      ({ run }) => run.eventName === "userPromptSubmit" && run.status === "blocked",
-    ) === true;
+  const blocked = isCodexCanonicalTurnPromptBlocked(input.turn);
   const paramsView = projectTurnParamsUserView({
     threadId: input.threadId,
     turnId,

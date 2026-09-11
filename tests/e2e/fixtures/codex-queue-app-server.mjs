@@ -190,6 +190,25 @@ const startTurn = (params) => {
         notify("item/completed", { completedAtMs: Date.now(), threadId: thread().id, turnId: next.id, item: progress });
       }, 600);
     }
+    if (process.env.NODEX_FAKE_CODEX_HOOK_TURN === "1") {
+      const run = {
+        id: `hook-${next.id}`, eventName: "sessionStart", handlerType: "command",
+        executionMode: "sync", scope: "turn", sourcePath: "/fixture/hooks.json", source: "user",
+        displayOrder: 0, status: "running", statusMessage: null,
+        startedAt: Date.now(), completedAt: null, durationMs: null,
+        entries: [{ kind: "context", text: "Injected hook context must stay hidden" }],
+      };
+      notify("hook/started", { threadId: thread().id, turnId: next.id, run });
+      const item = { type: "agentMessage", id: `reply-${next.id}`, text: "The hook completed successfully.", phase: "final_answer", delivery: null, memoryCitation: null, questions: null };
+      next.items.push(item);
+      notify("item/started", { startedAtMs: Date.now(), threadId: thread().id, turnId: next.id, item });
+      notify("item/completed", { completedAtMs: Date.now(), threadId: thread().id, turnId: next.id, item });
+      run.status = "completed";
+      run.completedAt = Date.now();
+      run.durationMs = run.completedAt - run.startedAt;
+      persist();
+      notify("hook/completed", { threadId: thread().id, turnId: next.id, run });
+    }
     if (shouldAutoComplete) scheduleAutomaticCompletion(next.id);
   }, 0);
   return next;

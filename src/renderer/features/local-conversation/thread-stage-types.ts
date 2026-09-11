@@ -1,3 +1,4 @@
+import type { HookStats } from "./projection/hook-stats";
 import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
 import type { ReactNode } from "react";
 import type { ThreadGoal, FeedbackUploadParams } from "@nodex/codex-app-server-protocol/v2";
@@ -482,11 +483,13 @@ export interface ThreadMcpAppSidePanelInput {
 }
 
 export interface ThreadUserMessageActionsModel {
+  hookStats?: HookStats | null;
   canEdit: boolean;
   sentAtMs: number | null;
 }
 
 export interface ThreadAssistantMessageActionsModel {
+  hookStats?: HookStats | null;
   copyText: string | null;
   sentAtMs: number | null;
   canRate: boolean;

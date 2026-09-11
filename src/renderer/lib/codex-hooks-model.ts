@@ -4,6 +4,21 @@ import type { HooksListEntry } from "@nodex/codex-app-server-protocol/v2/HooksLi
 import type { CodexHooksSettingsSelection, CodexHooksSettingsSource } from "./codex-hooks-route";
 import { normalizeCodexHooksSettingsSource } from "./codex-hooks-route";
 
+export const CODEX_HOOK_EVENT_LABELS: Record<HookEventName, string> = {
+  preToolUse: "PreToolUse",
+  permissionRequest: "PermissionRequest",
+  postToolUse: "PostToolUse",
+  preCompact: "PreCompact",
+  postCompact: "PostCompact",
+  sessionStart: "SessionStart",
+  sessionEnd: "SessionEnd",
+  userPromptSubmit: "UserPromptSubmit",
+  subagentStart: "SubagentStart",
+  subagentStop: "SubagentStop",
+  stop: "Stop",
+  interrupt: "Interrupt",
+};
+
 export const CODEX_HOOK_EVENT_ORDER: readonly HookEventName[] = [
   "preToolUse",
   "permissionRequest",

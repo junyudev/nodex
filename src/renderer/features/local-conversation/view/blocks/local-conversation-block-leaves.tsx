@@ -1,3 +1,4 @@
+import { HookStatsIndicator } from "../shared/hook-stats-indicator";
 import {
   useCallback,
   useEffect,
@@ -302,9 +303,6 @@ function renderCollapsedActivityEntry({
     entry.type === "webSearch"
   ) {
     return <ThreadToolSurfaceBlock block={entry as ThreadTranscriptBlockModel} {...sharedProps} />;
-  }
-  if (entry.type === "hook") {
-    return <ThreadHookBlock block={entry as ThreadTranscriptBlockModel} {...sharedProps} />;
   }
 
   return null;
@@ -907,6 +905,9 @@ export function UserMessageBubble({
               <ThreadMessageActionRow align="end">
                 <MessageTimestamp sentAtMs={userActions?.sentAtMs ?? null} />
                 <div className="flex items-center gap-1">
+                  {userActions?.hookStats ? (
+                    <HookStatsIndicator stats={userActions.hookStats} />
+                  ) : null}
                   <CopyMessageActionButton
                     text={content}
                     feedbackMs={USER_COPY_FEEDBACK_MS}
@@ -1013,98 +1014,6 @@ export function ThreadPlanCardBlock({
   );
 }
 
-function humanizeHookEventName(value: string | null | undefined): string {
-  switch (value) {
-    case "preToolUse":
-      return "PreToolUse";
-    case "postToolUse":
-      return "PostToolUse";
-    case "sessionStart":
-      return "SessionStart";
-    case "userPromptSubmit":
-      return "UserPromptSubmit";
-    case "stop":
-      return "Stop";
-    default:
-      return "Hook";
-  }
-}
-
-function resolveHookSummary(entry: CodexConversationItem): {
-  summary: string;
-  status: string;
-  details: Array<{ kind: string; text: string }>;
-} {
-  const raw = asRecord(entry.rawItem);
-  const run = asRecord(raw?.run);
-  const eventName = typeof run?.eventName === "string" ? run.eventName : null;
-  const statusMessage = typeof run?.statusMessage === "string" ? run.statusMessage.trim() : "";
-  const status = typeof run?.status === "string" ? run.status : "running";
-  const details = Array.isArray(run?.entries)
-    ? run.entries.flatMap((candidate) => {
-        const parsed = asRecord(candidate);
-        if (!parsed || typeof parsed.kind !== "string" || typeof parsed.text !== "string")
-          return [];
-        return [{ kind: parsed.kind, text: parsed.text }];
-      })
-    : [];
-
-  return {
-    summary:
-      statusMessage.length > 0
-        ? `${humanizeHookEventName(eventName)} - ${statusMessage}`
-        : humanizeHookEventName(eventName),
-    status,
-    details,
-  };
-}
-
-export function ThreadHookBlock({ block }: ThreadLeafBlockProps) {
-  if (block.type !== "hook") return null;
-
-  return <ThreadHookContent block={block} />;
-}
-
-function ThreadHookContent({ block }: { block: ThreadTranscriptBlockModel }) {
-  const [expanded, setExpanded] = useState(false);
-  const hook = resolveHookSummary(block.entry);
-
-  return (
-    <div className="flex flex-col gap-2">
-      <button
-        type="button"
-        className="group flex w-full min-w-0 items-center gap-1.5 text-left text-size-chat text-token-description-foreground transition-colors hover:text-token-foreground"
-        aria-expanded={expanded}
-        onClick={() => {
-          setExpanded((current) => !current);
-        }}
-      >
-        <ChevronRightIcon
-          className={cn(
-            "icon-xs shrink-0 transition-transform duration-300",
-            expanded && "rotate-90",
-          )}
-        />
-        <span className="min-w-0 flex-1 truncate">{hook.summary}</span>
-        <span className="shrink-0 pl-4 text-right">{hook.status}</span>
-      </button>
-      {expanded ? (
-        <div className="ml-5 flex flex-col gap-1">
-          {hook.details.map((detail, index) => (
-            <p
-              key={`${detail.kind}:${index}`}
-              className="text-size-chat whitespace-pre-wrap text-token-description-foreground"
-              data-hook-entry-kind={detail.kind}
-            >
-              {detail.kind}: {detail.text}
-            </p>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export function ThreadWorkedForBlock({ block }: { block: ThreadWorkedForBlockModel }) {
   const label = useWorkedForLabelText({
     timing: {
@@ -1154,7 +1063,8 @@ function AssistantMessageActionsRow({
   alwaysShowActions?: boolean;
 }) {
   const [selectedRating, setSelectedRating] = useState<AssistantMessageRating | null>(null);
-  const shouldShowActions = actions.copyText !== null || actions.canFork;
+  const shouldShowActions =
+    actions.copyText !== null || actions.canFork || actions.hookStats != null;
   if (!shouldShowActions) return null;
 
   return (
@@ -1195,6 +1105,7 @@ function AssistantMessageActionsRow({
           <ForkMessageIcon />
         </ThreadActionIconButton>
       ) : null}
+      {actions.hookStats ? <HookStatsIndicator stats={actions.hookStats} /> : null}
       <MessageTimestamp sentAtMs={actions.sentAtMs} />
     </ThreadMessageActionRow>
   );
