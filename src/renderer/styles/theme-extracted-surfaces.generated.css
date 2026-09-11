@@ -1,7 +1,7 @@
 /*
- * Generated semantic theme contract (refVersion 26.810.41047).
+ * Generated semantic theme contract (refVersion 26.903.71938).
  * Do not edit by hand. Run:
- *   pnpm run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.810.41047
+ *   pnpm run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.903.71938
  */
 
 @layer components {
@@ -30,7 +30,8 @@
   }
 
   .loading-shimmer-pure-text, .loading-shimmer {
-    --text-primary: var(--color-token-description-foreground);
+    --loading-shimmer-default-duration: 2s;
+    --text-primary: var(--loading-shimmer-foreground, var(--color-token-description-foreground));
     --text-secondary: var(--text-primary);
   }
 
@@ -61,22 +62,22 @@
   }
 
   .loading-shimmer-pure-text, .loading-shimmer {
-    --shimmer-text-secondary: var(--text-secondary);
-    --shimmer-contrast: #ffffffbf;
+    --shimmer-text-secondary: var(--loading-shimmer-base, var(--text-secondary));
+    --shimmer-contrast: var(--loading-shimmer-highlight, #ffffffbf);
   }
 
   .dark .loading-shimmer-pure-text, .dark .loading-shimmer {
-    --shimmer-text-secondary: var(--text-primary);
+    --shimmer-text-secondary: var(--loading-shimmer-base, var(--text-primary));
   }
 
   @supports (color: color-mix(in lab, red, red)) {
     .dark .loading-shimmer-pure-text, .dark .loading-shimmer {
-      --shimmer-text-secondary: color-mix(in srgb, var(--text-primary) 45%, transparent);
+      --shimmer-text-secondary: var(--loading-shimmer-base, color-mix(in srgb, var(--text-primary) 45%, transparent));
     }
   }
 
   .dark .loading-shimmer-pure-text, .dark .loading-shimmer {
-    --shimmer-contrast: #0009;
+    --shimmer-contrast: var(--loading-shimmer-highlight, #0009);
   }
 
   .loading-shimmer-pure-text, .loading-shimmer {
@@ -84,13 +85,13 @@
     background: var(--shimmer-text-secondary) -webkit-gradient(linear, 100% 0, 0 0, from(transparent), color-stop(.4, var(--shimmer-contrast)), color-stop(.6, var(--shimmer-contrast)), to(transparent));
     text-fill-color: transparent;
     -webkit-text-fill-color: transparent;
+    animation-duration: var(--loading-shimmer-duration, var(--loading-shimmer-default-duration));
     background-position: -100% 0;
     background-repeat: no-repeat;
     background-size: 50% 200%;
     -webkit-background-clip: text;
     background-clip: text;
     animation-name: loading-shimmer;
-    animation-duration: 2s;
     animation-timing-function: steps(48, end);
     animation-iteration-count: infinite;
     animation-delay: 0s;

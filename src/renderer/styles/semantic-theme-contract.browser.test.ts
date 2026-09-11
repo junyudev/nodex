@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { cdp } from "vite-plus/test/browser";
+import { applyCodexThemeVariant } from "@/lib/codex-theme-variant";
 
 import "@/globals.css";
 
@@ -28,6 +29,7 @@ const setWindowTheme = (windowType: "browser" | "electron", scheme: "light" | "d
   root.classList.toggle("dark", scheme === "dark");
   root.classList.toggle("electron-dark", windowType === "electron" && scheme === "dark");
   root.classList.toggle("electron-light", windowType === "electron" && scheme === "light");
+  if (windowType === "electron") applyCodexThemeVariant(root, scheme, document.body);
 };
 
 afterEach(() => {
@@ -96,14 +98,40 @@ describe("semantic theme contract in the renderer build", () => {
     setWindowTheme("electron", "dark");
     const rootStyle = getComputedStyle(document.documentElement);
 
-    expect(rootStyle.getPropertyValue("--color-text-foreground").trim()).toBe("#dfdfdf");
-    expect(getComputedStyle(mountRole("text-token-foreground")).color).toBe("rgb(223, 223, 223)");
+    expect(rootStyle.getPropertyValue("--color-text-foreground").trim()).toBe("#fcfcfc");
+    expect(getComputedStyle(mountRole("text-token-foreground")).color).toBe("rgb(252, 252, 252)");
     expect(rootStyle.getPropertyValue("--color-text-foreground-secondary").trim()).toBe(
-      "color-mix(in oklab, #ffffff 70%, transparent)",
+      "rgba(252, 252, 252, 0.71)",
     );
     expect(rootStyle.getPropertyValue("--color-text-foreground-tertiary").trim()).toBe(
-      "color-mix(in oklab, #ffffff 50%, transparent)",
+      "rgba(252, 252, 252, 0.498)",
     );
+  });
+
+  test("keeps main content, legacy content, and conversation roles aligned across theme changes", () => {
+    const main = mountRole("main-surface text-token-foreground");
+    const legacy = mountRole("bg-background text-foreground");
+    const bubble = mountRole("bg-background-user-message text-text-user-message");
+    const composer = mountRole("bg-background-composer-primary text-text-composer-primary");
+
+    for (const scheme of ["dark", "light", "dark"] as const) {
+      setWindowTheme("electron", scheme);
+      const isDark = scheme === "dark";
+      const surface = isDark ? "rgb(17, 17, 17)" : "rgb(255, 255, 255)";
+      const ink = isDark ? "rgb(252, 252, 252)" : "rgb(13, 13, 13)";
+
+      expect(getComputedStyle(main).backgroundColor).toBe(surface);
+      expect(getComputedStyle(main).color).toBe(ink);
+      expect(getComputedStyle(legacy).backgroundColor).toBe(surface);
+      expect(getComputedStyle(legacy).color).toBe(ink);
+      expect(getComputedStyle(bubble).backgroundColor).toBe(
+        isDark ? "rgba(50, 50, 50, 0.85)" : "rgba(233, 233, 233, 0.5)",
+      );
+      expect(getComputedStyle(composer).backgroundColor).toBe(
+        isDark ? "rgb(255, 255, 255)" : "rgb(0, 0, 0)",
+      );
+      expect(getComputedStyle(composer).color).toBe(isDark ? "rgb(0, 0, 0)" : "rgb(255, 255, 255)");
+    }
   });
 
   test("resolves production shimmer and sidebar surfaces in both electron schemes", () => {

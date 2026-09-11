@@ -1,7 +1,7 @@
 # Desktop Startup Behavior
 
 Status: Active
-Last updated: 2026-08-25
+Last updated: 2026-09-11
 
 ## Promise
 
@@ -14,6 +14,8 @@ window, not a splash dialog that is later exchanged for another window.
 - The first visible content is the Nodex mark centered in the restored window bounds.
 - The base mark is part of the application document and remains visible when application modules,
   React, stylesheets, IPC, Core, or the Store are delayed.
+- The initial document and mounted Workbench use the same resolved appearance palette. The opaque
+  startup background uses the shared underlying surface, including before application scripts run.
 - On macOS, the startup surface uses the same native material policy as the Workbench. Reduce
   transparency, an unfocused or oversized surface, or an unsupported platform selects the normal
   theme-matched opaque fallback.

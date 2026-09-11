@@ -6,6 +6,16 @@ This module owns the build-time contract between extracted theme facts and Nodex
 
 Use a temporary, read-only stylesheet from any location. The module does not copy, cache, modify, or identify that input. Only a neutral `refVersion`, the profile identity, and output hashes are committed.
 
+For Codex Electron references, use the stylesheet loaded by the startup document as the semantic contract source. In current bundles this is the global `app-initial-*.css` stylesheet. Do not merge declarations from lazy component chunks such as `app-primary-*.css` into the source contract just because they contain additional theme-like variables; those chunks are loaded by component routes and do not define the global startup theme.
+
+This stylesheet establishes the static contract, not the final preset values.
+For effective color parity, resolve the selected preset, its chrome overrides,
+normalization, and account accent overlay separately. A fallback palette or a
+CSS-only test cannot establish the rendered default. The runtime palette owner
+is `src/renderer/lib/codex-theme-variant.ts`; its output also supplies the initial
+document. Keep numeric palette verification there and cascade verification in
+the computed-style browser suite.
+
 ```sh
 vp run semantic-theme:audit -- --source /temporary/reference.css --ref-version <version>
 vp run semantic-theme:audit -- --source /temporary/reference.css --ref-version <version> --report /tmp/theme-audit.json

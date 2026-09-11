@@ -3495,7 +3495,7 @@ function HydratedThreadComposer({
       <button
         type="button"
         className={cn(
-          "focus-visible:outline-token-button-background cursor-interaction flex h-token-button-composer aspect-square items-center justify-center rounded-full bg-token-foreground p-0.5 text-token-dropdown-background transition-opacity focus-visible:outline-2",
+          "focus-visible:outline-background-composer-primary cursor-interaction flex h-token-button-composer aspect-square items-center justify-center rounded-full bg-background-composer-primary p-0.5 text-text-composer-primary transition-opacity focus-visible:outline-2",
           (composerActionState.disabled ||
             (composerActionState.action === "send" && !canRunPrimaryAction)) &&
             !isPrimaryActionPending &&
@@ -3674,7 +3674,7 @@ function HydratedThreadComposer({
         <button
           type="button"
           className={cn(
-            "inline-flex size-7 items-center justify-center rounded-full bg-(--foreground) p-0.5 text-(--background) focus-visible:outline-2 focus-visible:outline-(--ring)",
+            "inline-flex size-7 items-center justify-center rounded-full bg-background-composer-primary p-0.5 text-text-composer-primary focus-visible:outline-2 focus-visible:outline-background-composer-primary",
             isTranscribing && "opacity-50",
           )}
           aria-label="Transcribe and send"
@@ -3683,7 +3683,7 @@ function HydratedThreadComposer({
           aria-busy={transcriptionAction === "send"}
         >
           {transcriptionAction === "send" ? (
-            <ActivitySpinnerIcon className="size-4 text-(--background)" />
+            <ActivitySpinnerIcon className="size-4" />
           ) : (
             <UpArrowIcon className="size-5" />
           )}

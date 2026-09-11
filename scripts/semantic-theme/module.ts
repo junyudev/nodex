@@ -397,7 +397,7 @@ const findLatestBuildCss = async (workspaceRoot: string): Promise<string> => {
   const assetsDirectory = resolve(workspaceRoot, "out/renderer/assets");
   const candidates = await Promise.all(
     (await readdir(assetsDirectory))
-      .filter((name) => /^index-.*\.css$/.test(name))
+      .filter((name) => /^globals-.*\.css$/.test(name))
       .map(async (name) => {
         const path = resolve(assetsDirectory, name);
         return { path, modifiedAt: (await stat(path)).mtimeMs };

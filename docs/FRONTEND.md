@@ -371,6 +371,13 @@ provider outside the targets where the host actually supplies it. Product
 foundation values such as radius scale remain product-owned. Never hand-edit a
 generated theme artifact.
 
+The resolved default palette is owned by
+`src/renderer/lib/codex-theme-variant.ts`. The startup HTML and renderer
+initialization consume that same pure generator before React mounts; the theme
+provider reapplies it on appearance changes. Static palette fallbacks do not
+determine the effective preset. Review computed styles with the runtime theme
+applied, including shared legacy content aliases and conversation accent roles.
+
 Shared activity primitives require an explicit semantic lifecycle status. The
 primitive owns the status color for its icon and summary; feature call sites
 translate their protocol/view state into `pending`, `running`, `completed`,

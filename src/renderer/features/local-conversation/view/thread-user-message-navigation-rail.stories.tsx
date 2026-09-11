@@ -61,7 +61,7 @@ function RailStoryFrame() {
                   <div data-content-search-unit-key={item.id} className="contents">
                     <div
                       data-user-message-bubble="true"
-                      className="max-w-[min(42rem,80%)] rounded-2xl bg-token-foreground/8 px-3 py-2 text-sm leading-6"
+                      className="max-w-[min(42rem,80%)] rounded-2xl bg-background-user-message px-3 py-2 text-sm leading-6 text-text-user-message"
                     >
                       {item.label}
                       {index % 5 === 0 ? (

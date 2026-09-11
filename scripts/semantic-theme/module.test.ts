@@ -41,8 +41,14 @@ const referenceFixture = `
     --color-text-secondary: color-mix(in oklab, var(--vscode-foreground) 75%, transparent);
     --color-border: color-mix(in oklab, var(--vscode-foreground) 12%, transparent);
     --color-border-heavy: color-mix(in oklab, var(--vscode-foreground) 20%, transparent);
+    --color-background-primary-solid: var(--vscode-foreground);
+    --color-background-composer-primary: var(--color-background-primary-solid);
+    --color-background-user-message: color-mix(in oklab, var(--color-text) 5%, transparent);
     --color-background-tip-badge: var(--vscode-editor-selectionBackground);
     --color-background-button-secondary: var(--vscode-editor-selectionBackground);
+    --color-text-primary-solid: var(--vscode-button-foreground);
+    --color-text-composer-primary: var(--color-text-primary-solid);
+    --color-text-user-message: var(--color-text);
     --color-text-on-accent: var(--vscode-button-foreground);
     --color-text-tip-badge: var(--vscode-charts-blue);
   }
@@ -242,5 +248,24 @@ describe("semantic theme module", () => {
         { workspaceRoot: workspace },
       ),
     ).rejects.not.toThrow("sensitive-name.css");
+  });
+
+  test("discovers the hashed global renderer stylesheet for build verification", async () => {
+    const workspace = await createWorkspace();
+    const assetsDirectory = join(workspace, "out/renderer/assets");
+    await mkdir(assetsDirectory, { recursive: true });
+    await writeFile(join(assetsDirectory, "globals-fixture.css"), ":root {}\n", "utf8");
+
+    const result = await executeSemanticThemeCommand(
+      { kind: "verify-build" },
+      { workspaceRoot: workspace },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.mode).toBe("verify-build");
+    expect(result.diagnostics.map((item) => item.code)).toContain("THEME_BUILD_UTILITY_MISSING");
+    expect(result.diagnostics.map((item) => item.code)).not.toContain(
+      "THEME_BUILD_ARTIFACT_MISSING",
+    );
   });
 });

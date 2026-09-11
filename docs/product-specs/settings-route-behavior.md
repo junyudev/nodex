@@ -89,6 +89,14 @@ The Settings rail preserves the same renderer-transparent native vibrancy as
 the normal sidebar. Section pages render only the main content surface and do
 not add another sidebar-like card or nested full-page scroll container.
 
+The default appearance uses a `#111111` main surface with `#fcfcfc` primary
+text in dark mode, and `#ffffff` with `#0d0d0d` text in light mode. Controls,
+menus, borders, and secondary text derive from the same resolved palette.
+Conversation bubbles and the primary send action have dedicated color roles.
+Switching appearance updates these roles together, including content that uses
+the shared legacy background and foreground aliases. Native sidebar material
+and typography preferences remain independent of the palette.
+
 Sans font size defaults to 15px and scales the renderer's shared sans typography
 tokens. Code font size defaults to 14px and scales the shared code/editor token.
 Both are Profile preferences, not Window Session layout.

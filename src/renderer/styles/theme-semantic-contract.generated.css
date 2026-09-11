@@ -1,7 +1,7 @@
 /*
- * Generated semantic theme contract (refVersion 26.810.41047).
+ * Generated semantic theme contract (refVersion 26.903.71938).
  * Do not edit by hand. Run:
- *   pnpm run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.810.41047
+ *   pnpm run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.903.71938
  */
 
 [data-codex-window-type="electron"] {
@@ -141,11 +141,12 @@
   --vscode-editor-inactiveSelectionBackground: var(--color-background-accent-hover);
   --vscode-editor-inlineValuesBackground: var(--color-background-elevated-secondary);
   --vscode-editor-inlineValuesForeground: var(--color-text-foreground);
+  --vscode-editor-lineHighlightBackground: var(--color-text-foreground);
   --vscode-editor-lineHighlightBorder: var(--color-border-light);
   --vscode-editor-linkedEditingBackground: var(--color-background-accent-active);
   --vscode-editor-placeholder\.foreground: var(--color-text-foreground-tertiary);
   --vscode-editor-rangeHighlightBackground: var(--color-background-accent-active);
-  --vscode-editor-selectionBackground: var(--color-background-accent-active);
+  --vscode-editor-selectionBackground: var(--color-text-accent);
   --vscode-editor-selectionHighlightBackground: var(--color-background-accent-active);
   --vscode-editor-snippetFinalTabstopHighlightBorder: var(--color-border-light);
   --vscode-editor-snippetTabstopHighlightBackground: var(--color-background-accent-active);
@@ -740,13 +741,24 @@
 }
 
 @theme static {
+  --color-background-attribution-highlight: var(--color-background-info-soft);
+  --color-background-callout-surface: var(--vscode-editorWidget-background);
   --color-background-caution-solid: var(--vscode-charts-yellow);
-  --color-background-danger-solid: var(--vscode-charts-red);
+  --color-background-coachmark: var(--blue-500);
+  --color-background-composer-action-bar: var(--lightningcss-light, var(--color-surface-secondary))var(--lightningcss-dark, var(--color-background-primary-soft-alpha));
+  --color-background-composer-primary: var(--color-background-primary-solid);
+  --color-background-danger-solid: var(--red-500);
   --color-background-danger-surface: var(--vscode-inputValidation-errorBackground);
   --color-background-discovery-solid: var(--vscode-charts-purple);
+  --color-background-execution-output: var(--color-surface-secondary);
+  --color-background-execution-traceback: var(--black);
   --color-background-info-soft: var(--vscode-editor-selectionBackground);
   --color-background-info-solid: var(--vscode-charts-blue);
   --color-background-info-surface: var(--vscode-editor-findMatchBackground);
+  --color-background-mode-toggle-selected: var(--color-background-primary-soft);
+  --color-background-mode-toggle-track: var(--lightningcss-light, var(--color-surface-secondary))var(--lightningcss-dark, var(--color-background-primary-ghost-hover));
+  --color-background-page-search: var(--color-background-primary-soft);
+  --color-background-primary-ghost-focus: var(--lightningcss-light, var(--color-text))var(--lightningcss-dark, var(--color-background-primary-ghost-hover));
   --color-background-primary-ghost-hover: var(--vscode-list-hoverBackground);
   --color-background-primary-soft: var(--vscode-input-background);
   --color-background-primary-soft-active: var(--vscode-list-activeSelectionBackground);
@@ -754,34 +766,47 @@
   --color-background-primary-solid: var(--vscode-foreground);
   --color-background-secondary-soft: var(--vscode-badge-background);
   --color-background-secondary-soft-alpha: var(--vscode-textCodeBlock-background);
+  --color-background-segmented-selected: var(--color-text);
+  --color-background-segmented-selected-hover: var(--color-text);
   --color-background-success-solid: var(--vscode-charts-green);
   --color-background-success-surface: color-mix(in oklab, var(--vscode-charts-green) 12%, transparent);
+  --color-background-text-selection: var(--color-background-info-soft);
   --color-background-tip-soft: var(--color-background-tip-badge, var(--vscode-editor-selectionBackground));
+  --color-background-user-message: var(--color-text);
   --color-background-warning-solid: var(--vscode-charts-orange);
   --color-background-warning-surface: var(--vscode-inputValidation-warningBackground);
   --color-border-danger-outline: var(--vscode-inputValidation-errorBorder);
+  --color-border-mode-toggle-selected: var(--color-border);
   --color-border-primary-outline: var(--vscode-input-border, var(--color-border-strong));
   --color-border-strong: var(--color-border-heavy, var(--vscode-foreground));
   --color-border-subtle: var(--color-border-light, var(--vscode-foreground));
   --color-border-warning-outline: var(--vscode-inputValidation-warningBorder);
   --color-text: var(--vscode-foreground);
   --color-text-caution: var(--vscode-charts-yellow);
+  --color-text-coachmark: var(--white);
+  --color-text-composer-primary: var(--color-text-primary-solid);
   --color-text-danger: var(--vscode-errorForeground);
   --color-text-danger-soft: var(--vscode-charts-red);
-  --color-text-danger-solid: var(--color-text-on-accent, var(--vscode-button-foreground));
+  --color-text-danger-solid: var(--white);
   --color-text-disabled: var(--vscode-disabledForeground);
   --color-text-discovery: var(--vscode-charts-purple);
   --color-text-emphasis: var(--vscode-list-activeSelectionForeground, var(--color-text));
+  --color-text-execution-output: var(--color-text);
+  --color-text-execution-output-error: var(--color-text-danger);
+  --color-text-execution-output-label: var(--color-text-tertiary);
+  --color-text-execution-traceback: var(--white);
   --color-text-info: var(--vscode-textLink-foreground);
   --color-text-info-soft: var(--vscode-charts-blue);
   --color-text-info-solid: var(--color-text-on-accent, var(--vscode-button-foreground));
   --color-text-inverse: var(--vscode-button-foreground);
+  --color-text-mode-toggle-inactive: var(--color-text);
   --color-text-primary-solid: var(--vscode-dropdown-background);
   --color-text-secondary: var(--vscode-foreground);
   --color-text-secondary-solid: var(--vscode-badge-foreground);
   --color-text-success-solid: var(--white);
   --color-text-tertiary: var(--vscode-descriptionForeground);
   --color-text-tip: var(--color-text-tip-badge, var(--vscode-charts-blue));
+  --color-text-user-message: var(--color-text);
   --color-text-warning-soft: var(--vscode-charts-orange);
   --color-text-warning-solid: var(--vscode-button-foreground);
   --color-token-bg-secondary: var(--color-token-bg-primary);
@@ -817,12 +842,17 @@
 }
 
 @layer utilities {
+  .electron-light {
+    --lightningcss-light: initial;
+    --lightningcss-dark: ;
+  }
+
   .electron-dark {
     --lightningcss-light: ;
     --lightningcss-dark: initial;
   }
 
-  .electron-light, .\[color-scheme\:light\] {
+  .\[color-scheme\:light\] {
     --lightningcss-light: initial;
     --lightningcss-dark: ;
   }
@@ -832,7 +862,14 @@
   @supports (color: color-mix(in lab, red, red)) {
     :root, :host {
       --color-text-secondary: color-mix(in srgb, var(--vscode-foreground) 65%, transparent);
+      --color-text-mode-toggle-inactive: color-mix(in oklab, var(--color-text) 80%, transparent);
+      --color-background-page-search: color-mix(in oklab, var(--color-background-primary-soft) 90%, transparent);
       --color-background-primary-soft-alpha: color-mix(in oklab, var(--vscode-foreground) 2.5%, transparent);
+      --color-background-primary-ghost-focus: var(--lightningcss-light, color-mix(in oklab, var(--color-text) 12%, transparent))var(--lightningcss-dark, var(--color-background-primary-ghost-hover));
+      --color-background-user-message: color-mix(in oklab, var(--color-text) 5%, transparent);
+      --color-background-segmented-selected: color-mix(in oklab, var(--color-text) 5%, transparent);
+      --color-background-segmented-selected-hover: color-mix(in oklab, var(--color-text) 10%, transparent);
+      --color-background-mode-toggle-selected: color-mix(in oklab, var(--color-background-primary-soft) 90%, transparent);
       --color-border-subtle: var(--color-border-light, color-mix(in oklab, var(--vscode-foreground) 5%, transparent));
       --color-border-strong: var(--color-border-heavy, color-mix(in oklab, var(--vscode-foreground) 12%, transparent));
       --color-token-border: var(--color-border, color-mix(in oklab, var(--vscode-foreground) 8%, transparent));

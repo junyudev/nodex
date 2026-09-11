@@ -53,10 +53,16 @@ describe("parser-time startup shell presentation", () => {
     expect(darkColor).not.toBe(lightColor);
   });
 
-  test("uses the theme surface only for an explicit opaque fallback", () => {
-    mountStartupShell({ dark: false, opaque: true });
-    expect(getComputedStyle(document.body).backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
-  });
+  test.each([
+    { dark: false, expected: "rgb(245, 245, 245)" },
+    { dark: true, expected: "rgb(14, 14, 14)" },
+  ])(
+    "uses the shared theme surface before application scripts load: dark=$dark",
+    ({ dark, expected }) => {
+      mountStartupShell({ dark, opaque: true });
+      expect(getComputedStyle(document.body).backgroundColor).toBe(expected);
+    },
+  );
 
   test("removes the only startup animation under reduced motion", async () => {
     const session = cdp() as unknown as ChromiumMediaEmulationSession;

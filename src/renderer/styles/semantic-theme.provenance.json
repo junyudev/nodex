@@ -1,28 +1,28 @@
 {
   "schemaVersion": 1,
-  "refVersion": "26.810.41047",
-  "profileSha256": "fdb105b79a4f06fa5b4d569df4a024acc522a1c2be65454a1c8ca8c8b79b40ba",
+  "refVersion": "26.903.71938",
+  "profileSha256": "c7ca992b0d6867cb6f960d69faac77e5833559eb51c6aba55685ad5e008faa3a",
   "generatorVersion": 2,
   "artifacts": [
     {
       "path": "src/renderer/styles/semantic-theme-contract.generated.json",
-      "sha256": "021088a99166c48c8cac09391f673491b934a33750c263b612466d7155f71a23"
+      "sha256": "afe06beab8aec43db7f3a19dad582473540a9d72627178d732180cb0cc308de2"
     },
     {
       "path": "src/renderer/styles/theme-extracted-foundation.generated.css",
-      "sha256": "a674e7d9cc6aad737bd3474bb3908d0e28d66dcb52672228451bc4b8d9b32f74"
+      "sha256": "4bcf5be2033e532aff7c0bd582327670e1b54c3553f4e710434c39c88d75fe04"
     },
     {
       "path": "src/renderer/styles/theme-extracted-surfaces.generated.css",
-      "sha256": "6c3df332fa7d0707802f06b9bf9c2cb3b9b7b89b108075bcb4b3783bea2975a8"
+      "sha256": "46493699c7d221a7e3d99eae9680c329ac23cd2af725e9e815cc6f5106d1feff"
     },
     {
       "path": "src/renderer/styles/theme-semantic-contract.generated.css",
-      "sha256": "87db1f5ae0b54218cbcecea43009880870ecc75919b379277e51c30ff4c635e6"
+      "sha256": "1817dad64709ce3d4bd5b37c17fa53fb995349f4991423a2e59a1830df070e89"
     },
     {
       "path": "src/renderer/styles/theme-semantic-utilities.generated.css",
-      "sha256": "f7f74ccfc1210ddd01239d72b14b1353bf8a20b6e51d5bc73bb3dfe0ef29c127"
+      "sha256": "b26120b2b68a8b84dc1590b5b01fe474f69bf6384b7e8b3e492f607d9a2816e4"
     }
   ]
 }

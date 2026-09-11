@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "refVersion": "26.810.41047",
+  "refVersion": "26.903.71938",
   "families": [
     {
       "prefix": "--vscode-",
-      "declarationCount": 732
+      "declarationCount": 733
     },
     {
       "prefix": "--color-token-",
@@ -12,15 +12,15 @@
     },
     {
       "prefix": "--color-text",
-      "declarationCount": 20
+      "declarationCount": 28
     },
     {
       "prefix": "--color-background-",
-      "declarationCount": 19
+      "declarationCount": 34
     },
     {
       "prefix": "--color-border",
-      "declarationCount": 5
+      "declarationCount": 6
     },
     {
       "prefix": "--color-icon-",
@@ -105,6 +105,40 @@
       ]
     },
     {
+      "name": "--color-background-attribution-highlight",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-background-info-soft"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-background-callout-surface",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--vscode-editorWidget-background"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
       "name": "--color-background-caution-solid",
       "scopes": [
         "browser-dark",
@@ -122,6 +156,60 @@
       ]
     },
     {
+      "name": "--color-background-coachmark",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--blue-500"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-background-composer-action-bar",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-background-primary-soft-alpha",
+        "--color-surface-secondary",
+        "--lightningcss-dark",
+        "--lightningcss-light"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-background-composer-primary",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-background-primary-solid"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
       "name": "--color-background-danger-solid",
       "scopes": [
         "browser-dark",
@@ -132,7 +220,7 @@
         "extension-light"
       ],
       "dependencies": [
-        "--vscode-charts-red"
+        "--red-500"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -167,6 +255,40 @@
       ],
       "dependencies": [
         "--vscode-charts-purple"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-background-execution-output",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-surface-secondary"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-background-execution-traceback",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--black"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -218,6 +340,80 @@
       ],
       "dependencies": [
         "--vscode-editor-findMatchBackground"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-background-mode-toggle-selected",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-background-primary-soft"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-background-mode-toggle-track",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-background-primary-ghost-hover",
+        "--color-surface-secondary",
+        "--lightningcss-dark",
+        "--lightningcss-light"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-background-page-search",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-background-primary-soft"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-background-primary-ghost-focus",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-background-primary-ghost-hover",
+        "--color-text",
+        "--lightningcss-dark",
+        "--lightningcss-light"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -343,6 +539,40 @@
       ]
     },
     {
+      "name": "--color-background-segmented-selected",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-text"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-background-segmented-selected-hover",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-text"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
       "name": "--color-background-success-solid",
       "scopes": [
         "browser-dark",
@@ -377,6 +607,23 @@
       ]
     },
     {
+      "name": "--color-background-text-selection",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-background-info-soft"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
       "name": "--color-background-tip-soft",
       "scopes": [
         "browser-dark",
@@ -389,6 +636,23 @@
       "dependencies": [
         "--color-background-tip-badge",
         "--vscode-editor-selectionBackground"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-background-user-message",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-text"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -440,6 +704,23 @@
       ],
       "dependencies": [
         "--vscode-inputValidation-errorBorder"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-border-mode-toggle-selected",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-border"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -551,6 +832,40 @@
       ]
     },
     {
+      "name": "--color-text-coachmark",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--white"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-text-composer-primary",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-text-primary-solid"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
       "name": "--color-text-danger",
       "scopes": [
         "browser-dark",
@@ -595,8 +910,7 @@
         "extension-light"
       ],
       "dependencies": [
-        "--color-text-on-accent",
-        "--vscode-button-foreground"
+        "--white"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -649,6 +963,74 @@
       "dependencies": [
         "--color-text",
         "--vscode-list-activeSelectionForeground"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-text-execution-output",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-text"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-text-execution-output-error",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-text-danger"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-text-execution-output-label",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-text-tertiary"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-text-execution-traceback",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--white"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -718,6 +1100,23 @@
       ],
       "dependencies": [
         "--vscode-button-foreground"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-text-mode-toggle-inactive",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-text"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -821,6 +1220,23 @@
       "dependencies": [
         "--color-text-tip-badge",
         "--vscode-charts-blue"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-text-user-message",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-text"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -1580,6 +1996,21 @@
       ]
     },
     {
+      "name": "--loading-shimmer-default-duration",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [],
+      "owners": [
+        "src/renderer/styles/theme-extracted-surfaces.generated.css"
+      ]
+    },
+    {
       "name": "--markdown-wide-block-max-width",
       "scopes": [
         "browser-dark",
@@ -1898,7 +2329,9 @@
         "extension-dark",
         "extension-light"
       ],
-      "dependencies": [],
+      "dependencies": [
+        "--loading-shimmer-highlight"
+      ],
       "owners": [
         "src/renderer/styles/theme-extracted-surfaces.generated.css"
       ]
@@ -1914,6 +2347,7 @@
         "extension-light"
       ],
       "dependencies": [
+        "--loading-shimmer-base",
         "--text-primary",
         "--text-secondary"
       ],
@@ -2043,7 +2477,8 @@
         "extension-light"
       ],
       "dependencies": [
-        "--color-token-description-foreground"
+        "--color-token-description-foreground",
+        "--loading-shimmer-foreground"
       ],
       "owners": [
         "src/renderer/styles/theme-extracted-surfaces.generated.css"
@@ -4009,6 +4444,19 @@
       ]
     },
     {
+      "name": "--vscode-editor-lineHighlightBackground",
+      "scopes": [
+        "electron-dark",
+        "electron-light"
+      ],
+      "dependencies": [
+        "--color-text-foreground"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
       "name": "--vscode-editor-lineHighlightBorder",
       "scopes": [
         "electron-dark",
@@ -4067,7 +4515,7 @@
         "electron-light"
       ],
       "dependencies": [
-        "--color-background-accent-active"
+        "--color-text-accent"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"

@@ -6,7 +6,7 @@ import type {
 } from "./types";
 
 export const SEMANTIC_THEME_GENERATOR_VERSION = 2;
-export const SEMANTIC_THEME_REF_VERSION = "26.810.41047";
+export const SEMANTIC_THEME_REF_VERSION = "26.903.71938";
 
 export const SEMANTIC_THEME_TARGETS = [
   "electron-light",
@@ -161,6 +161,10 @@ export const SEMANTIC_THEME_REQUIRED_VARIABLES = [
     "--color-text-info",
     "--color-text-secondary",
     "--color-text-tertiary",
+    "--color-background-composer-primary",
+    "--color-background-user-message",
+    "--color-text-composer-primary",
+    "--color-text-user-message",
     "--color-border",
     "--color-token-description-foreground",
     "--color-token-editor-background",

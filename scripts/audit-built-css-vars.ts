@@ -10,7 +10,7 @@ const findLatestBuildCss = (): string => {
   }
 
   const matches = readdirSync(assetsDir)
-    .filter((name) => /^index-.*\.css$/.test(name))
+    .filter((name) => /^globals-.*\.css$/.test(name))
     .map((name) => resolve(assetsDir, name))
     .sort((left, right) => statSync(left).mtimeMs - statSync(right).mtimeMs);
 
