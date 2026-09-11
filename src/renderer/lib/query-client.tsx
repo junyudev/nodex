@@ -33,6 +33,10 @@ export function createNodexQueryClient(
 }
 
 export function applyCodexHostCatalogEvent(queryClient: QueryClient, event: CodexEvent): void {
+  if (event.type === "skillsChanged") {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.codexComposerSkills.all() });
+    return;
+  }
   if (event.type !== "appsUpdated") return;
 
   const queryKey = queryKeys.mcp.apps();

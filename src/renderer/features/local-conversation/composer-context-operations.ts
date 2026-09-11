@@ -3,7 +3,7 @@ import type {
   CodexComposerAppshotContext,
 } from "../../../shared/types";
 import type { ComposerPickedFile } from "../../../shared/ipc-api";
-import type { CodexPermissionState, WorkspaceFileSearchInput } from "@/lib/types";
+import type { CodexPermissionState } from "@/lib/types";
 import {
   defineRendererCommand,
   invokePlainCommand,
@@ -52,10 +52,10 @@ export const readComposerPermissionState = async (
 
 /** Owns the typed transport used to discover and activate composer context sources. */
 export const composerContextOperations = {
-  readAppshotTarget: async () => await invokeRendererQuery("codex:composer-appshot:target"),
+  reloadSkills: async (cwds: readonly string[]) =>
+    await invokeRendererQuery("codex:composer-skills:list", { cwds: [...cwds], forceReload: true }),
 
-  searchWorkspaceFiles: async (input: WorkspaceFileSearchInput) =>
-    await invokeRendererQuery("workspace-file-search", input),
+  readAppshotTarget: async () => await invokeRendererQuery("codex:composer-appshot:target"),
 
   searchChatGptConversations: async (query: string) =>
     await invokeRendererQuery("codex:composer-chatgpt-conversations:list", { query }),

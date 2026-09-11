@@ -1,3 +1,7 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "@/components/ui/toast";
+import { composerContextOperations } from "@/features/local-conversation/composer-context-operations";
+import { queryKeys } from "@/lib/query-keys";
 import type { Dispatch, SetStateAction } from "react";
 import { copyConversationMarkdown } from "@/features/local-conversation/copy-conversation-markdown";
 import type { useWorkbenchPanelCommandRouter } from "@/lib/use-workbench-panel-command-router";
@@ -97,6 +101,7 @@ export function WorkbenchCommandPaletteHost({
   openKeyboardShortcuts,
   onOpenSessionInNewWindow,
 }: WorkbenchCommandPaletteHostProps) {
+  const queryClient = useQueryClient();
   const pageCreateTargetResolution = usePageCreateTargetResolution(activeProjectId);
   const panelCapabilities = panelCommands.resolveActivePanelCapabilities("right");
   const commandContext: Omit<CommandPaletteShellCommandContext, "isMac" | "showMockCommands"> = {
@@ -202,6 +207,19 @@ export function WorkbenchCommandPaletteHost({
     findInThread: () => {
       setOpen(false);
       sessionCommands.requestContentSearchOpen("command_palette");
+    },
+    forceReloadSkills: () => {
+      const cwd =
+        activeSession?.thread?.cwd ??
+        projects.find((project) => project.id === activeProjectId)?.primaryWorkspaceRoot;
+      void composerContextOperations
+        .reloadSkills(cwd ? [cwd] : [])
+        .then(() =>
+          queryClient.invalidateQueries({ queryKey: queryKeys.codexComposerSkills.all() }),
+        )
+        .catch((error: unknown) => {
+          toast.danger(error instanceof Error ? error.message : "Could not reload skills");
+        });
     },
     manageTasks: openAutomations,
     openLibraryFiles,

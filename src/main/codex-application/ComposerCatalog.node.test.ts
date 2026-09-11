@@ -214,6 +214,8 @@ it.effect("projects models, plugins, and skills through one composer interface",
     const skills = yield* catalog.listSkills(["/repo"]);
     assert.strictEqual(skills[0]?.path, "/skills/pdf/SKILL.md");
     yield* catalog.listSkills([]);
+    yield* catalog.listSkills(["/repo"], true);
+    assert.deepEqual(skillsRequests[2], { cwds: ["/repo"], forceReload: true });
     assert.deepEqual(skillsRequests.slice(0, 2), [{ cwds: ["/repo"] }, {}]);
     assert.isFalse(Object.hasOwn(skillsRequests[1] as object, "cwds"));
     yield* catalog.activatePlugin({ id: "browser@openai-bundled", cwds: ["/repo"] });

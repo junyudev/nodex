@@ -34,6 +34,10 @@ export const live = (
       return CodexProtocolNotificationProjection.of({
         observe: (notification) =>
           Effect.sync(() => {
+            if (notification.method === "skills/changed") {
+              events.publish({ kind: "codex", value: { type: "skillsChanged" } });
+              return true;
+            }
             if (notification.method === "app/list/updated") {
               if (config.supportsChatGptApps) {
                 const payload = record(notification.params);

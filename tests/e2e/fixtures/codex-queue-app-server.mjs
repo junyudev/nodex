@@ -37,6 +37,22 @@ const reject = (id, method) =>
   write({ id, error: { code: -32601, message: `Unhandled scenario request: ${method}` } });
 const notify = (method, params) => write({ method, params });
 
+const searchSessions = new Map();
+const extraSkillDirectory = process.env.NODEX_FAKE_CODEX_SKILL_DIRECTORY;
+if (extraSkillDirectory) {
+  fs.mkdirSync(extraSkillDirectory, {recursive: true});
+  fs.watch(extraSkillDirectory, {recursive: true}, () => notify("skills/changed", {}));
+}
+const extraSkills = () => {
+  if (!extraSkillDirectory) return [];
+  return fs.readdirSync(extraSkillDirectory).flatMap((name) => {
+    const skillPath = path.join(extraSkillDirectory, name, "SKILL.md");
+    if (!fs.existsSync(skillPath)) return [];
+    return [{name, description: "Live discovered scenario skill", path: skillPath, scope: "user", enabled: true, pluginId: null}];
+  });
+};
+
+
 const promptText = (params) =>
   params.input?.find((item) => item?.type === "text" && typeof item.text === "string")?.text ?? "";
 
@@ -263,8 +279,48 @@ const handle = (message) => {
     case "collaborationMode/list":
       respond(id, { data: [] });
       return;
+    case "fuzzyFileSearch/sessionStart":
+      searchSessions.set(params.sessionId, {roots: params.roots, query: ""});
+      respond(id, {});
+      return;
+    case "fuzzyFileSearch/sessionUpdate": {
+      const session = searchSessions.get(params.sessionId);
+      if (!session) {
+        write({id, error: {code: -32600, message: "fuzzy file search session not found"}});
+        return;
+      }
+      session.query = params.query;
+      respond(id, {});
+      setTimeout(() => {
+        if (searchSessions.get(params.sessionId) !== session || session.query !== params.query) return;
+        const files = params.query === "fzmt" ? [
+          {root: session.roots[0], path: "src/fuzzy-match.ts", file_name: "fuzzy-match.ts", match_type: "file", score: 10, indices: null},
+          {root: session.roots[0], path: "node_modules/fuzzy-match.ts", file_name: "fuzzy-match.ts", match_type: "file", score: 10, indices: null},
+        ] : [];
+        notify("fuzzyFileSearch/sessionUpdated", {sessionId: params.sessionId, query: params.query, files});
+        notify("fuzzyFileSearch/sessionCompleted", {sessionId: params.sessionId});
+      }, 5);
+      return;
+    }
+    case "fuzzyFileSearch/sessionStop":
+      searchSessions.delete(params.sessionId);
+      respond(id, {});
+      return;
     case "skills/list":
-      respond(id, { data: [] });
+      respond(id, {
+        data: [{
+          cwd: process.cwd(),
+          errors: [],
+          skills: [...extraSkills(), ...Array.from({ length: Number(process.env.NODEX_FAKE_CODEX_SKILL_COUNT ?? 0) }, (_, index) => ({
+            name: `abc-tool-${index}`,
+            description: "aaaa ".repeat(200) + "xb",
+            path: `${process.cwd()}/skills/abc-tool-${index}/SKILL.md`,
+            scope: "user",
+            enabled: true,
+            pluginId: null,
+          }))],
+        }],
+      });
       return;
     case "hooks/list":
       respond(id, { data: [] });

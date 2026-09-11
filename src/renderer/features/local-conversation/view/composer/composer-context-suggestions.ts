@@ -1,4 +1,4 @@
-import { scoreFuzzyQueryMatch } from "@/lib/settings-search-score";
+import { createFuzzyQueryScorer } from "@/lib/settings-search-score";
 
 export type ComposerContextSuggestionSection =
   | "Add"
@@ -48,15 +48,17 @@ export function shouldDismissComposerSuggestionMenu(input: {
 }
 
 function normalizeSearchText(value: string): string {
-  return value.trim().toLocaleLowerCase();
+  return value.trim().toLowerCase();
 }
 
-function scoreCandidate(candidate: ComposerContextSuggestionCandidate, query: string): number {
+function scoreCandidate(
+  candidate: ComposerContextSuggestionCandidate,
+  score: (value: string) => number,
+): number {
   if (candidate.sourceRanked) return 1;
-  return Math.max(
-    scoreFuzzyQueryMatch(candidate.label, query),
-    ...candidate.searchTerms.map((term) => scoreFuzzyQueryMatch(term, query)),
-  );
+  let best = score(candidate.label);
+  for (const term of candidate.searchTerms) best = Math.max(best, score(term));
+  return best;
 }
 
 function resolveSearchPriority(
@@ -73,7 +75,8 @@ function resolveSearchPriority(
   if (
     candidate.section === "Files and chats" ||
     candidate.section === "Chats" ||
-    candidate.section === "ChatGPT conversations"
+    candidate.section === "ChatGPT conversations" ||
+    candidate.section === "Sites"
   ) {
     return 3;
   }
@@ -87,36 +90,54 @@ export function rankComposerContextSuggestionCandidates<T>(input: {
   readonly useProviderPriority?: boolean;
   readonly tieBreakByLabel?: boolean;
 }): ComposerContextSuggestionCandidate<T>[] {
-  const normalizedQuery = normalizeSearchText(input.query);
-  const maxResults = input.maxResults ?? input.candidates.length;
+  const normalizedQuery = input.query.trim();
+  const maxResults = Math.max(0, Math.floor(input.maxResults ?? input.candidates.length));
+  if (maxResults === 0) return [];
   if (!normalizedQuery) {
     return input.candidates.slice(0, maxResults);
   }
 
-  return input.candidates
-    .map((candidate, index) => ({
+  type RankedCandidate = {
+    candidate: ComposerContextSuggestionCandidate<T>;
+    index: number;
+    score: number;
+    priority: number;
+  };
+  const score = createFuzzyQueryScorer(normalizedQuery);
+  const prefixQuery = normalizeSearchText(normalizedQuery);
+  const compare = (left: RankedCandidate, right: RankedCandidate): number => {
+    if (left.priority !== right.priority) return left.priority - right.priority;
+    if (right.score !== left.score) return right.score - left.score;
+    if (input.tieBreakByLabel && left.candidate.label !== right.candidate.label) {
+      return left.candidate.label < right.candidate.label ? -1 : 1;
+    }
+    return left.index - right.index;
+  };
+  const ranked: RankedCandidate[] = [];
+  const bounded = maxResults < input.candidates.length;
+  for (const [index, candidate] of input.candidates.entries()) {
+    const candidateScore = scoreCandidate(candidate, score);
+    if (candidateScore <= 0) continue;
+    const entry: RankedCandidate = {
       candidate,
       index,
-      score: scoreCandidate(candidate, normalizedQuery),
-    }))
-    .filter((entry) => entry.candidate.sourceRanked || entry.score > 0)
-    .sort((left, right) => {
-      if (input.useProviderPriority !== false) {
-        const leftPriority = resolveSearchPriority(left.candidate, normalizedQuery);
-        const rightPriority = resolveSearchPriority(right.candidate, normalizedQuery);
-        if (leftPriority !== rightPriority) {
-          return leftPriority - rightPriority;
-        }
-      }
-      if (right.score !== left.score) return right.score - left.score;
-      if (input.tieBreakByLabel) {
-        const labelOrder = left.candidate.label.localeCompare(right.candidate.label);
-        if (labelOrder !== 0) return labelOrder;
-      }
-      return left.index - right.index;
-    })
-    .slice(0, maxResults)
-    .map((entry) => entry.candidate);
+      score: candidateScore,
+      priority:
+        input.useProviderPriority === false ? 0 : resolveSearchPriority(candidate, prefixQuery),
+    };
+    if (!bounded) {
+      ranked.push(entry);
+      continue;
+    }
+    // Root suggestions retain only the best eight entries while scanning every
+    // provider. The complete skill picker still sorts its full result set.
+    const insertionIndex = ranked.findIndex((current) => compare(entry, current) < 0);
+    if (insertionIndex < 0 && ranked.length >= maxResults) continue;
+    ranked.splice(insertionIndex < 0 ? ranked.length : insertionIndex, 0, entry);
+    if (ranked.length > maxResults) ranked.pop();
+  }
+  if (!bounded) ranked.sort(compare);
+  return ranked.map((entry) => entry.candidate);
 }
 
 export function buildComposerContextSuggestionSections<T>(input: {
@@ -126,7 +147,7 @@ export function buildComposerContextSuggestionSections<T>(input: {
   readonly maxSearchResults?: number;
   readonly loadingSectionMessages?: Partial<Record<ComposerContextSuggestionSection, string>>;
 }): ComposerContextSuggestionSectionModel<T>[] {
-  const normalizedQuery = normalizeSearchText(input.query);
+  const normalizedQuery = input.query.trim();
   if (normalizedQuery) {
     const ranked = rankComposerContextSuggestionCandidates({
       candidates: input.candidates,

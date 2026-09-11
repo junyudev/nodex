@@ -49,6 +49,7 @@ class PatternMatcher {
   private readonly hasDots: boolean;
   private readonly meaningfulCharacters: string[];
   private readonly minNameLength: number;
+  private failedMatchStates: Set<number> | undefined;
 
   constructor(
     pattern: string,
@@ -57,7 +58,8 @@ class PatternMatcher {
   ) {
     const normalizedPattern = pattern.endsWith("* ") ? pattern.slice(0, -2) : pattern;
 
-    this.myPattern = Array.from(normalizedPattern);
+    // Match candidate offsets and pattern offsets in the same UTF-16 units.
+    this.myPattern = normalizedPattern.split("");
     this.isLowerCase = Array.from({ length: this.myPattern.length }, () => false);
     this.isUpperCase = Array.from({ length: this.myPattern.length }, () => false);
     this.isWordSeparator = Array.from({ length: this.myPattern.length }, () => false);
@@ -195,12 +197,31 @@ class PatternMatcher {
         char === this.meaningfulCharacters[matchedCharacters] ||
         char === this.meaningfulCharacters[matchedCharacters + 1]
       ) {
+        const previousPatternIndex = this.myPattern.length - 2;
+        // An alphanumeric suffix must continue a fragment or begin a word.
+        // Reject impossible suffixes before exploring alternative fragments.
+        if (
+          matchedCharacters === this.meaningfulCharacters.length - 2 &&
+          previousPatternIndex >= 0 &&
+          isAlphaNumeric(this.myPattern[previousPatternIndex + 1]) &&
+          !this.isWildcard(previousPatternIndex) &&
+          (index === 0 ||
+            !this.charEquals(
+              this.myPattern[previousPatternIndex],
+              previousPatternIndex,
+              candidate[index - 1],
+              this.matchingMode !== "MATCH_CASE",
+            )) &&
+          !isWordStart(candidate, index)
+        )
+          continue;
         matchedCharacters += 2;
       }
     }
 
     if (matchedCharacters < this.minNameLength * 2) return null;
 
+    this.failedMatchStates?.clear();
     const match = this.matchWildcards(candidate, 0, 0);
     return match === null ? null : match.reverse();
   }
@@ -315,8 +336,14 @@ class PatternMatcher {
     candidate: string,
     patternIndex: number,
     candidateIndex: number,
-    checkSpecialChars: boolean,
+    allowSpecialCharSkipping: boolean,
   ): MatchRange[] | null {
+    if (candidateIndex < 0) return null;
+    const stateKey =
+      (patternIndex * (candidate.length + 1) + candidateIndex) * 2 +
+      Number(allowSpecialCharSkipping);
+    if (this.failedMatchStates?.has(stateKey)) return null;
+
     let index = candidateIndex;
     let longestFragment = 0;
 
@@ -343,11 +370,14 @@ class PatternMatcher {
       }
 
       const nextIndex = this.findNextPatternCharOccurrence(candidate, index + 1, patternIndex);
-      index = checkSpecialChars
-        ? this.checkForSpecialChars(candidate, index + 1, nextIndex, patternIndex)
-        : nextIndex;
+      index = allowSpecialCharSkipping
+        ? nextIndex
+        : this.checkForSpecialChars(candidate, index + 1, nextIndex, patternIndex);
     }
 
+    // Successful ranges are joined in place. Cache only failures, per candidate,
+    // including the separator mode so independent search branches stay distinct.
+    (this.failedMatchStates ??= new Set()).add(stateKey);
     return null;
   }
 
@@ -664,50 +694,52 @@ class PatternMatcher {
     candidateIndex: number,
     patternIndex: number,
   ): number {
-    const patternChar = this.myPattern[patternIndex];
-
-    if (isAscii(patternChar)) {
-      const upper = this.toUpperCase[patternIndex];
-      const lower = this.toLowerCase[patternIndex];
-
-      for (let index = candidateIndex; index < candidate.length; index += 1) {
-        const candidateChar = candidate[index];
-        if (candidateChar === upper || candidateChar === lower) return index;
-      }
-
-      return -1;
+    const upper = this.toUpperCase[patternIndex];
+    const lower = this.toLowerCase[patternIndex];
+    for (let index = candidateIndex; index < candidate.length; index += 1) {
+      const candidateChar = candidate[index];
+      if (candidateChar === upper || candidateChar === lower) return index;
     }
-
-    return indexOfChar(candidate, patternChar, candidateIndex, candidate.length);
+    return -1;
   }
 }
 
-export function scoreFuzzyQueryMatch(candidate: string, query: string): number {
+/** Compile once per query; candidate-local failure state is reset before reuse. */
+export function createFuzzyQueryScorer(query: string): (candidate: string) => number {
   const trimmedQuery = query.trim();
-  if (trimmedQuery.length === 0) return 0;
+  if (trimmedQuery.length === 0) return () => 0;
 
   const matcher = createMatcher(trimmedQuery);
-  const candidateForMatching = containsPathSeparator(trimmedQuery)
-    ? replacePathSeparators(candidate)
-    : candidate;
-  const degree = matcher.matchingDegree(candidateForMatching);
+  const normalizePaths = containsPathSeparator(trimmedQuery);
+  return (candidate) => {
+    const candidateForMatching = normalizePaths ? replacePathSeparators(candidate) : candidate;
+    const degree = matcher.matchingDegree(candidateForMatching);
 
-  if (degree === NO_MATCH) return 0;
+    if (degree === NO_MATCH) return 0;
 
-  const score = degree * 10 - candidate.length;
-  return score <= 0 ? 1 : score;
+    const score = degree * 10 - candidate.length;
+    return score <= 0 ? 1 : score;
+  };
+}
+
+export function scoreFuzzyQueryMatch(candidate: string, query: string): number {
+  return createFuzzyQueryScorer(query)(candidate);
 }
 
 export const scoreSettingsQueryMatch = scoreFuzzyQueryMatch;
 
 function createMatcher(query: string): CombinedMatcher {
-  const hasPathSeparators = containsPathSeparator(query);
-  const mainPattern = hasPathSeparators ? buildPathPattern(query) : `*${query}`;
-  const fallbackPattern = basenamePattern(query);
+  const normalizedQuery = Array.from(query, (char) => {
+    const lower = char.toLowerCase();
+    return lower.length === char.length ? lower : char;
+  }).join("");
+  const hasPathSeparators = containsPathSeparator(normalizedQuery);
+  const mainPattern = hasPathSeparators ? buildPathPattern(normalizedQuery) : `*${normalizedQuery}`;
+  const fallbackPattern = basenamePattern(normalizedQuery);
 
   return new CombinedMatcher(
     new PatternMatcher(mainPattern, "IGNORE_CASE", PATH_SEPARATORS.join("")),
-    hasPathSeparators && query !== fallbackPattern
+    hasPathSeparators && normalizedQuery !== fallbackPattern
       ? new PatternMatcher(fallbackPattern, "IGNORE_CASE", PATH_SEPARATORS.join(""))
       : null,
   );
@@ -899,10 +931,6 @@ function joinMatchRanges(rest: MatchRange[], startOffset: number, length: number
   }
 
   return rest;
-}
-
-function isAscii(char: string): boolean {
-  return char.length === 1 && char.charCodeAt(0) <= 127;
 }
 
 function isUpperCase(char: string): boolean {

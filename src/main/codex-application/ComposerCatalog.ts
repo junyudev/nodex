@@ -97,6 +97,7 @@ export class ComposerCatalog extends Context.Service<
     }) => Effect.Effect<PluginRemovalResult, ComposerCatalogError>;
     readonly listSkills: (
       cwds: readonly string[],
+      forceReload?: boolean,
     ) => Effect.Effect<readonly CodexComposerSkill[], ComposerCatalogError>;
     readonly listHooks: (
       input: CodexHooksListInput,
@@ -309,11 +310,12 @@ export const live: Layer.Layer<ComposerCatalog, never, CodexGateway> = Layer.eff
       }),
       listPlugins,
       activatePlugin,
-      listSkills: (cwds) =>
+      listSkills: (cwds, forceReload) =>
         Effect.gen(function* () {
           yield* awaitReady;
           const normalized = normalizeCwds(cwds);
           const response = yield* gateway.requestLocal("skills/list", {
+            ...(forceReload === undefined ? {} : { forceReload }),
             ...(normalized.length > 0 ? { cwds: normalized } : {}),
           });
           const plain = asPlainSkillsResponse(response);

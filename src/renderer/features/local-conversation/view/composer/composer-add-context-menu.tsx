@@ -1,3 +1,4 @@
+import type { ComposerFileSearchMatch } from "../../../../../shared/composer-file-search";
 import {
   forwardRef,
   useCallback,
@@ -19,6 +20,7 @@ import {
 import {
   GoalTargetIcon,
   FileIcon,
+  FolderIcon,
   SidePanelBrowserIcon,
   ComposerAddFilesIcon,
   ComposerAppshotIcon,
@@ -37,6 +39,7 @@ import {
   useCommandPaletteThreadSearch,
   useSelectedCommandPaletteChatResults,
 } from "@/lib/command-palette-chat-search";
+import { useCommandPaletteThreadSearchIndex } from "@/lib/use-command-palette-thread-search-index";
 import { filterNewChatProjectSelectorOptions } from "@/lib/new-chat-project-selector";
 import type {
   CodexComposerAppshotTarget,
@@ -45,8 +48,8 @@ import type {
   CodexComposerSite,
   CodexComposerSkill,
   ProtocolAppInfo,
-  WorkspaceFileSearchMatch,
 } from "@/lib/types";
+import { useComposerWorkspaceFileSearch } from "./use-composer-workspace-file-search";
 import { COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME } from "../shared/composer-footer-controls";
 import type { NewChatProjectSelectorModel } from "../../thread-stage-types";
 import { composerContextOperations } from "../../composer-context-operations";
@@ -556,64 +559,6 @@ function useComposerMenuNavigation(input: {
   };
 }
 
-function joinWorkspacePath(workspaceRoot: string, relativePath: string): string {
-  const normalizedRoot = workspaceRoot.replace(/[\\/]+$/u, "");
-  const normalizedRelativePath = relativePath.replace(/^[\\/]+/u, "");
-  return `${normalizedRoot}/${normalizedRelativePath}`;
-}
-
-function useComposerWorkspaceFileSearch(input: {
-  readonly enabled: boolean;
-  readonly query: string;
-  readonly workspaceRoot: string | null;
-}): {
-  readonly loading: boolean;
-  readonly matches: readonly WorkspaceFileSearchMatch[];
-} {
-  const [batch, setBatch] = useState<{
-    readonly query: string;
-    readonly matches: readonly WorkspaceFileSearchMatch[];
-    readonly loading: boolean;
-  }>({ query: "", matches: [], loading: false });
-
-  useEffect(() => {
-    const query = input.query.trim();
-    const workspaceRoot = input.workspaceRoot?.trim() ?? "";
-    if (!input.enabled || !query || !workspaceRoot) {
-      setBatch((current) =>
-        current.query === "" && current.matches.length === 0 && !current.loading
-          ? current
-          : { query: "", matches: [], loading: false },
-      );
-      return;
-    }
-
-    let cancelled = false;
-    setBatch({ query, matches: [], loading: true });
-    void composerContextOperations
-      .searchWorkspaceFiles({
-        workspaceRoot,
-        query,
-        maxResults: 24,
-      })
-      .then((result) => {
-        if (cancelled) return;
-        setBatch({ query, matches: result.matches, loading: false });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setBatch({ query, matches: [], loading: false });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [input.enabled, input.query, input.workspaceRoot]);
-
-  return batch.query === input.query.trim()
-    ? { matches: batch.matches, loading: batch.loading }
-    : { matches: [], loading: false };
-}
-
 const CHATGPT_CONVERSATION_SEARCH_DEBOUNCE_MS = 100;
 const CHATGPT_CONVERSATION_SEARCH_STALE_MS = 60_000;
 const chatGptConversationSearchCache = new Map<
@@ -797,7 +742,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
   const appshot = useComposerAppshotTarget(open);
   const appshotTarget = appshot.target;
   const fileSearch = useComposerWorkspaceFileSearch({
-    enabled: open && normalizedQuery.length > 0,
+    enabled: open,
     query,
     workspaceRoot,
   });
@@ -818,7 +763,9 @@ const ComposerAddContextRootMenuContent = forwardRef<
     limit: 24,
     minQueryLength: 1,
   });
+  const threadSearchIndex = useCommandPaletteThreadSearchIndex(threadItems.threads);
   const selectedThreads = useSelectedCommandPaletteChatResults({
+    threadSearchIndex,
     query,
     threads: threadItems.threads,
     threadSearchBatch: threadSearch,
@@ -843,6 +790,56 @@ const ComposerAddContextRootMenuContent = forwardRef<
     },
     [onCapabilitiesChanged, pluginCwds],
   );
+
+  const inventoryItems = useMemo(() => {
+    const pluginItems = plugins
+      .filter((plugin) => plugin.name !== "record-and-replay")
+      .map((plugin): ComposerContextItemView => ({
+        candidate: {
+          id: `plugin:${plugin.path}`,
+          section: "Plugins",
+          label: plugin.displayName,
+          description: plugin.description,
+          searchTerms: [plugin.name, plugin.id, plugin.path, plugin.description ?? ""],
+          value: {
+            kind: "mention",
+            mention: {
+              kind: "plugin",
+              name: plugin.name,
+              displayName: plugin.displayName,
+              path: plugin.path,
+              description: plugin.description,
+              iconUrl: plugin.iconUrl,
+              iconUrlDark: plugin.iconUrlDark,
+              brandColor: plugin.brandColor,
+            },
+          },
+        },
+        icon: (
+          <ComposerCapabilityIcon
+            iconUrl={plugin.iconUrl}
+            iconUrlDark={plugin.iconUrlDark}
+            brandColor={plugin.brandColor}
+            fallback={
+              plugin.id.startsWith("browser@") ? (
+                <SidePanelBrowserIcon className="size-3.5" />
+              ) : (
+                <ComposerPluginsIcon className="size-3.5" />
+              )
+            }
+          />
+        ),
+        active: false,
+        plugin,
+        pluginName: plugin.displayName,
+      }));
+    const appItems = apps
+      .filter((app) => app.isAccessible && app.isEnabled)
+      .map(buildComposerAppItem);
+    const siteItems = sitesAvailable ? sites.map(buildComposerSiteItem) : [];
+    const skillItems = skills.map((skill) => buildComposerSkillItem(skill, workspaceRoot));
+    return { pluginItems, appItems, siteItems, skillItems };
+  }, [plugins, apps, sites, sitesAvailable, skills, workspaceRoot]);
 
   const items = useMemo<ComposerContextItemView[]>(() => {
     const recordSkillPlugin = plugins.find((plugin) => plugin.name === "record-and-replay") ?? null;
@@ -971,56 +968,8 @@ const ComposerAddContextRootMenuContent = forwardRef<
         : []),
     ];
 
-    const pluginItems = plugins
-      .filter((plugin) => plugin.name !== "record-and-replay")
-      .map((plugin): ComposerContextItemView => ({
-        candidate: {
-          id: `plugin:${plugin.path}`,
-          section: "Plugins",
-          label: plugin.displayName,
-          description: plugin.description,
-          searchTerms: [plugin.name, plugin.id, plugin.path, plugin.description ?? ""],
-          value: {
-            kind: "mention",
-            mention: {
-              kind: "plugin",
-              name: plugin.name,
-              displayName: plugin.displayName,
-              path: plugin.path,
-              description: plugin.description,
-              iconUrl: plugin.iconUrl,
-              iconUrlDark: plugin.iconUrlDark,
-              brandColor: plugin.brandColor,
-            },
-          },
-        },
-        icon: (
-          <ComposerCapabilityIcon
-            iconUrl={plugin.iconUrl}
-            iconUrlDark={plugin.iconUrlDark}
-            brandColor={plugin.brandColor}
-            fallback={
-              plugin.id.startsWith("browser@") ? (
-                <SidePanelBrowserIcon className="size-3.5" />
-              ) : (
-                <ComposerPluginsIcon className="size-3.5" />
-              )
-            }
-          />
-        ),
-        active: false,
-        plugin,
-        pluginName: plugin.displayName,
-      }));
-    const appItems = apps
-      .filter((app) => app.isAccessible && app.isEnabled)
-      .map(buildComposerAppItem);
-    const siteItems = sitesAvailable ? sites.map(buildComposerSiteItem) : [];
     const chatGptConversationItems = chatGptConversationsAvailable
       ? chatGptConversationSearch.conversations.map(buildComposerChatGptConversationItem)
-      : [];
-    const skillItems = normalizedQuery
-      ? skills.map((skill) => buildComposerSkillItem(skill, workspaceRoot))
       : [];
     const threadSuggestions = normalizedQuery
       ? selectedThreads.map((thread): ComposerContextItemView => ({
@@ -1051,22 +1000,20 @@ const ComposerAddContextRootMenuContent = forwardRef<
           active: false,
         }))
       : [];
-    const fileSuggestions = fileSearch.matches.map((file) =>
-      buildComposerFileItem(file, workspaceRoot),
-    );
+    const fileSuggestions = fileSearch.matches.map((file) => buildComposerFileItem(file));
     return [
       ...addItems,
-      ...pluginItems,
-      ...appItems,
-      ...siteItems,
+      ...inventoryItems.pluginItems,
+      ...inventoryItems.appItems,
+      ...inventoryItems.siteItems,
       ...chatGptConversationItems,
-      ...skillItems,
+      ...(normalizedQuery ? inventoryItems.skillItems : []),
       ...threadSuggestions,
       ...fileSuggestions,
     ];
   }, [
-    apps,
     activatePlugin,
+    inventoryItems,
     chatGptConversationSearch.conversations,
     chatGptConversationsAvailable,
     fileSearch.matches,
@@ -1087,10 +1034,6 @@ const ComposerAddContextRootMenuContent = forwardRef<
     projectSelector,
     normalizedQuery,
     selectedThreads,
-    sites,
-    sitesAvailable,
-    skills,
-    workspaceRoot,
   ]);
   const sections = useMemo(
     () =>
@@ -1485,7 +1428,7 @@ const ComposerFileMentionMenuContent = forwardRef<
     query: suggestion.query,
     workspaceRoot,
   });
-  const items = search.matches.map((file) => buildComposerFileItem(file, workspaceRoot));
+  const items = search.matches.map((file) => buildComposerFileItem(file));
   const selectItem = (item: ComposerContextItemView) => {
     if (item.candidate.value.kind !== "mention") return;
     onInsertMention(item.candidate.value.mention);
@@ -1525,15 +1468,12 @@ const ComposerFileMentionMenuContent = forwardRef<
   );
 });
 
-function buildComposerFileItem(
-  file: WorkspaceFileSearchMatch,
-  workspaceRoot: string | null,
-): ComposerContextItemView {
+function buildComposerFileItem(file: ComposerFileSearchMatch): ComposerContextItemView {
   return {
     candidate: {
       id: `file:${file.path}`,
       section: "Files and chats",
-      label: file.path.split(/[\\/]/u).at(-1) ?? file.path,
+      label: file.label,
       description: file.path,
       searchTerms: [file.path],
       sourceRanked: true,
@@ -1541,14 +1481,19 @@ function buildComposerFileItem(
         kind: "mention",
         mention: {
           kind: "file",
-          name: file.path.split(/[\\/]/u).at(-1) ?? file.path,
+          name: file.label,
           path: file.path,
-          fsPath: workspaceRoot ? joinWorkspacePath(workspaceRoot, file.path) : file.path,
+          fsPath: file.fsPath,
           description: file.path,
         },
       },
     },
-    icon: <FileIcon className="size-4 shrink-0" />,
+    icon:
+      file.kind === "directory" ? (
+        <FolderIcon className="size-4 shrink-0" />
+      ) : (
+        <FileIcon className="size-4 shrink-0" />
+      ),
     active: false,
   };
 }

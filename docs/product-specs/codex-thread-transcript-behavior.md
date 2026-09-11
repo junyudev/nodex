@@ -555,6 +555,12 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 
 ## Composer Shell
 
+- Nonempty Composer context search considers the complete eligible inventory and displays the best eight results with stable provider ordering. Skill search retains all matching skills and accessible enabled apps, including matches beyond the first eight.
+- Workspace file suggestions reuse a native app-server fuzzy-search session while the context menu is open. Query edits update that session immediately; Electron Main never traverses or sorts the workspace for Composer search. Native search supplies up to 50 file and directory matches, respects repository ignore rules, and presentation excludes `.git`, `.hg`, `.next`, `.pnpm-store`, `.svn`, `.turbo`, `.yarn`, `build`, `coverage`, `dist`, and `node_modules` path segments before ranking by filename.
+- Search results belong to the current session, query, workspace, and runtime generation. Closing the menu, changing workspace, destroying the window, or shutting down Main releases the native session. Runtime reconnection recreates the session and replays the latest query.
+- Skill inventories are cached per workspace roots for five minutes. Native `skills/changed` notifications invalidate inventories in open windows, so native-discovered additions and removals appear without changing focus or restarting. Native filesystem notifications may be coalesced for approximately ten seconds. `Force reload skills` bypasses the native cache for the current workspace and refreshes visible inventories.
+- Fuzzy matching supports Unicode and both path separators. Query compilation is shared across candidate fields, and repeated failed match branches are bounded within each candidate. Inventory projections and local chat indexes are reused while typing until their source inventory changes.
+
 - The composer shell is owned outside the transcript scroll container and sits above the input editor.
 - It owns queued follow-ups, background terminal rows, background child-agent rows, and unresolved live request cards. Pending steering messages belong to the transcript as `steeringUserMessage` items, not to the composer shell.
 - Background terminal rows and queued follow-up rows remain visible as stacked shell sections above the request/editor branch.

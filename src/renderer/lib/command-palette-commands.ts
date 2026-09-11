@@ -39,6 +39,7 @@ export type CommandPaletteShellCommandId =
   | typeof OPEN_DB_VIEW_TAB_COMMAND_ID
   | "openSideChat"
   | "findInThread"
+  | "forceReloadSkills"
   | "manageTasks"
   | "openLibraryFiles"
   | "openProcessManager"
@@ -90,6 +91,7 @@ export function isCommandPaletteShellCommandId(id: string): id is CommandPalette
     id === OPEN_DB_VIEW_TAB_COMMAND_ID ||
     id === "openSideChat" ||
     id === "findInThread" ||
+    id === "forceReloadSkills" ||
     id === "manageTasks" ||
     id === "openLibraryFiles" ||
     id === "openProcessManager" ||
@@ -613,7 +615,7 @@ export function buildCommandPaletteCommands(
       ["skills", "plugins"],
       660,
     ),
-    ...maybeMockCommand(
+    command(
       "forceReloadSkills",
       "Skills",
       "Force reload skills",

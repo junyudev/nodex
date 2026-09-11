@@ -419,9 +419,12 @@ export const live: Layer.Layer<
     yield* ipc.handleQuery(
       "codex:composer-skills:list",
       (_event, input: CodexComposerSkillListInput) =>
-        validate("composer-skills-list", () => parseComposerInventoryCwds(input)).pipe(
-          Effect.flatMap(composer.listSkills),
-        ),
+        validate("composer-skills-list", () => {
+          const cwds = parseComposerInventoryCwds(input);
+          if (input.forceReload !== undefined && typeof input.forceReload !== "boolean")
+            throw new Error("Invalid skills force reload flag");
+          return cwds;
+        }).pipe(Effect.flatMap((cwds) => composer.listSkills(cwds, input.forceReload))),
     );
     yield* ipc.handleQuery("codex:hooks:list", (_event, input: CodexHooksListInput) =>
       composer.listHooks(input),
