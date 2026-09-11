@@ -124,31 +124,15 @@ function resolveMcpElicitationServer(item: ThreadTranscriptBlockModel): string |
   return normalizeMcpServerName(serverName ?? undefined);
 }
 
-function shouldPushHookToAgentItems(
-  items: ThreadRendererItemModel[],
-  currentIndex: number,
-): boolean {
-  return items.slice(currentIndex + 1).some((candidate) => {
-    if (isPendingRequestItem(candidate)) {
-      return (
-        candidate.type === "approval" ||
-        candidate.type === "userInput" ||
-        candidate.type === "optionPicker" ||
-        candidate.type === "setupCodexStep"
-      );
-    }
-
-    return candidate.type === "userMessage" || isRenderableAgentItem(candidate);
-  });
-}
-
 export function bucketizeTurnItems(input: BucketizeTurnItemsInput): ThreadTurnRenderBuckets {
   const buckets = createEmptyBuckets();
   const agentCandidates: ThreadAgentItemModel[] = [];
   const pendingMcpElicitationServers = new Set<string>();
   let beforeAgentSequence = true;
 
-  for (const [index, item] of input.items.entries()) {
+  for (const item of input.items) {
+    // Hook execution is turn metadata, never an activity or assistant body row.
+    if (item.type === "hook") continue;
     if (isPendingRequestItem(item)) {
       if (item.type === "approval") {
         buckets.approvalItem = item;
@@ -175,11 +159,6 @@ export function bucketizeTurnItems(input: BucketizeTurnItemsInput): ThreadTurnRe
 
     if (beforeAgentSequence && item.type === "userMessage") {
       buckets.userItems.push(item);
-      continue;
-    }
-
-    if (beforeAgentSequence && item.type === "hook") {
-      buckets.preUserItems.push(item);
       continue;
     }
 
@@ -251,15 +230,6 @@ export function bucketizeTurnItems(input: BucketizeTurnItemsInput): ThreadTurnRe
     }
 
     if (isTranscriptBlock(item) && isPendingApproval(item)) {
-      continue;
-    }
-
-    if (isTranscriptBlock(item) && item.type === "hook") {
-      if (shouldPushHookToAgentItems(input.items, index)) {
-        agentCandidates.push(item);
-      } else {
-        buckets.postAssistantItems.push(item);
-      }
       continue;
     }
 

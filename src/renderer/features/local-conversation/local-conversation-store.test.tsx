@@ -8930,10 +8930,6 @@ describe("local-conversation-store", () => {
       const conversation = manager.readConversation("thread-1");
       const hookItems =
         conversation?.turns[0]?.items.filter((item) => item.itemId === "hook-run-1") ?? [];
-      const hookItem = hookItems[0];
-      const hookRun = hookItem?.rawItem as
-        | { run?: { status?: string; entries?: Array<{ text?: string }> } }
-        | undefined;
       const publishRecords = invokeRecords.filter(
         (record) => record.channel === "codex:thread-owner:stream-state:publish",
       );
@@ -8944,11 +8940,9 @@ describe("local-conversation-store", () => {
           }
         | undefined;
 
-      expect(String(hookItems.length)).toBe("1");
-      expect(hookItem?.semanticKind).toBe("hook");
-      expect(hookItem?.status).toBe("completed");
-      expect(hookRun?.run?.status).toBe("completed");
-      expect(hookRun?.run?.entries?.[0]?.text).toBe("Added AGENTS.md");
+      expect(hookItems).toEqual([]);
+      expect(conversation?.turns[0]?.hookRuns?.[0]?.run.status).toBe("completed");
+      expect(conversation?.turns[0]?.hookRuns?.[0]?.run.entries[0]?.text).toBe("Added AGENTS.md");
       expect(conversation?.canonicalState?.turns[0]?.sidecar.hookRuns?.[0]?.id).toBe("hook-run-1");
       expect(String(publishRecords.length)).toBe("2");
       expect(lastPublish?.ownerNotificationSequence).toBe(2);

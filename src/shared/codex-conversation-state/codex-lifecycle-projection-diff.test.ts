@@ -967,3 +967,117 @@ describe("scoped canonical lifecycle projection diff", () => {
     expect(result.views.map((view) => view.itemId)).toEqual(["split-command:0", "split-command:1"]);
   });
 });
+
+test("hook-only updates preserve transcript identities for both incremental and full projection", () => {
+  const before = buildTurn([buildCommand("command")]);
+  const after: CodexCanonicalTurnState = {
+    ...before,
+    sidecar: {
+      ...before.sidecar,
+      hookRuns: [
+        {
+          id: "hook",
+          run: {
+            id: "hook",
+            eventName: "sessionStart",
+            source: "user",
+            handlerType: "command",
+            executionMode: "sync",
+            scope: "turn",
+            sourcePath: "",
+            displayOrder: 0n,
+            status: "completed",
+            statusMessage: "Context loaded",
+            startedAt: 1n,
+            completedAt: 2n,
+            durationMs: 1n,
+            entries: [{ kind: "context", text: "Injected context" }],
+          },
+        },
+      ],
+    },
+  };
+  const baseline = applyCodexLifecycleProjectionDiff({
+    threadId: THREAD_ID,
+    beforeTurn: null,
+    afterTurn: before,
+    currentViews: [],
+    currentTranscript: [],
+    observedAtMs: 1000,
+  });
+  for (const beforeTurn of [before, null]) {
+    const result = applyCodexLifecycleProjectionDiff({
+      threadId: THREAD_ID,
+      beforeTurn,
+      afterTurn: after,
+      currentViews: baseline.views,
+      currentTranscript: baseline.transcript,
+      observedAtMs: 1000,
+    });
+    expect(result.itemIds).toEqual(["command"]);
+    expect(result.views).toEqual(baseline.views);
+    expect(result.transcript).toEqual(baseline.transcript);
+  }
+});
+
+test("a blocked prompt hook refreshes the existing user delivery state without adding hook items", () => {
+  const initial = buildTurn([]);
+  const before: CodexCanonicalTurnState = {
+    ...initial,
+    sidecar: {
+      ...initial.sidecar,
+      params: {
+        ...initial.sidecar.params,
+        input: [{ type: "text", text: "Run the task", text_elements: [] }],
+      },
+    },
+  };
+  const after: CodexCanonicalTurnState = {
+    ...before,
+    sidecar: {
+      ...before.sidecar,
+      hookRuns: [
+        {
+          id: "blocked",
+          run: {
+            id: "blocked",
+            eventName: "userPromptSubmit",
+            source: "project",
+            handlerType: "command",
+            executionMode: "sync",
+            scope: "turn",
+            sourcePath: "",
+            displayOrder: 0n,
+            status: "blocked",
+            statusMessage: null,
+            startedAt: 1n,
+            completedAt: 2n,
+            durationMs: 1n,
+            entries: [],
+          },
+        },
+      ],
+    },
+  };
+  const baseline = applyCodexLifecycleProjectionDiff({
+    threadId: THREAD_ID,
+    beforeTurn: null,
+    afterTurn: before,
+    currentViews: [],
+    currentTranscript: [],
+    observedAtMs: 1000,
+  });
+  const result = applyCodexLifecycleProjectionDiff({
+    threadId: THREAD_ID,
+    beforeTurn: before,
+    afterTurn: after,
+    currentViews: baseline.views,
+    currentTranscript: baseline.transcript,
+    observedAtMs: 1001,
+  });
+  expect(result.views).toHaveLength(1);
+  expect(result.views[0]?.itemId).toBe(baseline.views[0]?.itemId);
+  expect(result.views[0]?.deliveryStatus).toBe("not-sent");
+  expect(result.transcript[0]?.deliveryStatus).toBe("not-sent");
+  expect(result.itemIds).toEqual([]);
+});

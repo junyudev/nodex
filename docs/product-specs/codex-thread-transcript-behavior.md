@@ -182,18 +182,17 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 
 - The renderer groups transcript entries by `turnId`, projects a flat renderer-item stream, bucketizes that stream, and then renders each turn in fixed block order:
   - `modelChanged`
-  - leading `hook` items that appear before the first user message
   - `userMessage`
   - selected `modelRerouted`
   - tool activity blocks (`commandExecution`, materialized `patch`, `mcpToolCall`,
-    `dynamicToolCall`, non-empty `webSearch`, `multiAgentAction`, inline `hook`,
+    `dynamicToolCall`, non-empty `webSearch`, `multiAgentAction`,
     completed `mcpServerElicitation`, completed `userInputResponse`, and
     `contextCompaction`) plus auxiliary subagent activity state; canonical
     `reasoning` remains available only as turn-level fallback input and is hidden
     from tool topology
   - `systemEvent`
   - `assistantMessage`
-  - post-assistant artifacts such as trailing `hook` items and trailing automatic approval review
+  - post-assistant artifacts such as trailing automatic approval review
   - inline incomplete `mcpServerElicitation`
   - `proposedPlan`
   - render-time live activity fallback when the current open activity slice resolves to `thinking`
@@ -264,6 +263,8 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 - Transcript markdown rendering remains streaming-safe for in-progress turns.
 - Every `imageView` item remains dedicated agent activity. Only raw-consecutive image-view items fold into one row; any intervening raw item, including a hidden review-mode marker, ends the run. Each row is collapsed by default, summarizes as `Viewed an image` / `Viewed N images`, and expands to a horizontally scrollable strip of 80px thumbnails. Thumbnails open one keyboard-accessible preview sequence with previous/next navigation. Review-mode markers (`enteredReviewMode`, `exitedReviewMode`) remain hidden.
 - Image-generation output renders as one post-assistant gallery for the turn. Pending output reserves up to four square slots with the animated dot-field placeholder; completed images retain natural ratios when they fit and switch to a four-slot carousel when they overflow. Completed image output is omitted when the turn's end resources contain a presentation, while still-streaming pending output remains visible. Thumbnail and full-image descriptors resolve independently; the full descriptor owns display, download, and drag data. Gallery controls reveal on hover/focus, retry failed preview loads at most twice for each resolved preview URL, support copy-drag payloads, and open a keyboard-navigable image preview with download support. Edit and Canvas behavior is owned by [User Attachment Image Editor Behavior](./user-attachment-image-editor-behavior.md).
+- Hook executions belong only to the Turn's typed `hookRuns` sidecar; they never acquire transcript item IDs, activity rows, or expandable body content. Completed turns expose a Hooks indicator in the assistant action row before the timestamp, including image-only replies. While a turn is active, its statistics are hidden. A not-sent prompt receives the indicator when no selected assistant reply or image gallery owns it; hook-feedback user rows also expose completed-turn statistics in their ordinary action row.
+- The Hooks tooltip uses a detailed event/source grid for `STEPS_COMMANDS` (the default), and a counts/output summary for `STEPS_PROSE` and `STEPS_EXECUTION`. Detailed rows show normalized source labels, optional trimmed status messages, and non-context output; only adjacent runs with identical event, raw source, status message, and visible output tone/text merge. Raw status and timing do not affect merging. Summary counts include all runs, count only `blocked` as Blocked and `failed` as Errors, and omit zero error/block counts. Context output is never displayed. Error, feedback, and stop output use warning emphasis in the detailed tooltip; warning output is secondary. The indicator has no click action, opens above the action row on hover or keyboard focus, and closes on Escape or blur.
 - A hook feedback user row is not editable and links to Hooks settings. Feedback matching trims both the displayed user message and each Stop-hook feedback entry, retains every exact source match, and scopes the destination only when all matches normalize to the same source. Managed/system sources normalize to Admin; project links include the turn cwd only when present; plugin links do not guess a plugin id; a blocked hook prompt has no sent timestamp. Ordinary clicks open the in-app settings route, while modified clicks retain normal link behavior.
 - Active-thread streaming is revisioned and frame-batched. An established renderer
   owner receives sequenced app-server notifications, reduces the shared canonical

@@ -1,52 +1,14 @@
 import type { CodexItemStatus, CodexItemView, CodexTranscriptEntry } from "../types";
 import {
   areCodexCanonicalTurnParamsEqual,
+  isCodexCanonicalTurnPromptBlocked,
   collectCodexCanonicalUserMessageVisibilityChangedOwnerIds,
   doesCodexCanonicalItemProjectionChangeWithTurnStatus,
   projectCodexCanonicalTurnViews,
   projectCodexCanonicalVisibleTurnItemViews,
 } from "../codex-canonical-item-projector";
 import { projectCodexItemViewToTranscriptEntry } from "../codex-transcript-entry-projection";
-import type {
-  CodexCanonicalHookRun,
-  CodexCanonicalItem,
-  CodexCanonicalTurnState,
-} from "./codex-conversation-state";
-
-function projectHookStatus(status: CodexCanonicalHookRun["run"]["status"]): CodexItemStatus {
-  if (status === "running") return "inProgress";
-  if (status === "failed") return "failed";
-  if (status === "blocked") return "declined";
-  if (status === "stopped") return "interrupted";
-  return "completed";
-}
-
-function projectCanonicalHookViews(
-  input: ApplyCodexLifecycleProjectionDiffInput,
-  baseViews: readonly CodexItemView[],
-): readonly CodexItemView[] {
-  const hooks = input.afterTurn.sidecar.hookRuns ?? [];
-  const nonHookViews = baseViews.filter((view) => view.semanticKind !== "hook");
-  const hookViews = hooks.map((hook): CodexItemView => {
-    const existing = input.currentViews.find(
-      (view) => view.semanticKind === "hook" && view.itemId === hook.id,
-    );
-    return {
-      threadId: input.threadId,
-      turnId: input.afterTurn.protocol.id,
-      itemId: hook.id,
-      type: "hook",
-      normalizedKind: "hook",
-      semanticKind: "hook",
-      status: projectHookStatus(hook.run.status),
-      markdownText: hook.run.statusMessage ?? "Hook",
-      rawItem: { id: hook.id, type: "hook", run: hook.run },
-      createdAt: existing?.createdAt ?? input.observedAtMs,
-      updatedAt: input.observedAtMs,
-    };
-  });
-  return [...nonHookViews, ...hookViews];
-}
+import type { CodexCanonicalItem, CodexCanonicalTurnState } from "./codex-conversation-state";
 
 export interface ApplyCodexLifecycleProjectionDiffInput {
   readonly threadId: string;
@@ -635,7 +597,11 @@ export function applyCodexLifecycleProjectionDiff(
       input.afterTurn.sidecar.params,
     );
   const isCompleteCanonicalTurnRebuild =
-    input.beforeTurn === null || isTurnIdentityRebind || didTurnParamsChange;
+    input.beforeTurn === null ||
+    isTurnIdentityRebind ||
+    didTurnParamsChange ||
+    isCodexCanonicalTurnPromptBlocked(input.beforeTurn) !==
+      isCodexCanonicalTurnPromptBlocked(input.afterTurn);
   const views = isCompleteCanonicalTurnRebuild
     ? projectCompleteCanonicalTurnViews(input)
     : orderScopedEntries(
@@ -646,26 +612,15 @@ export function applyCodexLifecycleProjectionDiff(
         projectAffectedRawItems(input, affectedOwnerIds, changedOwnerIds),
         input.afterTurn.protocol.id,
       );
-  const projectedViews = projectCanonicalHookViews(input, views);
+  // Hook runs remain in the Turn sidecar; only canonical items own transcript identities.
   const transcript = isCompleteCanonicalTurnRebuild
-    ? projectCompleteCanonicalTurnTranscript(input, projectedViews)
-    : (() => {
-        const baseTranscript = orderScopedTranscript(input, views, affectedOwnerIds);
-        const nonHookTranscript = baseTranscript.filter((entry) => entry.semanticKind !== "hook");
-        const hookTranscript = projectChangedTranscriptEntries(
-          projectedViews.filter((view) => view.semanticKind === "hook"),
-          input.currentTranscript,
-        );
-        return [...nonHookTranscript, ...hookTranscript];
-      })();
+    ? projectCompleteCanonicalTurnTranscript(input, views)
+    : orderScopedTranscript(input, views, affectedOwnerIds);
 
   return {
     changedRawOwnerIds,
-    itemIds: [
-      ...input.afterTurn.items.map((item) => item.id),
-      ...(input.afterTurn.sidecar.hookRuns ?? []).map((hook) => hook.id),
-    ],
-    views: projectedViews,
+    itemIds: input.afterTurn.items.map((item) => item.id),
+    views,
     transcript,
   };
 }

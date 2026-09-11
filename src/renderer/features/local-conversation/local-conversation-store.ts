@@ -206,7 +206,10 @@ import {
   applyCodexLifecycleProjectionDiff,
   collectCodexLifecycleStatusChangedItemIds,
 } from "../../../shared/codex-conversation-state/codex-lifecycle-projection-diff";
-import { areCodexCanonicalTurnParamsEqual } from "../../../shared/codex-canonical-item-projector";
+import {
+  areCodexCanonicalTurnParamsEqual,
+  isCodexCanonicalTurnPromptBlocked,
+} from "../../../shared/codex-canonical-item-projector";
 import { buildCodexTurnOccurrenceKey } from "../../../shared/codex-turn-identity";
 import {
   groupCodexFrameTextDeltasByConversation,
@@ -1934,6 +1937,8 @@ function applyOwnerCanonicalTurnProjection(
       !canonicalItemsUnchanged ||
       beforeTurn.protocol.status !== afterTurn.protocol.status ||
       !areCodexCanonicalTurnParamsEqual(beforeTurn.sidecar.params, afterTurn.sidecar.params) ||
+      isCodexCanonicalTurnPromptBlocked(beforeTurn) !==
+        isCodexCanonicalTurnPromptBlocked(afterTurn) ||
       lifecycleStatusChangedItemIds.size > 0 ||
       beforeTurn.sidecar.commandExecutionStartedAtMsById !==
         afterTurn.sidecar.commandExecutionStartedAtMsById ||

@@ -6,7 +6,6 @@ import {
   ThreadAssistantActionsBlock,
   ThreadAssistantBodyBlock,
   ThreadContextCompactionBlock,
-  ThreadHookBlock,
   ThreadGeneratedImageGalleryBlock,
   ThreadImageViewBlock,
   ThreadMcpServerElicitationBlock,
@@ -370,15 +369,7 @@ export function ThreadBlockRenderer({
     );
   }
 
-  if (block.type === "hook") {
-    return (
-      <ThreadHookBlock
-        block={block}
-        isLatestTurn={isLatestTurn}
-        isStreamingTurn={isStreamingTurn}
-      />
-    );
-  }
+  if (block.type === "hook") return null;
 
   if (block.type === "planImplementation") {
     return (

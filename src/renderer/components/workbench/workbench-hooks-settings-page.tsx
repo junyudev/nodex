@@ -29,6 +29,7 @@ import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import type { Project } from "../../lib/types";
 import { openFileLink } from "../../lib/file-system-operations";
 import {
+  CODEX_HOOK_EVENT_LABELS,
   doesCodexHookNeedReview,
   groupCodexHooksListEntries,
   resolveSelectedCodexHooksEntry,
@@ -50,21 +51,6 @@ import {
   useCodexHookStateMutation,
 } from "../../lib/use-codex-hooks";
 import { cn } from "../../lib/utils";
-
-const HOOK_EVENT_LABELS: Record<HookEventName, string> = {
-  preToolUse: "PreToolUse",
-  permissionRequest: "PermissionRequest",
-  postToolUse: "PostToolUse",
-  preCompact: "PreCompact",
-  postCompact: "PostCompact",
-  sessionStart: "SessionStart",
-  sessionEnd: "SessionEnd",
-  userPromptSubmit: "UserPromptSubmit",
-  subagentStart: "SubagentStart",
-  subagentStop: "SubagentStop",
-  stop: "Stop",
-  interrupt: "Interrupt",
-};
 
 const HOOK_EVENT_DESCRIPTIONS: Record<HookEventName, string> = {
   preToolUse: "Before a tool executes",
@@ -561,7 +547,7 @@ function HooksDetailDialog({
                         <HooksIcon className="icon-xs text-token-text-secondary" />
                         <div className="min-w-0 flex-1">
                           <div className="text-sm font-medium text-token-text-primary">
-                            {HOOK_EVENT_LABELS[summary.eventName]}
+                            {CODEX_HOOK_EVENT_LABELS[summary.eventName]}
                           </div>
                           <div className="text-sm text-token-text-secondary">
                             {HOOK_EVENT_DESCRIPTIONS[summary.eventName]}
