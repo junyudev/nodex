@@ -14,7 +14,6 @@ import {
 import { projectCodexConversationTurn } from "./CodexConversationSnapshotProjection";
 import {
   createCodexHistoryItemWindow,
-  DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS,
   type CodexHistoryItemSegment,
 } from "../../shared/codex-conversation-state/codex-history-item-window";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
@@ -31,7 +30,7 @@ export interface CodexProjectedConversationItemPage {
 }
 
 const approximateProjectedItemSegmentBytes = (value: unknown): number =>
-  cappedApproximateValueBytes(value, DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxApproximateBytes);
+  cappedApproximateValueBytes(value, Number.MAX_SAFE_INTEGER);
 
 /**
  * Installs exact physical-page cursor metadata at the first bounded materialization. Flat legacy
@@ -69,9 +68,6 @@ export const projectCodexConversationHistoryItemWindows = (input: {
         canonicalItems,
         rendererItems,
       });
-      if (projectedBytes > DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxApproximateBytes) {
-        throw new Error(`Projected item page for Turn '${turnId}' exceeds its resident byte limit`);
-      }
       segments.push({
         segmentId: `physical:${turnId}:${index}:${itemIds[0] ?? "empty"}:${itemIds.at(-1) ?? "empty"}`,
         turnId,

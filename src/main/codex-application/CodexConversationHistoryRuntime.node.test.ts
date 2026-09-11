@@ -194,9 +194,13 @@ it.effect("deduplicates one exact boundary request onto one physical page", () =
       yield* Deferred.succeed(release, undefined);
       const results = yield* Effect.all([Fiber.join(first), Fiber.join(second)]);
 
-      const committedRevision = results[0]?.mutation.historyMutationRevision;
+      const firstResult = results[0];
+      if (firstResult?.status !== "applied")
+        return yield* Effect.die(new Error("Expected applied page"));
+      const committedRevision = firstResult.mutation.historyMutationRevision;
       for (const result of results) {
-        assert.strictEqual(result.status, "applied");
+        if (result.status !== "applied")
+          return yield* Effect.die(new Error("Expected applied page"));
         assert.strictEqual(result.mutation.historyMutationRevision, committedRevision);
       }
       assert.isAbove(committedRevision ?? 0, 0);
@@ -205,6 +209,9 @@ it.effect("deduplicates one exact boundary request onto one physical page", () =
         ["turn-older", "turn-current"],
       );
       assert.isTrue(aggregate.readSnapshot()?.turnPagination?.hasLoadedOldest);
+      const stale = yield* runtime.loadPage(request);
+      assert.deepEqual(stale, { status: "stale" });
+      assert.strictEqual(requests, 1);
       assert.strictEqual(aggregate.readCanonicalState()?.turns[0]?.protocol.id, "turn-older");
     }),
   ),

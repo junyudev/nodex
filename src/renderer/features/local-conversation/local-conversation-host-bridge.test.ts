@@ -61,13 +61,13 @@ describe("local conversation host bridge", () => {
 
   test("preserves checkpoint replication evidence on thread stream events", async () => {
     const received: Array<{
-      checkpointHash: string | null;
-      baseCheckpointHash: string | null;
+      revision: number | null;
+      baseRevision: number | null;
     }> = [];
     const unsubscribe = subscribeCodexAppServerMessage("thread-stream-state-changed", (event) => {
       received.push({
-        checkpointHash: event.checkpoint?.canonicalHash ?? null,
-        baseCheckpointHash: event.baseCheckpoint?.canonicalHash ?? null,
+        revision: event.checkpoint?.revision ?? null,
+        baseRevision: event.baseCheckpoint?.revision ?? null,
       });
     });
 
@@ -90,20 +90,18 @@ describe("local conversation host bridge", () => {
         protocolVersion: 1,
         ownerEpoch: 3,
         revision: 1,
-        canonicalHash: "base-hash",
       },
       checkpoint: {
         protocolVersion: 1,
         ownerEpoch: 3,
         revision: 2,
-        canonicalHash: "next-hash",
       },
     });
 
     expect(received).toEqual([
       {
-        checkpointHash: "next-hash",
-        baseCheckpointHash: "base-hash",
+        revision: 2,
+        baseRevision: 1,
       },
     ]);
 

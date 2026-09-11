@@ -53,6 +53,7 @@ describe("Codex renderer history residency pins", () => {
     expect(harness.calls).toEqual([
       {
         clientId: "client-owner",
+        projectReplica: false,
         expectedTopologyGeneration: 9,
         expectedHistoryMutationRevision: 7,
         turnIds: ["turn-visible"],

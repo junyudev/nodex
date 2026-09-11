@@ -1,3 +1,4 @@
+import { applyCodexConversationHistoryMutation } from "../../shared/codex-conversation-history-page";
 import { assert, it } from "@effect/vitest";
 import type { Thread, ThreadSearchOccurrence, Turn } from "@nodex/codex-app-server-protocol/v2";
 import * as Effect from "effect/Effect";
@@ -210,6 +211,7 @@ const installRuntimeConversation = (input: {
     itemsView: "full" as const,
   };
   aggregate.installSnapshot({
+    requests: [],
     threadId: runtimeThreadId,
     canonicalState: state,
     turns: input.turns.map((turn) => ({
@@ -559,7 +561,7 @@ it("refuses to guess placement when a disjoint Turn has no startedAt", () => {
   );
 });
 
-it.effect("returns the committed topology generation with a bounded search island", () =>
+it.effect("returns an owner search-island proposal without advancing host topology", () =>
   Effect.gen(function* () {
     const installed = installRuntimeConversation({ turns: [rawTurn("turn-tail", 100)] });
     let physicalHydrations = 0;
@@ -591,6 +593,18 @@ it.effect("returns the committed topology generation with a bounded search islan
       installed.aggregate.readHistoryTopology().generation,
     );
     assert.strictEqual(hydrated.mutation?.topologyGeneration, hydrated.topologyGeneration);
+    assert.isUndefined(
+      installed.aggregate.readHistoryTopology().entitiesByKey[selectedOccurrence.turnId],
+    );
+    const applied = applyCodexConversationHistoryMutation(
+      installed.aggregate.readSnapshot()!,
+      hydrated.mutation!,
+    );
+    if (!applied.ok) throw new Error(applied.reason);
+    installed.aggregate.acceptOwnerReplica({
+      conversation: applied.conversation,
+      checkpoint: { protocolVersion: 1, ownerEpoch: 1, revision: 1 },
+    });
     assert.isDefined(
       installed.aggregate.readHistoryTopology().entitiesByKey[selectedOccurrence.turnId],
     );
@@ -760,6 +774,19 @@ it.effect("does not commit a hydration that finishes after a newer navigation", 
     assert.strictEqual(second.status, "found");
     assert(Result.isFailure(firstResult));
     assert.strictEqual(firstResult.failure.reason, "superseded");
+    assert.deepEqual(
+      installed.aggregate.readHistoryTopology().islands.map((island) => island.id),
+      ["tail:1"],
+    );
+    const applied = applyCodexConversationHistoryMutation(
+      installed.aggregate.readSnapshot()!,
+      second.mutation!,
+    );
+    if (!applied.ok) throw new Error(applied.reason);
+    installed.aggregate.acceptOwnerReplica({
+      conversation: applied.conversation,
+      checkpoint: { protocolVersion: 1, ownerEpoch: 1, revision: 1 },
+    });
     assert.deepEqual(
       installed.aggregate.readHistoryTopology().islands.map((island) => island.id),
       ["search:runtime:2", "tail:1"],

@@ -24,7 +24,6 @@ import {
 import {
   applyCodexThreadOwnerPublication,
   buildCodexThreadStreamCheckpoint,
-  hashCodexConversationReplica,
 } from "../../shared/codex-owner-follower-replication";
 import type {
   CodexConversationItem,
@@ -504,13 +503,8 @@ const measure = (logicalItemCount: number): Effect.Effect<GiantTurnMeasurement> 
 
       let receiver = aggregate.readSnapshot();
       if (!receiver) return yield* Effect.die(new Error("Initial giant Turn snapshot is absent"));
-      hashCodexConversationReplica(receiver);
       let follower = {
-        checkpoint: buildCodexThreadStreamCheckpoint({
-          ownerEpoch: 7,
-          revision: 0,
-          conversation: receiver,
-        }),
+        checkpoint: buildCodexThreadStreamCheckpoint({ ownerEpoch: 7, revision: 0 }),
         conversation: receiver,
       };
       reads.canonical = 0;
@@ -546,6 +540,8 @@ const measure = (logicalItemCount: number): Effect.Effect<GiantTurnMeasurement> 
           const result: CodexConversationHistoryPageResult = yield* history
             .loadPage(request)
             .pipe(Effect.orDie);
+          if (result.status !== "applied")
+            return yield* Effect.die(new Error("Expected applied page"));
           assert.strictEqual(requests.length, beforeRequests + 1);
           const physicalRequest = requests.at(-1)!;
           const mutationBytes = serializedBytes(result.mutation);
@@ -557,13 +553,10 @@ const measure = (logicalItemCount: number): Effect.Effect<GiantTurnMeasurement> 
           if (!sourceAfter) {
             return yield* Effect.die(new Error("Giant Turn source snapshot vanished after page"));
           }
-          const sourceHash = hashCodexConversationReplica(sourceAfter);
-          const receiverHash = hashCodexConversationReplica(applied.conversation);
-          assert.strictEqual(receiverHash, sourceHash);
+          assert.deepStrictEqual(applied.conversation, sourceAfter);
           const checkpoint = buildCodexThreadStreamCheckpoint({
             ownerEpoch: 7,
             revision: follower.checkpoint.revision + 1,
-            conversation: applied.conversation,
           });
           const published = applyCodexThreadOwnerPublication({
             current: follower,
@@ -573,10 +566,9 @@ const measure = (logicalItemCount: number): Effect.Effect<GiantTurnMeasurement> 
               baseCheckpoint: follower.checkpoint,
               checkpoint,
               change: {
-                type: "historyMutation",
-                baseRevision: follower.checkpoint.revision,
+                type: "snapshot",
                 revision: checkpoint.revision,
-                mutation: result.mutation,
+                conversationState: applied.conversation,
               },
             },
           });

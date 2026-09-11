@@ -1,5 +1,4 @@
 import { assert, it } from "@effect/vitest";
-import { CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES } from "../../shared/codex-conversation-state/codex-live-turn-residency";
 import { sanitizeCodexEndpointNotification } from "./CodexEndpoint";
 
 it("strips transcript payloads at the endpoint before inbox and event-hub fan-out", () => {
@@ -20,7 +19,7 @@ it("strips transcript payloads at the endpoint before inbox and event-hub fan-ou
   assert.deepStrictEqual((sanitized.params.thread as unknown as { turns: unknown[] }).turns, []);
 });
 
-it("bounds giant lifecycle items at the endpoint while leaving raw notifications untouched", () => {
+it("preserves large completed tool output through endpoint ingress", () => {
   const generated = {
     protocol: "generated",
     method: "item/completed",
@@ -32,7 +31,7 @@ it("bounds giant lifecycle items at the endpoint while leaving raw notifications
         type: "commandExecution",
         id: "command-large",
         status: "failed",
-        aggregatedOutput: "x".repeat(CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES + 1),
+        aggregatedOutput: "x".repeat(2 * 1024 * 1024 + 1),
       },
     },
   } as const;
@@ -46,7 +45,11 @@ it("bounds giant lifecycle items at the endpoint while leaving raw notifications
   const sanitized = sanitizeCodexEndpointNotification(generated);
 
   assert.strictEqual(sanitized.params.item.id, "command-large");
-  assert.strictEqual(sanitized.params.item.type, "agentMessage");
+  assert.strictEqual(sanitized.params.item.type, "commandExecution");
+  assert.strictEqual(
+    sanitized.params.item.aggregatedOutput,
+    generated.params.item.aggregatedOutput,
+  );
   assert.strictEqual(sanitized.params.item.status, "failed");
   assert.strictEqual(sanitizeCodexEndpointNotification(raw), raw);
   assert.deepStrictEqual(

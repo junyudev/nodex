@@ -22,10 +22,6 @@ import {
   ConversationEntityMap,
   live as conversationRuntimeMapLive,
 } from "./internal/ConversationEntityMap";
-import {
-  CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES,
-  CODEX_LIVE_TURN_OVERFLOW_ITEM_ID,
-} from "../../shared/codex-conversation-state/codex-live-turn-residency";
 
 const frame = (delta: string): CodexFrameTextDeltaUpdate => ({
   conversationId: "thread-1",
@@ -152,7 +148,7 @@ it.effect("cuts the bounded frame batch under cross-Thread pressure without losi
   ),
 );
 
-it.effect("collapses an individually over-budget pressure delta before it becomes resident", () =>
+it.effect("commits a large pressure delta without losing output", () =>
   withRuntime(
     (runtime, conversations) =>
       Effect.sync(() => {
@@ -221,14 +217,11 @@ it.effect("collapses an individually over-budget pressure delta before it become
           }),
         );
 
-        runtime.enqueueFrameText(frame("x".repeat(CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES + 1_024)));
+        runtime.enqueueFrameText(frame("x".repeat(2 * 1024 * 1024 + 1_024)));
 
         const turn = conversations.current("thread-1")?.readCanonicalState()?.turns[0];
-        assert.strictEqual(turn?.items[0]?.id, CODEX_LIVE_TURN_OVERFLOW_ITEM_ID);
-        assert.isAtMost(
-          Buffer.byteLength(JSON.stringify(turn), "utf8"),
-          CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES,
-        );
+        assert.strictEqual(turn?.items[0]?.type, "agentMessage");
+        assert.isAbove(Buffer.byteLength(JSON.stringify(turn), "utf8"), 2 * 1024 * 1024);
       }),
     {
       maxBufferedFrameCodeUnitsPerKey: 2,

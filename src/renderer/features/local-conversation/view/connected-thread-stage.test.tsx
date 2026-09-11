@@ -236,7 +236,6 @@ function dispatchTestThreadStreamSnapshot(
     checkpoint: buildCodexThreadStreamCheckpoint({
       ownerEpoch: 1,
       revision: event.change.revision,
-      conversation: event.change.conversationState,
     }),
     baseCheckpoint: null,
   });

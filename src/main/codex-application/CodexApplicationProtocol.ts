@@ -24,7 +24,6 @@ import {
   type CodexServerRequestRawLifecycleResult,
 } from "../../shared/codex-conversation-state/codex-server-request-lifecycle";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
-import { sanitizeCodexLiveLifecycleNotification } from "../../shared/codex-conversation-state/codex-live-turn-residency";
 import { toCodexThreadStartedMetadataNotification } from "../../shared/codex-thread-start-metadata";
 import { parseCodexAppServerMessage } from "../codex/codex-app-server-message-parser";
 import {
@@ -740,9 +739,7 @@ export const make: Effect.Effect<
   const observe: CodexApplicationProtocol["Service"]["observe"] = (occurrence) => {
     const parsedNotification = parseNotification(occurrence);
     if (!parsedNotification) return Effect.void;
-    const notification = sanitizeCodexLiveLifecycleNotification(
-      toCodexThreadStartedMetadataNotification(parsedNotification),
-    );
+    const notification = toCodexThreadStartedMetadataNotification(parsedNotification);
     const metadataOccurrence = toCodexSanitizedNotificationOccurrence(occurrence, notification);
     const threadId = codexProtocolNotificationThreadId(notification);
     if (!threadId) {
@@ -835,9 +832,7 @@ export const make: Effect.Effect<
     }
     const parsedNotification = parseNotification(occurrence);
     if (!parsedNotification) return Effect.succeed(false);
-    const notification = sanitizeCodexLiveLifecycleNotification(
-      toCodexThreadStartedMetadataNotification(parsedNotification),
-    );
+    const notification = toCodexThreadStartedMetadataNotification(parsedNotification);
     const metadataOccurrence = toCodexSanitizedNotificationOccurrence(occurrence, notification);
     return inbox
       .interpretNotification(

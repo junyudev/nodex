@@ -4802,27 +4802,13 @@ export type CodexThreadStreamStateChange =
       baseRevision: number;
       revision: number;
       patches: CodexConversationStateUpdate[];
-    }
-  | {
-      /** Bounded resident-history delta; never expands into a whole-document diff. */
-      type: "historyMutation";
-      baseRevision: number;
-      revision: number;
-      mutation: import("./codex-conversation-history-page").CodexConversationHistoryMutation;
     };
 
-/**
- * Content-addressed identity for one accepted owner/follower replica state.
- *
- * `ownerEpoch` fences publications from replaced renderer owners, `revision`
- * orders mutations within that epoch, and `canonicalHash` proves that owner,
- * main recovery replica, and followers accepted the same shared document.
- */
+/** Owner identity and ordering for the shared stream; transcript content is never hashed. */
 export interface CodexThreadStreamCheckpoint {
   protocolVersion: 1;
   ownerEpoch: number;
   revision: number;
-  canonicalHash: string;
 }
 
 export type CodexThreadStreamPublishRejectionReason =
@@ -5072,8 +5058,7 @@ export interface CodexThreadStreamResyncRequestInput {
     | "owner-mismatch"
     | "owner-epoch-mismatch"
     | "revision-gap"
-    | "base-hash-mismatch"
-    | "checkpoint-hash-mismatch"
+    | "base-checkpoint-mismatch"
     | "patch-apply-failed"
     | "transport-reset";
 }
@@ -5198,6 +5183,13 @@ export type CodexHostMessage =
       hostId: string;
       conversationId: string;
       ownerClientId: string;
+    }
+  | {
+      type: "threadStreamSnapshotRequested";
+      hostId: string;
+      conversationId: string;
+      ownerClientId: string;
+      ownerEpoch: number;
     }
   | {
       type: "threadStreamFollowersChanged";

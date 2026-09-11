@@ -123,10 +123,9 @@ export interface CodexConversationHistoryMutation {
   readonly removeTurnItemsPaginationIds: readonly string[];
 }
 
-export interface CodexConversationHistoryPageResult {
-  readonly status: "applied";
-  readonly mutation: CodexConversationHistoryMutation;
-}
+export type CodexConversationHistoryPageResult =
+  | { readonly status: "applied"; readonly mutation: CodexConversationHistoryMutation }
+  | { readonly status: "stale" };
 
 export type ApplyCodexConversationHistoryMutationResult =
   | {
@@ -782,36 +781,61 @@ export function applyCodexConversationHistoryMutation(
             pagination,
           }));
     if (!window) return { ok: false, reason: "malformed-mutation" };
-    if (window.residency.itemCount !== canonicalTurn.items.length) {
-      return { ok: false, reason: "stale-target-progress" };
-    }
     const appliedWindow = applyCodexHistoryItemWindowMutation(window, itemMutation.windowMutation);
     if (!appliedWindow.ok) return { ok: false, reason: "stale-target-progress" };
     const wire = itemMutation.windowMutation.wireSegment;
-    const releasedCanonicalCount = appliedWindow.releasedSegments.reduce(
-      (count, segment) => count + segment.items.canonicalItems.length,
-      0,
+    const represented = new Set(
+      (
+        windowSnapshot?.segments ?? snapshotCodexConversationHistoryItemWindow(window).segments
+      ).flatMap((segment) => segment.items.itemIds),
     );
-    const releasedRendererCount = appliedWindow.releasedSegments.reduce(
-      (count, segment) => count + segment.items.rendererItems.length,
-      0,
+    // A newly arrived live suffix cannot be evicted using a count from an older physical page.
+    if (
+      appliedWindow.releasedSegments.length > 0 &&
+      canonicalTurn.items.some((item) => !represented.has(item.id))
+    ) {
+      return { ok: false, reason: "stale-target-progress" };
+    }
+    const releasedCanonicalIds = new Set(
+      appliedWindow.releasedSegments.flatMap((segment) => segment.items.itemIds),
     );
-    const retainedCanonicalItems =
-      wire.direction === "older"
-        ? canonicalTurn.items.slice(0, canonicalTurn.items.length - releasedCanonicalCount)
-        : canonicalTurn.items.slice(releasedCanonicalCount);
-    const retainedRendererItems =
-      wire.direction === "older"
-        ? turn.items.slice(0, turn.items.length - releasedRendererCount)
-        : turn.items.slice(releasedRendererCount);
+    const releasedRendererKeys = new Set(
+      appliedWindow.releasedSegments.flatMap((segment) =>
+        segment.items.rendererItems.map(historyTranscriptEntryKey),
+      ),
+    );
+    const retainedCanonicalItems = canonicalTurn.items.filter(
+      (item) => !releasedCanonicalIds.has(item.id),
+    );
+    const retainedRendererItems = turn.items.filter(
+      (item) =>
+        !releasedCanonicalIds.has(item.itemId) &&
+        !releasedRendererKeys.has(historyTranscriptEntryKey(item)),
+    );
+    const latestCanonical = new Map(retainedCanonicalItems.map((item) => [item.id, item]));
+    const incomingIds = new Set(wire.items.itemIds);
+    const fetchedCanonical = wire.items.canonicalItems.map(
+      (item) => latestCanonical.get(item.id) ?? item,
+    );
+    const remainingCanonical = retainedCanonicalItems.filter((item) => !incomingIds.has(item.id));
     const canonicalItems =
       wire.direction === "older"
-        ? [...wire.items.canonicalItems, ...retainedCanonicalItems]
-        : [...retainedCanonicalItems, ...wire.items.canonicalItems];
+        ? [...fetchedCanonical, ...remainingCanonical]
+        : [...remainingCanonical, ...fetchedCanonical];
+    const latestRenderer = new Map(
+      retainedRendererItems.map((item) => [historyTranscriptEntryKey(item), item]),
+    );
+    const fetchedRenderer = wire.items.rendererItems.map(
+      (item) => latestRenderer.get(historyTranscriptEntryKey(item)) ?? item,
+    );
+    const fetchedRendererKeys = new Set(fetchedRenderer.map(historyTranscriptEntryKey));
+    const remainingRenderer = retainedRendererItems.filter(
+      (item) => !fetchedRendererKeys.has(historyTranscriptEntryKey(item)),
+    );
     const rendererItems =
       wire.direction === "older"
-        ? [...wire.items.rendererItems, ...retainedRendererItems]
-        : [...retainedRendererItems, ...wire.items.rendererItems];
+        ? [...fetchedRenderer, ...remainingRenderer]
+        : [...remainingRenderer, ...fetchedRenderer];
     turnById.set(itemMutation.turnId, {
       ...turn,
       itemIds: canonicalItems.map((item) => item.id),
@@ -825,13 +849,64 @@ export function applyCodexConversationHistoryMutation(
       },
       items: canonicalItems,
     });
-    historyItemWindowsByTurnId[itemMutation.turnId] =
-      advanceCodexConversationHistoryItemWindowSnapshot({
-        before: windowSnapshot ?? snapshotCodexConversationHistoryItemWindow(window),
-        mutation: itemMutation.windowMutation,
-        after: appliedWindow.window,
+    const advanced = advanceCodexConversationHistoryItemWindowSnapshot({
+      before: windowSnapshot ?? snapshotCodexConversationHistoryItemWindow(window),
+      mutation: itemMutation.windowMutation,
+      after: appliedWindow.window,
+    });
+    // Keep physical segment identities/cursors while replacing their retained values with the
+    // latest owner values. Live items added during the read belong to the resident newest segment.
+    const canonicalByItemId = new Map(canonicalItems.map((item) => [item.id, item]));
+    const segmentItemIds = new Set(advanced.segments.flatMap((segment) => segment.items.itemIds));
+    const liveItems = canonicalItems.filter((item) => !segmentItemIds.has(item.id));
+    const representedRenderer = new Set<string>();
+    const segments = advanced.segments.map((segment, index) => {
+      const segmentCanonical = segment.items.itemIds.flatMap((id) => {
+        const item = canonicalByItemId.get(id);
+        return item ? [item] : [];
       });
-    nextRuntimeWindows.set(itemMutation.turnId, appliedWindow.window);
+      if (index === advanced.segments.length - 1) segmentCanonical.push(...liveItems);
+      const itemIds = segmentCanonical.map((item) => item.id);
+      const identities = new Set(itemIds);
+      const segmentRenderer = rendererItems.filter((item) => {
+        const belongs = identities.has(item.itemId);
+        if (belongs) representedRenderer.add(historyTranscriptEntryKey(item));
+        return belongs;
+      });
+      if (index === advanced.segments.length - 1) {
+        segmentRenderer.push(
+          ...rendererItems.filter(
+            (item) => !representedRenderer.has(historyTranscriptEntryKey(item)),
+          ),
+        );
+      }
+      if (
+        segmentCanonical.length === segment.items.canonicalItems.length &&
+        segmentCanonical.every(
+          (item, itemIndex) => item === segment.items.canonicalItems[itemIndex],
+        ) &&
+        segmentRenderer.length === segment.items.rendererItems.length &&
+        segmentRenderer.every((item, itemIndex) => item === segment.items.rendererItems[itemIndex])
+      ) {
+        return segment;
+      }
+      return {
+        ...segment,
+        items: { itemIds, canonicalItems: segmentCanonical, rendererItems: segmentRenderer },
+        approximateBytes: approximateHistoryItemSegmentBytes({
+          canonicalItems: segmentCanonical,
+          rendererItems: segmentRenderer,
+        }),
+      };
+    });
+    const changed = segments.some((segment, index) => segment !== advanced.segments[index]);
+    const refreshed = changed ? { ...advanced, segments } : advanced;
+    const refreshedWindow = changed
+      ? restoreCodexConversationHistoryItemWindow(refreshed)
+      : appliedWindow.window;
+    if (!refreshedWindow) return { ok: false, reason: "stale-target-progress" };
+    historyItemWindowsByTurnId[itemMutation.turnId] = refreshed;
+    nextRuntimeWindows.set(itemMutation.turnId, refreshedWindow);
   }
 
   const orderedTurnIds = rows.flatMap((row) => (row.kind === "content" ? [row.entityKey] : []));

@@ -834,7 +834,6 @@ export function createCodexHistoryItemWindow<
   let itemIds: StringSetNode | null = null;
   let segmentIds: StringSetNode | null = null;
   let seedItemCount = 0;
-  let seedBytes = 0;
   for (const candidate of input.seedSegments ?? []) {
     const segment = copySegment(candidate);
     const segmentError = validateSegmentShape(segment);
@@ -881,11 +880,7 @@ export function createCodexHistoryItemWindow<
       itemIds = stringSetInsert(itemIds, itemId, () => undefined);
     }
     seedItemCount += segment.items.itemIds.length;
-    seedBytes += segment.approximateBytes;
-    if (
-      seedItemCount > limits.maxItems ||
-      (seedBytes > limits.maxApproximateBytes && seedSegments.length > 0)
-    ) {
+    if (seedItemCount > limits.maxItems) {
       return {
         ok: false,
         error: itemWindowError(

@@ -1,3 +1,4 @@
+import { projectCodexConversationDocument } from "../../../shared/codex-conversation-document";
 import { compactCodexApplicationProtocolOccurrences } from "../CodexConversationEventProjection";
 import type { CodexApplicationNotificationOccurrence } from "../../codex-runtime/CodexApplicationRequestInbox";
 import type { Thread, ThreadGoal, ThreadItem, Turn } from "@nodex/codex-app-server-protocol/v2";
@@ -13,7 +14,13 @@ import {
   opaqueCodexHistoryBoundary,
 } from "../../../shared/codex-conversation-state/codex-history-topology";
 import { createCodexQueuedFollowUp } from "../../../shared/codex-queued-follow-up-state";
-import type { CodexConversationHistoryItemWindowSnapshot } from "../../../shared/codex-conversation-history-page";
+import {
+  applyCodexConversationHistoryMutation,
+  createCodexConversationHistoryTurnItemsRef,
+  seedCodexConversationHistoryItemWindow,
+  snapshotCodexConversationHistoryItemWindow,
+  type CodexConversationHistoryItemWindowSnapshot,
+} from "../../../shared/codex-conversation-history-page";
 import { makeConversationEntityStateRegistry } from "./ConversationEntityState";
 import { projectCodexConversationSnapshot } from "../CodexConversationSnapshotProjection";
 import {
@@ -21,10 +28,6 @@ import {
   createRendererDeliveryAssemblerState,
   encodeRendererDelivery,
 } from "../../../shared/renderer-delivery-transport";
-import {
-  CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES,
-  CODEX_LIVE_TURN_OVERFLOW_ITEM_ID,
-} from "../../../shared/codex-conversation-state/codex-live-turn-residency";
 
 const threadId = "thread-canonical-projection";
 
@@ -93,7 +96,12 @@ const goal: ThreadGoal = {
   updatedAt: 2,
 };
 
-const hydratedState = (turns: readonly Turn[]) =>
+const hydratedState = (
+  turns: readonly Turn[],
+  turnItemsPaginationById?: Parameters<
+    typeof createCodexCanonicalHydratedConversationState
+  >[1]["turnItemsPaginationById"],
+) =>
   createCodexCanonicalHydratedConversationState(
     { ...thread, turns: [...turns] },
     {
@@ -105,6 +113,7 @@ const hydratedState = (turns: readonly Turn[]) =>
       sandboxPolicy: { type: "readOnly", networkAccess: false },
       activePermissionProfile: null,
       runtimeWorkspaceRoots: ["/workspace/project"],
+      turnItemsPaginationById,
     },
   );
 
@@ -288,7 +297,7 @@ it("rebases an older owner publication onto the terminal Turn for renderer recov
   );
 });
 
-it("invalidates a stale item-window digest before hashing live text and command output", () => {
+it("invalidates stale item windows before projecting live text and command output", () => {
   const cases = [
     {
       name: "agent text",
@@ -376,13 +385,13 @@ it("invalidates a stale item-window digest before hashing live text and command 
 
     const after = aggregate.read().acceptedReplica;
     assert.isNotNull(after);
-    assert.notStrictEqual(after?.checkpoint.canonicalHash, before.checkpoint.canonicalHash);
+    assert.notDeepEqual(after?.conversation.canonicalState, before.conversation.canonicalState);
     assert.isUndefined(after?.conversation.historyItemWindowsByTurnId?.["turn-live"]);
     assert.isUndefined(aggregate.readSnapshot()?.historyItemWindowsByTurnId?.["turn-live"]);
   }
 });
 
-it("bounds cumulative live deltas in canonical state, snapshots, and dormant replicas", () => {
+it("preserves cumulative large live deltas in canonical state, snapshots, and dormant replicas", () => {
   const aggregate = makeConversationEntityStateRegistry().acquire(threadId);
   const liveTurn: Turn = {
     ...completedTurn("turn-live-overflow"),
@@ -412,7 +421,7 @@ it("bounds cumulative live deltas in canonical state, snapshots, and dormant rep
         turnId: liveTurn.id,
         itemId: "agent-live-overflow",
         target: { type: "agentMessage" },
-        delta: "x".repeat(CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES + 1_024),
+        delta: "x".repeat(2 * 1024 * 1024 + 1_024),
       },
     ],
     observedAtMs: 10,
@@ -423,9 +432,9 @@ it("bounds cumulative live deltas in canonical state, snapshots, and dormant rep
       {
         conversationId: threadId,
         turnId: liveTurn.id,
-        itemId: CODEX_LIVE_TURN_OVERFLOW_ITEM_ID,
+        itemId: "agent-live-overflow",
         target: { type: "agentMessage" },
-        delta: "y".repeat(CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES + 1_024),
+        delta: "y".repeat(2 * 1024 * 1024 + 1_024),
       },
     ],
     observedAtMs: 11,
@@ -438,16 +447,16 @@ it("bounds cumulative live deltas in canonical state, snapshots, and dormant rep
     aggregate.read().acceptedReplica?.conversation.canonicalState,
   ];
   for (const projection of projections) {
-    const turn = projection?.turns[0];
-    assert.strictEqual(turn?.items[0]?.id, CODEX_LIVE_TURN_OVERFLOW_ITEM_ID);
-    assert.isAtMost(
-      Buffer.byteLength(JSON.stringify(turn), "utf8"),
-      CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES,
+    const item = projection?.turns[0]?.items[0];
+    assert.strictEqual(item?.id, "agent-live-overflow");
+    assert.strictEqual(
+      item?.type === "agentMessage" ? item.text : null,
+      "x".repeat(2 * 1024 * 1024 + 1_024) + "y".repeat(2 * 1024 * 1024 + 1_024),
     );
   }
 });
 
-it("prevents a terminal item payload from restoring oversized live output", () => {
+it("preserves a large terminal item payload in the transcript", () => {
   const aggregate = makeConversationEntityStateRegistry().acquire(threadId);
   const liveTurn: Turn = {
     ...completedTurn("turn-terminal-overflow"),
@@ -478,7 +487,7 @@ it("prevents a terminal item payload from restoring oversized live output", () =
           questions: null,
           type: "agentMessage",
           id: "agent-terminal-overflow",
-          text: "z".repeat(CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES + 1_024),
+          text: "z".repeat(2 * 1024 * 1024 + 1_024),
           phase: null,
           memoryCitation: null,
           delivery: null,
@@ -492,11 +501,8 @@ it("prevents a terminal item payload from restoring oversized live output", () =
   });
 
   const turn = aggregate.readCanonicalState()?.turns[0];
-  assert.strictEqual(turn?.items[0]?.id, CODEX_LIVE_TURN_OVERFLOW_ITEM_ID);
-  assert.isAtMost(
-    Buffer.byteLength(JSON.stringify(turn), "utf8"),
-    CODEX_LIVE_TURN_MAX_APPROXIMATE_BYTES,
-  );
+  assert.strictEqual(turn?.items[0]?.type, "agentMessage");
+  assert.isAbove(Buffer.byteLength(JSON.stringify(turn), "utf8"), 2 * 1024 * 1024);
 });
 
 it("invalidates generation-bound renderer checkpoints when the endpoint is lost", () => {
@@ -649,7 +655,7 @@ it("atomically preserves a sparse search island across later live canonical upda
     olderBoundary: opaqueCodexHistoryBoundary("search:occurrence-1:older"),
     newerBoundary: opaqueCodexHistoryBoundary("search:occurrence-1:newer"),
     observedAtMs: 10,
-    projectReplica: false,
+    projectReplica: true,
   });
 
   assert.strictEqual(inserted.status, "committed");
@@ -717,7 +723,7 @@ it("rejects a search island from a stale topology generation without mutation", 
       olderBoundary: opaqueCodexHistoryBoundary("search:stale:older"),
       newerBoundary: opaqueCodexHistoryBoundary("search:stale:newer"),
       observedAtMs: 10,
-      projectReplica: false,
+      projectReplica: true,
     }),
     { status: "staleGeneration" },
   );
@@ -801,8 +807,8 @@ it("bounds every resident conversation object graph while preserving a null-id l
     );
   }
   assert.notStrictEqual(
-    aggregate.read().acceptedReplica?.checkpoint.canonicalHash,
-    initialReplica.checkpoint.canonicalHash,
+    aggregate.read().acceptedReplica?.checkpoint.revision,
+    initialReplica.checkpoint.revision,
   );
   assert.strictEqual(aggregate.read().revision, 2);
 });
@@ -953,7 +959,7 @@ it("protects the current search island until explicit viewport pins supersede it
     olderBoundary: opaqueCodexHistoryBoundary("search:visible:older"),
     newerBoundary: opaqueCodexHistoryBoundary("search:visible:newer"),
     observedAtMs: 1,
-    projectReplica: false,
+    projectReplica: true,
   });
   assert.strictEqual(inserted.status, "committed");
   if (inserted.status === "committed") {
@@ -1067,7 +1073,7 @@ it("bounds reveal leases by count and bytes until the exact revealed Turn reache
       olderBoundary: opaqueCodexHistoryBoundary(`page-reveal:${turn.id}:older`),
       newerBoundary: opaqueCodexHistoryBoundary(`page-reveal:${turn.id}:newer`),
       observedAtMs: 1,
-      projectReplica: false,
+      projectReplica: true,
     });
 
   assert.strictEqual(insertReveal(first, [first, tail]).status, "committed");
@@ -1281,4 +1287,277 @@ it("skips command bytes covered by the resume baseline but retains identical liv
       line.repeat(2),
     );
   }
+});
+
+it("keeps an owner publication exact while host history state is ahead", () => {
+  const aggregate = makeConversationEntityStateRegistry().acquire(threadId);
+  const ownerDocument = {
+    ...snapshot(),
+    historyMutationRevision: 3,
+    conversationEntityGeneration: 1,
+  };
+  const hostDocument = { ...snapshot(), historyMutationRevision: 4, threadPreview: "host ahead" };
+  aggregate.installSnapshot(hostDocument);
+  const hostBefore = aggregate.readSnapshot();
+  const checkpoint = { protocolVersion: 1 as const, ownerEpoch: 2, revision: 7 };
+  const accepted = aggregate.acceptOwnerReplica({ conversation: ownerDocument, checkpoint });
+  assert.deepEqual(accepted.conversation, ownerDocument);
+  assert.strictEqual(accepted.checkpoint, checkpoint);
+  assert.strictEqual(aggregate.readSnapshot(), hostBefore);
+  assert.strictEqual(aggregate.read().revision, 7);
+});
+
+it("proposes owner history without advancing Main and preserves live items through owner acceptance", () => {
+  const aggregate = makeConversationEntityStateRegistry().acquire(threadId);
+  const partialTurn = {
+    ...completedTurn("turn-page-live"),
+    status: "inProgress" as const,
+    itemsView: "summary" as const,
+    items: [{ ...commandItem("live"), aggregatedOutput: "before" }],
+  };
+  const itemPagination = {
+    olderCursor: "items:older",
+    isLoadingOlder: false,
+    hasLoadedOldest: false,
+    oldestUserInput: null,
+    openingUserMessageId: null,
+    itemsView: "summary" as const,
+  };
+  const paginationById = { [partialTurn.id]: itemPagination };
+  const canonical = hydratedState([partialTurn], paginationById);
+  aggregate.acceptCanonicalState(canonical);
+  aggregate.installSnapshot(
+    projectCodexConversationSnapshot({
+      conversation: snapshot(),
+      before: null,
+      after: canonical,
+      observedAtMs: 1,
+    }),
+  );
+  const turnPagination = {
+    olderCursor: null,
+    backwardsCursor: null,
+    oldestLoadedTurnId: partialTurn.id,
+    isLoadingOlder: false,
+    hasLoadedOldest: true,
+    loadedTurnCount: 1,
+    itemsView: "summary" as const,
+  };
+  aggregate.initializeHistory(turnPagination, 1, { [partialTurn.id]: itemPagination });
+  const initial = aggregate.readSnapshot()!;
+  const window = seedCodexConversationHistoryItemWindow({
+    turnId: partialTurn.id,
+    canonicalItems: canonical.turns[0]!.items,
+    rendererItems: initial.turns[0]!.items,
+    pagination: itemPagination,
+  })!;
+  aggregate.installSnapshot({
+    ...initial,
+    historyItemWindowsByTurnId: {
+      [partialTurn.id]: snapshotCodexConversationHistoryItemWindow(window),
+    },
+  });
+  const before = aggregate.readSnapshot()!;
+  const beforeTopology = aggregate.readHistoryTopology();
+  const beforeRevision = aggregate.read().historyMutationRevision;
+  const target = createCodexConversationHistoryTurnItemsRef({
+    turnId: partialTurn.id,
+    expectedTopologyGeneration: beforeTopology.generation,
+    pagination: itemPagination,
+    window: before.historyItemWindowsByTurnId![partialTurn.id],
+  })!;
+  const fetched = hydratedState([{ ...partialTurn, items: [commandItem("older")] }], paginationById)
+    .turns[0]!.items;
+  const result = aggregate.commitHistoryPage({
+    request: {
+      threadId,
+      expectedConversationGeneration: aggregate.generation,
+      expectedHistoryMutationRevision: beforeRevision,
+      target: { kind: "turnItems", items: target },
+    },
+    state: canonical,
+    turnIds: [partialTurn.id],
+    itemsPaginationByTurnId: { [partialTurn.id]: itemPagination },
+    observedAtMs: 2,
+    projectReplica: false,
+    itemPage: {
+      direction: "older",
+      segmentId: "page:older",
+      canonicalItems: fetched,
+      rendererItems: [],
+      itemIds: ["older"],
+      approximateBytes: 100,
+      nextCursor: "items:next",
+      backwardsCursor: "items:reverse",
+    },
+  });
+  assert.strictEqual(result.status, "committed");
+  if (result.status !== "committed") return;
+  assert.strictEqual(aggregate.readSnapshot(), before);
+  assert.strictEqual(aggregate.readHistoryTopology(), beforeTopology);
+  assert.strictEqual(aggregate.read().historyMutationRevision, beforeRevision);
+  assert.strictEqual(aggregate.readTurnItemsPagination(partialTurn.id)?.olderCursor, "items:older");
+
+  const updated = hydratedState(
+    [
+      {
+        ...partialTurn,
+        items: [
+          { ...commandItem("live"), aggregatedOutput: "before plus live output" },
+          commandItem("new-live"),
+        ],
+      },
+    ],
+    paginationById,
+  );
+  const owner = projectCodexConversationSnapshot({
+    conversation: before,
+    before: canonical,
+    after: updated,
+    observedAtMs: 3,
+  });
+  const merged = applyCodexConversationHistoryMutation(owner, result.mutation);
+  assert.isTrue(merged.ok);
+  if (!merged.ok) return;
+  assert.deepEqual(
+    merged.conversation.canonicalState!.turns[0]!.items.map((item) => item.id),
+    ["older", "live", "new-live"],
+  );
+  const command = merged.conversation.canonicalState!.turns[0]!.items[1];
+  assert.strictEqual(
+    command?.type === "commandExecution" ? command.aggregatedOutput : null,
+    "before plus live output",
+  );
+  const mergedWindow = merged.conversation.historyItemWindowsByTurnId![partialTurn.id]!;
+  assert.deepEqual(
+    mergedWindow.segments.flatMap((segment) => segment.items.itemIds),
+    ["older", "live", "new-live"],
+  );
+  assert.strictEqual(
+    mergedWindow.segments[1]!.segmentId,
+    before.historyItemWindowsByTurnId![partialTurn.id]!.segments[0]!.segmentId,
+  );
+  assert.deepEqual(mergedWindow.olderBoundary, { status: "available", cursor: "items:next" });
+
+  // Main can observe a terminal update after the owner's merge but before the snapshot arrives.
+  const terminal = hydratedState(
+    [
+      {
+        ...partialTurn,
+        status: "completed",
+        items: [
+          { ...commandItem("live"), aggregatedOutput: "terminal output", status: "completed" },
+          commandItem("new-live"),
+        ],
+      },
+    ],
+    paginationById,
+  );
+  aggregate.acceptCanonicalState(terminal);
+  const accepted = aggregate.acceptOwnerReplica({
+    conversation: merged.conversation,
+    checkpoint: { protocolVersion: 1, ownerEpoch: 1, revision: 1 },
+  });
+  assert.deepEqual(accepted.conversation, projectCodexConversationDocument(merged.conversation));
+  assert.strictEqual(aggregate.read().historyMutationRevision, beforeRevision + 1);
+  assert.strictEqual(aggregate.readTurnItemsPagination(partialTurn.id)?.olderCursor, "items:next");
+  const recovered = aggregate.readCanonicalState()!.turns[0]!;
+  assert.deepEqual(
+    recovered.items.map((item) => item.id),
+    ["older", "live", "new-live"],
+  );
+  assert.strictEqual(recovered.protocol.status, "completed");
+  assert.strictEqual(
+    recovered.items[1]?.type === "commandExecution" ? recovered.items[1].aggregatedOutput : null,
+    "terminal output",
+  );
+});
+
+it("installs search islands and residency evictions only after the owner accepts their proposals", () => {
+  const aggregate = makeConversationEntityStateRegistry({
+    historyResidencyLimits: { maxTurns: 1, maxApproximateBytes: 1_000_000 },
+    historyTailTurnCount: 1,
+  }).acquire(threadId);
+  const tail = completedTurn("turn-proposal-tail");
+  const earlier = completedTurn("turn-proposal-search");
+  const canonical = hydratedState([tail]);
+  aggregate.acceptCanonicalState(canonical);
+  aggregate.installSnapshot(snapshotWithCanonicalTurns(canonical));
+  aggregate.initializeHistory(
+    {
+      olderCursor: "turns:older",
+      backwardsCursor: null,
+      oldestLoadedTurnId: tail.id,
+      isLoadingOlder: false,
+      hasLoadedOldest: false,
+      loadedTurnCount: 1,
+      itemsView: "full",
+    },
+    1,
+  );
+  const before = aggregate.readSnapshot()!;
+  const generation = aggregate.readHistoryTopology().generation;
+  const pagination = {
+    olderCursor: null,
+    isLoadingOlder: false,
+    hasLoadedOldest: true,
+    oldestUserInput: null,
+    openingUserMessageId: null,
+    itemsView: "full" as const,
+  };
+  const proposed = aggregate.insertHistoryIsland({
+    mutationId: "search-proposal",
+    expectedTopologyGeneration: generation,
+    index: 0,
+    islandId: "search:proposal",
+    state: hydratedState([earlier, tail]),
+    turnIds: [earlier.id],
+    itemsPaginationByTurnId: { [earlier.id]: pagination },
+    olderBoundary: opaqueCodexHistoryBoundary("search:older"),
+    newerBoundary: opaqueCodexHistoryBoundary("search:newer"),
+    observedAtMs: 2,
+    projectReplica: false,
+  });
+  if (proposed.status !== "committed") throw new Error(proposed.status);
+  assert.strictEqual(aggregate.readSnapshot(), before);
+  assert.deepEqual(Object.keys(aggregate.readHistoryTopology().entitiesByKey), [tail.id]);
+  const owner = applyCodexConversationHistoryMutation(before, proposed.mutation);
+  if (!owner.ok) throw new Error(owner.reason);
+  aggregate.acceptOwnerReplica({
+    conversation: owner.conversation,
+    checkpoint: { protocolVersion: 1, ownerEpoch: 1, revision: 1 },
+  });
+  assert.deepEqual(Object.keys(aggregate.readHistoryTopology().entitiesByKey), [
+    earlier.id,
+    tail.id,
+  ]);
+
+  // Releasing the search reveal lease under a tight budget proposes a visible eviction.
+  const beforeEviction = aggregate.readSnapshot()!;
+  const eviction = aggregate.setHistoryResidencyPins({
+    clientId: "owner",
+    projectReplica: false,
+    expectedTopologyGeneration: generation,
+    expectedHistoryMutationRevision: aggregate.read().historyMutationRevision,
+    islandIds: [],
+    turnIds: [earlier.id],
+  });
+  if (eviction.status !== "applied" || !eviction.mutation)
+    throw new Error("Expected an eviction proposal");
+  assert.strictEqual(aggregate.readSnapshot(), beforeEviction);
+  assert.deepEqual(Object.keys(aggregate.readHistoryTopology().entitiesByKey), [
+    earlier.id,
+    tail.id,
+  ]);
+  const evictedOwner = applyCodexConversationHistoryMutation(beforeEviction, eviction.mutation);
+  if (!evictedOwner.ok) throw new Error(evictedOwner.reason);
+  aggregate.acceptOwnerReplica({
+    conversation: evictedOwner.conversation,
+    checkpoint: { protocolVersion: 1, ownerEpoch: 1, revision: 2 },
+  });
+  assert.deepEqual(Object.keys(aggregate.readHistoryTopology().entitiesByKey), [tail.id]);
+  assert.deepEqual(
+    aggregate.readCanonicalState()!.turns.map((turn) => turn.protocol.id),
+    [tail.id],
+  );
 });

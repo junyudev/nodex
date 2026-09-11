@@ -81,19 +81,14 @@ it.effect("hydrates a five-turn skeleton page through one shared item budget", (
                 };
           }
           if (itemParams.sortDirection === "asc") {
-            return itemParams.cursor === null
-              ? {
-                  data: [
-                    { turnId: "turn-1", item: { type: "contextCompaction", id: "compact-1" } },
-                  ],
-                  nextCursor: "opening:user",
-                  backwardsCursor: null,
-                }
-              : {
-                  data: [{ turnId: "turn-1", item: userItem("user-1", "one") }],
-                  nextCursor: "items:newer",
-                  backwardsCursor: null,
-                };
+            return {
+              data: [
+                { turnId: "turn-1", item: { type: "contextCompaction", id: "compact-1" } },
+                { turnId: "turn-1", item: userItem("user-1", "one") },
+              ],
+              nextCursor: "items:newer",
+              backwardsCursor: null,
+            };
           }
           return {
             data: [{ turnId: "turn-1", item: agentItem("assistant-1") }],
@@ -123,7 +118,7 @@ it.effect("hydrates a five-turn skeleton page through one shared item budget", (
     assert.strictEqual(page.loadedItemCount, 3);
     assert.deepStrictEqual(
       scheduling,
-      Array(6).fill({
+      Array(5).fill({
         priority: "interactive",
         source: "thread_hydration",
         expectedHostId: "local",
@@ -181,7 +176,7 @@ it.effect("hydrates a five-turn skeleton page through one shared item budget", (
             threadId: "thread-a",
             turnId: "turn-2",
             cursor: "items:tail",
-            limit: 1,
+            limit: 3,
             sortDirection: "desc",
           },
         },
@@ -211,17 +206,7 @@ it.effect("hydrates a five-turn skeleton page through one shared item budget", (
             threadId: "thread-a",
             turnId: "turn-1",
             cursor: null,
-            limit: 1,
-            sortDirection: "asc",
-          },
-        },
-        {
-          method: "thread/items/list",
-          params: {
-            threadId: "thread-a",
-            turnId: "turn-1",
-            cursor: "opening:user",
-            limit: 1,
+            limit: 2,
             sortDirection: "asc",
           },
         },
@@ -276,7 +261,7 @@ it.effect("charges the shared item budget only for unique retained items", () =>
       itemBudget: 2,
     });
 
-    assert.deepStrictEqual(itemLimits, [1, 1, 1]);
+    assert.deepStrictEqual(itemLimits, [2, 1, 1]);
     assert.deepStrictEqual(
       page.turns[0]?.items.map((item) => item.id),
       ["older", "newer"],
@@ -328,134 +313,66 @@ it.effect("caps fresh-cursor duplicate-only item chains by physical request coun
   }),
 );
 
-it.effect("rejects an oversized cold item from residency without advancing its cursor", () =>
-  Effect.gen(function* () {
-    const requests: unknown[] = [];
-    const oversized = {
-      ...agentItem("oversized"),
-      text: "x".repeat(CODEX_HISTORY_INITIAL_BYTE_BUDGET + 1),
-    } as ThreadItem;
-    const gateway = CodexGateway.of({
-      requestForThread: (_threadId: string, method: string, params: unknown) => {
-        requests.push({ method, params });
-        return Effect.succeed(
-          method === "thread/turns/list"
-            ? {
-                data: [completedTurn("turn-1")],
-                nextCursor: null,
-                backwardsCursor: null,
-              }
-            : {
-                data: [{ turnId: "turn-1", item: oversized }],
-                nextCursor: "items:older",
-                backwardsCursor: null,
-              },
-        ) as never;
-      },
-    } as unknown as CodexGateway["Service"]);
-    const adapter = yield* make.pipe(Effect.provideService(CodexGateway, gateway));
-
-    const page = yield* adapter.loadTurnPage({
-      capability: CAPABILITY,
-      threadId: "thread-a",
-      cursor: null,
-      initialItemsCursor: "items:tail",
-    });
-
-    assert.strictEqual(page.loadedItemCount, 0);
-    assert.deepStrictEqual(page.turns[0]?.items, []);
-    assert.deepStrictEqual(page.itemSegmentsByTurnId["turn-1"], []);
-    assert.deepStrictEqual(page.itemsPaginationByTurnId["turn-1"], {
-      olderCursor: "items:tail",
-      isLoadingOlder: false,
-      hasLoadedOldest: false,
-      oldestUserInput: null,
-      openingUserMessageId: null,
-      itemsView: "summary",
-    });
-    assert.strictEqual(requests.length, 2);
-  }),
-);
-
-it.effect("fails closed when an oversized first item has no retryable boundary cursor", () =>
-  Effect.gen(function* () {
-    const oversized = {
-      ...agentItem("oversized"),
-      text: "x".repeat(CODEX_HISTORY_INITIAL_BYTE_BUDGET + 1),
-    } as ThreadItem;
-    const gateway = CodexGateway.of({
-      requestForThread: (_threadId: string, method: string) =>
-        Effect.succeed(
-          method === "thread/turns/list"
-            ? {
-                data: [completedTurn("turn-1")],
-                nextCursor: null,
-                backwardsCursor: null,
-              }
-            : {
-                data: [{ turnId: "turn-1", item: oversized }],
-                nextCursor: "items:older",
-                backwardsCursor: null,
-              },
-        ) as never,
-    } as unknown as CodexGateway["Service"]);
-    const adapter = yield* make.pipe(Effect.provideService(CodexGateway, gateway));
-
-    const failure = yield* adapter
-      .loadTurnPage({
+it.effect(
+  "hydrates complete large Unicode tool output without rejecting or skipping physical items",
+  () =>
+    Effect.gen(function* () {
+      const large = { ...agentItem("large"), text: "运行🙂".repeat(1_000_000) } as ThreadItem;
+      const batch = [
+        large,
+        ...Array.from({ length: 99 }, (_, index) => agentItem(`item-${index}`)),
+      ];
+      const requests: Array<{ cursor: string | null; limit: number }> = [];
+      const gateway = CodexGateway.of({
+        requestForThread: (_threadId: string, method: string, params: unknown) => {
+          if (method === "thread/turns/list")
+            return Effect.succeed({
+              data: [completedTurn("turn-1")],
+              nextCursor: null,
+              backwardsCursor: null,
+            }) as never;
+          const request = params as { cursor: string | null; limit: number };
+          requests.push(request);
+          return Effect.succeed({
+            data: (request.cursor === null ? batch : [agentItem("oldest")]).map((item) => ({
+              turnId: "turn-1",
+              item,
+            })),
+            nextCursor: request.cursor === null ? "exact:older" : null,
+            backwardsCursor: request.cursor === null ? null : "exact:newer",
+          }) as never;
+        },
+      } as unknown as CodexGateway["Service"]);
+      const adapter = yield* make.pipe(Effect.provideService(CodexGateway, gateway));
+      const page = yield* adapter.loadTurnPage({
         capability: CAPABILITY,
         threadId: "thread-a",
         cursor: null,
         initialItemsCursor: null,
-      })
-      .pipe(Effect.flip);
-
-    assert.strictEqual(failure.reason, "item-byte-limit");
-  }),
-);
-
-it.effect("rejects a mixed oversized cold page without skipping its cursor", () =>
-  Effect.gen(function* () {
-    const oversized = {
-      ...agentItem("oversized"),
-      text: "x".repeat(CODEX_HISTORY_INITIAL_BYTE_BUDGET + 1),
-    } as ThreadItem;
-    const batch = [
-      oversized,
-      ...Array.from({ length: 99 }, (_, index) => agentItem(`item-${index}`)),
-    ];
-    const itemLimits: number[] = [];
-    const gateway = CodexGateway.of({
-      requestForThread: (_threadId: string, method: string, params: unknown) => {
-        if (method === "thread/turns/list") {
-          return Effect.succeed({
-            data: [completedTurn("turn-1")],
-            nextCursor: null,
-            backwardsCursor: null,
-          }) as never;
-        }
-        const limit = (params as { readonly limit: number }).limit;
-        itemLimits.push(limit);
-        return Effect.succeed({
-          data: batch.slice(0, limit).map((item) => ({ turnId: "turn-1", item })),
-          nextCursor: "items:after-protected",
-          backwardsCursor: null,
-        }) as never;
-      },
-    } as unknown as CodexGateway["Service"]);
-    const adapter = yield* make.pipe(Effect.provideService(CodexGateway, gateway));
-
-    const page = yield* adapter.loadTurnPage({
-      capability: CAPABILITY,
-      threadId: "thread-a",
-      cursor: null,
-      initialItemsCursor: "items:tail",
-    });
-
-    assert.deepStrictEqual(itemLimits, [1]);
-    assert.deepStrictEqual(page.turns[0]?.items, []);
-    assert.strictEqual(page.itemsPaginationByTurnId["turn-1"]?.olderCursor, "items:tail");
-  }),
+      });
+      assert.deepEqual(
+        requests.map(({ cursor, limit }) => ({ cursor, limit })),
+        [
+          { cursor: null, limit: 100 },
+          { cursor: "exact:older", limit: 100 },
+        ],
+      );
+      assert.strictEqual(page.loadedItemCount, 101);
+      assert.strictEqual(
+        page.turns[0]?.items.find((item) => item.id === "large"),
+        large,
+      );
+      assert.isTrue(page.itemsPaginationByTurnId["turn-1"]?.hasLoadedOldest);
+      const older = yield* adapter.loadTurnItemsPage({
+        capability: CAPABILITY,
+        threadId: "thread-a",
+        turnId: "turn-1",
+        cursor: null,
+      });
+      assert.strictEqual(older.items.length, 100);
+      assert.strictEqual(older.nextCursor, "exact:older");
+      assert.isAbove(older.approximateBytes, CODEX_HISTORY_INITIAL_BYTE_BUDGET);
+    }),
 );
 
 it.effect("rejects a server item page that exceeds the requested physical limit", () =>

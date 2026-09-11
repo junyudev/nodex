@@ -733,12 +733,13 @@ export function LocalConversationThreadBodyOwner({
       ) {
         return;
       }
-      await requestLocalConversationHistoryPage({
+      const result = await requestLocalConversationHistoryPage({
         threadId: targetThreadId,
         expectedConversationGeneration: conversationEntityGeneration,
         expectedHistoryMutationRevision: historyMutationRevision,
         target: { kind: "turnBoundary", boundary },
       });
+      return result.status;
     },
     [body.threadId, conversationEntityGeneration, historyMutationRevision, threadId],
   );
@@ -752,12 +753,13 @@ export function LocalConversationThreadBodyOwner({
       ) {
         return;
       }
-      await requestLocalConversationHistoryPage({
+      const result = await requestLocalConversationHistoryPage({
         threadId: targetThreadId,
         expectedConversationGeneration: conversationEntityGeneration,
         expectedHistoryMutationRevision: historyMutationRevision,
         target: { kind: "turnItems", items },
       });
+      return result.status;
     },
     [body.threadId, conversationEntityGeneration, historyMutationRevision, threadId],
   );

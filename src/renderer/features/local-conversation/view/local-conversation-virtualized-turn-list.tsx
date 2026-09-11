@@ -48,6 +48,7 @@ import { LocalConversationTurnEntry } from "./local-conversation-turn-entry";
 import { useLocalConversationTurnCollapseOverride } from "./local-conversation-thread-view-state";
 import {
   createLocalConversationHistoryGapRequestCoordinator,
+  createLocalConversationHistoryRequestGate,
   CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX,
   LocalConversationHistoryGap,
   type LocalConversationHistoryGapLayout,
@@ -1424,7 +1425,7 @@ export function LocalConversationVirtualizedTurnList({
   const baseScrollController = useLocalConversationThreadScrollController();
   const responseSpacerHeightMotion = useMotionValue(0);
   const latestTurnYMotion = useMotionValue(0);
-  const activeTurnItemProgressKeysRef = useRef(new Set<string>());
+  const turnItemRequestGateRef = useRef(createLocalConversationHistoryRequestGate());
   const lastTurnItemViewportRevisionRef = useRef<number | null>(null);
   const latestTurnEntry = entries.at(-1) ?? null;
   const latestTurnKey = latestTurnEntry?.turnKey ?? null;
@@ -2061,6 +2062,15 @@ export function LocalConversationVirtualizedTurnList({
           return;
         }
       }
+      turnItemRequestGateRef.current.retain(
+        new Set(
+          Object.values(historyTurnItemsRefs ?? {}).flatMap((refs) =>
+            [refs.older, refs.newer].flatMap((ref) =>
+              ref ? [`${ref.turnId}:${ref.progressKey}`] : [],
+            ),
+          ),
+        ),
+      );
       const isMovingTowardNewer =
         change.target !== null && change.target.targetPx > change.target.originPx;
       const partial = change.turns
@@ -2085,7 +2095,7 @@ export function LocalConversationVirtualizedTurnList({
       if (partial) {
         const progressKey = `${partial.ref.turnId}:${partial.ref.progressKey}`;
         if (
-          activeTurnItemProgressKeysRef.current.has(progressKey) ||
+          turnItemRequestGateRef.current.unavailableKeys().has(progressKey) ||
           (lastTurnItemViewportRevisionRef.current !== null &&
             change.viewportRevision <= lastTurnItemViewportRevisionRef.current)
         ) {
@@ -2093,13 +2103,9 @@ export function LocalConversationVirtualizedTurnList({
         }
         if (!onLoadHistoryTurnItems) return;
         lastTurnItemViewportRevisionRef.current = change.viewportRevision;
-        activeTurnItemProgressKeysRef.current.add(progressKey);
-        const release = () => activeTurnItemProgressKeysRef.current.delete(progressKey);
-        try {
-          void onLoadHistoryTurnItems(partial.ref).then(release, release);
-        } catch {
-          release();
-        }
+        turnItemRequestGateRef.current.request(progressKey, () =>
+          onLoadHistoryTurnItems(partial.ref),
+        );
         return;
       }
       if (!onLoadHistoryBoundary || change.gaps.length === 0) return;

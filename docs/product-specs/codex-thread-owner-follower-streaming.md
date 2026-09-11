@@ -1,7 +1,7 @@
 # Codex Thread Owner/Follower Streaming
 
 Status: Active
-Last Updated: 2026-08-31
+Last Updated: 2026-09-11
 
 ## Intent
 
@@ -79,7 +79,7 @@ Main process must:
 
 ## Stream State
 
-Snapshots contain the full `conversationState` and a target `revision`.
+Snapshots contain the full `conversationState` and a target `revision`. Owner identity, epoch, and contiguous revisions fence replication; transcript content is never serialized or hashed to validate a checkpoint. Main preserves each accepted owner document exactly, independently of its dormant control projection.
 
 Patches contain `baseRevision`, `revision`, and ordered Immer-compatible patches.
 
@@ -104,7 +104,7 @@ The coordinator keeps these sets distinct:
 - `snapshotPendingClientIds`: followed non-owner clients that have not adopted the current accepted owner snapshot
 - ready follower targets: the intersection of followed and connected clients, excluding the owner and snapshot-pending clients
 
-When a follower attaches, the coordinator marks it snapshot-pending. Main sends the accepted owner snapshot to that one target; only after delivery is accepted does the client become a ready patch target. The same barrier is re-established for a reconnect and for every owner replacement. A missing owner keeps the intent but cannot produce a visible snapshot; the next owner adoption flushes pending snapshots from the accepted recovery cache.
+When a follower attaches, the coordinator marks it snapshot-pending. Main requests a fresh snapshot from the current owner, fenced by owner identity and epoch. Only acceptance and delivery of that snapshot makes the client a ready patch target; a patch cannot satisfy this barrier. The same barrier is re-established for a reconnect and for every owner replacement. A missing owner keeps the intent but cannot produce a visible snapshot; the next owner supplies a fresh snapshot to pending followers.
 
 Targeted delivery is fail-closed. `threadStreamStateChanged` and follower control messages carry explicit client targets, exclude the source owner, treat an empty target list as a no-op, and never fall back to all-window broadcast. A missing/destroyed target is converted into an IPC reset, removes it from ready targets, preserves its follow intent during the five-second reconnect grace, and requires a fresh snapshot before patches resume. Following-status requests are the deliberate global exception: every renderer may receive the request, but only renderers with the matching local follow intent reannounce to the current owner.
 
@@ -171,7 +171,7 @@ A visible local conversation with no stream role resumes and adopts renderer own
 
 All ordinary state-changing conversation actions use one authority router: owners execute locally, followers forward to the current owner, and no-role renderers resume/adopt before executing locally. There is no per-action main/no-owner transcript fallback; local interrupt is the explicit idempotent control-plane recovery exception.
 
-Ordinary owner mutations commit against the latest renderer document synchronously. The owner action boundary automatically materializes canonical mutations into the visible projection, so a local start or a Main-staged steer cannot update canonical input while forgetting the transcript view. The per-conversation publication cursor computes patches from its last accepted shared document, coalesces mutations that arrive while a publish is in flight, and repairs a rejected patch with a bounded recovery snapshot. Action receipts may wait for the outbox to reach the required revision, but local visibility and the app-server RPC never wait for publication. Full resident snapshots remain explicit barriers for resume, owner replacement, revert, and repair; exported complete history never enters this stream.
+Ordinary owner mutations commit against the latest renderer document synchronously. The owner action boundary automatically materializes canonical mutations into the visible projection, so a local start or a Main-staged steer cannot update canonical input while forgetting the transcript view. With followers, the per-conversation publication cursor computes patches from its last accepted shared document, coalesces mutations that arrive while a publish is in flight, and repairs a rejected patch with a bounded recovery snapshot. Action receipts may wait for the outbox to reach the required revision, but local visibility and the app-server RPC never wait for publication. With no followers, live updates stay local and acknowledge transport delivery without constructing shared documents or replication patches. A later follower requests the current owner snapshot. Full resident snapshots remain explicit recovery barriers for resume, history commits, owner replacement, revert, and repair; exported complete history never enters this stream.
 
 Direct new-thread creation prepares the same input and client identity before transport and adopts the actual app-server thread as the route identity. Main first hydrates the response into the canonical dormant snapshot, then owner adoption atomically turns that snapshot into the first accepted renderer replica and checkpoint. The renderer installs that owner checkpoint before publishing the first visible conversation snapshot, using the same attachment lifecycle as resume. The first adoption must not require an accepted replica as its own precondition; absence of a canonical snapshot fails closed. Main does not publish the dormant document as a visible source-null stream or add a separate transcript-only user row after the response.
 
@@ -240,7 +240,7 @@ conversation state and never causes the renderer to adopt ownership.
 
 History paging and persisted search are owner-visible sparse mutations. A follower sends one exact page or search-island action to the current owner and waits for the resulting revision. Edit and fork route their stable Turn identities directly and require no history barrier. Complete export is renderer-scoped, cancellable, and deliberately outside owner/follower resident-state publication.
 
-Explicit resume returns a role-tagged result. With no owner, main hydrates the latest tail, silently seeds its accepted recovery document, compare-and-sets the invoking renderer as owner, and returns `{ role: "owner", conversation, revision, checkpoint }`. Before notifying transcript subscribers, the renderer installs the owner role and seeds its outbox from that checkpoint; it then applies the document, releases buffered same-thread events, publishes the next owner snapshot, and asks main to replay any transport-brokered pending requests. If another owner already exists, main performs no second resume; it returns `{ role: "follower", conversation, revision, ownerClientId, checkpoint }` from the accepted owner cache, and the renderer installs the follower baseline before applying the document. A subscriber must never observe a `resumed` document without the role from the same accepted attachment.
+Explicit resume returns a role-tagged result. With no owner, main hydrates the latest tail, silently seeds its accepted recovery document, compare-and-sets the invoking renderer as owner, and returns `{ role: "owner", conversation, revision, checkpoint }`. Before notifying transcript subscribers, the renderer installs the owner role and seeds its outbox from that checkpoint; it then applies the document, releases buffered same-thread events, publishes the next owner snapshot, and asks main to replay any transport-brokered pending requests. If another owner already exists, main performs no second resume; it returns `{ role: "follower", conversation, revision, ownerClientId, checkpoint }` from the accepted owner cache, and the renderer installs that provisional follower baseline, reannounces following, and waits for a fresh owner snapshot before completing attachment. A subscriber must never observe a `resumed` document without the role from the same accepted attachment.
 
 Renderer attachment is an explicit observable lifecycle independent from the app-server conversation's `resumeState`: `idle`, `attaching`, `attached`, or `failed`. Only `attaching` renders a restore loader. A settled failure stops automatic render-loop retries and exposes an explicit Retry action; if a valid cached transcript exists, the transcript remains visible with a failure notice instead of being replaced by a loader. Failure before adoption returns the conversation to `needs_resume`; activation failure after adoption also invalidates the unusable stream role while retaining the last truthful local transcript for recovery. Explicit retry or a subsequently accepted owner snapshot may attach the surface again.
 
@@ -328,7 +328,7 @@ Required regression coverage includes:
 - owner-loss recovery marks followers `needs_resume`
 - failed resume/start requests do not leave stale main-side renderer owner mappings
 - renderer-owned resume seeds the owner cursor from the returned accepted revision, releases the resume buffer, publishes the hydrated owner snapshot, and then replays brokered pending requests
-- competing renderer resume attaches as follower from the accepted owner baseline without a second app-server resume or owner publication
+- competing renderer resume installs the recovery baseline provisionally and completes attachment only after a fresh owner snapshot, without a second app-server resume
 - a renderer that loses a concurrent resume race receives the winning owner's accepted baseline instead of an adoption error
 - command-only automation emits no source-null conversation stream and protocol `turn/completed` drives run/inbox bookkeeping directly
 - brokered pending requests replay once per owner, resolve without canonical transcript state, and can replay again only after owner replacement

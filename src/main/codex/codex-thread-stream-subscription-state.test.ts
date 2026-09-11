@@ -4,12 +4,11 @@ import {
   CodexThreadStreamSubscriptionState,
 } from "./codex-thread-stream-subscription-state";
 
-function checkpoint(revision = 0, ownerEpoch = 1, marker = "a") {
+function checkpoint(revision = 0, ownerEpoch = 1) {
   return {
     protocolVersion: 1 as const,
     ownerEpoch,
     revision,
-    canonicalHash: marker.repeat(64),
   };
 }
 
@@ -207,8 +206,8 @@ describe("CodexThreadStreamSubscriptionState", () => {
     state.handleClientConnected("follower");
     state.setOwner("thread-1", "owner");
     state.setFollowing("thread-1", "follower", true);
-    const sent = checkpoint(3, 1, "a");
-    const advanced = checkpoint(4, 1, "b");
+    const sent = checkpoint(3, 1);
+    const advanced = checkpoint(4, 1);
 
     expect(state.markSnapshotSent("thread-1", "follower", sent)).toBe(true);
     const stale = state.acknowledgeSnapshotApplied({
