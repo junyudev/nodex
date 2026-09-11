@@ -170,6 +170,11 @@ function installComposerWindowApi(testInvoke?: TestInvoke): void {
 
 function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
   return {
+    workspaceSearchContext: {
+      hostId: "default",
+      roots: ["/tmp/project"],
+      skillRoots: ["/tmp/project"],
+    },
     projectId: "project_1",
     hostId: "default",
     projectWorkspacePath: "/tmp/project",
@@ -2916,6 +2921,7 @@ describe("ThreadComposer speed menu", () => {
     await waitFor(() => {
       expect(activationInputs).toEqual([
         {
+          hostId: "default",
           id: "browser@openai-bundled",
           cwds: ["/tmp/project"],
         },

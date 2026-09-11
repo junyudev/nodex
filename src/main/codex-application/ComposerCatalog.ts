@@ -1,3 +1,6 @@
+import { resolveRendererHostId } from "./renderer-host-identity";
+import { buildAppHostFilesystemUrl } from "../../shared/app-protocol";
+import { resolveComposerInventoryIconUrl } from "../codex/composer-inventory-icon";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -17,6 +20,8 @@ import type {
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import type {
   CodexComposerPlugin,
+  CodexComposerPluginListInput,
+  CodexComposerSkillListInput,
   CodexComposerPluginActivateInput,
   CodexComposerSkill,
   CodexCollaborationModePreset,
@@ -85,7 +90,7 @@ export class ComposerCatalog extends Context.Service<
       CodexRuntimeError
     >;
     readonly listPlugins: (
-      cwds: readonly string[],
+      input: CodexComposerPluginListInput,
     ) => Effect.Effect<readonly CodexComposerPlugin[], ComposerCatalogError>;
     readonly activatePlugin: (
       input: CodexComposerPluginActivateInput,
@@ -96,8 +101,7 @@ export class ComposerCatalog extends Context.Service<
       readonly isCurrent: Effect.Effect<boolean>;
     }) => Effect.Effect<PluginRemovalResult, ComposerCatalogError>;
     readonly listSkills: (
-      cwds: readonly string[],
-      forceReload?: boolean,
+      input: CodexComposerSkillListInput,
     ) => Effect.Effect<readonly CodexComposerSkill[], ComposerCatalogError>;
     readonly listHooks: (
       input: CodexHooksListInput,
@@ -129,18 +133,23 @@ export const live: Layer.Layer<ComposerCatalog, never, CodexGateway> = Layer.eff
   ComposerCatalog,
   Effect.gen(function* () {
     const gateway = yield* CodexGateway;
+    const iconResolver = (hostId: string) => (path: string) =>
+      hostId === gateway.localHostId
+        ? resolveComposerInventoryIconUrl(path)
+        : buildAppHostFilesystemUrl(hostId, path);
     const awaitReady = gateway.awaitReady(gateway.localHostId);
 
-    const readInstalled = (cwds: readonly string[]) =>
-      gateway.requestLocal("plugin/installed", {
+    const readInstalled = (cwds: readonly string[], hostId = gateway.localHostId) =>
+      gateway.requestOnHost(hostId, "plugin/installed", {
         cwds: cwds.length > 0 ? [...cwds] : null,
         installSuggestionPluginNames: [...COMPOSER_INSTALL_SUGGESTION_PLUGIN_NAMES],
       });
 
-    const listPlugins: ComposerCatalog["Service"]["listPlugins"] = (cwds) =>
+    const listPlugins: ComposerCatalog["Service"]["listPlugins"] = (input) =>
       Effect.gen(function* () {
-        yield* awaitReady;
-        const response = yield* readInstalled(normalizeCwds(cwds));
+        const hostId = resolveRendererHostId(input.hostId, gateway.localHostId);
+        yield* gateway.awaitReady(hostId);
+        const response = yield* readInstalled(normalizeCwds(input.cwds), hostId);
         const plain = asPlainPluginResponse(response);
         return yield* Effect.tryPromise({
           try: () =>
@@ -149,6 +158,7 @@ export const live: Layer.Layer<ComposerCatalog, never, CodexGateway> = Layer.eff
               buildComposerPluginInventory(plain, {
                 installSuggestionPluginNames: COMPOSER_INSTALL_SUGGESTION_PLUGIN_NAMES,
               }),
+              iconResolver(hostId),
             ),
           catch: (cause) => new ComposerCatalogProjectionError({ cause }),
         });
@@ -156,7 +166,8 @@ export const live: Layer.Layer<ComposerCatalog, never, CodexGateway> = Layer.eff
 
     const activatePlugin: ComposerCatalog["Service"]["activatePlugin"] = (input) =>
       Effect.gen(function* () {
-        yield* awaitReady;
+        const hostId = resolveRendererHostId(input.hostId, gateway.localHostId);
+        yield* gateway.awaitReady(hostId);
         const id = input.id.trim();
         if (!id) {
           return yield* new ComposerCatalogInputError({
@@ -164,25 +175,27 @@ export const live: Layer.Layer<ComposerCatalog, never, CodexGateway> = Layer.eff
           });
         }
         const cwds = normalizeCwds(input.cwds);
-        const installed = yield* readInstalled(cwds);
+        const installed = yield* readInstalled(cwds, hostId);
         const activation = yield* Effect.try({
           try: () => resolveComposerPluginActivation(asPlainPluginResponse(installed), id),
           catch: (cause) => new ComposerCatalogInputError({ message: String(cause) }),
         });
         if (activation.kind === "active") return;
         if (activation.kind === "enable") {
-          yield* gateway.requestLocal(
+          yield* gateway.requestOnHost(
+            hostId,
             "config/batchWrite",
             activation.params as unknown as ClientRequestParamsByMethod["config/batchWrite"],
           );
         } else {
-          yield* gateway.requestLocal(
+          yield* gateway.requestOnHost(
+            hostId,
             "plugin/install",
             activation.params as unknown as ClientRequestParamsByMethod["plugin/install"],
           );
         }
-        yield* gateway.requestLocal("skills/list", { cwds, forceReload: true });
-        const verified = (yield* readInstalled(cwds)).marketplaces
+        yield* gateway.requestOnHost(hostId, "skills/list", { cwds, forceReload: true });
+        const verified = (yield* readInstalled(cwds, hostId)).marketplaces
           .flatMap((marketplace) => marketplace.plugins)
           .find((plugin) => plugin.id.trim() === id);
         if (!verified?.installed || !verified.enabled) {
@@ -310,18 +323,23 @@ export const live: Layer.Layer<ComposerCatalog, never, CodexGateway> = Layer.eff
       }),
       listPlugins,
       activatePlugin,
-      listSkills: (cwds, forceReload) =>
+      listSkills: (input) =>
         Effect.gen(function* () {
-          yield* awaitReady;
-          const normalized = normalizeCwds(cwds);
-          const response = yield* gateway.requestLocal("skills/list", {
-            ...(forceReload === undefined ? {} : { forceReload }),
+          const hostId = resolveRendererHostId(input.hostId, gateway.localHostId);
+          yield* gateway.awaitReady(hostId);
+          const normalized = normalizeCwds(input.cwds);
+          const response = yield* gateway.requestOnHost(hostId, "skills/list", {
+            ...(input.forceReload === undefined ? {} : { forceReload: input.forceReload }),
             ...(normalized.length > 0 ? { cwds: normalized } : {}),
           });
           const plain = asPlainSkillsResponse(response);
           return yield* Effect.tryPromise({
             try: () =>
-              hydrateComposerSkillInventoryIcons(plain, buildComposerSkillInventory(plain)),
+              hydrateComposerSkillInventoryIcons(
+                plain,
+                buildComposerSkillInventory(plain),
+                iconResolver(hostId),
+              ),
             catch: (cause) => new ComposerCatalogProjectionError({ cause }),
           });
         }),

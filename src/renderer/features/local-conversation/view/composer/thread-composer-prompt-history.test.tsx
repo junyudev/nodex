@@ -90,6 +90,7 @@ function PromptHistoryHarness({
 
     editorRef.current = {
       getElement: () => null,
+      completeSuggestionQuery: () => undefined,
       focus: () => {
         focusCountRef.current += 1;
       },

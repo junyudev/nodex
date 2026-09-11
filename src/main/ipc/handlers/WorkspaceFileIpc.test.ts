@@ -85,7 +85,7 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
       ),
       scope,
     );
-    assert.strictEqual(handlers.size, 9);
+    assert.strictEqual(handlers.size, 8);
 
     const start = handlers.get("workspace-file-watch:start");
     assert.isDefined(start);

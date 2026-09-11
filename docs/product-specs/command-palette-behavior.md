@@ -8,7 +8,7 @@ It has explicit entry modes while keeping root search useful when users type a t
 - root mode searches commands immediately and progressively adds chats and Pages as the query becomes specific
 - chats mode searches the current non-archived sidebar chats
 - page mode searches Library Pages and owns the Page filter controls
-- files mode keeps the command-menu shell available for future file-search work, but file search stays a development-only disabled mock until Nodex has a real file-search backend
+- files mode searches the selected local workspace through the native file-search session
 - result ranking favors fast recall over exhaustive inspection
 - matching context is visible directly in the result row through inline highlights and short previews
 
@@ -24,6 +24,7 @@ The palette is a transient overlay and does not become part of durable navigatio
 - A leading `>` is plain query text and no longer switches modes.
 - The palette searches the complete authorized Page corpus of every available Project context, not only Pages already loaded by a Board or the active Project.
 - The palette combines the current non-archived local chat catalog with eligible root chats returned by app-server search. A server-only result is materialized locally only when opened.
+- `Search files` is available when the selected context has local workspace roots. It shares native search lifecycle and ranking with the Composer and Files panel. `Tab` or `Enter` on a directory completes its path; accepting a file opens a preview. Remote contexts do not expose local file opening.
 - The palette closes after executing a result.
 - Pressing `Enter` on a selected Page result materializes and selects that Page as a durable
   surface: in the active Session when one owns the workbench, otherwise in the target Project
@@ -44,7 +45,7 @@ Root command mode is opened by `Cmd/Ctrl+K` and `Cmd/Ctrl+Shift+P`.
 - At `2` Unicode characters, root mode synchronously searches the warm, Core-authorized Page metadata projection and starts bounded Core body enrichment. At `3` characters, the `Chats` section additionally merges bounded app-server chat-history results.
 - Chats and Pages are represented as explicit command rows such as `Search chats` and `Search Pages`.
 - Executing `Search chats` switches to chats mode. Executing `Search Pages` switches to page mode.
-- `Search files` appears only in development as a disabled mock row until real file search exists.
+- `Search files` switches to files mode when local workspace roots are available.
 - Root results remain grouped as commands, Chats, then Pages; scores from different result types are never interleaved.
 - Pages use only the discovery-row budget left after commands, Chats, and visible search-status rows. Root mode has no separate Page-result cap, so Pages can fill every remaining row.
 - For queries that include app-server chat history, root mode waits for that Chat result count to settle before revealing Pages so the final section does not appear and disappear as Chats arrive.
@@ -82,10 +83,11 @@ Page mode is opened by `Cmd/Ctrl+P`, the sidebar `Search` row, or the root-mode 
 
 ### Files Mode
 
-Files mode is a reference-shell placeholder.
+Files mode uses the shared native file-search controller and reports loading, empty, and failure states.
 
-- Files mode keeps the command-menu layout, input, loading, empty, and disabled-row states available for future file-search work.
-- Until Nodex has real workspace file search, file search does not claim `Cmd/Ctrl+P` and does not execute backend actions.
+- Query changes update the existing native session; host/root changes and closing the palette release it.
+- Directory results complete the query; file results open a preview in the selected owner.
+- File search has no default keyboard binding; its configurable binding leaves `Cmd/Ctrl+P` assigned to Pages.
 
 ## Page Search Model
 
@@ -270,7 +272,7 @@ Metadata matches highlight title, project/Chats context, cwd, branch, and previe
 - root mode shows up to `100` matching command rows and up to `9` progressive chat rows; Pages appear only when the combined command, Chat, and status-row count is below the `7`-row discovery budget, then fill the remaining budget without a separate Page cap
 - chats mode shows up to `9` chat rows
 - page mode shows up to `12` Page rows
-- files mode shows only its mock/empty state until real file search exists
+- files mode displays up to 50 native file and directory matches after path exclusions
 
 ## Execution Semantics
 

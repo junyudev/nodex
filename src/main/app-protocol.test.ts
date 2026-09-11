@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import type { Protocol, Session } from "electron";
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { buildAppFilesystemUrl } from "../shared/app-protocol";
+import { buildAppFilesystemUrl, buildAppHostFilesystemUrl } from "../shared/app-protocol";
 import {
   createAppProtocolHandler,
   createOrdinaryFileResponse,
@@ -410,4 +410,25 @@ describe("app protocol dispatch and origin gate", () => {
     release();
     expect(calls.slice(-2)).toEqual(["gate:remove", "unhandle:app"]);
   });
+});
+
+test("host-qualified assets retain their host and native path without a local fallback", async () => {
+  const calls: Array<{ hostId: string; path: string }> = [];
+  const remotePath = "C:\\skills\\icons\\a #1.svg";
+  const handler = createAppProtocolHandler({
+    rendererRoot: "/renderer",
+    readHostFile: async ({ hostId, path }) => {
+      calls.push({ hostId, path });
+      return hostId === "remote-a" ? new TextEncoder().encode("<svg/>") : null;
+    },
+  });
+  const response = await handler(new Request(buildAppHostFilesystemUrl("remote-a", remotePath)));
+  expect(await response.text()).toBe("<svg/>");
+  expect(response.headers.get("Content-Type")).toBe("image/svg+xml");
+  const missing = await handler(new Request(buildAppHostFilesystemUrl("remote-b", remotePath)));
+  expect(missing.status).toBe(404);
+  expect(calls).toEqual([
+    { hostId: "remote-a", path: remotePath },
+    { hostId: "remote-b", path: remotePath },
+  ]);
 });

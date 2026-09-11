@@ -1,3 +1,5 @@
+import type { FileSearchScope } from "../../../shared/file-search";
+import { useFileSearch } from "@/lib/use-file-search";
 import {
   useCallback,
   useDeferredValue,
@@ -12,6 +14,8 @@ import {
 } from "react";
 import {
   FilterIcon,
+  FileIcon,
+  FolderIcon,
   DatabaseIcon,
   SidePanelSideChatIcon,
   SidebarVisibleIcon,
@@ -30,6 +34,7 @@ import {
   type CommandPaletteCommandGroup,
   type CommandPaletteCommand,
   type CommandPaletteThread,
+  type CommandPaletteFile,
   writeCommandPalettePageFilters,
 } from "../../lib/command-palette";
 import { type CommandPaletteHighlightSegment } from "../../lib/command-palette-highlight";
@@ -73,10 +78,15 @@ import {
 import { OPEN_DB_VIEW_TAB_COMMAND_ID } from "@/lib/command-palette-commands";
 import type { Project } from "@/lib/types";
 
-type PaletteItem = CommandPaletteCommand | CommandPalettePage | CommandPaletteThread;
+type PaletteItem =
+  | CommandPaletteCommand
+  | CommandPalettePage
+  | CommandPaletteThread
+  | CommandPaletteFile;
 type PaletteSectionModel = { title: string; items: PaletteItem[] };
 
 interface CommandPaletteSurfaceProps {
+  fileSearchScope?: FileSearchScope | null;
   open: boolean;
   openTriggerTick: number;
   mode: CommandMenuMode;
@@ -145,7 +155,7 @@ function getEmptyMessage(mode: CommandMenuMode, query: string, loading: boolean)
 
   if (mode === "chats") return query.length > 0 ? "No matching chats." : "No chats.";
   if (mode === "pages") return query.length > 0 ? "No matching pages." : "No pages.";
-  if (mode === "files") return "File search is not available in Nodex yet.";
+  if (mode === "files") return query ? "No files found." : "Type to search files.";
   return "No matching results.";
 }
 
@@ -168,6 +178,7 @@ function resolveSelectableIndex(
 }
 
 interface CommandPaletteSectionsInput {
+  files?: readonly CommandPaletteFile[];
   query: string;
   mode: CommandMenuMode;
   commands: readonly CommandPaletteCommand[];
@@ -207,6 +218,7 @@ function buildCommandPaletteSectionsModel({
   pageSearchBatch,
   pageSearchScopeKey,
   threadSearchBatch,
+  files = [],
 }: CommandPaletteSectionsInput): CommandPaletteSectionsModel {
   const results = filterCommandPaletteItems({
     query,
@@ -299,6 +311,7 @@ function buildCommandPaletteSectionsModel({
       return [{ title: "Pages", items: visiblePages }];
     }
 
+    if (mode === "files") return [{ title: "Files", items: [...files] }];
     return [];
   })();
 
@@ -659,6 +672,18 @@ function PaletteSection({
                   selected={selected}
                   showSubtitle={showSubtitle}
                 />
+              ) : item.kind === "file" ? (
+                <div className="flex min-w-0 items-center gap-2">
+                  {item.file.kind === "directory" ? (
+                    <FolderIcon className="size-4 shrink-0" />
+                  ) : (
+                    <FileIcon className="size-4 shrink-0" />
+                  )}
+                  <span className="shrink-0">{item.file.label}</span>
+                  <span className="min-w-0 truncate text-token-description-foreground">
+                    {item.file.directoryPath}
+                  </span>
+                </div>
               ) : (
                 <ThreadRow item={item} selected={selected} />
               )}
@@ -688,6 +713,7 @@ export const CommandPaletteSurface = forwardRef<
   {
     open,
     openTriggerTick,
+    fileSearchScope = null,
     mode,
     initialQuery,
     commands,
@@ -715,6 +741,15 @@ export const CommandPaletteSurface = forwardRef<
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const previousModeRef = useRef<CommandMenuMode>(mode);
   const [query, setQuery] = useState("");
+  const fileSearch = useFileSearch({
+    enabled: open && mode === "files",
+    query,
+    scope: fileSearchScope,
+  });
+  const files = useMemo<CommandPaletteFile[]>(
+    () => fileSearch.matches.map((file) => ({ kind: "file", id: file.fsPath, file })),
+    [fileSearch.matches],
+  );
   const [pageFilters, setPageFilters] = useState<CommandPalettePageFilters>(() =>
     readCommandPalettePageFilters(),
   );
@@ -847,6 +882,7 @@ export const CommandPaletteSurface = forwardRef<
         pages,
         threads,
         threadSearchIndex,
+        files,
         pageSearchBatch: pageSearchBatch,
         pageSearchScopeKey,
         threadSearchBatch,
@@ -864,6 +900,7 @@ export const CommandPaletteSurface = forwardRef<
       threadSearchBatch,
       threadSearchIndex,
       threads,
+      files,
     ],
   );
   const sections = visibleModel.sections;
@@ -948,6 +985,7 @@ export const CommandPaletteSurface = forwardRef<
     (nextQuery: string): readonly PaletteItem[] =>
       buildCommandPaletteSectionsModel({
         query: nextQuery,
+        files: nextQuery === query ? files : [],
         mode,
         commands,
         projects,
@@ -972,6 +1010,8 @@ export const CommandPaletteSurface = forwardRef<
       threadSearchBatch,
       threadSearchIndex,
       threads,
+      query,
+      files,
     ],
   );
   const visibleRowsLoading =
@@ -981,7 +1021,7 @@ export const CommandPaletteSurface = forwardRef<
         ? chatsLoading || visibleModel.threadSearchPending
         : mode === "root"
           ? loading || visibleModel.threadSearchPending || visibleModel.pageSearchPending
-          : loading;
+          : fileSearch.loading;
 
   useEffect(() => {
     if (flatItems.length === 0) {
@@ -1037,6 +1077,10 @@ export const CommandPaletteSurface = forwardRef<
         return;
       }
 
+      if (item.kind === "file" && item.file.kind === "directory") {
+        setQuery(`${item.file.path.replace(/\/$/u, "")}/`);
+        return;
+      }
       onRequestClose();
       onExecute(item);
     },
@@ -1078,6 +1122,13 @@ export const CommandPaletteSurface = forwardRef<
       return;
     }
 
+    if (event.key === "Tab" && mode === "files") {
+      const selected = flatItems[Math.max(0, selectedIndex)];
+      if (selected?.kind !== "file" || selected.file.kind !== "directory") return;
+      event.preventDefault();
+      handleExecute(selected);
+      return;
+    }
     if (event.key === "Enter") {
       event.preventDefault();
       const result = resolveQueryFreshAccept({

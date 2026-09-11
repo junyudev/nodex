@@ -2,14 +2,15 @@ import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import type { ComposerFileSearchEvent } from "../../shared/composer-file-search";
+import type { FileSearchEvent } from "../../shared/file-search";
 import type { CodexEndpointEvent } from "../codex-runtime/CodexEventHub";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
-import { makeComposerFileSearchSession } from "./ComposerFileSearch";
+import { makeFileSearchSession } from "./FileSearch";
 
 it.effect(
   "reuses native indexing, fences notifications, reconnects, and stops with its Scope",
@@ -19,24 +20,25 @@ it.effect(
       const scope = yield* Scope.make();
       let generation = 1;
       const calls: Array<{ method: string; params: unknown; fence: unknown }> = [];
-      const received: ComposerFileSearchEvent[] = [];
+      const received: FileSearchEvent[] = [];
       const reconnected = yield* Deferred.make<void>();
       const delivered = yield* Deferred.make<void>();
       const gateway = {
         localHostId: "local",
         events: Stream.fromPubSub(bus),
-        awaitReady: () => Effect.void,
+        awaitReady: (hostId: string) => Effect.sync(() => assert.strictEqual(hostId, "local")),
         connection: () => Effect.sync(() => ({ kind: "ready", hostId: "local", generation })),
-        requestOnHost: (_host: string, method: string, params: unknown, fence: unknown) =>
+        requestOnHost: (host: string, method: string, params: unknown, fence: unknown) =>
           Effect.gen(function* () {
+            assert.strictEqual(host, "local");
             calls.push({ method, params, fence });
             if (method === "fuzzyFileSearch/sessionUpdate" && generation === 2)
               yield* Deferred.succeed(reconnected, undefined);
             return {};
           }),
       } as unknown as CodexGateway["Service"];
-      const session = yield* makeComposerFileSearchSession(
-        { sessionId: "search", roots: ["/repo"] },
+      const session = yield* makeFileSearchSession(
+        { hostId: "default", sessionId: "search", roots: ["/repo"] },
         (event) =>
           Effect.sync(() => {
             received.push(event);
@@ -126,8 +128,8 @@ it.effect("recreates a missing native session before retrying the current query"
             return Effect.succeed({});
           }),
       } as unknown as CodexGateway["Service"];
-      const session = yield* makeComposerFileSearchSession(
-        { sessionId: "search", roots: ["/repo"] },
+      const session = yield* makeFileSearchSession(
+        { hostId: "local", sessionId: "search", roots: ["/repo"] },
         () => Effect.void,
       ).pipe(Effect.provideService(CodexGateway, gateway));
       yield* session.update("abc");
@@ -139,4 +141,31 @@ it.effect("recreates a missing native session before retrying the current query"
       ]);
     }),
   ),
+);
+
+it.effect("stops an admitted native index when its start reply is interrupted", () =>
+  Effect.gen(function* () {
+    const admitted = yield* Deferred.make<void>();
+    const stopped: unknown[] = [];
+    const gateway = {
+      events: Stream.never,
+      awaitReady: () => Effect.void,
+      connection: () => Effect.succeed({ kind: "ready", hostId: "remote", generation: 4 }),
+      requestOnHost: (_host: string, method: string, params: unknown) => {
+        if (method === "fuzzyFileSearch/sessionStart")
+          return Deferred.succeed(admitted, undefined).pipe(Effect.andThen(Effect.never));
+        return Effect.sync(() => {
+          stopped.push(params);
+          return {};
+        });
+      },
+    } as unknown as CodexGateway["Service"];
+    const pending = yield* makeFileSearchSession(
+      { hostId: "remote", sessionId: "pending", roots: ["/repo"] },
+      () => Effect.void,
+    ).pipe(Effect.provideService(CodexGateway, gateway), Effect.scoped, Effect.forkScoped);
+    yield* Deferred.await(admitted);
+    yield* Fiber.interrupt(pending);
+    assert.deepEqual(stopped, [{ sessionId: "pending" }]);
+  }),
 );

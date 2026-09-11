@@ -3354,6 +3354,11 @@ export function buildThreadStageStorySurfaceModels(
     controls.preset === "implement-plan" ? "gpt-5.6-sol" : (availableModels[0]?.model ?? "");
   const selectedReasoningEffort = controls.preset === "implement-plan" ? "xhigh" : "high";
   const footerModel: ThreadFooterModel = {
+    workspaceSearchContext: {
+      hostId: "default",
+      roots: ["/tmp/project"],
+      skillRoots: ["/tmp/project"],
+    },
     projectId: STORY_PROJECT_ID,
     hostId: "default",
     projectWorkspacePath: STORY_WORKSPACE_PATH,

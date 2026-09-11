@@ -18,7 +18,6 @@ import {
   WorkspaceDirectoryEntriesInputSchema,
   WorkspaceFileMetadataInputSchema,
   WorkspaceFileRequestSchema,
-  WorkspaceFileSearchInputSchema,
   WorkspaceFileTextReadInputSchema,
   WorkspaceFileWatchStopInputSchema,
   WorkspaceFileWriteInputSchema,
@@ -36,7 +35,6 @@ import {
   readWorkspaceFile,
   readWorkspaceFileBinary,
   readWorkspaceFileMetadata,
-  searchWorkspaceFiles,
   saveWorkspaceFileCopy,
   toWorkspaceFileIpcError,
   WorkspaceFileUserError,
@@ -187,11 +185,6 @@ export const live = (
       yield* ipc.handleQuery("workspace-directory-entries", (event, input: unknown) =>
         run("list-directory", event, () =>
           listWorkspaceDirectoryEntries(WorkspaceDirectoryEntriesInputSchema.parse(input)),
-        ),
-      );
-      yield* ipc.handleQuery("workspace-file-search", (event, input: unknown) =>
-        run("search-files", event, () =>
-          searchWorkspaceFiles(WorkspaceFileSearchInputSchema.parse(input)),
         ),
       );
       yield* ipc.handleQuery("read-file", (event, input: unknown) =>

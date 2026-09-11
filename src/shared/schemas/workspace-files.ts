@@ -3,7 +3,6 @@ import type {
   WorkspaceDirectoryEntriesInput,
   WorkspaceFileMetadataInput,
   WorkspaceFileRequest,
-  WorkspaceFileSearchInput,
   WorkspaceFileTextReadInput,
   WorkspaceFileWriteInput,
   WorkspaceFileWatchStopInput,
@@ -26,16 +25,6 @@ export const WorkspaceDirectoryEntriesInputSchema = z
     directoriesOnly: z.boolean().optional(),
   })
   .strict() satisfies z.ZodType<WorkspaceDirectoryEntriesInput>;
-
-export const WorkspaceFileSearchInputSchema = z
-  .object({
-    hostId: hostIdSchema,
-    workspaceRoot: pathSchema,
-    query: z.string().trim().min(1).max(512),
-    maxResults: z.number().int().positive().max(1_000).optional(),
-    maxVisitedEntries: z.number().int().positive().max(1_000_000).optional(),
-  })
-  .strict() satisfies z.ZodType<WorkspaceFileSearchInput>;
 
 export const WorkspaceFileRequestSchema = z
   .object({

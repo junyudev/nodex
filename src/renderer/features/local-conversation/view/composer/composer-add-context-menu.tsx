@@ -1,4 +1,6 @@
-import type { ComposerFileSearchMatch } from "../../../../../shared/composer-file-search";
+import type { FileSearchScope } from "../../../../../shared/file-search";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import type { FileSearchMatch } from "../../../../../shared/file-search";
 import {
   forwardRef,
   useCallback,
@@ -49,7 +51,7 @@ import type {
   CodexComposerSkill,
   ProtocolAppInfo,
 } from "@/lib/types";
-import { useComposerWorkspaceFileSearch } from "./use-composer-workspace-file-search";
+import { useFileSearch } from "../../../../lib/use-file-search";
 import { COMPOSER_FOOTER_GHOST_ICON_BUTTON_CLASS_NAME } from "../shared/composer-footer-controls";
 import type { NewChatProjectSelectorModel } from "../../thread-stage-types";
 import { composerContextOperations } from "../../composer-context-operations";
@@ -79,6 +81,7 @@ type ComposerContextSelection =
 
 interface ComposerContextItemView {
   readonly candidate: ComposerContextSuggestionCandidate<ComposerContextSelection>;
+  readonly completionQuery?: string;
   readonly icon: ReactNode;
   readonly active: boolean;
   readonly plugin?: CodexComposerPlugin;
@@ -108,7 +111,7 @@ interface ComposerAddContextMenuProps {
   readonly chatGptConversations?: readonly CodexComposerChatGptConversation[];
   readonly chatGptConversationsAvailable?: boolean;
   readonly chatGptConversationsLoading?: boolean;
-  readonly workspaceRoot: string | null;
+  readonly fileSearchScope: FileSearchScope | null;
   readonly pluginCwds: readonly string[];
   readonly projectId: string | null;
   readonly projectSelector: NewChatProjectSelectorModel | null;
@@ -129,6 +132,7 @@ interface ComposerAddContextMenuProps {
   readonly onCapabilitiesChanged?: () => Promise<void>;
   readonly onPrefillPrompt: (prompt: string) => void;
   readonly onInsertMention: (mention: ComposerPromptMentionInput) => void;
+  readonly onCompleteQuery: (query: string) => void;
 }
 
 const EMPTY_COMPOSER_SITES: readonly CodexComposerSite[] = [];
@@ -519,8 +523,9 @@ function useComposerMenuNavigation(input: {
   readonly items: readonly ComposerContextItemView[];
   readonly onSelect: (item: ComposerContextItemView) => void;
   readonly ref: ForwardedRef<ComposerAddContextMenuHandle>;
+  readonly onCompleteQuery?: (query: string) => void;
 }) {
-  const { items, onSelect, ref } = input;
+  const { items, onSelect, ref, onCompleteQuery } = input;
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -534,9 +539,13 @@ function useComposerMenuNavigation(input: {
   useImperativeHandle(
     ref,
     () => ({
-      submitHighlighted: () => {
+      submitHighlighted: (action) => {
         const selected = items.find((item) => item.candidate.id === highlightedId) ?? items[0];
         if (!selected) return false;
+        if (action === "complete-query" && selected.completionQuery && onCompleteQuery) {
+          onCompleteQuery(selected.completionQuery);
+          return true;
+        }
         onSelect(selected);
         return true;
       },
@@ -550,7 +559,7 @@ function useComposerMenuNavigation(input: {
         return true;
       },
     }),
-    [highlightedId, items, onSelect],
+    [highlightedId, items, onSelect, onCompleteQuery],
   );
 
   return {
@@ -715,7 +724,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
     chatGptConversations = EMPTY_CHATGPT_CONVERSATIONS,
     chatGptConversationsAvailable = false,
     chatGptConversationsLoading = false,
-    workspaceRoot,
+    fileSearchScope,
     pluginCwds,
     projectId,
     projectSelector,
@@ -733,18 +742,21 @@ const ComposerAddContextRootMenuContent = forwardRef<
     onCapabilitiesChanged,
     onPrefillPrompt,
     onInsertMention,
+    onCompleteQuery,
   },
   ref,
 ) {
+  const workspaceRoot = fileSearchScope?.roots[0] ?? null;
   const open = true;
   const query = suggestion.query;
   const normalizedQuery = query.trim();
   const appshot = useComposerAppshotTarget(open);
   const appshotTarget = appshot.target;
-  const fileSearch = useComposerWorkspaceFileSearch({
+  const fileSearchQuery = useDebouncedValue(query, 100);
+  const fileSearch = useFileSearch({
     enabled: open,
-    query,
-    workspaceRoot,
+    query: fileSearchQuery,
+    scope: fileSearchScope,
   });
   const chatGptConversationSearch = useComposerChatGptConversationSearch({
     enabled: open && chatGptConversationsAvailable,
@@ -777,7 +789,11 @@ const ComposerAddContextRootMenuContent = forwardRef<
     async (plugin: CodexComposerPlugin): Promise<boolean> => {
       if (plugin.installed && plugin.enabled) return true;
       try {
-        await composerContextOperations.activatePlugin(plugin.id, pluginCwds);
+        await composerContextOperations.activatePlugin(
+          plugin.id,
+          fileSearchScope?.hostId ?? "default",
+          pluginCwds,
+        );
         await onCapabilitiesChanged?.();
         return true;
       } catch (error) {
@@ -788,7 +804,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
         return false;
       }
     },
-    [onCapabilitiesChanged, pluginCwds],
+    [onCapabilitiesChanged, pluginCwds, fileSearchScope?.hostId],
   );
 
   const inventoryItems = useMemo(() => {
@@ -1000,7 +1016,9 @@ const ComposerAddContextRootMenuContent = forwardRef<
           active: false,
         }))
       : [];
-    const fileSuggestions = fileSearch.matches.map((file) => buildComposerFileItem(file));
+    const fileSuggestions = (fileSearchQuery === query ? fileSearch.matches : []).map((file) =>
+      buildComposerFileItem(file),
+    );
     return [
       ...addItems,
       ...inventoryItems.pluginItems,
@@ -1017,6 +1035,8 @@ const ComposerAddContextRootMenuContent = forwardRef<
     chatGptConversationSearch.conversations,
     chatGptConversationsAvailable,
     fileSearch.matches,
+    fileSearchQuery,
+    query,
     goalAvailable,
     imagesOnly,
     appshotTarget,
@@ -1084,11 +1104,13 @@ const ComposerAddContextRootMenuContent = forwardRef<
   const { highlightedId, setHighlightedId } = useComposerMenuNavigation({
     items: visibleItems,
     onSelect: selectItem,
+    onCompleteQuery,
     ref,
   });
   const searching =
     normalizedQuery.length > 0 &&
     (fileSearch.loading ||
+      fileSearchQuery !== query ||
       threadItems.loading ||
       threadSearch.loading ||
       pluginsLoading ||
@@ -1264,12 +1286,13 @@ const ComposerSkillMentionMenuContent = forwardRef<
     skillsLoading = false,
     apps,
     appsLoading = false,
-    workspaceRoot,
+    fileSearchScope,
     onDismiss,
     onInsertMention,
   },
   ref,
 ) {
+  const workspaceRoot = fileSearchScope?.roots[0] ?? null;
   const items = useMemo<ComposerContextItemView[]>(
     () => [
       ...[...skills]
@@ -1402,9 +1425,10 @@ type ComposerMentionMenuProps = Pick<
   | "skillsLoading"
   | "apps"
   | "appsLoading"
-  | "workspaceRoot"
+  | "fileSearchScope"
   | "onDismiss"
   | "onInsertMention"
+  | "onCompleteQuery"
 >;
 
 /** Restricted question-editor suggestions: references only, with no Composer mode actions. */
@@ -1422,11 +1446,14 @@ export const ComposerMentionMenu = forwardRef<
 const ComposerFileMentionMenuContent = forwardRef<
   ComposerAddContextMenuHandle,
   ComposerMentionMenuProps
->(function ComposerFileMentionMenuContent({ suggestion, workspaceRoot, onInsertMention }, ref) {
-  const search = useComposerWorkspaceFileSearch({
+>(function ComposerFileMentionMenuContent(
+  { suggestion, fileSearchScope, onInsertMention, onCompleteQuery },
+  ref,
+) {
+  const search = useFileSearch({
     enabled: true,
     query: suggestion.query,
-    workspaceRoot,
+    scope: fileSearchScope,
   });
   const items = search.matches.map((file) => buildComposerFileItem(file));
   const selectItem = (item: ComposerContextItemView) => {
@@ -1436,6 +1463,7 @@ const ComposerFileMentionMenuContent = forwardRef<
   const { highlightedId, setHighlightedId } = useComposerMenuNavigation({
     items,
     onSelect: selectItem,
+    onCompleteQuery,
     ref,
   });
   return (
@@ -1468,13 +1496,14 @@ const ComposerFileMentionMenuContent = forwardRef<
   );
 });
 
-function buildComposerFileItem(file: ComposerFileSearchMatch): ComposerContextItemView {
+function buildComposerFileItem(file: FileSearchMatch): ComposerContextItemView {
   return {
+    ...(file.kind === "directory" ? { completionQuery: `${file.path.replace(/\/$/u, "")}/` } : {}),
     candidate: {
-      id: `file:${file.path}`,
+      id: `file:${file.fsPath}`,
       section: "Files and chats",
       label: file.label,
-      description: file.path,
+      description: file.directoryPath,
       searchTerms: [file.path],
       sourceRanked: true,
       value: {
@@ -1484,7 +1513,7 @@ function buildComposerFileItem(file: ComposerFileSearchMatch): ComposerContextIt
           name: file.label,
           path: file.path,
           fsPath: file.fsPath,
-          description: file.path,
+          description: file.directoryPath,
         },
       },
     },

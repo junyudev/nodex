@@ -688,3 +688,22 @@ describe("ComposerPromptEditor", () => {
     });
   });
 });
+
+test("directory completion replaces the current trigger range and keeps suggestions active", async () => {
+  const { editorRef, onChange } = renderPromptEditor({ value: "Inspect " });
+  await act(async () => {
+    editorRef.current?.focusAtEnd();
+    editorRef.current?.insertText("@sr");
+    await Promise.resolve();
+  });
+  await act(async () => {
+    editorRef.current?.completeSuggestionQuery("src/");
+    await Promise.resolve();
+  });
+  expect(onChange).toHaveBeenLastCalledWith("Inspect @src/");
+  expect(editorRef.current?.getSuggestionState()).toMatchObject({
+    active: true,
+    kind: "at-mention",
+    query: "src/",
+  });
+});

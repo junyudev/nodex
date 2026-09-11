@@ -581,6 +581,8 @@ function CodexConnectedSessionThread({
   );
 
   const connectedStageProps = {
+    projectWorkspaceRoots:
+      (summary ? project : selectedNewThreadProject)?.sources.map((source) => source.root) ?? [],
     projectId: effectiveProjectId,
     sessionId: session.id,
     threadPinned: session.pinned ?? false,

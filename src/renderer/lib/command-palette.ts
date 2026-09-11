@@ -1,3 +1,4 @@
+import type { FileSearchMatch } from "../../shared/file-search";
 import { matchesSearchTokens, tokenizeSearchQuery } from "./page-search";
 import { buildCommandPaletteCharacterHighlightSegments } from "./command-palette-highlight";
 import { normalizeSearchText } from "./search-text";
@@ -699,4 +700,10 @@ export function filterCommandPaletteItems(input: {
     pages: [],
     threads: [],
   };
+}
+
+export interface CommandPaletteFile {
+  readonly kind: "file";
+  readonly id: string;
+  readonly file: FileSearchMatch;
 }

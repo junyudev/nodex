@@ -1868,11 +1868,19 @@ export class BrowserState {
             message: "Browser page changed before the image was attached",
           };
         }
-        const saved = this.saveBrowserImage({
-          name: fetched.value.name,
-          mimeType: fetched.value.mimeType,
-          bytes: fetched.value.bytes,
-        });
+        const saved = yield* Effect.promise(() =>
+          this.saveBrowserImage({
+            name: fetched.value.name,
+            mimeType: fetched.value.mimeType,
+            bytes: fetched.value.bytes,
+          }),
+        );
+        if (
+          contents.isDestroyed() ||
+          this.webContentsTabIds.get(webContentsId) !== browserTabKey(tab)
+        ) {
+          return { ok: false, message: "Browser page changed before the image was attached" };
+        }
         this.events.publish({
           kind: "contextMenuAction",
           value: {

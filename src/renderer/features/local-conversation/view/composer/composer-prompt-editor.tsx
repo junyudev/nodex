@@ -623,6 +623,7 @@ export interface ComposerPromptEditorHandle {
   setPromptText: (text: string) => string;
   insertText: (text: string) => string;
   insertMention: (mention: ComposerPromptMentionInput) => string;
+  completeSuggestionQuery: (query: string) => void;
   replaceTextRange: (range: { from: number; to: number; text: string }) => string;
   clearRange: (range: { from: number; to: number }) => string;
   toggleContextSuggestions: () => void;
@@ -1164,6 +1165,13 @@ export const ComposerPromptEditor = forwardRef<
         view.dispatch(replacePromptTextRange(view.state.tr, { from, to, text }).scrollIntoView());
         view.focus();
         return readPromptDocText(view.state.doc);
+      },
+      completeSuggestionQuery: (query) => {
+        const view = viewRef.current;
+        if (!view) return;
+        const suggestion = readComposerSuggestionState(view.state);
+        if (!suggestion.active || !suggestion.range) return;
+        replaceTextRange({ ...suggestion.range, text: `${suggestion.trigger ?? "@"}${query}` });
       },
       insertMention: (mention) => {
         const view = viewRef.current;

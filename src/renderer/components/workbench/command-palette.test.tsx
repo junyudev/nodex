@@ -1,6 +1,8 @@
+import { createFileSearchFixture } from "../../test/file-search-fixture";
+import { installWindowApi } from "../../test/browser-globals";
 import { describe, expect, vi, test } from "vite-plus/test";
 import { createElement, createRef } from "react";
-import { act, fireEvent } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import type {
   CommandPalettePage,
   CommandPaletteCommand,
@@ -162,7 +164,7 @@ describe("buildCommandPaletteCommands", () => {
     const ids = commands.map((command) => command.id).join(",");
 
     expect(commands.some((command) => command.mockReason !== undefined)).toBe(false);
-    expect(ids.includes("searchFiles")).toBe(false);
+    expect(commands.find((command) => command.id === "searchFiles")?.disabled).toBe(false);
     expect(ids.includes("git.commit")).toBe(false);
     expect(ids.includes("toggleBrowserPanel")).toBe(false);
     expect(ids.includes("openPageStage")).toBe(false);
@@ -526,7 +528,7 @@ describe("CommandPaletteSurface", () => {
         onRequestClose={() => {
           closeCalls.push(1);
         }}
-        onExecute={(item: CommandPalettePage | CommandPaletteCommand | CommandPaletteThread) => {
+        onExecute={(item) => {
           if (item.kind !== "page") {
             return;
           }
@@ -916,7 +918,7 @@ describe("CommandPaletteSurface", () => {
         onRequestClose={() => {
           closeCalls.push(1);
         }}
-        onExecute={(item: CommandPalettePage | CommandPaletteCommand | CommandPaletteThread) => {
+        onExecute={(item) => {
           if (item.kind === "thread") executedItems.push(item);
         }}
       />,
@@ -1241,7 +1243,7 @@ describe("CommandPaletteSurface", () => {
         chatsLoading={false}
         onChangeMode={() => undefined}
         onRequestClose={() => undefined}
-        onExecute={(item: CommandPalettePage | CommandPaletteCommand | CommandPaletteThread) => {
+        onExecute={(item) => {
           if (item.kind === "command") executedItems.push(item);
         }}
       />,
@@ -1308,7 +1310,7 @@ describe("CommandPaletteSurface", () => {
         onRequestClose={() => {
           closeCalls.push(1);
         }}
-        onExecute={(item: CommandPalettePage | CommandPaletteCommand | CommandPaletteThread) => {
+        onExecute={(item) => {
           if (item.kind === "command") executedItems.push(item);
         }}
       />,
@@ -1468,4 +1470,69 @@ describe("buildCommandPaletteCommands navigation", () => {
     expect(disabled?.shortcut).toBe("Ctrl+Alt+R");
     expect(disabled?.disabled).toBe(true);
   });
+});
+
+test("file search completes directories, opens the selected native path, and releases its session", async () => {
+  const { CommandPaletteSurface } = await import("./command-palette-surface");
+  const fixture = createFileSearchFixture([
+    { name: "src", path: "src", type: "directory", isSymlink: false },
+    { name: "index.ts", path: "src/index.ts", type: "file", isSymlink: false },
+  ]);
+  const calls: string[] = [];
+  const previousApi = window.api;
+  installWindowApi({
+    on: fixture.on,
+    invoke: async (channel: string, ...args: unknown[]) => {
+      calls.push(channel);
+      return fixture.invoke(channel, args[0]);
+    },
+  });
+  const execute = vi.fn();
+  const close = vi.fn();
+  const view = render(
+    <CommandPaletteSurface
+      open
+      openTriggerTick={1}
+      mode="files"
+      initialQuery="sr"
+      commands={[]}
+      fileSearchScope={{ hostId: "default", roots: ["/workspace"] }}
+      loading={false}
+      pagesLoading={false}
+      chatsLoading={false}
+      onChangeMode={() => undefined}
+      onRequestClose={close}
+      onExecute={execute}
+    />,
+  );
+  try {
+    await waitFor(() => expect(view.getAllByRole("option")).toHaveLength(2));
+    const input = view.getByRole("combobox");
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Tab" });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(input).toHaveProperty("value", "src/"));
+    await waitFor(() => expect(view.getAllByRole("option")).toHaveLength(1));
+    expect(close).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "file",
+        file: expect.objectContaining({ fsPath: "/workspace/src/index.ts" }),
+      }),
+    );
+    expect(close).toHaveBeenCalledOnce();
+    view.unmount();
+    await waitFor(() =>
+      expect(calls.filter((call) => call === "file-search:stop")).toHaveLength(1),
+    );
+    expect(calls.filter((call) => call === "file-search:start")).toHaveLength(1);
+  } finally {
+    view.unmount();
+    installWindowApi(previousApi);
+  }
 });

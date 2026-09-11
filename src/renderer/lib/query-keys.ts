@@ -4,7 +4,6 @@ import type {
   WorkspaceDirectoryEntriesInput,
   WorkspaceFileMetadataInput,
   WorkspaceFileRequest,
-  WorkspaceFileSearchInput,
   WorkspaceFileTextReadInput,
 } from "./types";
 import { normalizePageChatPageIds } from "./page-chat-queries";
@@ -211,11 +210,13 @@ export const queryKeys = {
   },
   codexComposerPlugins: {
     all: () => ["codexComposerPlugins"] as const,
-    list: (cwds: readonly string[]) => ["codexComposerPlugins", "list", ...cwds] as const,
+    list: (cwds: readonly string[], hostId = "default") =>
+      ["codexComposerPlugins", "list", hostId, ...cwds] as const,
   },
   codexComposerSkills: {
     all: () => ["codexComposerSkills"] as const,
-    list: (cwds: readonly string[]) => ["codexComposerSkills", "list", ...cwds] as const,
+    list: (cwds: readonly string[], hostId = "default") =>
+      ["codexComposerSkills", "list", hostId, ...cwds] as const,
   },
   codexComposerSites: {
     all: () => ["codexComposerSites"] as const,
@@ -262,16 +263,6 @@ export const queryKeys = {
         input.directoryPath ?? "",
         input.includeHidden ?? false,
         input.directoriesOnly ?? false,
-      ] as const,
-    search: (input: WorkspaceFileSearchInput) =>
-      [
-        "workspaceFiles",
-        "search",
-        normalizeHostId(input.hostId),
-        input.workspaceRoot,
-        input.query,
-        input.maxResults ?? 0,
-        input.maxVisitedEntries ?? 0,
       ] as const,
     metadata: (input: WorkspaceFileMetadataInput) =>
       [

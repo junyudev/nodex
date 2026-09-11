@@ -1,3 +1,4 @@
+import { isAbsoluteSearchPath } from "../shared/file-search-paths";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import * as path from "node:path";
@@ -39,6 +40,11 @@ interface AppRequestResolverDependencies {
 export interface AppProtocolHandlerOptions
   extends AppRequestResolverDependencies, FileResponseDependencies {
   readonly rendererRoot: string;
+  readonly readHostFile?: (input: {
+    hostId: string;
+    path: string;
+    signal: AbortSignal;
+  }) => Promise<Uint8Array | null>;
   readonly platform?: NodeJS.Platform;
   readonly netFetch?: (url: string) => Promise<Response>;
   readonly getDevelopmentRendererUrl?: () => string | null;
@@ -289,6 +295,22 @@ export function createAppProtocolHandler(
   };
 
   const serve = async (request: Request): Promise<Response> => {
+    const url = new URL(request.url);
+    if (url.host === APP_FILESYSTEM_HOST && url.pathname === "/host") {
+      const hostId = url.searchParams.get("hostId")?.trim();
+      const hostPath = url.searchParams.get("path");
+      if (!hostId || !hostPath || !isAbsoluteSearchPath(hostPath) || !options.readHostFile)
+        return notFoundResponse();
+      const bytes = await options.readHostFile({ hostId, path: hostPath, signal: request.signal });
+      if (!bytes) return notFoundResponse();
+      return new Response(bytes as BodyInit, {
+        headers: {
+          "Content-Type": mimeLookup(hostPath) || "application/octet-stream",
+          "Cache-Control": "private, max-age=300",
+        },
+      });
+    }
+
     const filePath = resolveAppRequestPath(request.url, options.rendererRoot, {
       lookupMimeType: mimeLookup,
       resolvePath: options.resolvePath,

@@ -34,8 +34,6 @@ import type {
   WorkspaceFileMetadataInput,
   WorkspaceFileReadResult,
   WorkspaceFileRequest,
-  WorkspaceFileSearchInput,
-  WorkspaceFileSearchResult,
   WorkspaceFileTextReadInput,
 } from "./types";
 import type { GitRepositoryIdentity } from "../../shared/git-repository-identity";
@@ -209,13 +207,13 @@ export function codexModelsListQueryOptions() {
   });
 }
 
-export function codexComposerPluginsListQueryOptions(cwds: readonly string[]) {
-  const normalizedCwds = Array.from(new Set(cwds.map((cwd) => cwd.trim()).filter(Boolean))).sort();
+export function codexComposerPluginsListQueryOptions(cwds: readonly string[], hostId = "default") {
+  const normalizedCwds = Array.from(new Set(cwds.map((cwd) => cwd.trim()).filter(Boolean)));
 
   return queryOptions({
-    queryKey: queryKeys.codexComposerPlugins.list(normalizedCwds),
+    queryKey: queryKeys.codexComposerPlugins.list(normalizedCwds, hostId),
     queryFn: () =>
-      invoke("codex:composer-plugins:list", { cwds: normalizedCwds }) as Promise<
+      invoke("codex:composer-plugins:list", { hostId, cwds: normalizedCwds }) as Promise<
         CodexComposerPlugin[]
       >,
     retry: false,
@@ -224,13 +222,13 @@ export function codexComposerPluginsListQueryOptions(cwds: readonly string[]) {
   });
 }
 
-export function codexComposerSkillsListQueryOptions(cwds: readonly string[]) {
-  const normalizedCwds = Array.from(new Set(cwds.map((cwd) => cwd.trim()).filter(Boolean))).sort();
+export function codexComposerSkillsListQueryOptions(cwds: readonly string[], hostId = "default") {
+  const normalizedCwds = Array.from(new Set(cwds.map((cwd) => cwd.trim()).filter(Boolean)));
 
   return queryOptions({
-    queryKey: queryKeys.codexComposerSkills.list(normalizedCwds),
+    queryKey: queryKeys.codexComposerSkills.list(normalizedCwds, hostId),
     queryFn: () =>
-      invoke("codex:composer-skills:list", { cwds: normalizedCwds }) as Promise<
+      invoke("codex:composer-skills:list", { hostId, cwds: normalizedCwds }) as Promise<
         CodexComposerSkill[]
       >,
     retry: false,
@@ -375,13 +373,6 @@ export function workspaceDirectoryQueryOptions(input: WorkspaceDirectoryEntriesI
     queryKey: queryKeys.workspaceFiles.directory(input),
     queryFn: () =>
       invoke("workspace-directory-entries", input) as Promise<WorkspaceDirectoryEntriesResult>,
-  });
-}
-
-export function workspaceFileSearchQueryOptions(input: WorkspaceFileSearchInput) {
-  return queryOptions({
-    queryKey: queryKeys.workspaceFiles.search(input),
-    queryFn: () => invoke("workspace-file-search", input) as Promise<WorkspaceFileSearchResult>,
   });
 }
 

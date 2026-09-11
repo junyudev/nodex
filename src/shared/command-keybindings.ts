@@ -667,7 +667,7 @@ export const CODEX_COMMAND_REGISTRY = [
     commandMenuGroupKey: "general",
   }),
   command("searchFiles", "Search files", "Search files in the command palette", 215, "app", [], {
-    available: false,
+    commandMenuGroupKey: "general",
   }),
   command(
     "openCommandMenu",

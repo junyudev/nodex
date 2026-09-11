@@ -27,7 +27,7 @@ export function AsyncQuestionComposer({
       runtime={runtime}
       state={state}
       mentionContext={{
-        workspaceRoot: model.cwd ?? model.projectWorkspacePath ?? null,
+        fileSearchScope: model.workspaceSearchContext,
         skills: model.composerSkills ?? [],
         apps: model.composerApps ?? [],
       }}

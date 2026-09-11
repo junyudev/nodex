@@ -1,3 +1,4 @@
+import { createFileSearchFixture } from "../../test/file-search-fixture";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useEffect, useState } from "react";
 import { WorkspaceFilesPanel } from "./workspace-files-panel";
@@ -177,6 +178,7 @@ function entry(
 function useMockWorkspaceFilesBridge(): boolean {
   const [ready, setReady] = useState(false);
   useEffect(() => {
+    const fileSearch = createFileSearchFixture(Object.values(directoryEntries).flat());
     const previousApi = window.api;
     Object.defineProperty(window, "api", {
       configurable: true,
@@ -208,26 +210,7 @@ function useMockWorkspaceFilesBridge(): boolean {
               contents: fileContents[input.path] ?? "",
             };
           }
-          if (channel === "workspace-file-search") {
-            const input = args[0] as { query: string };
-            const matches = Object.values(directoryEntries)
-              .flat()
-              .filter(
-                (candidate) =>
-                  candidate.type === "file" &&
-                  candidate.path.toLowerCase().includes(input.query.toLowerCase()),
-              )
-              .map((candidate) => ({
-                path: candidate.path,
-                kind: "file" as const,
-                score: 0,
-              }));
-            return {
-              matches,
-              ancestorDirectories: [],
-              truncated: false,
-            };
-          }
+          if (channel.startsWith("file-search:")) return fileSearch.invoke(channel, args[0]);
           if (channel === "workspace-file-watch:start") {
             return { subscriptionId: "00000000-0000-4000-8000-000000000001" };
           }
@@ -238,7 +221,7 @@ function useMockWorkspaceFilesBridge(): boolean {
           if (channel === "open-file") return true;
           return null;
         },
-        on: () => () => undefined,
+        on: fileSearch.on,
         off: () => undefined,
       },
     });

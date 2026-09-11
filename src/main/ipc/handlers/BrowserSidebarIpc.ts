@@ -305,7 +305,7 @@ export const live: Layer.Layer<
                 quality: "best",
               });
             }
-            const saved = assets.saveUploadedImage({
+            const saved = await assets.saveUploadedImage({
               name: `browser-annotation-${Date.now()}.png`,
               mimeType: "image/png",
               bytes: evidenceImage.toPNG(),

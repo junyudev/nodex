@@ -3,14 +3,12 @@ import {
   workspaceDirectoryQueryOptions,
   workspaceFileBinaryQueryOptions,
   workspaceFileMetadataQueryOptions,
-  workspaceFileSearchQueryOptions,
   workspaceFileTextQueryOptions,
 } from "./query-options";
 import type {
   WorkspaceDirectoryEntriesInput,
   WorkspaceFileMetadataInput,
   WorkspaceFileRequest,
-  WorkspaceFileSearchInput,
   WorkspaceFileTextReadInput,
 } from "./types";
 
@@ -25,20 +23,6 @@ export function useWorkspaceDirectoryEntries(
   const enabled = options.enabled !== false && input.workspaceRoot.trim().length > 0;
   return useQuery({
     ...workspaceDirectoryQueryOptions(input),
-    enabled,
-  });
-}
-
-export function useWorkspaceFileSearch(
-  input: WorkspaceFileSearchInput,
-  options: QueryEnabledOptions = {},
-) {
-  const enabled =
-    options.enabled !== false &&
-    input.workspaceRoot.trim().length > 0 &&
-    input.query.trim().length > 0;
-  return useQuery({
-    ...workspaceFileSearchQueryOptions(input),
     enabled,
   });
 }

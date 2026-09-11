@@ -1,3 +1,4 @@
+import type { FileSearchScope } from "../../../../../shared/file-search";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, type Variants } from "motion/react";
 import {
@@ -23,12 +24,12 @@ import {
 } from "./async-question-controls";
 
 export interface AsyncQuestionMentionContext {
-  workspaceRoot: string | null;
+  fileSearchScope: FileSearchScope | null;
   skills: readonly CodexComposerSkill[];
   apps: readonly ProtocolAppInfo[];
 }
 const EMPTY_MENTION_CONTEXT: AsyncQuestionMentionContext = {
-  workspaceRoot: null,
+  fileSearchScope: null,
   skills: [],
   apps: [],
 };
@@ -325,11 +326,12 @@ export function AsyncQuestionPanel({
       }}
     >
       <ComposerMentionMenu
+        onCompleteQuery={(query) => editor.current?.completeSuggestionQuery(query)}
         ref={mentionMenu}
         suggestion={suggestion}
         skills={mentionContext.skills}
         apps={mentionContext.apps}
-        workspaceRoot={mentionContext.workspaceRoot}
+        fileSearchScope={mentionContext.fileSearchScope}
         onDismiss={() => editor.current?.dismissSuggestions()}
         onInsertMention={(mention) => editor.current?.insertMention(mention)}
       />

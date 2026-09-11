@@ -55,3 +55,8 @@ export function isAbsoluteAppFilesystemPath(filePath: string): boolean {
 export function restoreNativeAppFilesystemPath(filePath: string): string {
   return RENDERER_WINDOWS_DRIVE_PATH.test(filePath) ? filePath.slice(1) : filePath;
 }
+
+/** Host-qualified assets never resolve against the Desktop filesystem. */
+export function buildAppHostFilesystemUrl(hostId: string, filePath: string): string {
+  return `${APP_FILESYSTEM_ORIGIN}/host?${new URLSearchParams({ hostId, path: filePath })}`;
+}

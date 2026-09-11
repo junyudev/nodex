@@ -1,3 +1,5 @@
+import { mkdtemp, mkdir, writeFile, symlink, utimes, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { describe, expect, test } from "vite-plus/test";
 import path from "node:path";
 import {
@@ -6,7 +8,11 @@ import {
   normalizeFileLinkPosition,
   resolveDirectoryOpenPath,
 } from "./file-link-launch-plan";
-import { listAvailableFileLinkOpeners, shouldPreferFileManagerForTarget } from "./file-link-opener";
+import {
+  discoverToolboxExecutables,
+  listAvailableFileLinkOpeners,
+  shouldPreferFileManagerForTarget,
+} from "./file-link-opener";
 import { FILE_LINK_OPENER_OPTIONS } from "../shared/file-link-openers";
 
 const parserPath = path.join(process.cwd(), "src/renderer/lib/nfm/parser.ts");
@@ -57,12 +63,31 @@ describe("file link opener", () => {
     expect(shouldPreferFileManagerForTarget(vscodeIconPath, "vscode", true, false)).toBe(false);
   });
 
-  test("lists only supported openers that are available on this host", () => {
-    const openers = listAvailableFileLinkOpeners();
+  test("lists only supported openers that are available on this host", async () => {
+    const openers = await listAvailableFileLinkOpeners();
     const supportedOpeners = new Set(FILE_LINK_OPENER_OPTIONS.map((option) => option.id));
 
     expect(new Set(openers).size).toBe(openers.length);
     expect(openers.every((opener) => supportedOpeners.has(opener))).toBe(true);
     if (process.platform === "darwin") expect(openers).toContain("fileManager");
   });
+});
+
+test("Toolbox discovery selects the newest executable without following directory cycles", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "nodex-toolbox-"));
+  try {
+    const old = path.join(root, "old", "Editor.app", "Contents", "MacOS", "idea");
+    const latest = path.join(root, "new", "Editor.app", "Contents", "MacOS", "idea");
+    for (const file of [old, latest]) {
+      await mkdir(path.dirname(file), { recursive: true });
+      await writeFile(file, "fixture");
+    }
+    await utimes(old, 1, 1);
+    await utimes(latest, 2, 2);
+    await symlink(root, path.join(root, "loop"), "dir");
+    const result = await discoverToolboxExecutables(root, ["idea", "missing"]);
+    expect([...result]).toEqual([["idea", latest]]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
