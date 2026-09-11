@@ -1,3 +1,4 @@
+import type { WorkbenchSubmitPresentation } from "../../../../shared/nodex-app-tools/workbench";
 import type { MutableRefObject, ReactNode } from "react";
 import type { PageInput, CodexPromptInput, CodexThreadSummary, PageChatItem } from "@/lib/types";
 import type { ReadyPageBlockDocumentDescriptor } from "@/lib/owned-block-document";
@@ -119,13 +120,15 @@ export interface PageStageProps {
     targetSessionId?: string;
     prompt: string;
     promptInput?: CodexPromptInput;
+    submittedPresentation?: WorkbenchSubmitPresentation;
     threadName?: string;
   }) => Promise<{ threadId: string; sessionId?: string }>;
-  onSendThreadSectionPrompt?: (input: {
+  onSendPagePrompt?: (input: {
     projectId: string;
     threadId: string;
     prompt: string;
     promptInput?: CodexPromptInput;
+    submittedPresentation?: WorkbenchSubmitPresentation;
   }) => Promise<void>;
   historyPanelActive?: boolean;
   documentAuthority: PageStageDocumentAuthority;

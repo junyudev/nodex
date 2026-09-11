@@ -46,12 +46,24 @@ Production row order for a normal editable block is:
 1. `Turn into`
 2. `Color`
 3. `Duplicate`
-4. `Move to`
-5. `Delete`
+4. `Send to chat`, when the Page has an execution Project
+5. `Move to`
+6. `Delete`
+
+`Send to chat` belongs to the same action group as `Duplicate`, `Move to`, and
+`Delete`, immediately above `Move to`; it does not create a separate section.
 
 `Copy link to block` and `Copy links to all` are reference-only rows in development and Storybook. Production hides them because NFM does not yet persist stable block identities across parse/serialize round trips, so generated block anchors could become stale.
 
 `Duplicate`, `Move to`, and `Delete` operate on top-level selected roots. `Turn into` and `Color` operate on the expanded selection, including descendants. `Color` is enabled only when every selected target supports at least one color prop; text and background color submenu groups are hidden independently when unsupported.
+
+`Send to chat` opens the same destination picker and `Send` / `Send & wrap`
+modes as the text selection menu. It submits the retained top-level Block roots,
+including their descendants, even after focus moves into the picker. New and
+existing Chat targets establish the source Page relationship before submission.
+Wrapping happens only after successful submission and preserves the selected
+Blocks under the resulting Thread toggle. Image capture follows
+[NFM Thread Section Image Inputs](nfm-thread-section-image-inputs.md).
 
 `Make thread section` appears only for one selected `divider` root when the Card Stage runtime can convert dividers. Table header row/column actions appear only for one selected `table` root when table headers are supported.
 
@@ -81,7 +93,7 @@ The side menu surface is a compact dialog:
 - Search input at the top
 - Listbox semantics for rows
 - Group separators at visual group boundaries
-- Right-side submenu flyouts for `Turn into`, `Color`, `Move to`, and Code `Language`
+- Right-side submenu flyouts for `Turn into`, `Color`, `Move to`, `Send to chat`, and Code `Language`
 - Entry/exit motion: `200ms` opacity/scale, with reduced-motion fallback
 - Transform origin follows popup placement, including right-side `50%` origin behavior
 

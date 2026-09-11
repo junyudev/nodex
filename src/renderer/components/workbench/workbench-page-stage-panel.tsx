@@ -1,3 +1,5 @@
+import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
+import { materializePagePromptInput } from "@/lib/page-prompt-input";
 import {
   useCallback,
   useMemo,
@@ -283,8 +285,15 @@ export function PageStageSessionTab({
       prompt: string;
       promptInput?: CodexPromptInput;
       threadName?: string;
+      submittedPresentation?: WorkbenchSubmitPresentation;
     }) => {
-      const submittedPresentation = codexControl.captureSubmissionPresentation();
+      const submittedPresentation =
+        input.submittedPresentation ?? codexControl.captureSubmissionPresentation();
+      const promptInput = await materializePagePromptInput(
+        projectContentAccess(pageAccessProjectId),
+        tab.config.pageId,
+        input.promptInput,
+      );
       const targetSessionId =
         input.targetSessionId?.trim() ||
         (await onEnsureDefaultDraftSessionForProject(input.projectId, { select: false })).id;
@@ -299,7 +308,7 @@ export function PageStageSessionTab({
           projectId: input.projectId,
           sessionId: targetSessionId,
           prompt: input.prompt,
-          promptInput: input.promptInput,
+          promptInput,
           threadName: input.threadName,
           skipAutoTitleGeneration: Boolean(input.threadName?.trim()),
           runInTarget: "localProject",
@@ -563,8 +572,18 @@ export function PageStageSessionTab({
               });
             }}
             onStartNewSessionThreadFromEditor={handleStartNewSessionThreadFromEditor}
-            onSendThreadSectionPrompt={async ({ threadId, prompt, promptInput }) => {
-              const submittedPresentation = codexControl.captureSubmissionPresentation();
+            onSendPagePrompt={async ({
+              threadId,
+              prompt,
+              promptInput,
+              submittedPresentation: origin,
+            }) => {
+              const submittedPresentation = origin ?? codexControl.captureSubmissionPresentation();
+              const materializedInput = await materializePagePromptInput(
+                projectContentAccess(pageAccessProjectId),
+                tab.config.pageId,
+                promptInput,
+              );
               const targetSession = await onResolveChatSessionForThread(threadId);
               if (!targetSession.projectId) {
                 throw new Error("Page content can only be sent to a Project chat");
@@ -579,7 +598,7 @@ export function PageStageSessionTab({
                 prompt,
                 {
                   projectId: targetSession.projectId,
-                  promptInput,
+                  promptInput: materializedInput,
                 },
                 submittedPresentation,
               );

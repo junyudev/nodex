@@ -152,7 +152,7 @@ export async function resolveManagedAssetPath(source: string): Promise<string | 
   return resolved?.trim() || null;
 }
 
-function readBlobAsDataUrl(blob: Blob): Promise<string> {
+export function readBlobAsDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error ?? new Error("Asset read failed"));

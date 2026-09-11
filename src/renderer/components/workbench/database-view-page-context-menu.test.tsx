@@ -5,7 +5,8 @@ import {
   __getNodexToastSnapshotForTests,
   __resetNodexToastStoreForTests,
 } from "@/components/ui/toast";
-import { render } from "@/test/dom";
+import { NodexModalHost } from "@/lib/modal-registry";
+import { renderWithMaitai as render } from "@/test/thread-maitai";
 import { DatabaseViewPageContextMenu } from "./database-view-page-context-menu";
 import { dataSourcePagePropertyMenuSourceFromBindings } from "@/components/database/data-source-page-property-menu-source";
 import { DevelopmentFeaturesProvider } from "@/lib/development-features-context";
@@ -66,6 +67,7 @@ function renderMenu(
         enabledDevelopmentFeatures: showReorder ? ["database-page-reorder-menu"] : [],
       }}
     >
+      <NodexModalHost />
       <DatabaseViewPageContextMenu
         page={pageTarget}
         canMoveUp

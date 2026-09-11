@@ -33,3 +33,10 @@ Closing, accepting, or unmounting a child surface releases its lease. The
 editor either restores an eligible live inline selection or clears both the
 selection presentation and command target. A CSS highlight without a live
 selection or active lease is invalid state.
+
+## Chat submission
+
+`Send to chat` shares its destination picker, modes, retained Block targets, and
+Page image capture with the [Block side menu](nfm-block-side-menu-behavior.md).
+Library image references are captured through the source Page before a Chat is
+created or a message is submitted; see [Page image inputs](nfm-thread-section-image-inputs.md).

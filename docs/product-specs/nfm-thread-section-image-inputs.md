@@ -1,9 +1,9 @@
-# NFM Thread Section Image Inputs
+# NFM Page Prompt Image Inputs
 
 Status: Active
-Last Updated: 2026-05-01
+Last Updated: 2026-09-11
 
-This document describes how NFM image blocks inside runnable `threadSection` prompts are converted into Codex app-server image inputs.
+This document owns send-time image input behavior for Page text selections, the Block side menu, whole-Page sends, and runnable `threadSection` prompts.
 
 This is intentionally focused on send-time prompt construction. It does not redefine NFM image editing, image upload, clipboard image copy, or general attachment behavior.
 
@@ -15,7 +15,7 @@ At the same time, the model-visible prompt text must include a stable local refe
 
 ```text
 Compare this chart with the notes below.
-<image source="nodex://assets/chart.png">Q1 revenue chart</image>
+<image source="nodex://files/chart-file-id">Q1 revenue chart</image>
 Explain the outliers.
 ```
 
@@ -74,10 +74,26 @@ Image inputs:
 
 ## Image Input Mapping
 
-The renderer sends image metadata as `promptInput.images[]`. The main process resolves each source into official Codex app-server `turn/start` input items.
+The renderer compiles text and ordered image occurrences as `promptInput.images[]`.
+Before creating a Chat or submitting to an existing Chat, the shared Page prompt
+boundary reads each Library image through its source Page and content access
+context. Current Page edits are flushed before a selected-Block send so newly
+inserted File occurrences are authorized by the committed Document.
+
+Each distinct File is read once per submission and encoded with its authoritative
+image MIME type. Repeated occurrences keep their individual position and caption.
+The capture belongs to that submission: a later File update or removal cannot
+change bytes already submitted or queued. A later send reauthorizes and reads
+again. Cached display URLs never substitute for this read, and a denied, missing,
+or non-image File fails the complete send before a new Chat is created.
+
+Main resolves the resulting portable image inputs into official Codex app-server
+`turn/start` items. Its existing input-retention and queue boundaries preserve the
+captured bytes across execution and restart.
 
 Supported source mapping:
 
+- `nodex://files/<id>` -> authorized source-Page bytes captured as `data:image/...` before Chat submission
 - `http://...` and `https://...` -> `{ type: "image", url }`
 - `data:image/...` -> `{ type: "image", url }`
 - absolute local file paths -> `{ type: "localImage", path }`
@@ -87,7 +103,7 @@ Unsupported sources fail during main-process prompt preparation. They must not s
 
 ## Thread Section Behavior
 
-This behavior applies only to NFM image blocks included in a resolved thread-section prompt body.
+Thread Sections use the same Page image capture boundary as selected Blocks and whole-Page sends. Their image occurrences come from the resolved section prompt body.
 
 The prompt body can include:
 
@@ -136,7 +152,10 @@ Thread-section prompt construction should:
 - strip send-time control inline content from model-visible text
 - serialize the resulting blocks with `serializeClipboardText`
 
-The image source should be preserved exactly in `promptInput.images[]`; source validation and `nodex://assets/...` resolution belong in the main process.
+Prompt compilation preserves the original image source in `promptInput.images[]`.
+The shared Page submission boundary then materializes Library File sources as
+authorized byte snapshots; portable source validation and `nodex://assets/...`
+resolution belong in Main.
 
 The model-visible text and app-server image input order must stay aligned by construction: `[Image #1]` refers to `promptInput.images[0]`, `[Image #2]` refers to `promptInput.images[1]`, and so on.
 

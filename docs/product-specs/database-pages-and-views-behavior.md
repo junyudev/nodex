@@ -73,6 +73,10 @@ access context rather than a visible View projection. `Open in` contains `Open
 in new chat` and `Send to chat…`. Open in new chat atomically creates an
 ordinary Project Session and its Linked chat edge before Window Scene
 presentation; a presentation failure preserves that durable Chat and relation.
+`Send to chat…` hands off to a Window-owned chooser after the context menu
+closes. The chooser retains the selected Page and remains usable if its source
+View unmounts. Page image inputs follow the authorized byte-snapshot contract
+in [Page prompt image inputs](./nfm-thread-section-image-inputs.md).
 
 Each Board or List surface owns one short-lived Page menu session. Right-click
 resolves only the Page under the pointer; unopened Property editors and

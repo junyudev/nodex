@@ -20,6 +20,7 @@ export type NfmSideMenuActionKey =
   | "color"
   | "copy-link-to-block"
   | "duplicate"
+  | "send-to-thread"
   | "move-to"
   | "delete"
   | "comment"
@@ -34,7 +35,12 @@ export type NfmSideMenuActionKey =
   | "table-column-color"
   | "table-create-cards-from-rows";
 
-export type NfmSideMenuSubmenuKey = "language" | "turn-into" | "color" | "move-to";
+export type NfmSideMenuSubmenuKey =
+  | "language"
+  | "turn-into"
+  | "color"
+  | "move-to"
+  | "send-to-thread";
 
 export interface NfmSideMenuAction {
   key: NfmSideMenuActionKey;
@@ -71,6 +77,7 @@ export interface NfmSideMenuModelInput {
   isEditable: boolean;
   canUseColor: boolean;
   canSendBlocks: boolean;
+  canSendToThread?: boolean;
   hasConvertDividerToThreadSection: boolean;
   isTableBlock: boolean;
   canUseTableHeaders: boolean;
@@ -130,6 +137,14 @@ const REFERENCE_ACTIONS: readonly Omit<NfmSideMenuAction, "section" | "enabled" 
       visualGroup: "block-move",
       shortcut: "⌘D",
       keywords: ["copy"],
+    },
+    {
+      key: "send-to-thread",
+      label: "Send to chat",
+      kind: "submenu",
+      submenu: "send-to-thread",
+      visualGroup: "block-move",
+      keywords: ["send", "chat", "thread", "agent"],
     },
     {
       key: "move-to",
@@ -233,6 +248,7 @@ function enabledForReferenceAction(
   if (action.key === "turn-into") return true;
   if (action.key === "color") return input.canUseColor;
   if (action.key === "duplicate") return true;
+  if (action.key === "send-to-thread") return Boolean(input.canSendToThread);
   if (action.key === "move-to") return input.canSendBlocks;
   if (action.key === "delete") return true;
 
@@ -313,6 +329,8 @@ export function buildNfmSideMenuSections(input: NfmSideMenuModelInput): NfmSideM
         ]
       : [];
   const referenceRows = REFERENCE_ACTIONS.flatMap((action) => {
+    if (action.key === "send-to-thread" && (!input.currentBlockId || !input.canSendToThread))
+      return [];
     const isMockAction = REFERENCE_MOCK_ACTION_KEYS.has(action.key);
     if (isMockAction && !input.showMockActions) return [];
 
