@@ -1,3 +1,7 @@
+import {
+  canonicalWorkbenchFilesConfig,
+  workbenchFileResourceId,
+} from "../../shared/workbench-resource-identity";
 import { findWorkbenchPanelLeafForTab } from "../../shared/workbench-panel-layout";
 import {
   activateWorkbenchSceneSurface,
@@ -224,7 +228,14 @@ function makeSurfaceDescriptor(
   identities: WorkbenchSceneNavigatorIdentityFactory,
 ): WorkbenchSurfaceDescriptor {
   const common = {
-    id: identities.createId("surface"),
+    id:
+      request.kind === "files" && request.config.path
+        ? workbenchFileResourceId(
+            request.config.hostId,
+            request.config.path,
+            request.config.cwd ?? request.config.workspaceRoot,
+          )
+        : identities.createId("surface"),
     stateKey: 0,
     state: null,
   } as const;
@@ -294,7 +305,7 @@ function makeSurfaceDescriptor(
         kind: request.kind,
         titleSnapshot:
           request.titleSnapshot ?? request.config.path?.split(/[\\/]/).pop() ?? "Files",
-        config: request.config,
+        config: canonicalWorkbenchFilesConfig(request.config),
       };
   }
 }

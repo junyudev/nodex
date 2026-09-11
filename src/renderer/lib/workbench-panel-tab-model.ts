@@ -15,6 +15,7 @@ import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-p
 
 export type ProjectSessionFilesPreviewTab = WorkspaceFilesTab & {
   preview: true;
+  readonly previewInstanceId: string;
   kind: "files";
   config: WorkspaceFilesTab["config"] & {
     hostId: "local";

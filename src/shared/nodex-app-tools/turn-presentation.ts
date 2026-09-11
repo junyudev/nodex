@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { WorkbenchSubmitPresentationSchema, type WorkbenchSubmitPresentation } from "./workbench";
+import {
+  unavailableWorkbenchSubmission,
+  WorkbenchSubmitPresentationSchema,
+  type WorkbenchSubmitPresentation,
+} from "./workbench";
 
 const identity = z.string().min(1).max(512);
 
@@ -20,7 +24,7 @@ export type CodexTurnPresentationTicket = z.infer<typeof CodexTurnPresentationTi
 
 export const CodexTurnPresentationCaptureInputSchema = z.strictObject({
   target: CodexTurnPresentationTargetSchema,
-  presentation: WorkbenchSubmitPresentationSchema,
+  presentation: WorkbenchSubmitPresentationSchema.catch(unavailableWorkbenchSubmission),
 });
 export type CodexTurnPresentationCaptureInput = {
   readonly target: CodexTurnPresentationTarget;

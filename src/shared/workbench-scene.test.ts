@@ -819,7 +819,7 @@ describe("WorkbenchScene", () => {
     expect(recovered.primary).toEqual(scene.primary);
   });
 
-  test("derives stable semantic reuse keys only for singleton resources", () => {
+  test("derives reuse keys from semantic resources and runtime identities", () => {
     const conversation = materializeInitialWorkbenchScene(
       { kind: "session", sessionId: "session-1" },
       { identityFactory: identityFactory("reuse") },
@@ -865,7 +865,7 @@ describe("WorkbenchScene", () => {
         state: null,
       }),
     ).toBe("review");
-    expect(getWorkbenchSurfaceReuseKey(browserSurface())).toBeNull();
+    expect(getWorkbenchSurfaceReuseKey(browserSurface())).toBe("browser:browser-runtime-1");
   });
 
   test("prunes persisted Review surfaces when a Session no longer has a Thread", () => {
@@ -896,4 +896,34 @@ describe("WorkbenchScene", () => {
     );
     expect(eligible.touchedAt).toBe(withReview.touchedAt);
   });
+});
+
+test("cloning a window preserves canonical file resources and gives their groups new identities", () => {
+  const scene = materializeInitialWorkbenchScene({ kind: "session", sessionId: "session" });
+  const id = "file:local:/workspace/file.ts";
+  const original = createWorkbenchSceneSurface(scene, {
+    panelId: "right",
+    surface: {
+      id,
+      kind: "files",
+      titleSnapshot: "file.ts",
+      stateKey: 4,
+      state: { scroll: 20 },
+      config: {
+        hostId: "local",
+        projectId: null,
+        cwd: "/workspace",
+        workspaceRoot: "/workspace",
+        path: "/workspace/file.ts",
+      },
+    },
+  });
+  const cloned = cloneWorkbenchSceneLayoutForNewWindow({
+    scenesByOwnerKey: { "session:session": original },
+  }).scenesByOwnerKey["session:session"];
+  expect(cloned.panelSurfacesById[id]).toEqual(original.panelSurfacesById[id]);
+  expect(cloned.panels.right.layout.activeLeafId).not.toBe(
+    original.panels.right.layout.activeLeafId,
+  );
+  expect(WorkbenchSceneSnapshotSchema.safeParse(cloned).success).toBe(true);
 });

@@ -7,7 +7,10 @@ import {
 import { terminalSessionStore } from "./terminal-session-store";
 import { makeWorkbenchSessionPanelSlotKey } from "./workbench-panel-slot-key";
 import { resolveSameLeafInsertionIndex } from "@/components/workbench/panel-tab-dnd";
-import { makePinnedPreviewTabCreateInput } from "./workbench-panel-preview";
+import {
+  makePinnedPreviewTabCreateInput,
+  sameWorkbenchPreviewInstance,
+} from "./workbench-panel-preview";
 import { resolveSessionPanelActiveLeafId } from "./workbench-panel-placement";
 import { readWorkbenchAgentContext } from "./workbench-agent-context";
 import type { WorkbenchPanelController } from "./use-workbench-panel-controller";
@@ -277,19 +280,21 @@ export function useWorkbenchPanelLifecycle({
           targetLeafId,
           previewTab,
         );
-        await createSessionViewTab(createInput);
-        if (previewTab.kind === "page_stage") {
-          clearPanelPreviewTab(activeSession.id, panelId, targetLeafId);
-          return;
-        }
-        clearPanelPreviewTab(activeSession.id, panelId, targetLeafId);
+        const created = await createSessionViewTab(createInput);
+        if (!created) return;
+        const slotKey = makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId, targetLeafId);
+        panelControllerRef.current.updatePreviewTabsByPanel((current) => {
+          if (!sameWorkbenchPreviewInstance(current[slotKey], previewTab)) return current;
+          const next = { ...current };
+          delete next[slotKey];
+          return next;
+        });
       } finally {
         pinningPreviewTabIdsRef.current.delete(tabId);
       }
     },
     [
       activeSession,
-      clearPanelPreviewTab,
       createSessionViewTab,
       imageEditorTabsBySession,
       pinningPreviewTabIdsRef,

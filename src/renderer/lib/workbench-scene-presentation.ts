@@ -1,3 +1,7 @@
+import {
+  canonicalWorkbenchFilesConfig,
+  workbenchFileResourceId,
+} from "../../shared/workbench-resource-identity";
 import { listWorkbenchPanelLeaves } from "../../shared/workbench-panel-layout";
 import { createSecureRuntimeId } from "../../shared/secure-runtime-id";
 import type {
@@ -116,7 +120,15 @@ export function presentWorkbenchSessionPanelsWithScene(
 export function workbenchSurfaceFromCreateInput(
   input: WorkbenchTabCreateInput,
 ): WorkbenchSurfaceDescriptor {
-  const id = input.clientTabId ?? makeRuntimeId("surface");
+  const id =
+    input.clientTabId ??
+    (input.kind === "files" && input.config.path
+      ? workbenchFileResourceId(
+          input.config.hostId,
+          input.config.path,
+          input.config.cwd ?? input.config.workspaceRoot,
+        )
+      : makeRuntimeId("surface"));
   const common = {
     id,
     titleSnapshot: input.title,
@@ -150,7 +162,7 @@ export function workbenchSurfaceFromCreateInput(
   return {
     ...common,
     kind: input.kind,
-    config: input.config,
+    config: input.kind === "files" ? canonicalWorkbenchFilesConfig(input.config) : input.config,
   } as WorkbenchSurfaceDescriptor;
 }
 

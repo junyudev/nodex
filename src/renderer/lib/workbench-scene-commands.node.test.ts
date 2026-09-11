@@ -1,3 +1,12 @@
+import { WorkbenchSceneSnapshotSchema } from "../../shared/schemas/workbench-scene";
+import { WorkbenchSubmitPresentationSchema } from "../../shared/nodex-app-tools/workbench";
+import {
+  makePreviewWorkspaceFileTab,
+  makePreviewWorkbenchTabProjection,
+  makeWorkbenchTabProjectionDraft,
+} from "./workbench-panel-preview";
+import { makeTestWorkbenchSession } from "../components/workbench/workbench-testkit/panel-fixtures";
+import { readWorkbenchSubmitPresentation } from "./workbench-agent-context";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import {
   WORKBENCH_COMMAND_MAX_RECEIPTS,
@@ -738,5 +747,157 @@ describe("generation-local Workbench operation receipts", () => {
         command: { kind: "set_panel_state", panelId: "right", arbitraryProperty: true },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("resource-preserving preview promotion", () => {
+  test("opens, keeps, moves and serializes a long Unicode file without changing its identity", async () => {
+    const scene = materializeInitialWorkbenchScene({ kind: "session", sessionId: "session-a" });
+    const subject = fixture(scene);
+    const session = makeTestWorkbenchSession({
+      id: "session-a",
+      projectId: "project-a",
+    });
+    const groupId = scene.panels.right.layout.activeLeafId;
+    const path = `/workspace/${"nested-directory/".repeat(30)}设计说明.ts`;
+    const preview = makePreviewWorkspaceFileTab(session, "right", {
+      path,
+      title: "设计说明.ts",
+      cwd: "/workspace",
+      workspaceRoot: "/workspace",
+      leafId: groupId,
+      location: { line: 17 },
+    });
+    const slot = makeWorkbenchPanelSlotKey("session:session-a", "right", groupId);
+    subject.owner.dispatchEphemeral({
+      type: "update",
+      field: "previewTabsByPanel",
+      update: { [slot]: preview },
+    });
+    const opened = await subject.execute({
+      kind: "open_tab",
+      panelId: "right",
+      groupId,
+      surface: { kind: "files", titleSnapshot: preview.title, config: preview.config },
+    });
+    expect(opened).toMatchObject({ tabId: preview.id, persisted: true, error: null });
+    const moved = await subject.execute({
+      kind: "move_tab",
+      tabId: preview.id,
+      panelId: "bottom",
+      groupId: scene.panels.bottom.layout.activeLeafId,
+      index: 0,
+    });
+    expect(moved).toMatchObject({ tabId: preview.id, persisted: true, error: null });
+    const stored = subject.owner.read().windowState.scenesByOwnerKey["session:session-a"]!;
+    const restored = WorkbenchSceneSnapshotSchema.parse(JSON.parse(JSON.stringify(stored)));
+    expect(restored.panelSurfacesById[preview.id]).toMatchObject({
+      id: preview.id,
+      config: { path },
+      state: { pendingReveal: { line: 17 } },
+    });
+    const captured = readWorkbenchSubmitPresentation(subject.owner.read(), "renderer-a");
+    expect(WorkbenchSubmitPresentationSchema.safeParse(captured).success).toBe(true);
+    // Focusing the same file elsewhere cannot duplicate or rename the original resource.
+    const reopened = await subject.execute({
+      kind: "open_tab",
+      panelId: "right",
+      groupId,
+      surface: {
+        kind: "files",
+        titleSnapshot: preview.title,
+        config: {
+          ...preview.config,
+          path: path.replace("/nested-directory/", "/./nested-directory/"),
+        },
+      },
+    });
+    expect(reopened).toMatchObject({ tabId: preview.id, error: null });
+    expect(subject.observe().tabs.filter((tab) => tab.surface?.kind === "files")).toHaveLength(1);
+  });
+
+  test("keeps Browser runtime configuration and pending view state when promoting a preview", async () => {
+    const scene = materializeInitialWorkbenchScene({ kind: "session", sessionId: "session-a" });
+    const subject = fixture(scene);
+    const session = makeTestWorkbenchSession({ id: "session-a" });
+    const draft = makeWorkbenchTabProjectionDraft(session, "browser")!;
+    const original = makePreviewWorkbenchTabProjection(session, "right", draft);
+    if (original.kind !== "browser") throw new Error("Expected Browser preview");
+    const preview = {
+      ...original,
+      stateKey: 3,
+      state: { scroll: 71 },
+      config: { ...original.config, url: "https://example.test", faviconUrl: "large-icon" },
+    };
+    const groupId = scene.panels.right.layout.activeLeafId;
+    subject.owner.dispatchEphemeral({
+      type: "update",
+      field: "previewTabsByPanel",
+      update: { [makeWorkbenchPanelSlotKey("session:session-a", "right", groupId)]: preview },
+    });
+    const opened = await subject.execute({
+      kind: "open_tab",
+      panelId: "right",
+      groupId,
+      surface: {
+        kind: "browser",
+        titleSnapshot: "Browser",
+        config: { browserTabId: preview.browserTabId! },
+      },
+    });
+    expect(opened).toMatchObject({ tabId: preview.id, persisted: true, error: null });
+    expect(
+      subject.owner.read().windowState.scenesByOwnerKey["session:session-a"]!.panelSurfacesById[
+        preview.id
+      ],
+    ).toMatchObject({
+      stateKey: 3,
+      state: { scroll: 71 },
+      config: {
+        browserTabId: preview.browserTabId,
+        browserStorageId: preview.config.browserStorageId,
+        url: "https://example.test",
+        faviconUrl: "large-icon",
+      },
+    });
+    expect(subject.lifecycle.close).not.toHaveBeenCalled();
+  });
+
+  test("retains a failed promotion as a live preview and permits retry", async () => {
+    const scene = materializeInitialWorkbenchScene({ kind: "pages" });
+    const subject = fixture(scene);
+    const groupId = scene.panels.right.layout.activeLeafId;
+    const preview = { ...page("preview"), state: { selection: "pending" } };
+    subject.owner.dispatchEphemeral({
+      type: "update",
+      field: "previewSurfacesByPanel",
+      update: { [makeWorkbenchPanelSlotKey("pages", "right", groupId)]: preview },
+    });
+    const command: WorkbenchCommand = {
+      kind: "open_tab",
+      panelId: "right",
+      groupId,
+      surface: {
+        kind: "page_stage",
+        titleSnapshot: "Preview",
+        config: { accessContext: { kind: "library" }, pageId: "page:preview" },
+      },
+    };
+    subject.commit.mockRejectedValueOnce(new Error("disk unavailable"));
+    expect(await subject.execute(command)).toMatchObject({
+      applied: false,
+      persisted: false,
+      error: "persistence_failed",
+    });
+    expect(subject.observe().tabs).toMatchObject([{ tabId: preview.id, preview: true }]);
+    expect(subject.lifecycle.close).not.toHaveBeenCalled();
+    expect(await subject.execute(command)).toMatchObject({
+      tabId: preview.id,
+      persisted: true,
+      error: null,
+    });
+    expect(
+      subject.owner.read().windowState.scenesByOwnerKey.pages!.panelSurfacesById.preview?.state,
+    ).toEqual({ selection: "pending" });
   });
 });

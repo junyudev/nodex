@@ -113,9 +113,11 @@ export const streamdownComponents: Components = {
   },
   a: ({ href, children, className, node }) => {
     void node;
+    // Markdown hrefs are URI-encoded. File URLs decode the path once, separately from fragments.
+    const fileHref = href?.startsWith("/") && !href.startsWith("//") ? `file://${href}` : href;
     return (
       <FileLinkAnchor
-        href={href}
+        href={fileHref}
         className={cn(
           "decoration-opacity-50 text-token-text-link-foreground underline decoration-current decoration-[0.5px]",
           className,

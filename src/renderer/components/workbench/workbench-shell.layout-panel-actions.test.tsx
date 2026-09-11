@@ -1868,6 +1868,57 @@ describe("workbench session shell / layout-panel-actions", () => {
     ).toBe(false);
   });
 
+  test("opening an existing file focuses its original panel instead of duplicating it", async () => {
+    const path = "/workspace/report.txt";
+    const id = "file:local:/workspace/report.txt";
+    const screen = renderWorkbench({
+      sessionsByProject: {
+        alpha: [
+          makeAttachedSession({
+            tabs: [
+              {
+                id,
+                kind: "files",
+                title: "report.txt",
+                panelId: "bottom",
+                config: {
+                  projectId: "alpha",
+                  hostId: "local",
+                  cwd: "/workspace",
+                  workspaceRoot: "/workspace",
+                  path,
+                },
+              },
+            ],
+            panels: makePanels({
+              rightCollapsed: true,
+              bottomTabIds: [id],
+              bottomActiveTabId: id,
+              bottomCollapsed: true,
+            }),
+          }),
+        ],
+      },
+    });
+    await settleAsyncRender();
+    const openOutput = getLastThreadStageActions().onOpenSummaryOutputInSidePanel as (input: {
+      path: string;
+      title: string;
+      cwd: string;
+    }) => Promise<boolean>;
+    await act(async () => {
+      expect(await openOutput({ path, title: "report.txt", cwd: "/workspace" })).toBe(true);
+    });
+    await waitFor(() =>
+      expect(screen.getAllByRole("tab", { name: "report.txt", selected: true })).toHaveLength(1),
+    );
+    expect(
+      screen
+        .getByTestId("session-bottom-panel")
+        .contains(screen.getByRole("tab", { name: "report.txt" })),
+    ).toBe(true);
+  });
+
   test("uses the matching secondary Project source only as Files tree context", async () => {
     const primaryRoot = "/Users/asc/repo/alpha";
     const secondaryRoot = "/Volumes/code/alpha-secondary";

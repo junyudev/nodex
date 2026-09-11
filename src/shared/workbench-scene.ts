@@ -1,3 +1,4 @@
+import { workbenchFilesResourceKey } from "./workbench-resource-identity";
 import type { BrowserSidebarDeviceToolbarState } from "./browser-sidebar";
 import type { CodexForkBrowserSidePanelSnapshot } from "./codex-fork-browser-transfer";
 import type { InitialProjectPresentation } from "./initial-project-welcome";
@@ -1288,7 +1289,9 @@ export function cloneWorkbenchSceneLayoutForNewWindow<Layout extends CloneWorkbe
   };
 }
 
-export function getWorkbenchSurfaceReuseKey(surface: WorkbenchSurfaceDescriptor): string | null {
+export function getWorkbenchSurfaceReuseKey(
+  surface: WorkbenchSurfaceDescriptor | { kind: "image_editor"; config: unknown },
+): string | null {
   switch (surface.kind) {
     case "conversation":
       return `conversation:${surface.config.sessionId}`;
@@ -1307,10 +1310,12 @@ export function getWorkbenchSurfaceReuseKey(surface: WorkbenchSurfaceDescriptor)
     case "review":
       return "review";
     case "files":
-      return `files:${surface.config.projectId ?? "projectless"}:${surface.config.path ?? "root"}`;
-    case "image_editor":
+      return workbenchFilesResourceKey(surface.config);
     case "browser":
+      return `browser:${surface.config.browserTabId}`;
     case "terminal":
+      return `terminal:${surface.config.terminalSessionId}`;
+    case "image_editor":
       return null;
   }
 }

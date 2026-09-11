@@ -315,6 +315,7 @@ export const make: Effect.Effect<
           transaction.presentationLaunch = yield* presentation.begin(
             plan.presentationClaim,
             plan.threadId,
+            plan.clientUserMessageId,
           );
           if (!plan.rendererOwnsState && canonicalParams && options.projectOptimisticTurn) {
             yield* projection.admitTurn({
@@ -569,6 +570,7 @@ export const make: Effect.Effect<
     presentationClaim?: CodexTurnPresentationClaim,
   ) => {
     let optimisticAdmitted = false;
+    let presentationLaunch: CodexTurnPresentationLaunch | null = null;
     let targetTurnId = plan.expectedTurnId;
     const rollback = () =>
       Clock.currentTimeMillis.pipe(
@@ -610,6 +612,11 @@ export const make: Effect.Effect<
         observedAtMs,
       });
       optimisticAdmitted = true;
+      presentationLaunch = yield* presentation.begin(
+        presentationClaim,
+        plan.threadId,
+        plan.item.clientUserMessageId ?? undefined,
+      );
       let response: TurnSteerResponse;
       const firstAttempt = yield* Effect.exit(request(targetTurnId));
       if (firstAttempt._tag === "Success") {
@@ -623,11 +630,19 @@ export const make: Effect.Effect<
         response = yield* request(actualTurnId);
       }
       if (typeof response.turnId !== "string") {
+        presentation.abort(presentationLaunch);
         yield* rollback();
         optimisticAdmitted = false;
         return null;
       }
       yield* retarget(response.turnId);
+      yield* presentation
+        .bind(presentationLaunch, response.turnId)
+        .pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("Accepted steer presentation could not bind", error),
+          ),
+        );
       return { turnId: response.turnId };
     }).pipe(
       Effect.catch((error) =>
@@ -635,7 +650,11 @@ export const make: Effect.Effect<
           ? Effect.succeed<CodexSteerTurnResult>({ turnId: targetTurnId, outcome: "unknown" })
           : Effect.fail(error),
       ),
-      Effect.onExit((exit) => (Exit.isFailure(exit) ? rollback() : Effect.void)),
+      Effect.onExit((exit) => {
+        if (!Exit.isFailure(exit)) return Effect.void;
+        presentation.abort(presentationLaunch);
+        return rollback();
+      }),
       Effect.catch((error) => {
         if (!plan.fallbackStart || !isSteerTurnInactive(error)) return Effect.fail(error);
         return rollback().pipe(

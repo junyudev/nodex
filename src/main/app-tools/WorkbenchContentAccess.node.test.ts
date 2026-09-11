@@ -27,7 +27,6 @@ const page: WorkbenchContentSurface = {
   config: {
     accessContext: { kind: "library" },
     pageId: "page:target",
-    titleSnapshot: "Stale renderer title",
   },
 };
 const setup = (read: CoreModules["Service"]["library"]["read"]) =>

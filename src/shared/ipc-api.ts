@@ -713,7 +713,7 @@ export interface RendererDiagnosticsLogInput {
 export interface IpcApi {
   "codex:turn-presentation:capture": {
     args: [input: CodexTurnPresentationCaptureInput];
-    result: CodexTurnPresentationTicket;
+    result: CodexTurnPresentationTicket | undefined;
   };
   "workbench-agent:register": {
     args: [input: { ownerId: string }];

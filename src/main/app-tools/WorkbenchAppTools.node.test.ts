@@ -96,6 +96,7 @@ const setup = (
   options: {
     restricted?: boolean;
     changed?: boolean;
+    titleChanged?: boolean;
     withdraw?: () => void;
     anchor?: PresentationAnchor;
   } = {},
@@ -139,7 +140,16 @@ const setup = (
                   ],
                 },
               }
-            : record,
+            : options.titleChanged
+              ? {
+                  ...record,
+                  observation: {
+                    ...record.observation,
+                    presentationRevision: 2,
+                    tabs: [{ ...tab, surface: { ...tab.surface!, titleSnapshot: "Renamed" } }],
+                  },
+                }
+              : record,
         ),
       resolve: () => Effect.succeed(record),
     } as never),
@@ -235,5 +245,20 @@ it.effect("does not resolve an unhydrated submitted default against a later defa
     assert.strictEqual(presentation.selectedTabs[0]!.status, "restricted");
     assert.strictEqual(presentation.selectedTabs[0]!.reason, "unavailable");
     assert.strictEqual(Object.hasOwn(presentation.selectedTabs[0]!, "viewId"), false);
+  }),
+);
+
+it.effect("keeps a submitted target actionable after only its title changes", () =>
+  Effect.gen(function* () {
+    const execute = yield* setup({ titleChanged: true });
+    const result = yield* execute(input);
+    const context = result.structuredContent?.presentation as {
+      selectedTabs: Record<string, unknown>[];
+      changedSinceSubmission: boolean;
+    };
+    assert.isTrue(context.changedSinceSubmission);
+    assert.equal(context.selectedTabs[0]?.targetState, "present");
+    assert.isString(context.selectedTabs[0]?.tabId);
+    assert.equal(context.selectedTabs[0]?.pageId, "page-A");
   }),
 );

@@ -39,7 +39,19 @@ export const live = Layer.effectDiscard(
             catch: (cause) => new WorkbenchAgentIpcError({ cause }),
           }),
         ),
-        Effect.flatMap((capture) => presentation.capture(event.sender.id, capture)),
+        Effect.flatMap((capture) =>
+          presentation
+            .capture(event.sender.id, capture)
+            .pipe(
+              Effect.catch((error) =>
+                error.reason === "capacity" ||
+                error.reason === "unavailable" ||
+                error.reason === "stale_renderer"
+                  ? Effect.succeed(undefined)
+                  : Effect.fail(error),
+              ),
+            ),
+        ),
       ),
     );
     yield* ipc.handleControl("workbench-agent:register", (event, input) =>

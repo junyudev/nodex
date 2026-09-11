@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WorkbenchSurfaceIdSchema } from "../workbench-resource-identity";
 import {
   findWorkbenchPanelLeafForTab,
   flattenWorkbenchPanelTabIds,
@@ -36,7 +37,7 @@ import type { ContentAccessContext } from "../content-access-context";
 import type { LibraryPlacedResourceTarget } from "../library-module";
 
 const idSchema = z.string().min(1).max(512);
-const surfaceIdSchema = z.string().min(1).max(160);
+const surfaceIdSchema = WorkbenchSurfaceIdSchema;
 const titleSchema = z.string().max(2_000);
 
 function encodedJsonBytes(value: unknown): number {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WorkbenchSurfaceIdSchema } from "../workbench-resource-identity";
 import type {
   WorkbenchPanelLayout,
   WorkbenchPanelNode,
@@ -20,7 +21,7 @@ export const MAX_WORKBENCH_PANEL_NODE_DEPTH = 32;
 export const MAX_WORKBENCH_PANEL_NODE_COUNT = 256;
 
 const idSchema = z.string().min(1).max(512);
-const tabIdSchema = z.string().min(1).max(160);
+const tabIdSchema = WorkbenchSurfaceIdSchema;
 const titleSchema = z.string().max(2_000);
 
 function encodedJsonBytes(value: unknown): number {

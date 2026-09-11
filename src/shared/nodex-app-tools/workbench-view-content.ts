@@ -1,3 +1,4 @@
+import { WorkbenchSurfaceIdSchema } from "../workbench-resource-identity";
 import { z } from "zod";
 import { parseDatabaseViewPreferencesOverride } from "../database-kernel";
 import { ContentAccessContextSchema, WorkbenchSceneOwnerSchema } from "../schemas/workbench-scene";
@@ -18,7 +19,7 @@ const preferencesOverride = z.unknown().transform((value, context) => {
 export const WorkbenchCaptureViewRequestSchema = z.strictObject({
   kind: z.literal("capture_view"),
   sceneOwner: WorkbenchSceneOwnerSchema,
-  tabId: identity,
+  tabId: WorkbenchSurfaceIdSchema,
   expectedPresentationRevision: revision,
   purpose: z.enum(["display", "effective_query"]),
   range: z.enum(["viewport", "loaded", "selected"]),

@@ -1,3 +1,12 @@
+import {
+  WorkbenchSceneSnapshotSchema,
+  WorkbenchSurfaceDescriptorSchema,
+} from "../../shared/schemas/workbench-scene";
+import {
+  canonicalWorkbenchFilesConfig,
+  workbenchFileResourceId,
+} from "../../shared/workbench-resource-identity";
+import { workbenchSurfaceFromPreviewTab } from "./workbench-panel-preview";
 import type {
   WorkbenchCommand,
   WorkbenchCommandEnvelope,
@@ -135,9 +144,21 @@ function resolveTab(
         )
         .find((tab) => tab.id === tabId) ?? null)
     : null;
+  const slotKey =
+    observed.panelId && observed.groupId
+      ? panelSlot(scene.owner, observed.panelId, observed.groupId)
+      : null;
+  const fallbackKey = observed.panelId ? panelSlot(scene.owner, observed.panelId) : null;
+  const preview =
+    (slotKey ? state.ephemeralPanels.previewTabsByPanel[slotKey] : undefined) ??
+    (fallbackKey ? state.ephemeralPanels.previewTabsByPanel[fallbackKey] : undefined);
+  const previewSurface = slotKey
+    ? state.ephemeralPanels.previewSurfacesByPanel[slotKey]
+    : undefined;
   const surface =
     resolveWorkbenchSceneSurface(scene, tabId) ??
-    (observed.surface ? { ...observed.surface, stateKey: 0, state: null } : null);
+    (preview?.id === tabId ? workbenchSurfaceFromPreviewTab(preview) : null) ??
+    (previewSurface?.id === tabId ? previewSurface : null);
   return { observed, surface, auxiliary };
 }
 
@@ -377,10 +398,22 @@ export function prepareWorkbenchSceneCommand(
     requireGroup(observation, command.panelId, command.groupId);
     let surface = {
       ...command.surface,
-      id: options.surfaceId ?? createSecureRuntimeId("surface"),
+      id:
+        options.surfaceId ??
+        (command.surface.kind === "files" && command.surface.config.path
+          ? workbenchFileResourceId(
+              command.surface.config.hostId,
+              command.surface.config.path,
+              command.surface.config.cwd ?? command.surface.config.workspaceRoot,
+            )
+          : createSecureRuntimeId("surface")),
       stateKey: 0,
       state: null,
     } as WorkbenchSurfaceDescriptor;
+    if (surface.kind === "files")
+      surface = { ...surface, config: canonicalWorkbenchFilesConfig(surface.config) };
+    if (!WorkbenchSurfaceDescriptorSchema.safeParse(surface).success)
+      return reject("invalid_command");
     if (!isWorkbenchScenePanelSurfaceAllowed(sceneOwner, surface))
       return reject("invalid_placement");
     const reuseKey = getWorkbenchSurfaceReuseKey(surface);
@@ -821,6 +854,8 @@ export function createWorkbenchSceneCommands(
             }),
           };
         }
+        if (!WorkbenchSceneSnapshotSchema.safeParse(prepared.scene).success)
+          return receipt({ error: "invalid_command" });
         for (const tab of prepared.closing) {
           if (!(await lifecycle.prepareClose(input.sceneOwner, tab)))
             return receipt({ error: "save_failed" });
@@ -861,6 +896,39 @@ export function createWorkbenchSceneCommands(
           ),
         );
         const [commit, closed] = await Promise.allSettled([persisted, cleanup]);
+        const persistenceFailed =
+          commit.status === "rejected" ||
+          commit.value.presentationRevision !== current.presentationRevision;
+        const promotedPreview =
+          priorScene &&
+          prepared.tabId &&
+          !priorScene.panelSurfacesById[prepared.tabId] &&
+          prepared.scene.panelSurfacesById[prepared.tabId] &&
+          readWorkbenchAgentContext(before, input.sceneOwner)?.tabs.some(
+            (tab) => tab.tabId === prepared.tabId && tab.preview,
+          );
+        // A failed Keep must remain retryable. Never rewind intervening edits or another generation.
+        if (
+          persistenceFailed &&
+          promotedPreview &&
+          !executionOptions.location &&
+          isCurrent() &&
+          owner.read().presentationRevision === current.presentationRevision
+        ) {
+          const restored = owner.updateScenePresentation(
+            input.sceneOwner,
+            () => ({ scene: priorScene!, ephemeralPanels: before.ephemeralPanels }),
+            current.presentationRevision,
+          );
+          return receipt({
+            applied: false,
+            persisted: false,
+            presentationRevision: restored.presentationRevision,
+            tabId: prepared.tabId,
+            groupId: prepared.groupId,
+            error: "persistence_failed",
+          });
+        }
         return receipt({
           applied: current.presentationRevision !== before.presentationRevision,
           persisted:
@@ -871,13 +939,11 @@ export function createWorkbenchSceneCommands(
           layoutRevision: commit.status === "fulfilled" ? commit.value.layoutRevision : null,
           tabId: prepared.tabId,
           groupId: prepared.groupId,
-          error:
-            commit.status === "rejected" ||
-            commit.value.presentationRevision !== current.presentationRevision
-              ? "persistence_failed"
-              : closed.status === "rejected"
-                ? "runtime_cleanup_failed"
-                : null,
+          error: persistenceFailed
+            ? "persistence_failed"
+            : closed.status === "rejected"
+              ? "runtime_cleanup_failed"
+              : null,
         });
       } catch (error) {
         return receipt({

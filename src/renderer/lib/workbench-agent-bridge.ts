@@ -1,3 +1,4 @@
+import { boundWorkbenchObservation } from "../../shared/nodex-app-tools/workbench-context-budget";
 import {
   WORKBENCH_AGENT_CANCEL_CHANNEL,
   WORKBENCH_AGENT_MAX_REPLY_BYTES,
@@ -69,13 +70,19 @@ function boundedReply(
     windowSessionId: request.windowSessionId,
     rendererGeneration: request.rendererGeneration,
     requestId: request.requestId,
-    outcome: { ok: true, result },
+    outcome: {
+      ok: true,
+      result:
+        result.kind === "observe" && result.observation
+          ? { ...result, observation: boundWorkbenchObservation(result.observation) }
+          : result,
+    },
   };
   const encoded = JSON.stringify(reply);
-  if (
-    new TextEncoder().encode(encoded).byteLength > WORKBENCH_AGENT_MAX_REPLY_BYTES ||
-    !WorkbenchAgentReplySchema.safeParse(reply).success
-  ) {
+  if (!WorkbenchAgentReplySchema.safeParse(reply).success) {
+    return { ...reply, outcome: { ok: false, error: "invalid_request" } };
+  }
+  if (new TextEncoder().encode(encoded).byteLength > WORKBENCH_AGENT_MAX_REPLY_BYTES) {
     return { ...reply, outcome: { ok: false, error: "result_too_large" } };
   }
   return reply;

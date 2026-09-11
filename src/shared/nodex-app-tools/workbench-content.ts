@@ -1,3 +1,4 @@
+import { WorkbenchSurfaceIdSchema } from "../workbench-resource-identity";
 import { z } from "zod";
 import { ContentAccessContextSchema, WorkbenchSceneOwnerSchema } from "../schemas/workbench-scene";
 
@@ -18,7 +19,7 @@ export const WorkbenchPrepareContentRequestSchema = z
   .object({
     kind: z.literal("prepare_content"),
     sceneOwner: WorkbenchSceneOwnerSchema,
-    tabId: identity,
+    tabId: WorkbenchSurfaceIdSchema,
     expectedPresentationRevision: revision,
   })
   .strict();
