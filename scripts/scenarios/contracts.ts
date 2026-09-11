@@ -1,3 +1,4 @@
+import type { LibraryResourceTarget, LibraryAccess } from "../../src/shared/library-module";
 import type {
   CodexThreadActiveFlag,
   CodexThreadStatusType,
@@ -119,6 +120,11 @@ export interface ScenarioRelatedChatSeedResult {
 }
 
 export interface ScenarioSeedPort {
+  setResourceProjectAccess(input: {
+    readonly projectId: string;
+    readonly target: LibraryResourceTarget;
+    readonly access: LibraryAccess | null;
+  }): Promise<void>;
   createProject(input: ProjectCreateInput): Promise<Project>;
   createPage(input: ScenarioPageSeed): Promise<{ readonly documentId: string }>;
   createStandalonePage(input: ScenarioStandalonePageSeed): Promise<void>;

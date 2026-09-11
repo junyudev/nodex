@@ -1969,7 +1969,7 @@ mod tests {
     }
 
     #[test]
-    fn body_only_cut_paste_uses_exact_clipboard_authority_after_source_detachment() {
+    fn clipboard_file_export_keeps_frozen_bytes_after_cut_and_shared_update() {
         use nodex_core_contracts::library::{
             LibraryDocumentHead, LibraryFileReadSource, LibraryProjectAccessChange,
             LibraryResourceTarget, LibraryStructuralDeleteDirection, LibraryStructuralDeleteReason,
@@ -2017,6 +2017,7 @@ mod tests {
             "capture-body-file",
             LibraryIntent::ApplyStructuralEdit {
                 command: Box::new(Command::CaptureClipboard {
+                    file_export_candidates: Some(vec!["file-a".to_owned()]),
                     selection: selection(),
                 }),
             },
@@ -2069,6 +2070,114 @@ mod tests {
             assert!(retained, "detached clipboard bodies retain their File identity");
             Ok(())
         }).unwrap();
+        let export_source = LibraryFileReadSource::StructuralClipboard {
+            bundle: captured.clone(),
+        };
+        let bytes = b"beta";
+        let hash = crate::document::sha256(bytes);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        module
+            .register_prepared_file_blob(
+                &bound_context(None),
+                "epoch-1",
+                "replace-export-file",
+                "export-beta",
+                &hash,
+                &format!("{hash}.blob"),
+                bytes.len() as u64,
+                now + 60_000,
+            )
+            .unwrap();
+        module
+            .apply(
+                &bound_context(None),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "replace-export-file".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyFileChange {
+                        change: nodex_core_contracts::library::LibraryFileChange::ReplaceContent {
+                            file_id: "file-a".to_owned(),
+                            expected_revision: 1,
+                            expected_head_version: 1,
+                            mime_type: "image/png".to_owned(),
+                            prepared_blob_receipt_id: "export-beta".to_owned(),
+                        },
+                        turn_id: None,
+                    },
+                },
+            )
+            .unwrap();
+        module
+            .apply(
+                &bound_context(None),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "rename-export-file".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ApplyFileChange {
+                        change: nodex_core_contracts::library::LibraryFileChange::Rename {
+                            file_id: "file-a".to_owned(),
+                            expected_revision: 2,
+                            default_name: "changed.png".to_owned(),
+                        },
+                        turn_id: None,
+                    },
+                },
+            )
+            .unwrap();
+        module.collect_unreachable_file_blobs(100).unwrap();
+        let frozen = module
+            .resolve_file_blob(
+                &bound_context(Some("project-1")),
+                "file-a",
+                &export_source,
+                Some(1),
+            )
+            .unwrap();
+        assert_eq!(fs::read(frozen.physical_path).unwrap(), b"alpha");
+        assert_eq!(frozen.default_name, "shared.png");
+        assert!(
+            module
+                .resolve_file_blob(&bound_context(None), "file-a", &export_source, None)
+                .is_err(),
+            "Library scope cannot replace the capture scope"
+        );
+        assert!(
+            module
+                .resolve_file_blob(
+                    &bound_context(Some("project-1")),
+                    "file-a",
+                    &export_source,
+                    Some(2)
+                )
+                .is_err()
+        );
+        assert!(
+            module
+                .resolve_file_blob(
+                    &bound_context(Some("project-1")),
+                    "other-file",
+                    &export_source,
+                    None
+                )
+                .is_err()
+        );
+        let mut invalid = captured.clone();
+        invalid.manifest_hash = "0".repeat(64);
+        assert!(
+            module
+                .resolve_file_blob(
+                    &bound_context(Some("project-1")),
+                    "file-a",
+                    &LibraryFileReadSource::StructuralClipboard { bundle: invalid },
+                    None
+                )
+                .is_err()
+        );
         let target = page_content(&module, "page-b");
         let pasted = apply_intent(
             &module,
@@ -2110,10 +2219,10 @@ mod tests {
                 None,
             )
             .unwrap();
-        assert_eq!(fs::read(blob.physical_path).unwrap(), b"alpha");
+        assert_eq!(fs::read(blob.physical_path).unwrap(), b"beta");
         write(&fixture, "assert-cut-file", |context| {
             let file = metadata(context.connection, context.library_id, "file-a")?;
-            assert_eq!((file.revision, file.head_version), (1, 1));
+            assert_eq!((file.revision, file.head_version), (3, 2));
             assert!(
                 super::super::file_access::require_direct(
                     context.connection,
@@ -2126,6 +2235,111 @@ mod tests {
             Ok(())
         })
         .unwrap();
+        let after_paste = module
+            .resolve_file_blob(
+                &bound_context(Some("project-1")),
+                "file-a",
+                &export_source,
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            fs::read(after_paste.physical_path).unwrap(),
+            b"alpha",
+            "consuming Cut does not consume export authority"
+        );
+        module
+            .apply(
+                &bound_context(None),
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "revoke-export-source".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::SetProjectAccess {
+                        target: LibraryResourceTarget::Page {
+                            page_id: "page-a".to_owned(),
+                        },
+                        changes: vec![LibraryProjectAccessChange {
+                            project_id: "project-1".to_owned(),
+                            access: None,
+                            expected_revision: Some(1),
+                        }],
+                    },
+                },
+            )
+            .unwrap();
+        assert!(
+            module
+                .resolve_file_blob(
+                    &bound_context(Some("project-1")),
+                    "file-a",
+                    &export_source,
+                    None
+                )
+                .is_err(),
+            "source revocation blocks new exports"
+        );
+    }
+
+    #[test]
+    fn clipboard_file_export_requires_complete_selected_members() {
+        use nodex_core_contracts::library::{
+            LibraryDocumentHead, LibraryFileReadSource, LibraryStructuralEditCommand,
+            LibraryStructuralSelection,
+        };
+        let fixture = fixture();
+        let module = crate::library::LibraryModule::new("profile-1", "library-1", &fixture.kernel);
+        create_image(&fixture, &module);
+        let image_id = place_image(&fixture, &module, "page-a");
+        let page = page_content(&module, "page-a");
+        for (index, candidates) in [
+            None,
+            Some(vec!["file-a".to_owned(), "foreign".to_owned()]),
+            Some(vec!["file-a".to_owned(); 129]),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let token = apply_intent(
+                &module,
+                &format!("capture-export-{index}"),
+                LibraryIntent::ApplyStructuralEdit {
+                    command: Box::new(LibraryStructuralEditCommand::CaptureClipboard {
+                        selection: LibraryStructuralSelection {
+                            source_document_id: page.document_id.clone(),
+                            root_block_ids: vec![image_id.clone()],
+                            source_head: LibraryDocumentHead {
+                                document_id: page.document_id.clone(),
+                                generation: page.document_generation,
+                                head_seq: page.document_head_seq,
+                            },
+                        },
+                        file_export_candidates: candidates,
+                    }),
+                },
+            )
+            .committed
+            .value
+            .structural_edit
+            .unwrap()
+            .clipboard
+            .unwrap();
+            assert!(
+                module
+                    .resolve_file_blob(
+                        &bound_context(Some("project-1")),
+                        "file-a",
+                        &LibraryFileReadSource::StructuralClipboard { bundle: token },
+                        None
+                    )
+                    .is_err()
+            );
+            assert_eq!(
+                page_content(&module, "page-a").asset_refs.len(),
+                1,
+                "optional export failure preserves the source and clipboard capture"
+            );
+        }
     }
 
     #[test]
@@ -2178,6 +2392,7 @@ mod tests {
             "capture-nested-files",
             LibraryIntent::ApplyStructuralEdit {
                 command: Box::new(Command::CaptureClipboard {
+                    file_export_candidates: None,
                     selection: LibraryStructuralSelection {
                         source_document_id: host.document_id.clone(),
                         root_block_ids: vec!["page-nested".to_owned()],

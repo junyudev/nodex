@@ -1,3 +1,6 @@
+import { useDatabasePromotionPresentation } from "@/lib/database-promotion-presentation";
+import { DatabasePromotionSlot } from "../database-promotion-slot";
+import { databaseListPromotionDisplay } from "./database-list-promotion-display";
 import {
   useDeferredValue,
   useEffect,
@@ -188,7 +191,10 @@ interface DatabaseListProps {
   readonly searchQuery: string;
   readonly onOpenPage: DatabaseViewPageOpenHandler;
   readonly pageActionPort?: DatabaseViewPageActionPort;
-  readonly onCommitted?: () => Promise<void> | void;
+  readonly onCommitted?: (cursor?: {
+    readonly storeEpoch: string;
+    readonly commitSeq: number;
+  }) => Promise<void> | void;
   readonly commitOperations?: typeof commitDatabaseViewOperations;
   readonly presentedPageIds?: ReadonlySet<string>;
   readonly initialSelectedPageIds?: ReadonlySet<string>;
@@ -643,6 +649,29 @@ export function DatabaseList({
     proofProjection,
   ]);
   const projection = presented.model;
+  const promotionPageIds = useMemo(
+    () =>
+      new Set(authoritativeProjection.flatMap((row) => (row.kind === "page" ? [row.pageId] : []))),
+    [authoritativeProjection],
+  );
+  const canonicalPromotionPageIds = useMemo(
+    () =>
+      new Set(coreWindow.rows.flatMap((row) => (row.kind === "page" ? [row.row.page.pageId] : []))),
+    [coreWindow.rows],
+  );
+  const promotions = useDatabasePromotionPresentation({
+    model,
+    effective,
+    evidence: coreWindow.boundedRead ?? null,
+    pageIds: promotionPageIds,
+    canonicalPageIds: canonicalPromotionPageIds,
+    displayIdentity: `${effective.layout}:${deferredSearchQuery}:${JSON.stringify([...collapsedOccurrenceKeys])}`,
+  });
+  const displayProjection = useMemo(
+    () => databaseListPromotionDisplay(projection, promotions.slots),
+    [projection, promotions.slots],
+  );
+
   useLayoutEffect(() => {
     if (presented.renderToken !== null)
       coreWindow.presentationOwner.markRendered(presented.renderToken);
@@ -757,14 +786,16 @@ export function DatabaseList({
   const virtualWindow = useMemo(
     () =>
       computeDatabaseListVirtualWindow(
-        projection,
+        displayProjection,
         scrollTop,
         viewportHeight,
         dndActive ? Math.max(overscan, 1_200) : overscan,
       ),
-    [dndActive, overscan, projection, scrollTop, viewportHeight],
+    [dndActive, overscan, displayProjection, scrollTop, viewportHeight],
   );
-  const renderedRows = projection.slice(virtualWindow.startIndex, virtualWindow.endIndex);
+  const renderedRows = displayProjection.slice(virtualWindow.startIndex, virtualWindow.endIndex);
+  const mountedRows = renderedRows.filter((row) => row.kind !== "pending_promotion");
+  const mountedKeys = new Set(mountedRows.map((row) => row.key));
   useWorkbenchViewContent(workbenchContent, (request) => {
     const scroller = scrollerRef.current;
     if (!workbenchContent || !hostRef.current?.isConnected || !scroller?.isConnected) return null;
@@ -772,17 +803,17 @@ export function DatabaseList({
     const actualViewportHeight = scroller.clientHeight;
     const viewportKnown = workbenchElementInViewport(scroller) && actualViewportHeight > 0;
     const viewportKeys = databaseListViewportOccurrenceKeys({
-      rows: projection,
+      rows: displayProjection,
       scrollTop: actualScrollTop,
       viewportHeight: viewportKnown ? actualViewportHeight : 0,
       mountedStartIndex: virtualWindow.startIndex,
       mountedEndIndex: virtualWindow.endIndex,
     });
-    const occurrences = projection.flatMap((entry, index) => {
+    const occurrences = projection.flatMap((entry) => {
       if (entry.kind !== "page") return [];
       const authority = authorityByPageId.get(entry.pageId);
       if (!authority) return [];
-      const mounted = index >= virtualWindow.startIndex && index < virtualWindow.endIndex;
+      const mounted = mountedKeys.has(entry.key);
       return [
         workbenchViewOccurrence({
           row: authority,
@@ -822,7 +853,8 @@ export function DatabaseList({
           coreWindow.presentationOwner.hasPendingPresentation() ||
           mutationPending ||
           dndActive ||
-          blockDropPreview !== null,
+          blockDropPreview !== null ||
+          promotions.slots.length > 0,
         loading:
           usesCoreAuthority &&
           (!coreWindow.active ||
@@ -856,9 +888,9 @@ export function DatabaseList({
     });
   });
   const mountedActiveOccurrenceKey = databaseListMountedActiveOccurrenceKey({
-    rows: projection,
-    startIndex: virtualWindow.startIndex,
-    endIndex: virtualWindow.endIndex,
+    rows: mountedRows,
+    startIndex: 0,
+    endIndex: mountedRows.length,
     activeOccurrenceKey: selection.activeOccurrenceKey,
   });
   const selectedPageIds = useMemo(
@@ -962,7 +994,7 @@ export function DatabaseList({
           intraRowOffset?: unknown;
         };
         if (typeof value.rowKey === "string" && typeof value.intraRowOffset === "number") {
-          restoredTop = restoreDatabaseListScrollTop(projection, {
+          restoredTop = restoreDatabaseListScrollTop(displayProjection, {
             rowKey: value.rowKey,
             intraRowOffset: value.intraRowOffset,
           });
@@ -980,7 +1012,7 @@ export function DatabaseList({
       setScrollTop(restoredTop);
     }
     restoredScrollStateKeyRef.current = scrollStateKey;
-  }, [projection, scrollStateKey]);
+  }, [displayProjection, projection.length, scrollStateKey]);
 
   useEffect(() => {
     let pass = 0;
@@ -1013,7 +1045,7 @@ export function DatabaseList({
       return;
     }
     const nextTop = databaseListScrollTopForOccurrence({
-      rows: projection,
+      rows: displayProjection,
       occurrenceKey: focusRequest.occurrenceKey,
       viewportTop: scroller.scrollTop,
       viewportHeight: scroller.clientHeight,
@@ -1027,7 +1059,7 @@ export function DatabaseList({
     }
     scroller.scrollTop = nextTop;
     setScrollTop(nextTop);
-  }, [focusRequest, projection, virtualWindow.endIndex, virtualWindow.startIndex]);
+  }, [focusRequest, displayProjection, virtualWindow.endIndex, virtualWindow.startIndex]);
 
   useEffect(
     () => () => {
@@ -1560,7 +1592,11 @@ export function DatabaseList({
       altKey: event.altKey,
       shiftKey: event.shiftKey,
       mutationHistory,
-      onCommitted: async () => await onCommitted?.(),
+      presentation: promotions.owner,
+      onCommitted: async (cursor) => {
+        await onCommitted?.(cursor);
+        await coreWindow.refresh(cursor);
+      },
     });
   };
 
@@ -1921,7 +1957,7 @@ export function DatabaseList({
                   setScrollTop(committedTop);
                   try {
                     window.sessionStorage.setItem(`${scrollStateKey}:top`, String(committedTop));
-                    const anchor = captureDatabaseListScrollAnchor(projection, committedTop);
+                    const anchor = captureDatabaseListScrollAnchor(displayProjection, committedTop);
                     if (anchor) {
                       window.sessionStorage.setItem(
                         `${scrollStateKey}:anchor`,
@@ -1975,7 +2011,7 @@ export function DatabaseList({
                 ) : null}
               </div>
             ) : null}
-            {projection.length === 0 ? (
+            {displayProjection.length === 0 ? (
               <div className="flex min-h-40 items-center justify-center text-sm text-token-description-foreground">
                 {usesCoreAuthority && coreWindow.loading
                   ? "Loading Pages…"
@@ -1996,8 +2032,16 @@ export function DatabaseList({
                     style={{ height: virtualWindow.paddingStart }}
                   />
                 ) : null}
-                {renderedRows.map((item, renderedIndex) => {
-                  const logicalIndex = virtualWindow.startIndex + renderedIndex;
+                {renderedRows.map((item) => {
+                  if (item.kind === "pending_promotion")
+                    return (
+                      <DatabasePromotionSlot
+                        key={item.key}
+                        slot={item}
+                        className="col-span-full h-8"
+                      />
+                    );
+                  const logicalIndex = projectionIndexByKey.get(item.key) ?? 0;
                   if (item.kind === "page") return renderPage(item, logicalIndex);
                   if (item.kind === "subgroup") {
                     return (

@@ -123,6 +123,9 @@ export type NfmHistoryCommand =
     }
   | {
       readonly kind: "clipboard";
+      readonly captureOperationId: string;
+      readonly deleteOperationId: string;
+      readonly fileExportCandidates?: readonly string[];
       readonly action: "copy" | "cut";
       readonly roots: readonly string[];
       readonly presentation: NfmStructuralClipboardPresentation;

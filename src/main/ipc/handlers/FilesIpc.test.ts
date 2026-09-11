@@ -1,3 +1,4 @@
+import { live as fileExportsLive } from "../../library-application/FileExportRuntime";
 import * as fs from "node:fs";
 import { createHash } from "node:crypto";
 import * as os from "node:os";
@@ -52,6 +53,31 @@ it.effect("preserves exact File sources for save/read and distinct batch publica
         on: () => Effect.die("unused"),
       });
       const library = {
+        read: (_access, request) =>
+          Effect.sync(() => {
+            if (request.read.mode !== "file_presentation") throw new Error("Unexpected File read");
+            return {
+              ok: true as const,
+              value: {
+                profileId: "profile",
+                libraryId: "library",
+                storeEpoch: "epoch",
+                commitSeq: 1,
+                authorization: null,
+                value: {
+                  kind: "file_presentation" as const,
+                  value: {
+                    file_id: "file-a",
+                    version: 2,
+                    default_name: "old.png",
+                    mime_type: "image/png",
+                    byte_length: 8,
+                    blob_etag: createHash("sha256").update("captured").digest("hex"),
+                  },
+                },
+              },
+            };
+          }),
         readFileBlob: (_access, input) =>
           Effect.sync(() => {
             reads.push(input);
@@ -74,6 +100,7 @@ it.effect("preserves exact File sources for save/read and distinct batch publica
       } satisfies Partial<LibraryModule["Service"]>;
       yield* Layer.buildWithScope(
         live.pipe(
+          Layer.provideMerge(fileExportsLive),
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(ElectronIpc, ipc),
@@ -117,7 +144,7 @@ it.effect("preserves exact File sources for save/read and distinct batch publica
       fs.unlinkSync(exported);
       assert.strictEqual(String(yield* materialize()), exported);
       assert.strictEqual(fs.readFileSync(exported, "utf8"), "captured");
-      assert.deepStrictEqual(reads, [input, input, input, input, input]);
+      assert.deepStrictEqual(reads, [input, input, input, input]);
       assert.strictEqual(fs.readFileSync(destination, "utf8"), "captured");
       const invalid = yield* Effect.exit(
         handlers.get("files:read")!(event, access, {
@@ -126,7 +153,7 @@ it.effect("preserves exact File sources for save/read and distinct batch publica
         }),
       );
       assert.isTrue(Exit.isFailure(invalid));
-      assert.strictEqual(reads.length, 5);
+      assert.strictEqual(reads.length, 4);
       const picked = (yield* handlers.get("files:pick-and-prepare")!(event, access, {
         operationId: "picked-operation",
         selection: "files",

@@ -1,4 +1,8 @@
 import {
+  databasePromotionReadIdentity,
+  type DatabasePromotionReadEvidence,
+} from "./database-promotion-read-evidence";
+import {
   WORKFLOW_STATUS_COLUMNS,
   DEFAULT_WORKFLOW_STATUS,
   isWorkflowStatus,
@@ -34,6 +38,7 @@ import { isPriority } from "../../shared/priority";
 const ESTIMATES = new Set<Estimate>(["xs", "s", "m", "l", "xl"]);
 
 export interface DatabaseViewRenderModel {
+  readonly boundedRead?: DatabasePromotionReadEvidence | null;
   readonly accessContext: DatabaseViewAccessContext;
   readonly libraryId: string;
   readonly databaseViewId: DatabaseViewId;
@@ -490,8 +495,12 @@ export const buildDatabaseViewRenderModel = (
 
 export const buildDatabaseViewWindowRenderModel = (
   window: DatabaseViewWindowSnapshot<string | null>,
-): DatabaseViewRenderModel =>
-  buildDatabaseViewRenderModel({
+  options: {
+    readonly windowKey?: string;
+    readonly boundedRead?: DatabasePromotionReadEvidence | null;
+  } = {},
+): DatabaseViewRenderModel => {
+  const model = buildDatabaseViewRenderModel({
     ...(window.projectId === null
       ? { accessContext: { kind: "library" as const } }
       : { projectId: window.projectId }),
@@ -501,3 +510,18 @@ export const buildDatabaseViewWindowRenderModel = (
     authorization: window.authorization,
     value: { kind: "query", value: window.query },
   });
+  return {
+    ...model,
+    boundedRead:
+      options.boundedRead !== undefined
+        ? options.boundedRead
+        : {
+            identity: databasePromotionReadIdentity(model),
+            windowKey: options.windowKey ?? "first-window",
+            storeEpoch: window.storeEpoch,
+            commitSeq: window.commitSeq,
+            scopeKey: window.projection.scopeKey,
+            pageIds: window.query.rows.map((row) => row.page.pageId),
+          },
+  };
+};

@@ -473,6 +473,9 @@ const toCoreStructuralCommand = (command: StructuralEditCommand) => {
     case "capture_clipboard":
       return {
         kind: command.kind,
+        ...(command.fileExportCandidates
+          ? { file_export_candidates: [...command.fileExportCandidates] }
+          : {}),
         selection: toCoreStructuralSelection(command.selection),
       } as const;
     case "delete_selection":

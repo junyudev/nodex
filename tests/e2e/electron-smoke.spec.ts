@@ -1,3 +1,4 @@
+import type { BlockTransferDataSourcePlacement } from "../../src/shared/block-transfer";
 import { readTestClipboard, writeTestClipboardImage } from "./clipboard";
 import { selectEditorBlockRange } from "./support/select-editor-block-range";
 import { dragListRowWithMouse } from "./support/drag-list-row-with-mouse";
@@ -589,9 +590,9 @@ async function transferBoardFixturePages(
           placement: {
             kind: "direct",
             viewId: database.viewId,
-            presentationOverride: { layout: "board" },
+            preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
             groupKey,
-          },
+          } satisfies BlockTransferDataSourcePlacement,
         },
         promotionPolicy: "literal",
       }),
@@ -4724,10 +4725,10 @@ test("converges a high-pressure Page promotion across tab groups and WebContents
         placement: {
           kind: "direct",
           viewId: database.viewId,
-          presentationOverride: { layout: "board" },
+          preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
           groupKey: "triage",
           beforePageId: triageAnchorPageId,
-        },
+        } satisfies BlockTransferDataSourcePlacement,
       },
       promotionPolicy: "literal",
     });
@@ -5141,10 +5142,10 @@ test("measures high-pressure nested Block transfer into a populated Board @perfo
             placement: {
               kind: "direct",
               viewId: database.viewId,
-              presentationOverride: { layout: "board" },
+              preferencesOverride: { rulesOverride: {}, presentationOverride: {} },
               groupKey: "triage",
               beforePageId: firstTriagePageId,
-            },
+            } satisfies BlockTransferDataSourcePlacement,
           },
           promotionPolicy: "literal",
         }),

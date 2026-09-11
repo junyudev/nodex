@@ -1,3 +1,8 @@
+import type { ProjectionCursor } from "../../../../shared/projection-stream";
+import {
+  databasePromotionReadIdentity,
+  type DatabasePromotionReadEvidence,
+} from "@/lib/database-promotion-read-evidence";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { ReceiptFencedOptimisticJournal } from "@/lib/receipt-fenced-optimistic-journal";
 import {
@@ -32,6 +37,7 @@ const MAX_RETAINED_LIST_WINDOW_STORES = 64;
 type AnyDatabaseListWindowSnapshot = DatabaseListWindowSnapshot<string | null>;
 
 export interface DatabaseListWindowState {
+  readonly boundedRead?: DatabasePromotionReadEvidence;
   readonly active: boolean;
   readonly storeEpoch: string | null;
   readonly commitSeq: number;
@@ -126,6 +132,19 @@ export const mergeDatabaseListWindow = (
       commitSeq: next.commitSeq,
       projection: next.projection,
       rows: [...current.rows, ...next.rows],
+      ...(current.boundedRead
+        ? {
+            boundedRead: {
+              ...current.boundedRead,
+              windowKey: `through:${next.windowEnd}`,
+              commitSeq: Math.min(current.boundedRead.commitSeq, next.commitSeq),
+              pageIds: [
+                ...current.boundedRead.pageIds,
+                ...next.rows.flatMap((row) => (row.kind === "page" ? [row.row.page.pageId] : [])),
+              ],
+            },
+          }
+        : {}),
       groups: next.groups,
       totalProjectionRowCount: next.totalProjectionRowCount,
       totalOccurrenceCount: next.totalOccurrenceCount,
@@ -153,6 +172,7 @@ interface DatabaseListResourceIdentity {
 }
 
 interface DatabaseListWindowDescriptor {
+  readonly readIdentity: string;
   readonly identity: string;
   readonly presentationIdentity: string;
   readonly commitSeq: number;
@@ -183,6 +203,7 @@ const descriptorFor = (
   });
   return {
     identity: JSON.stringify(request),
+    readIdentity: databasePromotionReadIdentity(model, effective),
     presentationIdentity,
     commitSeq: model.commitSeq,
     request,
@@ -528,8 +549,26 @@ export class DatabaseListWindowStore {
   };
 
   /** Forces a first-window revalidation and resolves with the accepted state. */
-  refresh = async (): Promise<DatabaseListWindowState> => {
+  refresh = async (minimum?: ProjectionCursor): Promise<DatabaseListWindowState> => {
     if (!this.descriptor) return this.state;
+    if (minimum && minimum.storeEpoch !== this.descriptor.resource.storeEpoch) return this.state;
+    if (minimum)
+      this.descriptor = {
+        ...this.descriptor,
+        request: {
+          ...this.descriptor.request,
+          input: {
+            ...this.descriptor.request.input,
+            minimumCommitCursor: {
+              ...minimum,
+              commitSeq: Math.max(
+                minimum.commitSeq,
+                this.descriptor.request.input.minimumCommitCursor?.commitSeq ?? 0,
+              ),
+            },
+          },
+        },
+      };
     this.requestFirstWindow(this.state.active);
     await this.firstWindowDrain;
     return this.state;
@@ -593,7 +632,19 @@ export class DatabaseListWindowStore {
         this.firstSnapshot = snapshot;
         this.acceptedRequestIdentity = descriptor.identity;
         this.canonicalReadGeneration += 1;
-        this.publish(stateFromFirstWindow(snapshot));
+        this.publish({
+          ...stateFromFirstWindow(snapshot),
+          boundedRead: {
+            identity: descriptor.readIdentity,
+            windowKey: `first:${descriptor.request.input.first}`,
+            storeEpoch: snapshot.storeEpoch,
+            commitSeq: snapshot.commitSeq,
+            scopeKey: snapshot.projection.scopeKey,
+            pageIds: snapshot.rows.flatMap((row) =>
+              row.kind === "page" ? [row.row.page.pageId] : [],
+            ),
+          },
+        });
       } catch {
         if (generation !== this.generation || descriptor.identity !== this.descriptor?.identity) {
           continue;
@@ -696,7 +747,7 @@ export interface UseDatabaseListWindowResult extends DatabaseListWindowState {
   readonly presentationRevision: number;
   readonly loadMore: () => void;
   readonly retry: () => void;
-  readonly refresh: () => Promise<DatabaseListWindowState>;
+  readonly refresh: (minimum?: ProjectionCursor) => Promise<DatabaseListWindowState>;
 }
 
 export const useDatabaseListWindow = (input: {

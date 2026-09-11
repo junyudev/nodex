@@ -49,11 +49,46 @@ export type HistoryCommandResolution<Receipt> =
   | { readonly status: "noop" }
   | { readonly status: "rejected" | "recovering" | "blocked"; readonly reason: string };
 
+export type HistoryCommandObservation<Receipt> =
+  | HistoryCommandResolution<Receipt>
+  | { readonly status: "admitted" | "preparing" | "submitted" | "revoked" };
+
+/** A subscription belongs to the admitted action, including exact-attempt recovery. */
+const commandObservation = <Receipt>(initial: HistoryCommandObservation<Receipt>) => {
+  let current = initial;
+  const listeners = new Set<(state: HistoryCommandObservation<Receipt>) => void>();
+  const terminal = () =>
+    !["admitted", "preparing", "submitted", "recovering"].includes(current.status);
+  const notify = (listener: (state: HistoryCommandObservation<Receipt>) => void) => {
+    try {
+      listener(current);
+    } catch {
+      /* Presentation cannot alter durable history. */
+    }
+  };
+  return {
+    observe: (listener: (state: HistoryCommandObservation<Receipt>) => void) => {
+      if (!terminal()) listeners.add(listener);
+      notify(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    update: (state: HistoryCommandObservation<Receipt>) => {
+      if (terminal()) return;
+      current = state;
+      for (const listener of listeners) notify(listener);
+      if (terminal()) listeners.clear();
+    },
+  };
+};
+
 /** A caller may observe an admitted action, but cannot erase a sent action. */
 export interface HistoryCommandHandle<Receipt> {
   readonly accepted: boolean;
   readonly entryId: number | null;
   readonly result: Promise<HistoryCommandResolution<Receipt>>;
+  readonly observe: (listener: (state: HistoryCommandObservation<Receipt>) => void) => () => void;
 }
 
 export interface HistoryContentAdapter<Intent, Request, Receipt, Inverse> {
@@ -267,6 +302,13 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
   let replayingLocal = false;
   const listeners = new Set<() => void>();
   const releases = new Set<Promise<void>>();
+  const observations = new Map<number, ReturnType<typeof commandObservation<Receipt>>>();
+  const observeEntry = (entryId: number | null, state: HistoryCommandObservation<Receipt>) => {
+    if (entryId === null) return;
+    observations.get(entryId)?.update(state);
+    if (!["admitted", "preparing", "submitted", "recovering"].includes(state.status))
+      observations.delete(entryId);
+  };
   const idleWaiters = new Set<() => void>();
   const isIdle = () =>
     releases.size === 0 &&
@@ -481,6 +523,8 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
     accepted: false,
     entryId: null,
     result: Promise.resolve(status === "noop" ? { status } : { status, reason }),
+    observe: commandObservation<Receipt>(status === "noop" ? { status } : { status, reason })
+      .observe,
   });
   const unavailable = (): string | null => {
     if (closed) return "This surface is closed.";
@@ -496,9 +540,18 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
     direction: "forward" | SurfaceHistoryDirection,
     run: () => Promise<HistoryCommandResolution<Receipt>>,
   ): HistoryCommandHandle<Receipt> => {
+    const observation =
+      (entryId === null ? undefined : observations.get(entryId)) ??
+      commandObservation<Receipt>({ status: "admitted" });
+    if (direction === "forward" && entryId !== null) observations.set(entryId, observation);
     let complete!: (resolution: HistoryCommandResolution<Receipt>) => void;
     const result = new Promise<HistoryCommandResolution<Receipt>>((resolve) => {
-      complete = resolve;
+      complete = (resolution) => {
+        if (entryId === null || observations.get(entryId) !== observation)
+          observation.update(resolution);
+        observeEntry(entryId, resolution);
+        resolve(resolution);
+      };
     });
     owner.queue.push({
       direction,
@@ -511,7 +564,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
         }),
     });
     drain(owner);
-    return { accepted: true, entryId, result };
+    return { accepted: true, entryId, result, observe: observation.observe };
   };
   const finishAttempt = (owner: typeof scope, attempt: FrozenAttempt) => {
     if (!owner.attempts.delete(attempt.entry.id)) return;
@@ -601,6 +654,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
     attempt: FrozenAttempt,
   ): Promise<HistoryCommandResolution<Receipt>> => {
     const { adapter } = attempt.entry;
+    if (attempt.direction === "forward") observeEntry(attempt.entry.id, { status: "submitted" });
     owner.activeReplay = attempt;
     attempt.entry.state = {
       kind: "pending",
@@ -690,6 +744,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
     branch = owner.branch,
   ): Promise<HistoryCommandResolution<Receipt>> => {
     const { adapter } = entry;
+    if (direction === "forward") observeEntry(entry.id, { status: "preparing" });
     if (entry.retired || adapter.available?.() === false || !retains(owner, entry)) {
       remove(owner.undo, entry);
       remove(owner.redo, entry);
@@ -875,11 +930,18 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
         consumed = true;
         continue;
       }
-      return { accepted: true, entryId: entry.id, result: Promise.resolve(resolution) };
+      return {
+        accepted: true,
+        entryId: entry.id,
+        result: Promise.resolve(resolution),
+        observe: commandObservation<Receipt>(resolution).observe,
+      };
     }
   };
   const reset = (key = scope.key) => {
     const previous = scope;
+    for (const observation of observations.values()) observation.update({ status: "revoked" });
+    observations.clear();
     for (const job of previous.queue.splice(0)) job.cancel();
     for (const entry of [...previous.undo, ...previous.redo]) discard(previous, entry);
     if (previous.uncertain) finishAttempt(previous, previous.uncertain);
@@ -972,6 +1034,7 @@ const createHistoryEngine = <Intent, Request, Receipt, Inverse>(options: {
       scope.branch++;
       for (const entry of [...scope.undo.slice(0, through + 1), ...scope.redo]) {
         entry.retired = true;
+        observeEntry(entry.id, { status: "revoked" });
         // Sent/uncertain attempts remain visible until exact resolution. Removing
         // them would make an unknown durable outcome look like empty history.
         const attempt = scope.attempts.get(entry.id);
@@ -1288,6 +1351,10 @@ export const createInteractionHistory = (options: {
       const rejectClosed = () => ({
         accepted: false,
         entryId: null,
+        observe: commandObservation<never>({
+          status: "rejected",
+          reason: "This history participant is closed.",
+        }).observe,
         result: Promise.resolve({
           status: "rejected" as const,
           reason: "This history participant is closed.",

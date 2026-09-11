@@ -97,13 +97,24 @@ Canvas version. Active locations can be opened directly. Incomplete pagination
 is explicitly labeled and never treated as a complete impact inventory. A lifecycle
 conflict reveals no inaccessible owner identity or hidden usage count.
 
+Structural Clipboard exports bind the exact File versions and default names captured
+from selected canonical occurrences. Reads require the same Library or Project
+access scope as capture, an active bundle lease, a valid capability, and current
+read access to the source Document. Removing a body occurrence through Cut does
+not revoke this narrow export source; removing source access does. Shared File
+updates leave the captured export unchanged, while Paste retains live File identity.
+Bundles without complete export bindings remain usable for structural Paste and
+portable copy, but cannot export guessed versions. Export preparation reads only
+metadata and supports at most 128 distinct Files; ambiguous Canvas versions or
+unsupported references retain portable text.
+
 Desktop and native clients read bytes through `/core/v1/files/blobs/<file-id>`
 with an explicit authority source. Direct reads may select a retained version;
 Page reads follow the current head, while Document revision, recovery draft and
 Canvas slot reads must match that source's captured target. Native save uses
 the same source as preview. Neither a save dialog nor a local cache expands
 the authority of the request. Copying a File reference as a local path
-materializes an authorized exact version into a rebuildable private cache. Every
+materializes an authorized exact version into a rebuildable private cache. Cache validation and publication use asynchronous I/O with bounded hash chunks. Warm cache reads reauthorize before reuse; at most two 64 MiB File exports run concurrently. Every
 materialization rechecks its source, including cache hits; cache loss can be
 repaired from Core without making the cache a persistent File owner.
 

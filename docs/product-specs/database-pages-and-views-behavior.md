@@ -630,6 +630,23 @@ order without requiring that View to remain focused. Immediately undoing a Block
 drop removes promoted Pages and restores the source Blocks; Redo restores the
 same generated identities.
 
+An accepted Block promotion immediately places a compact Moving/Copying status
+at its Board or List destination. Pending display slots belong to operation
+identities, never Page identities: they have no selection, navigation, Property
+editing or drag actions, and do not change Page counts. Consecutive batches retain
+separate slots. Source Copy remains unchanged; Move shows an editor decoration.
+
+A receipt replaces a slot with canonical Pages when available. Retirement requires
+that consumer's complete bounded query at or beyond the receipt and a matching
+React render. The query must retain the same Library/access, Store epoch, View,
+effective rules and loaded-window coordinates. A matching bounded read may also
+prove the result is outside that window. RowsById summaries, a stream cursor, or a
+read-generation counter cannot prove membership or absence. Canonical repair uses
+the receipt as a minimum read cursor; it does not delay command completion or
+Undo eligibility. Unknown outcomes keep the original slot through exact recovery.
+Changing the display's rules/window or revoking its authority discards only that
+presentation lease, without claiming the command was rejected.
+
 List also accepts native NFM Block drags from another mounted editor in the
 same renderer window. Under manual order or an inferable writable Property
 sort, a root Page-row half resolves to a truthful root-level gap and reuses the

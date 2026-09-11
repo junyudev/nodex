@@ -255,6 +255,13 @@ impl CoreClient {
         use nodex_core_contracts::library::LibraryFileReadSource;
         let fields = match source {
             LibraryFileReadSource::Direct => vec![("kind", "direct")],
+            LibraryFileReadSource::StructuralClipboard { bundle } => vec![
+                ("kind", "structural_clipboard"),
+                ("bundle_id", bundle.bundle_id.as_str()),
+                ("capability", bundle.capability.as_str()),
+                ("manifest_hash", bundle.manifest_hash.as_str()),
+                ("store_epoch", bundle.store_epoch.as_str()),
+            ],
             LibraryFileReadSource::Page { page_id } => {
                 vec![("kind", "page"), ("page_id", page_id.as_str())]
             }

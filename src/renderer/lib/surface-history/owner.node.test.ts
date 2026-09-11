@@ -56,6 +56,44 @@ const participant = (
 };
 
 describe("interaction history bindings", () => {
+  test("an admitted handle observes exact recovery and isolates listener failures", async () => {
+    const realm = createInteractionHistory({ scopeKey: "scene" });
+    const live = participant(realm, "Live");
+    live.submit.mockResolvedValueOnce({ kind: "unknown", reason: "Reply lost" });
+    const handle = live.binding.execute(4);
+    const states: string[] = [];
+    handle.observe(() => {
+      throw new Error("Detached presentation");
+    });
+    handle.observe((state) => states.push(state.status));
+    expect((await handle.result).status).toBe("recovering");
+    expect((await realm.recover().result).status).toBe("committed");
+    expect(states).toEqual(["preparing", "submitted", "recovering", "submitted", "committed"]);
+    expect(live.submit.mock.calls[1]![0]).toBe(live.submit.mock.calls[0]![0]);
+    const late = vi.fn();
+    handle.observe(late);
+    expect(late).toHaveBeenCalledWith({
+      status: "committed",
+      receipt: { before: 0, after: 4 },
+      entryId: handle.entryId,
+    });
+    realm.close();
+    expect(late).toHaveBeenCalledOnce();
+  });
+
+  test("reset revokes an unknown action's presentation without inventing a rejection", async () => {
+    const realm = createInteractionHistory({ scopeKey: "scene" });
+    const live = participant(realm, "Live");
+    live.submit.mockResolvedValueOnce({ kind: "unknown", reason: "Reply lost" });
+    const handle = live.binding.execute(4);
+    await handle.result;
+    const states: string[] = [];
+    handle.observe((state) => states.push(state.status));
+    realm.reset();
+    expect(states).toEqual(["recovering", "revoked"]);
+    realm.close();
+  });
+
   test("closed participants release late native captures without changing peer history", async () => {
     const realm = createInteractionHistory({ scopeKey: "scene" });
     const detached = participant(realm, "Detached");

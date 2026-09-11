@@ -1,3 +1,7 @@
+import {
+  STRUCTURAL_INTERACTIONS_SCENARIO_ID,
+  requireStructuralInteractionsFacts,
+} from "../../../scripts/scenarios/scenarios/structural-interactions";
 import { expect, test } from "vite-plus/test";
 import * as Y from "yjs";
 import {
@@ -529,5 +533,139 @@ test("promotion Undo authorizes every target before revealing an earlier target'
         intent: { kind: "undo_block_transfer", token },
       }),
     ).rejects.toMatchObject({ coreError: { code: "not_found" } });
+  });
+});
+
+test("clipboard File export crosses the byte transport after Cut and keeps exact capture retries", async () => {
+  await withCoreScenario({ scenarioId: LIBRARY_FILES_SCENARIO_ID }, async (ctx) => {
+    const client = ctx.runtime.clientForProject(ctx.manifest.projectId);
+    const facts = requireLibraryFilesScenarioFacts(ctx.facts);
+    const descriptor = await createCoreDocumentSyncAdapter(client).readDescriptor({
+      ownerBlockId: ctx.manifest.pageIdsByKey[LIBRARY_FILES_PAGE_A_KEY]!,
+      clientSessionId: createUuidV7(),
+    });
+    const source = await readDocument(client, descriptor.documentId);
+    const selection = {
+      source_document_id: descriptor.documentId,
+      root_block_ids: source.materialization.blockTree.map((block) => block.id),
+      source_head: {
+        document_id: descriptor.documentId,
+        generation: source.generation,
+        head_seq: source.headSeq,
+      },
+    };
+    const capture = {
+      operationId: createUuidV7(),
+      intent: {
+        kind: "apply_structural_edit" as const,
+        command: {
+          kind: "capture_clipboard" as const,
+          selection,
+          file_export_candidates: [facts.sharedFileId],
+        },
+      },
+    };
+    const captured = await client.libraryApply(capture);
+    const bundle = captured.outcome.structural_edit!.clipboard!;
+    const readSource = { kind: "structural_clipboard" as const, ...bundle };
+    const before = await client.readFileBlob({ fileId: facts.sharedFileId, source: readSource });
+    await client.libraryApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "apply_structural_edit",
+        command: {
+          kind: "delete_selection",
+          selection,
+          reason: { kind: "cut", bundle },
+          direction: "backward",
+        },
+      },
+    });
+    const repeated = await client.libraryApply(capture);
+    expect(repeated.outcome.structural_edit!.clipboard).toEqual(bundle);
+    const metadata = await client.libraryRead({
+      kind: "file_presentation",
+      file_id: facts.sharedFileId,
+      source: readSource,
+      version: 1,
+    });
+    expect(metadata.value).toMatchObject({
+      kind: "file_presentation",
+      value: { file_id: facts.sharedFileId, version: 1 },
+    });
+    const after = await client.readFileBlob({
+      fileId: facts.sharedFileId,
+      source: readSource,
+      version: 1,
+    });
+    expect(after.bytes).toEqual(before.bytes);
+    await expect(
+      ctx.runtime.rootClient.readFileBlob({ fileId: facts.sharedFileId, source: readSource }),
+    ).rejects.toThrow();
+  });
+});
+
+test("nested body-only File promotion can be undone after removing its Page", async () => {
+  await withCoreScenario({ scenarioId: STRUCTURAL_INTERACTIONS_SCENARIO_ID }, async (ctx) => {
+    const facts = requireStructuralInteractionsFacts(ctx.facts);
+    const client = ctx.runtime.clientForProject(ctx.manifest.projectId);
+    const source = await readDocument(client, facts.sourceDocumentId);
+    const promoted = await client.libraryApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "transfer_blocks",
+        intent: {
+          actor: { kind: "electron_host" },
+          mode: "move",
+          root_block_ids: [facts.paragraphRootId],
+          source: { kind: "document", document_id: facts.sourceDocumentId },
+          causal_dependencies: [
+            {
+              document_id: facts.sourceDocumentId,
+              generation: source.generation,
+              expected_head_seq: source.headSeq,
+            },
+          ],
+          target: await promotionTarget(ctx, "library"),
+          promotion_policy: "literal",
+        },
+      },
+    });
+    const token = promoted.outcome.block_transfer!.history!;
+    const undone = await client.libraryApply({
+      operationId: createUuidV7(),
+      intent: { kind: "reverse_structural_edit", token },
+    });
+    expect(undone.outcome.structural_edit!.history).toBeDefined();
+    const inventory = await ctx.seed.readPageFileInventory(
+      ctx.manifest.projectId,
+      facts.sourcePageId,
+    );
+    expect(
+      inventory.files.find((entry) => entry.file.file_id === facts.secondFileId)?.body_count,
+    ).toBe(1);
+    const restored = await readDocument(client, facts.sourceDocumentId);
+    expect(
+      restored.materialization.blockTree.some((block) => block.id === facts.paragraphRootId),
+    ).toBe(true);
+    const captured = await client.libraryApply({
+      operationId: createUuidV7(),
+      intent: {
+        kind: "apply_structural_edit",
+        command: {
+          kind: "capture_clipboard",
+          selection: {
+            source_document_id: facts.sourceDocumentId,
+            root_block_ids: [facts.paragraphRootId],
+            source_head: {
+              document_id: facts.sourceDocumentId,
+              generation: restored.generation,
+              head_seq: restored.headSeq,
+            },
+          },
+        },
+      },
+    });
+    expect(captured.outcome.structural_edit!.clipboard).toBeDefined();
   });
 });

@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::Path;
 
+pub(super) mod clipboard_file_exports;
 mod editor_history;
 pub(super) mod history_owner;
 pub(super) mod history_payload;
@@ -621,7 +622,10 @@ pub(super) fn apply(
             *generation,
             patch,
         ),
-        LibraryStructuralEditCommand::CaptureClipboard { selection } => capture_clipboard(
+        LibraryStructuralEditCommand::CaptureClipboard {
+            selection,
+            file_export_candidates,
+        } => capture_clipboard(
             connection,
             context,
             library_id,
@@ -629,6 +633,7 @@ pub(super) fn apply(
             store_epoch,
             request_hash,
             selection,
+            file_export_candidates.as_deref(),
         ),
         LibraryStructuralEditCommand::DeleteSelection {
             selection,
@@ -879,12 +884,16 @@ fn capture_clipboard(
     store_epoch: &str,
     request_hash: &str,
     selection: &LibraryStructuralSelection,
+    file_export_candidates: Option<&[String]>,
 ) -> Result<LibraryApplyOutcome, StoreError> {
     let actor_project_id = structural_actor_project_id(connection, context)?;
     let project_id = actor_project_id.as_deref();
     let parent = load_and_authorize_source(connection, context, library_id, selection, false)?;
     let snapshot = capture_snapshot(connection, library_id, &parent, selection)?;
-    let snapshot_json = canonical_json(&snapshot, "Structural clipboard snapshot")?;
+    let payload =
+        clipboard_file_exports::capture(connection, context, snapshot, file_export_candidates);
+    let snapshot = &payload.selection;
+    let snapshot_json = canonical_json(&payload, "Structural clipboard snapshot")?;
     ensure_payload_bound(&snapshot_json, "Structural clipboard snapshot")?;
     let manifest_hash = sha256(snapshot_json.as_bytes());
     let bundle_id = stable_uuid_v7(operation_id, "structural_clipboard_bundle", library_id);
@@ -902,7 +911,7 @@ fn capture_clipboard(
         Vec::new(),
         BTreeMap::new(),
         BTreeMap::new(),
-        &[&snapshot],
+        &[snapshot],
         Vec::new(),
         Some(clipboard),
         None,
@@ -925,7 +934,7 @@ fn capture_clipboard(
             let effects = structural_effects(
                 project_id,
                 "capture_structural_clipboard",
-                &[&snapshot],
+                &[snapshot],
                 &result,
                 &now,
             );
@@ -943,7 +952,7 @@ fn capture_clipboard(
                         request_hash,
                         "capture_clipboard",
                         &result,
-                        &[&snapshot],
+                        &[snapshot],
                         event_sequence,
                         &now,
                     )?;
@@ -977,7 +986,7 @@ fn capture_clipboard(
                         "clipboard_bundle",
                         &bundle_id,
                         library_id,
-                        &[&snapshot],
+                        &[snapshot],
                     )
                 },
             )
@@ -4196,13 +4205,12 @@ fn read_owned_document_authority(
         .map(Option::flatten)
 }
 
-fn read_bundle(
+fn read_bundle_payload(
     connection: &Connection,
     library_id: &str,
-    requesting_project_id: Option<&str>,
     store_epoch: &str,
     token: &LibraryStructuralClipboardToken,
-) -> Result<BundleAuthority, StoreError> {
+) -> Result<clipboard_file_exports::ClipboardBundlePayload, StoreError> {
     if token.store_epoch != store_epoch {
         return Err(StoreError::new(
             StoreErrorCode::StaleStoreEpoch,
@@ -4237,8 +4245,8 @@ fn read_bundle(
     {
         return Err(unauthorized("Structural clipboard capability is invalid"));
     }
-    let clipboard_snapshot = serde_json::from_str::<OwnershipClosureSnapshot>(&row.2)
-        .map_err(|_| corrupt("Structural clipboard snapshot is invalid"))?;
+    let payload = clipboard_file_exports::decode(&row.2)?;
+    let clipboard_snapshot = &payload.selection;
     if clipboard_snapshot.version != SNAPSHOT_VERSION
         || !constant_time_equal(
             sha256(row.2.as_bytes()).as_bytes(),
@@ -4247,6 +4255,18 @@ fn read_bundle(
     {
         return Err(corrupt("Structural clipboard manifest is inconsistent"));
     }
+    Ok(payload)
+}
+
+fn read_bundle(
+    connection: &Connection,
+    library_id: &str,
+    requesting_project_id: Option<&str>,
+    store_epoch: &str,
+    token: &LibraryStructuralClipboardToken,
+) -> Result<BundleAuthority, StoreError> {
+    let clipboard_snapshot =
+        read_bundle_payload(connection, library_id, store_epoch, token)?.selection;
     let cut_claim = connection
         .query_row(
             "SELECT source_document_id, source_root_ids_json, delete_recipe_operation_id \
@@ -9165,6 +9185,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: LibraryIntent::ApplyStructuralEdit {
                         command: Box::new(LibraryStructuralEditCommand::CaptureClipboard {
+                            file_export_candidates: None,
                             selection: LibraryStructuralSelection {
                                 source_document_id: SOURCE_DOCUMENT.to_owned(),
                                 root_block_ids: mixed_root_ids.clone(),
@@ -9405,6 +9426,7 @@ mod tests {
                     store_epoch: StoreEpoch("epoch-1".to_owned()),
                     intent: LibraryIntent::ApplyStructuralEdit {
                         command: Box::new(LibraryStructuralEditCommand::CaptureClipboard {
+                            file_export_candidates: None,
                             selection: LibraryStructuralSelection {
                                 source_document_id: SOURCE_DOCUMENT.to_owned(),
                                 root_block_ids: mixed_root_ids.clone(),

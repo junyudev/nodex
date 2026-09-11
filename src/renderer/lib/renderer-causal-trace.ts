@@ -77,6 +77,34 @@ export interface RendererCausalTraceSnapshot {
   readonly capacity: number;
   readonly droppedEventCount: number;
   readonly events: readonly RendererCausalTraceEvent[];
+  readonly spans?: readonly RendererStructuralSpan[];
+  readonly droppedSpanCount?: number;
+}
+
+export const RENDERER_STRUCTURAL_PHASES = [
+  "clipboard_handler",
+  "clipboard_serialization",
+  "queue",
+  "source_flush",
+  "clipboard_capture",
+  "native_publication",
+  "transfer_submit",
+  "source_handoff",
+  "target_handoff",
+  "target_refresh",
+] as const;
+export type RendererStructuralPhase = (typeof RENDERER_STRUCTURAL_PHASES)[number];
+
+/** Durations are local to this renderer; command lifecycle reduction stays independent. */
+export interface RendererStructuralSpan {
+  readonly gestureIdentityHash: string;
+  readonly operationIdentityHash: string | null;
+  readonly consumerIdentityHash: string | null;
+  readonly phase: RendererStructuralPhase;
+  readonly durationMs: number;
+  readonly blockCount: number;
+  readonly fileCount: number;
+  readonly byteCount: number;
 }
 
 export type RendererCausalTraceViolationCode =
@@ -130,6 +158,7 @@ export interface RendererCausalTrace {
   readonly enabled: boolean;
   clear(): void;
   record(context: RendererCausalTraceContext, event: RendererCausalTraceEventInput): boolean;
+  recordSpan(span: RendererStructuralSpan): boolean;
   reduce(): RendererCausalTraceReduction;
   snapshot(): RendererCausalTraceSnapshot;
 }
@@ -521,12 +550,18 @@ export const createRendererCausalTrace = (
       enabled: false,
       clear: () => undefined,
       record: () => false,
+      recordSpan: () => false,
       reduce: () => reduceRendererCausalTrace(emptySnapshot()),
       snapshot: emptySnapshot,
     };
   }
 
   const slots = new Array<RendererCausalTraceEvent | undefined>(capacity);
+  // Separate bounded observations cannot evict the command's semantic proof.
+  const spanSlots = new Array<RendererStructuralSpan | undefined>(capacity);
+  let spanIndex = 0;
+  let spanSize = 0;
+  let droppedSpanCount = 0;
   const now = options.now ?? Date.now;
   let droppedEventCount = 0;
   let nextIndex = 0;
@@ -540,7 +575,16 @@ export const createRendererCausalTrace = (
       if (!event) throw new Error("Renderer causal trace ring is internally inconsistent");
       return { ...event };
     });
-    return { capacity, droppedEventCount, events };
+    const spanStart = spanSize === capacity ? spanIndex : 0;
+    const spans = Array.from({ length: spanSize }, (_, offset) => ({
+      ...spanSlots[(spanStart + offset) % capacity]!,
+    }));
+    return {
+      capacity,
+      droppedEventCount,
+      events,
+      ...(spanSize ? { spans, droppedSpanCount } : {}),
+    };
   };
 
   return {
@@ -551,6 +595,43 @@ export const createRendererCausalTrace = (
       nextIndex = 0;
       sequence = 0;
       size = 0;
+      spanSlots.fill(undefined);
+      spanIndex = 0;
+      spanSize = 0;
+      droppedSpanCount = 0;
+    },
+    recordSpan: (span) => {
+      if (
+        !RENDERER_STRUCTURAL_PHASES.includes(span.phase) ||
+        ![span.gestureIdentityHash, span.operationIdentityHash, span.consumerIdentityHash].every(
+          (hash, index) =>
+            (index > 0 && hash === null) ||
+            (typeof hash === "string" && /^[a-f0-9]{64}$/.test(hash)),
+        ) ||
+        !Number.isFinite(span.durationMs) ||
+        span.durationMs < 0 ||
+        ![span.blockCount, span.fileCount, span.byteCount].every(
+          (value) => Number.isSafeInteger(value) && value >= 0,
+        )
+      )
+        throw new TypeError(
+          "Structural spans require hashed identities and bounded numeric observations",
+        );
+      // Copy the allowlisted fields: accidental runtime payload properties never enter diagnostics.
+      spanSlots[spanIndex] = {
+        gestureIdentityHash: span.gestureIdentityHash,
+        operationIdentityHash: span.operationIdentityHash,
+        consumerIdentityHash: span.consumerIdentityHash,
+        phase: span.phase,
+        durationMs: span.durationMs,
+        blockCount: span.blockCount,
+        fileCount: span.fileCount,
+        byteCount: span.byteCount,
+      };
+      spanIndex = (spanIndex + 1) % capacity;
+      if (spanSize < capacity) spanSize += 1;
+      else droppedSpanCount += 1;
+      return true;
     },
     record: (unsafeContext, input) => {
       const context = validContext(unsafeContext);
@@ -584,6 +665,59 @@ const mode = import.meta.env.DEV ? "development" : "production";
 export const rendererCausalTrace = createRendererCausalTrace({
   enabled: rendererCausalTraceEnabledForMode(mode),
 });
+
+/** One gesture can contain capture and mutation commands without merging their identities. */
+export const beginRendererStructuralSpan = (
+  input: {
+    readonly gestureIdentity: string;
+    readonly operationIdentity?: string;
+    readonly consumerIdentity?: string;
+    readonly phase: RendererStructuralPhase;
+    readonly blockCount?: number;
+    readonly fileCount?: number;
+    readonly byteCount?: number;
+  },
+  trace: RendererCausalTrace = rendererCausalTrace,
+  now: () => number = () => performance.now(),
+): (() => void) => {
+  if (!trace.enabled) return () => undefined;
+  const started = now();
+  let finished = false;
+  return () => {
+    if (finished) return;
+    finished = true;
+    try {
+      trace.recordSpan({
+        gestureIdentityHash: hashRendererOperationIdentity(input.gestureIdentity),
+        operationIdentityHash: input.operationIdentity
+          ? hashRendererOperationIdentity(input.operationIdentity)
+          : null,
+        consumerIdentityHash: input.consumerIdentity
+          ? hashRendererOperationIdentity(input.consumerIdentity)
+          : null,
+        phase: input.phase,
+        durationMs: Math.max(0, now() - started),
+        blockCount: input.blockCount ?? 0,
+        fileCount: input.fileCount ?? 0,
+        byteCount: input.byteCount ?? 0,
+      });
+    } catch {
+      // Diagnostics cannot change an admitted command's outcome.
+    }
+  };
+};
+
+export async function withRendererStructuralSpan<Value>(
+  input: Parameters<typeof beginRendererStructuralSpan>[0],
+  run: () => Promise<Value>,
+): Promise<Value> {
+  const finish = beginRendererStructuralSpan(input);
+  try {
+    return await run();
+  } finally {
+    finish();
+  }
+}
 
 export const recordRendererCommandTrace = (
   context: RendererCausalTraceContext | null,

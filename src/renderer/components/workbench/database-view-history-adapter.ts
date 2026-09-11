@@ -1,3 +1,4 @@
+import { withRendererStructuralSpan } from "@/lib/renderer-causal-trace";
 import { transferBlocks, applyLibraryModule } from "@/lib/api";
 import {
   prepareBlockDocumentStructuralReplay,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/surface-history/structural-resources";
 import type {
   HistoryContentAdapter,
+  HistoryCommandHandle,
   HistoryReceiptInterpretation,
 } from "@/lib/surface-history/owner";
 import type {
@@ -58,6 +60,8 @@ export interface DatabaseViewOperationsCommand {
 }
 
 export interface DatabaseViewBlockDropCommand {
+  readonly operationId: string;
+  readonly onAdmitted?: (handle: HistoryCommandHandle<DatabaseViewHistoryReceipt>) => void;
   readonly viewName?: string;
   readonly historyScopeKey: string;
   readonly session: LocalBlockDragSession;
@@ -208,6 +212,8 @@ export const interpretDatabaseViewHistoryReceipt = (
 
 const prepareBlockDrop = async (
   command: DatabaseViewBlockDropCommand,
+  operationId: string,
+  promotionPolicy: ReturnType<typeof resolvePagePromotionPolicy>,
 ): Promise<DatabaseViewHistoryRequest> => {
   const { payload } = command.session;
   if (payload.projectId !== command.projectId || payload.storeEpoch !== command.storeEpoch)
@@ -216,25 +222,32 @@ const prepareBlockDrop = async (
     throw new Error("Canvas can only move between Page Documents, not into a Database View.");
   if (containsDatabaseBlockDrag(payload))
     throw new Error("Database blocks can only move through a typed Database action.");
+  // Let the admitted handle publish source/target feedback before preparation starts.
+  await Promise.resolve();
   const participant = resolveBlockDocumentStructuralMutationParticipant(payload.sourceSurfaceId);
   if (!participant) throw new Error("The dragged Page editor changed; start the drag again.");
-  const head = await participant.prepareAndFence();
+  const head = await withRendererStructuralSpan(
+    {
+      gestureIdentity: command.session.sessionId,
+      operationIdentity: operationId,
+      phase: "source_flush",
+      blockCount: payload.rootBlockIds.length,
+    },
+    () => participant.prepareAndFence(),
+  );
   if (head.storeEpoch !== command.storeEpoch)
     throw new Error("The dragged Document belongs to another store generation.");
   return {
     kind: "transfer",
     request: buildBlockToDataSourceTransferIntent({
-      operationId: createUuidV7(),
+      operationId,
       projectId: command.projectId,
       storeEpoch: command.storeEpoch,
       payload,
       dataSourceId: command.dataSourceId,
       placement: command.placement,
       altKey: command.altKey,
-      promotionPolicy: resolvePagePromotionPolicy({
-        preferenceEnabled: readTaskShorthandPagePromotionEnabled(),
-        shiftKey: command.shiftKey,
-      }),
+      promotionPolicy,
       causalDependencies: [
         {
           documentId: head.documentId,
@@ -255,6 +268,11 @@ export const databaseViewHistoryAdapter = (
   DatabaseViewHistoryReceipt,
   DatabaseViewHistoryInverse
 > => {
+  const operationId = intent.kind === "block_drop" ? intent.command.operationId : createUuidV7();
+  const promotionPolicy = resolvePagePromotionPolicy({
+    preferenceEnabled: readTaskShorthandPagePromotionEnabled(),
+    shiftKey: intent.kind === "block_drop" && intent.command.shiftKey,
+  });
   const commit =
     intent.kind === "data"
       ? (intent.command.commitOperations ?? commitDatabaseViewOperations)
@@ -286,7 +304,10 @@ export const databaseViewHistoryAdapter = (
           : "Move to Database",
     prepare: async (action) => {
       if (action.kind === "block_drop")
-        return { kind: "submit", request: await prepareBlockDrop(action.command) };
+        return {
+          kind: "submit",
+          request: await prepareBlockDrop(action.command, operationId, promotionPolicy),
+        };
       const { model, operations } = action.command;
       if (model.readOnlyReason) throw new Error(model.readOnlyReason);
       return {
@@ -355,7 +376,16 @@ export const databaseViewHistoryAdapter = (
         }
       }
       if (request.kind === "transfer") {
-        const result = await transferBlocks(request.request.projectId, request.request);
+        const result = await withRendererStructuralSpan(
+          {
+            gestureIdentity:
+              intent.kind === "block_drop" ? intent.command.session.sessionId : operationId,
+            operationIdentity: request.request.operationId,
+            phase: "transfer_submit",
+            blockCount: request.request.rootBlockIds.length,
+          },
+          () => transferBlocks(request.request.projectId, request.request),
+        );
         if (result.ok) return { kind: "committed", receipt: { kind: "transfer", result } };
         return result.error.code === "unknown"
           ? { kind: "unknown", reason: result.error.message }

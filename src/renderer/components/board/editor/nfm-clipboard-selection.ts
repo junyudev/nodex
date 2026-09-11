@@ -97,8 +97,7 @@ function createSelectedRangePayload(
 ): CopiedSelectionPayload | null {
   try {
     return preparePortableCopiedSelectionPayload(
-      createCopiedSelectionPayloadFromSelection(
-        editor as unknown as SelectionEditorLike,
+      createCopiedSelectionPayloadFromSelection(editor as unknown as SelectionEditorLike, () =>
         selectedFragmentToHTML(view, editor),
       ),
     );

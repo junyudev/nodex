@@ -75,6 +75,7 @@ import {
   live as rendererClientRuntimeLive,
 } from "../host-runtime/RendererClientRuntime";
 import { getLogger } from "../logging/logger";
+import { FileExportRuntime } from "../library-application/FileExportRuntime";
 import { LibraryModule } from "../library-application/LibraryModule";
 import {
   NodexAgentAuthorizationRuntime,
@@ -300,6 +301,7 @@ export const live: Layer.Layer<
   | ElectronWindowHost
   | ElectronNet.ElectronNet
   | LibraryModule
+  | FileExportRuntime
   | MainCleanup
   | MainConfig
   | NodexAgentResourceAccess

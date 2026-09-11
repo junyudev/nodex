@@ -243,6 +243,41 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     return { commitSeq: mutation.commitSeq, createdBlockIds: mutation.createdBlockIds };
   }
 
+  async setResourceProjectAccess(
+    input: Parameters<ScenarioSeedPort["setResourceProjectAccess"]>[0],
+  ) {
+    const context = { kind: "library" as const };
+    const state = requireSuccess(
+      await this.#invoke("library-module:read", context, {
+        read: { mode: "resource_project_access", target: input.target },
+      }),
+      "Read resource access",
+    );
+    if (state.value.kind !== "resource_project_access")
+      throw new Error("Resource access response has the wrong kind");
+    const grant = state.value.value.projects.find(
+      (project) => project.projectId === input.projectId,
+    )?.directGrant;
+    requireSuccess(
+      await this.#invoke("library-module:apply", context, {
+        operationId: createUuidV7(),
+        storeEpoch: state.storeEpoch,
+        operation: {
+          kind: "set_project_access",
+          target: input.target,
+          changes: [
+            {
+              projectId: input.projectId,
+              access: input.access,
+              expectedRevision: grant?.revision ?? null,
+            },
+          ],
+        },
+      }),
+      "Set resource access",
+    );
+  }
+
   async createLibraryFile(input: ScenarioLibraryFileSeed) {
     const access = { kind: "project" as const, projectId: input.projectId };
     const prepared = await this.#invoke("files:prepare", access, {

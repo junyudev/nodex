@@ -1556,3 +1556,28 @@ describe("Library Module transport", () => {
     });
   });
 });
+
+test("clipboard capture accepts disabled File export and bounds enabled candidates", () => {
+  const command = {
+    kind: "capture_clipboard",
+    selection: {
+      sourceDocumentId: "document:source",
+      rootBlockIds: ["root"],
+      sourceHead: { documentId: "document:source", generation: 1, expectedHeadSeq: 0 },
+    },
+  };
+  const request = (extra: Record<string, unknown>) => ({
+    operationId: uuidV7(1),
+    storeEpoch: "epoch-1",
+    operation: { kind: "apply_structural_edit", command: { ...command, ...extra } },
+  });
+  expect(bindLibraryModuleApply(request({})).operation).toEqual({
+    kind: "apply_structural_edit",
+    command,
+  });
+  const enabled = request({ fileExportCandidates: ["file:one"] });
+  expect(bindLibraryModuleApply(enabled).operation).toEqual(enabled.operation);
+  expect(() =>
+    bindLibraryModuleApply(request({ fileExportCandidates: Array(129).fill("file:one") })),
+  ).toThrow("bounded");
+});

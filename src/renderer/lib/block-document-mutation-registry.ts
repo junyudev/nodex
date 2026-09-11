@@ -1,4 +1,5 @@
 import type { DocumentHeadFence } from "./block-document-surface-runtime";
+import type { HistoryCommandObservation } from "./surface-history/owner";
 import type { DocumentCommitRef } from "../../shared/block-documents";
 import {
   DOCUMENT_STRUCTURAL_WAIT_TIMEOUT_MS,
@@ -22,8 +23,25 @@ export const structuralReplayDocuments = (
  * The participant settles transient editor state before returning the durable
  * Document head that Core must recheck.
  */
+export interface StructuralRemovalReceipt {
+  readonly storeEpoch: string;
+  readonly documentCommits: readonly DocumentCommitRef[];
+}
+
+export interface StructuralRemovalPresentation {
+  readonly gestureIdentity?: string;
+  readonly operationId: string;
+  readonly rootBlockIds: readonly string[];
+  readonly action: "move" | "cut";
+  readonly observe: (
+    listener: (state: HistoryCommandObservation<StructuralRemovalReceipt>) => void,
+  ) => () => void;
+}
+
 export interface BlockDocumentStructuralMutationParticipant {
   readonly documentId?: string;
+  /** Presentation observes the command; it never prepares or submits content. */
+  readonly presentRemoval?: (operation: StructuralRemovalPresentation) => void;
   readonly prepareAndFence: (options?: DocumentWaitOptions) => Promise<DocumentHeadFence>;
 }
 

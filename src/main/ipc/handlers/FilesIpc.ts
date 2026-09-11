@@ -1,4 +1,4 @@
-import { cacheContentAddressedBytes } from "../../local-store/assets";
+import { FileExportRuntime } from "../../library-application/FileExportRuntime";
 import { readFileBytesSchema, saveFileSchema } from "../../../shared/library-files-transport";
 import * as fs from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
@@ -52,13 +52,14 @@ const writeRegularFile = async (filePath: string, bytes: Uint8Array): Promise<vo
 export const live: Layer.Layer<
   never,
   never,
-  ElectronDesktop | ElectronIpc | LibraryModule | MainConfig | WindowRuntime
+  ElectronDesktop | ElectronIpc | LibraryModule | FileExportRuntime | MainConfig | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const desktop = yield* ElectronDesktop;
     const ipc = yield* ElectronIpc;
     const library = yield* LibraryModule;
+    const fileExports = yield* FileExportRuntime;
     const windows = yield* WindowRuntime;
     const { handlePlainCommand, handleQuery } = ipc;
     const authorize = (event: IpcMainInvokeEvent) =>
@@ -250,16 +251,7 @@ export const live: Layer.Layer<
               input: saveFileSchema.parse(rawInput),
             }));
             const { defaultName, ...read } = input;
-            // Reauthorize every export, even if these bytes already have a temporary cache entry.
-            const blob = yield* library.readFileBlob(access, read);
-            return yield* run("materialize-file", () => {
-              const suffix = path.extname(defaultName);
-              const extension = /^\.[a-zA-Z0-9]{1,20}$/.test(suffix) ? suffix : ".blob";
-              const root = path.join(config.nodexHome, "cache", "file-exports");
-              const filename = `${blob.etag}${extension}`;
-              cacheContentAddressedBytes(root, filename, Buffer.from(blob.bytes), blob.etag);
-              return path.join(root, filename);
-            });
+            return yield* fileExports.materialize(access, read, defaultName);
           }),
         ),
       ),

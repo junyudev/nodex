@@ -198,7 +198,10 @@ function DatabaseViewTabSurfaceContent({
   ) => boolean | Promise<boolean>;
   readonly onOpenPage: DatabaseViewPageOpenHandler;
   readonly pageActionPort?: DatabaseViewPageActionPort;
-  readonly onCommitted?: () => void | Promise<void>;
+  readonly onCommitted?: (cursor?: {
+    readonly storeEpoch: string;
+    readonly commitSeq: number;
+  }) => void | Promise<void>;
   readonly keyboardSurface?: {
     readonly surfaceId: string;
     readonly presentationId: string;

@@ -1,3 +1,4 @@
+import type { StructuralRemovalPresentation } from "@/lib/block-document-mutation-registry";
 import type { BlockNoteEditor } from "@blocknote/core";
 import { Schema } from "@tiptap/pm/model";
 import { NodeSelection, type Selection } from "@tiptap/pm/state";
@@ -934,7 +935,7 @@ describe("NFM structural editing session", () => {
               removeEventListener: () => undefined,
             },
           }) as unknown as HTMLElement,
-        resolveClipboardText: async (portableText) => `local:${portableText}`,
+        copyFileReferencesAsLocalPaths: () => true,
       },
       apply,
       beginClipboard,
@@ -973,7 +974,7 @@ describe("NFM structural editing session", () => {
         "fence",
         "replace_selection",
       ]);
-      expect(writtenTexts[0]).toBe("local:Fallback");
+      expect(writtenTexts[0]).toBe("Fallback");
       expect(commands.at(-1)).toMatchObject({
         command: {
           kind: "replace_selection",
@@ -1651,6 +1652,115 @@ test("refreshing an equivalent view binding preserves queued and active structur
     expect(submissions).toBe(1);
     expect(errors).toEqual(["submission reached"]);
   } finally {
+    complete();
+    session.dispose();
+    undoManager.destroy();
+    document.destroy();
+  }
+});
+
+test("queued clipboard gestures register immediately and cancel without capture", async () => {
+  const document = new Y.Doc();
+  const undoManager = new Y.UndoManager(document.getArray("history"));
+  const owner = { id: "page", type: "page" };
+  const editor = {
+    document: [owner],
+    getBlock: () => owner,
+    getParentBlock: () => undefined,
+    focus: () => undefined,
+    getExtension: () => ({
+      undoManager,
+      fragment: document.getXmlFragment("body"),
+      bindHistory: () => () => undefined,
+      getSemanticSelection: () => undefined,
+      restoreSemanticSelection: () => false,
+    }),
+  } as unknown as BlockNoteEditor<any, any, any>;
+  let complete = () => {};
+  const pending = new Promise<void>((resolve) => {
+    complete = resolve;
+  });
+  let preparations = 0;
+  let submissions = 0;
+  const errors: string[] = [];
+  const presentations: (readonly string[])[] = [];
+  const presentationStates: string[] = [];
+  const runtime = {
+    accessContext: { kind: "library" as const },
+    libraryId: "library:test",
+    source: { documentId: "document:test", storeEpoch: "epoch:test", generation: 1 },
+    getContainer: () => null,
+    onError: (message: string) => errors.push(message),
+    participant: {
+      presentRemoval: (operation: StructuralRemovalPresentation) => {
+        presentations.push(operation.rootBlockIds);
+        operation.observe((state) => presentationStates.push(state.status));
+      },
+      prepareAndFence: async () => {
+        preparations += 1;
+        await pending;
+        return {
+          documentId: "document:test",
+          storeEpoch: "epoch:test",
+          generation: 1,
+          expectedHeadSeq: 1,
+        };
+      },
+    },
+  };
+  const registrations: string[] = [];
+  const settlements: string[] = [];
+  let releaseRegistration!: () => void;
+  const registered = new Promise<void>((resolve) => {
+    releaseRegistration = resolve;
+  });
+  let finishSettlement!: () => void;
+  const settled = new Promise<void>((resolve) => {
+    finishSettlement = resolve;
+  });
+  const session = new NfmStructuralEditingSession({
+    historyReconciliation: availableHistoryReconciliation,
+    editor,
+    runtime,
+    beginClipboard: async ({ writeClaim }) => {
+      registrations.push(writeClaim);
+      await registered;
+      return { ok: true };
+    },
+    settleClipboard: async ({ writeClaim }) => {
+      settlements.push(writeClaim);
+      finishSettlement();
+      return { ok: true };
+    },
+    apply: async () => {
+      submissions += 1;
+      throw new Error("submission reached");
+    },
+  });
+  try {
+    expect(session.duplicateBlocks(["page"])).toBe(true);
+    expect(
+      session.handleClipboard(
+        "cut",
+        ["page"],
+        { text: "Page", html: "<p>Page</p>" },
+        writeClaim(99),
+      ),
+    ).toBe(true);
+    expect(registrations).toEqual([writeClaim(99)]);
+    expect(presentations).toEqual([["page"]]);
+    expect(presentationStates).toEqual(["admitted"]);
+    expect(submissions).toBe(0);
+    session.cancelPreparations();
+    complete();
+    await session.whenIdle();
+    expect(submissions).toBe(0);
+    releaseRegistration();
+    await settled;
+    expect(settlements).toContain(writeClaim(99));
+    expect(presentationStates).toContain("rejected");
+  } finally {
+    releaseRegistration();
     complete();
     session.dispose();
     undoManager.destroy();

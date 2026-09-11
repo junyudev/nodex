@@ -113,7 +113,7 @@ export const admitResourceAuthorityQuery = async <Data,>(
   );
   if (pendingCount >= MAX_PENDING_ADMISSIONS) {
     for (const registration of registrations) registration.release();
-    throw new AuthorityFreshnessCapacityError();
+    throw new AuthorityFreshnessCapacityError("pending query admissions");
   }
   const key = resolutionKey(resolution);
   const timer = setTimeout(() => {

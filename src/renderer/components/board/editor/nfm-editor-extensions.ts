@@ -1,3 +1,4 @@
+import { beginRendererStructuralSpan } from "@/lib/renderer-causal-trace";
 import { createExtension, getBlockInfo, getNodeById, type ExtensionOptions } from "@blocknote/core";
 import type { BlockNoteEditor } from "@blocknote/core";
 import { Plugin, TextSelection } from "@tiptap/pm/state";
@@ -259,7 +260,48 @@ function handleNfmClipboardCommand(
   writeRevision: number,
   currentWriteRevision: () => number,
 ): boolean {
-  const selection = resolveNfmClipboardSelection(view, editor, clipboardEvent.target);
+  const gestureIdentity = createUuidV7();
+  const finishHandler = beginRendererStructuralSpan({
+    gestureIdentity,
+    phase: "clipboard_handler",
+  });
+  try {
+    return handleNfmClipboardCommandWithIdentity(
+      gestureIdentity,
+      command,
+      view,
+      editor,
+      options,
+      clipboardEvent,
+      writeRevision,
+      currentWriteRevision,
+    );
+  } finally {
+    finishHandler();
+  }
+}
+
+function handleNfmClipboardCommandWithIdentity(
+  gestureIdentity: string,
+  command: NfmClipboardCommand,
+  view: EditorView,
+  editor: BlockNoteEditor,
+  options: NfmEditorExtensionOptions,
+  clipboardEvent: ClipboardEvent,
+  writeRevision: number,
+  currentWriteRevision: () => number,
+): boolean {
+  const finishSerialization = beginRendererStructuralSpan({
+    gestureIdentity,
+    phase: "clipboard_serialization",
+  });
+  const selection = (() => {
+    try {
+      return resolveNfmClipboardSelection(view, editor, clipboardEvent.target);
+    } finally {
+      finishSerialization();
+    }
+  })();
   if (!selection) return false;
 
   const { payload } = selection;
@@ -270,7 +312,7 @@ function handleNfmClipboardCommand(
   }
 
   if (selection.kind === "block-roots" && options.onStructuralClipboard) {
-    const writeClaim = createUuidV7();
+    const writeClaim = gestureIdentity;
     if (!writeStructuralSelectionClaimToClipboard(clipboardEvent, payload, writeClaim, command)) {
       blockUnavailableStructuralClipboard(clipboardEvent, options.onStructuralClipboardUnavailable);
       return true;

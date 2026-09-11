@@ -1,3 +1,6 @@
+import { useDatabasePromotionPresentation } from "@/lib/database-promotion-presentation";
+import { insertDatabasePromotionSlots } from "@/lib/database-promotion-display";
+import { DatabasePromotionSlot } from "./database-promotion-slot";
 import {
   useDeferredValue,
   useCallback,
@@ -187,7 +190,10 @@ interface DatabaseViewSurfaceProps {
   readonly showViewLabel?: boolean;
   readonly onOpenPage: DatabaseViewPageOpenHandler;
   readonly pageActionPort?: DatabaseViewPageActionPort;
-  readonly onCommitted?: () => void | Promise<void>;
+  readonly onCommitted?: (cursor?: {
+    readonly storeEpoch: string;
+    readonly commitSeq: number;
+  }) => void | Promise<void>;
   readonly commitOperations?: typeof commitDatabaseViewOperations;
   readonly mutationHistory?: DatabaseViewMutationHistory;
   readonly keyboardSurface?: {
@@ -418,6 +424,27 @@ function BoardDatabaseViewSurface({
     canonicalModel ?? model,
   );
   const mutationModel = presentationOwner.model;
+  const promotionPageIds = useMemo(
+    () => new Set(mutationModel.query.rows.map((row) => row.page.pageId)),
+    [mutationModel.query.rows],
+  );
+  const canonicalPromotionPageIds = useMemo(
+    () => new Set(canonicalMutationModel.query.rows.map((row) => row.page.pageId)),
+    [canonicalMutationModel.query.rows],
+  );
+  const promotions = useDatabasePromotionPresentation({
+    model: canonicalMutationModel,
+    effective: effectivePresentation,
+    evidence: canonicalMutationModel.boundedRead ?? null,
+    pageIds: promotionPageIds,
+    canonicalPageIds: canonicalPromotionPageIds,
+    displayIdentity: `${activeLayout}:${deferredSearchQuery}`,
+  });
+  const hasPromotion = (groupKey: string | null) =>
+    promotions.slots.some(
+      (slot) => slot.placement.kind === "direct" && slot.placement.groupKey === groupKey,
+    );
+
   const groupPropertyId = presentation.group?.propertyId ?? null;
   const subgroupPropertyId = presentation.subgroup?.propertyId ?? null;
   const compiledSearchQuery = useMemo(
@@ -968,7 +995,8 @@ function BoardDatabaseViewSurface({
       altKey: event.altKey,
       shiftKey: event.shiftKey,
       mutationHistory,
-      onCommitted: async () => await onCommitted?.(),
+      presentation: promotions.owner,
+      onCommitted: async (cursor) => await onCommitted?.(cursor),
     });
   };
   const dropOnBoardTarget = (
@@ -1495,7 +1523,7 @@ function BoardDatabaseViewSurface({
                     const group = columnPresentations.get(column.id)!;
                     const layout = getDatabaseBoardColumnLayout(columnLayoutPrefs, group.pathKey);
                     const totalRows = columnTotalRows(column.id);
-                    const autoCollapsed = totalRows === 0;
+                    const autoCollapsed = totalRows === 0 && !hasPromotion(column.groupKey);
                     const collapsed = layout.collapsed || autoCollapsed;
                     const collapsedTargetSubgroup = boardSubgroups[0] ?? null;
                     const collapsedTargetRows = collapsedTargetSubgroup
@@ -1608,6 +1636,15 @@ function BoardDatabaseViewSurface({
                                 >
                                   {totalRows}
                                 </span>
+                                {promotions.slots
+                                  .filter(
+                                    (slot) =>
+                                      slot.placement.kind === "direct" &&
+                                      slot.placement.groupKey === column.groupKey,
+                                  )
+                                  .map((slot) => (
+                                    <DatabasePromotionSlot key={slot.key} slot={slot} compact />
+                                  ))}
                                 <div className="pointer-events-auto mt-2">
                                   <ColumnActionPopover
                                     columnName={column.name}
@@ -1738,7 +1775,9 @@ function BoardDatabaseViewSurface({
                     {columns.map((column) => {
                       const group = columnPresentations.get(column.id)!;
                       const layout = getDatabaseBoardColumnLayout(columnLayoutPrefs, group.pathKey);
-                      const collapsed = layout.collapsed || columnTotalRows(column.id) === 0;
+                      const collapsed =
+                        layout.collapsed ||
+                        (columnTotalRows(column.id) === 0 && !hasPromotion(column.groupKey));
                       const subgroup = (subgroupsByColumn.get(column.id) ?? []).find(
                         (candidate) => candidate.key === subgroupIdentity.key,
                       );
@@ -1881,30 +1920,54 @@ function BoardDatabaseViewSurface({
                                   width: databaseBoardColumnSurfaceWidth(layout.width, false),
                                 }}
                               >
-                                {rows.map((row) => (
-                                  <div
-                                    key={row.pageId}
-                                    className="relative"
-                                    ref={(element) => {
-                                      const key = boardWorkbenchOccurrenceKey(
-                                        row.pageId,
-                                        column.groupKey,
-                                        subgroupIdentity.key,
-                                      );
-                                      if (element) occurrenceElements.current.set(key, element);
-                                      else occurrenceElements.current.delete(key);
-                                    }}
-                                  >
-                                    {dropIndicator?.exactSlot &&
-                                    indicatorPlacement.beforePageId === row.pageId ? (
-                                      <DropIndicator
-                                        className="absolute inset-x-0 top-0 -translate-y-1/2"
-                                        label={dropIndicator?.label}
-                                      />
-                                    ) : null}
-                                    <DatabaseBoardCard {...cardProps(row)} />
-                                  </div>
-                                ))}
+                                {insertDatabasePromotionSlots(
+                                  rows,
+                                  promotions.slots.filter(
+                                    (slot) =>
+                                      slot.placement.kind === "direct" &&
+                                      slot.placement.groupKey === column.groupKey,
+                                  ),
+                                  (slot) => {
+                                    if (
+                                      slot.placement.kind !== "direct" ||
+                                      !slot.placement.beforePageId
+                                    )
+                                      return rows.length;
+                                    const beforePageId = slot.placement.beforePageId;
+                                    const index = rows.findIndex(
+                                      (row) => row.pageId === beforePageId,
+                                    );
+                                    return index < 0 ? rows.length : index;
+                                  },
+                                ).map((item) => {
+                                  if ("kind" in item)
+                                    return <DatabasePromotionSlot key={item.key} slot={item} />;
+                                  const row = item;
+                                  return (
+                                    <div
+                                      key={row.pageId}
+                                      className="relative"
+                                      ref={(element) => {
+                                        const key = boardWorkbenchOccurrenceKey(
+                                          row.pageId,
+                                          column.groupKey,
+                                          subgroupIdentity.key,
+                                        );
+                                        if (element) occurrenceElements.current.set(key, element);
+                                        else occurrenceElements.current.delete(key);
+                                      }}
+                                    >
+                                      {dropIndicator?.exactSlot &&
+                                      indicatorPlacement.beforePageId === row.pageId ? (
+                                        <DropIndicator
+                                          className="absolute inset-x-0 top-0 -translate-y-1/2"
+                                          label={dropIndicator?.label}
+                                        />
+                                      ) : null}
+                                      <DatabaseBoardCard {...cardProps(row)} />
+                                    </div>
+                                  );
+                                })}
                                 {dropIndicator?.exactSlot && indicatorPlacement.atEnd ? (
                                   <div className="relative -mt-2 h-0">
                                     <DropIndicator

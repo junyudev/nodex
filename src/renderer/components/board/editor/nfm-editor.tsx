@@ -1,3 +1,4 @@
+import { NfmStructuralRemovalPresentation } from "./nfm-structural-removal-presentation";
 import { readCodexSubmissionPresentation } from "@/lib/codex-turn-presentation";
 import type { WorkbenchSubmitPresentation } from "../../../../shared/nodex-app-tools/workbench";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
@@ -607,19 +608,6 @@ function NfmEditorInstance({
     },
     [resolveLocalClipboardFileReference],
   );
-  const resolveClipboardText = useCallback(
-    async (portableText: string): Promise<string> => {
-      const payload: CopiedSelectionPayload = {
-        clipboardHTML: "",
-        externalHTML: "",
-        structuredText: portableText,
-      };
-      const resolved = resolveCopiedFileReferences(payload);
-      return resolved ? (await resolved).structuredText : portableText;
-    },
-    [resolveCopiedFileReferences],
-  );
-
   const threadMentionSummaryMap = useMemo(
     () => ({
       ...projectThreadSummaryMap,
@@ -1584,10 +1572,49 @@ function NfmEditorInstance({
       },
     });
   }, [editor, editorSession]);
+  const removalPresentation = useMemo(() => {
+    if (!editorSession) return null;
+    const runtime = editorSession.runtime;
+    return structuralEditingSession.retainRemovalPresentation(
+      () =>
+        new NfmStructuralRemovalPresentation({
+          editor,
+          readHead: () => {
+            const status = runtime.getStatus();
+            const provider = status.provider;
+            if (
+              status.reloadRequired ||
+              status.phase === "closed" ||
+              status.phase === "closing" ||
+              provider.storeEpoch !== source.storeEpoch ||
+              provider.generation !== source.generation
+            )
+              return null;
+            return {
+              documentId: source.documentId,
+              storeEpoch: source.storeEpoch,
+              generation: source.generation,
+              expectedHeadSeq: provider.headSeq,
+            };
+          },
+          subscribeHead: runtime.subscribe,
+        }),
+    );
+  }, [
+    editor,
+    editorSession,
+    structuralEditingSession,
+    source.documentId,
+    source.storeEpoch,
+    source.generation,
+  ]);
+  useLayoutEffect(() => removalPresentation?.attach(), [removalPresentation]);
+
   const structuralMutationParticipant = useMemo(() => {
     if (!surfaceMutationBarrier) return undefined;
     return {
       documentId: source.documentId,
+      presentRemoval: removalPresentation?.accept,
       prepareAndFence: async (options?: DocumentWaitOptions) => {
         return await prepareNfmEditorStructuralMutation(
           editor as unknown as NfmEditorStructuralMutationRuntime,
@@ -1597,7 +1624,7 @@ function NfmEditorInstance({
         );
       },
     };
-  }, [editor, source.documentId, surfaceMutationBarrier]);
+  }, [editor, source.documentId, surfaceMutationBarrier, removalPresentation]);
 
   useEffect(() => {
     if (!structuralMutationParticipant) return;
@@ -1628,7 +1655,7 @@ function NfmEditorInstance({
       },
       participant: structuralMutationParticipant,
       getContainer: () => containerRef.current,
-      resolveClipboardText,
+      copyFileReferencesAsLocalPaths: readCopyFileReferencesAsLocalPaths,
       onError: (message) => toast.danger(message),
       onClipboardFallback: (message) => toast.info(message),
     });
@@ -1637,7 +1664,6 @@ function NfmEditorInstance({
     source.documentId,
     source.generation,
     source.storeEpoch,
-    resolveClipboardText,
     structuralEditingController,
     structuralEditingSession,
     surfaceMutationBarrier,

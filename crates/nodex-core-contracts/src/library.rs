@@ -745,6 +745,8 @@ pub enum LibraryStructuralEditCommand {
     },
     CaptureClipboard {
         selection: LibraryStructuralSelection,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        file_export_candidates: Option<Vec<String>>,
     },
     DeleteSelection {
         selection: LibraryStructuralSelection,
@@ -1861,6 +1863,10 @@ pub struct LibraryPageFileEntryReceipt {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum LibraryFileReadSource {
     Direct,
+    StructuralClipboard {
+        #[serde(flatten)]
+        bundle: LibraryStructuralClipboardToken,
+    },
     Page {
         page_id: String,
     },

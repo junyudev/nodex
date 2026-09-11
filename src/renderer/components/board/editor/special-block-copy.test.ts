@@ -836,6 +836,43 @@ describe("special block copy", () => {
     expect(value).toBe("parent\n\tchild-one\n\tchild-two");
   });
 
+  test("successful selection serialization never evaluates the fallback", () => {
+    const payload = createCopiedSelectionPayloadFromSelection(
+      createSelectionEditorStub({
+        blocks: [
+          {
+            id: "root",
+            type: "paragraph",
+            content: [{ type: "text", text: "Selected", styles: {} }],
+            children: [],
+          },
+        ],
+      }),
+      () => {
+        throw new Error("Expensive fallback must remain lazy");
+      },
+    );
+    expect(payload.structuredText).toBe("Selected");
+  });
+
+  test("unavailable selection serialization evaluates the portable fallback once", () => {
+    let calls = 0;
+    const payload = createCopiedSelectionPayloadFromSelection({}, () => {
+      calls++;
+      return {
+        clipboardHTML: "<p>Selected</p>",
+        externalHTML: "<p>Selected</p>",
+        markdown: "Selected",
+      };
+    });
+    expect(calls).toBe(1);
+    expect(payload).toEqual({
+      clipboardHTML: "<p>Selected</p>",
+      externalHTML: "<p>Selected</p>",
+      structuredText: "Selected",
+    });
+  });
+
   test("createCopiedSelectionPayloadFromSelection unwraps only the partially selected first bullet across all payloads", () => {
     const first = {
       id: "l1",
