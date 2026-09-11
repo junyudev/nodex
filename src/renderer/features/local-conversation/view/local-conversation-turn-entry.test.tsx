@@ -391,14 +391,12 @@ describe("LocalConversationTurnEntry", () => {
       (button) => button.getAttribute("aria-label") ?? "",
     );
     const assistantCopyIndex = labels.lastIndexOf("Copy");
-    const thumbsUpIndex = labels.indexOf("Good response");
-    const thumbsDownIndex = labels.indexOf("Bad response");
+    const ratingIndex = labels.indexOf("Rate response");
     const forkIndex = labels.indexOf("Fork from this point");
 
     expect(assistantCopyIndex >= 0).toBe(true);
-    expect(thumbsUpIndex > assistantCopyIndex).toBe(true);
-    expect(thumbsDownIndex > thumbsUpIndex).toBe(true);
-    expect(forkIndex > thumbsDownIndex).toBe(true);
+    expect(ratingIndex > assistantCopyIndex).toBe(true);
+    expect(forkIndex > ratingIndex).toBe(true);
     expect(labels.includes("Ask in side chat")).toBe(false);
     expect(Boolean(view.container.textContent?.includes(expectedTime))).toBe(true);
     expect(Boolean(view.container.textContent?.includes(staleCompletedTime))).toBe(false);
@@ -487,8 +485,7 @@ describe("LocalConversationTurnEntry", () => {
       ),
     );
 
-    expect(view.queryByLabelText("Good response") === null).toBe(true);
-    expect(view.queryByLabelText("Bad response") === null).toBe(true);
+    expect(view.queryByLabelText("Rate response") === null).toBe(true);
     expect(view.queryByLabelText("Fork from this point") === null).toBe(true);
 
     view.rerender(
@@ -505,8 +502,7 @@ describe("LocalConversationTurnEntry", () => {
       ),
     );
 
-    expect(view.queryByLabelText("Good response") === null).toBe(true);
-    expect(view.queryByLabelText("Bad response") === null).toBe(true);
+    expect(view.queryByLabelText("Rate response") === null).toBe(true);
     expect(Boolean(view.getByLabelText("Fork from this point"))).toBe(true);
   });
 

@@ -1,13 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
-import { fireEvent } from "@testing-library/react";
 import { render } from "../../../../test/dom";
 import { NodexTooltipProvider } from "../../../../components/ui/tooltip";
 import {
-  AssistantRatingButton,
   ForkMessageIcon,
   MessageTimestamp,
   ThreadActionIconButton,
-  type AssistantMessageRating,
 } from "./thread-message-actions";
 import { formatThreadMessageTimestamp } from "./thread-message-timestamp";
 
@@ -135,43 +132,5 @@ describe("ThreadActionIconButton", () => {
 
     expect(Boolean(container.querySelector("[data-tooltip-content]"))).toBe(false);
     expect(Boolean(getByRole("button", { name: "Edit message" }))).toBe(true);
-  });
-});
-
-describe("AssistantRatingButton", () => {
-  test("marks the selected rating as pressed and emits selection changes", () => {
-    const selectedRatings: AssistantMessageRating[] = [];
-    const { getByRole, rerender } = render(
-      <NodexTooltipProvider>
-        <AssistantRatingButton
-          rating="thumbs_up"
-          selectedRating={null}
-          onSelect={(rating) => {
-            selectedRatings.push(rating);
-          }}
-        />
-      </NodexTooltipProvider>,
-    );
-
-    const button = getByRole("button", { name: "Good response" });
-    expect(button.getAttribute("aria-pressed")).toBe("false");
-
-    fireEvent.click(button);
-    expect(selectedRatings[0]).toBe("thumbs_up");
-
-    rerender(
-      <NodexTooltipProvider>
-        <AssistantRatingButton
-          rating="thumbs_up"
-          selectedRating="thumbs_up"
-          onSelect={(rating) => {
-            selectedRatings.push(rating);
-          }}
-        />
-      </NodexTooltipProvider>,
-    );
-
-    const selectedButton = getByRole("button", { name: "Good response" });
-    expect(selectedButton.getAttribute("aria-pressed")).toBe("true");
   });
 });

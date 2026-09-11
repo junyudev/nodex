@@ -1,3 +1,4 @@
+import { AssistantRatingMenu } from "./assistant-rating-menu";
 import { useState, type MouseEvent } from "react";
 import { motion } from "motion/react";
 import {
@@ -10,7 +11,6 @@ import { BudgetedMarkdownRenderer } from "./markdown/budgeted-markdown-renderer"
 import { CodexShimmerText } from "./codex-shimmer-text";
 import { cn } from "../../../../lib/utils";
 import {
-  AssistantRatingButton,
   type AssistantMessageRating,
   CopyMessageActionButton,
   ThreadActionIconButton,
@@ -128,16 +128,7 @@ export function PlanMessage({
           />
           {completed ? (
             <>
-              <AssistantRatingButton
-                rating="thumbs_up"
-                selectedRating={selectedRating}
-                onSelect={setSelectedRating}
-              />
-              <AssistantRatingButton
-                rating="thumbs_down"
-                selectedRating={selectedRating}
-                onSelect={setSelectedRating}
-              />
+              <AssistantRatingMenu selectedRating={selectedRating} onSelect={setSelectedRating} />
               {canOpenSidePanel ? (
                 <ThreadActionIconButton
                   label="Open plan in side panel"
