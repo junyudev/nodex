@@ -69,6 +69,12 @@ describe("DatabaseMoveDestinationPickerSurface", () => {
     );
 
     await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+      fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+      await Promise.resolve();
+    });
+    expect(onAccept).not.toHaveBeenCalled();
+    await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" });
       await Promise.resolve();
     });

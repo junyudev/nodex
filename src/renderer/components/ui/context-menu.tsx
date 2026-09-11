@@ -1,3 +1,5 @@
+import { mergeProps } from "@base-ui/react/merge-props";
+import { handleMenuEditorKeyDown } from "./menu-keyboard";
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu";
 import {
   createContext,
@@ -396,7 +398,7 @@ export const NodexContextMenuContent = forwardRef<HTMLDivElement, NodexContextMe
           data-slot="context-menu-content"
           className={cn(nodexMenuSurfaceClassName, className)}
           style={{ ...CONTEXT_MENU_BOUNDARY_STYLE, zIndex: layerIndex, ...style }}
-          {...props}
+          {...mergeProps({ onKeyDown: handleMenuEditorKeyDown }, props)}
           data-nodex-keyboard-scope="local"
         >
           <NodexFloatingLayerProvider zIndex={layerIndex}>
@@ -450,7 +452,7 @@ export const NodexContextMenuSubContent = forwardRef<
         data-slot="context-menu-subcontent"
         className={cn(nodexMenuSurfaceClassName, CONTEXT_SUBMENU_MOTION_CLASS_NAME, className)}
         style={{ ...CONTEXT_MENU_BOUNDARY_STYLE, zIndex: layerIndex, ...style }}
-        {...props}
+        {...mergeProps({ onKeyDown: handleMenuEditorKeyDown }, props)}
         data-nodex-keyboard-scope="local"
       >
         <NodexFloatingLayerProvider zIndex={layerIndex}>

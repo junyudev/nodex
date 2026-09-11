@@ -69,6 +69,12 @@ describe("PagesTabPicker", () => {
     expect(screen.getByRole("option", { name: /Page One/ })).toBeDefined();
     expect(screen.getByRole("button", { name: "New Page" })).toBeDefined();
     await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+      fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+      await Promise.resolve();
+    });
+    expect(onOpenTarget).not.toHaveBeenCalled();
+    await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" });
       await Promise.resolve();
     });

@@ -132,6 +132,10 @@ export function PagesTabPicker({
     onOpenTarget(target, title);
   };
   const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) {
+      event.stopPropagation();
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       setOpen(false);

@@ -197,7 +197,9 @@ uses local state and a submit-time guard.
 
 - Register application keyboard actions once at the active window in bubble
   phase. Editors, inputs, dialogs, menus, terminals, and other local scopes get
-  first ownership of the event.
+  first ownership of the event. Shared menu popups yield typeahead and
+  navigation to embedded text controls; unhandled Escape still dismisses the menu.
+  Picker acceptance and navigation must ignore IME composition, including key code 229.
 - Resolve the active surface capability before executing an app action. Call
   `preventDefault()` only after the command accepts the event, and respect
   composition, repeat, editable ownership, and local keyboard scopes.
