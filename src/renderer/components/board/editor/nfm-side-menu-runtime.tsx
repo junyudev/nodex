@@ -2,7 +2,19 @@ import { createContext, useContext, type ReactNode } from "react";
 import type { NfmTurnBlocksIntoInput } from "../../../lib/nfm-turn-into-targets";
 import type { NfmMoveToDestination } from "./nfm-move-to-menu-model";
 
+import type {
+  NfmSendToThreadPreferredTarget,
+  NfmSendToThreadRequest,
+} from "./nfm-send-to-thread-menu-model";
+
 export interface NfmSideMenuRuntimeSnapshot {
+  canSendToThread?: boolean;
+  sendToThreadProjectNameById?: Record<string, string>;
+  sendToThreadPreferredTarget?: NfmSendToThreadPreferredTarget | null;
+  onSendBlocksToThread?: (
+    request: NfmSendToThreadRequest,
+    blockIds: readonly string[],
+  ) => Promise<void> | void;
   canSendBlocks: boolean;
   hasConvertDividerToThreadSection: boolean;
   sourceProjectId: string | null;

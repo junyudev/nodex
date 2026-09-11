@@ -1,4 +1,5 @@
-import { captureCodexTurnPresentation } from "@/lib/codex-turn-presentation";
+import { readCodexSubmissionPresentation } from "@/lib/codex-turn-presentation";
+import type { WorkbenchSubmitPresentation } from "../../../../shared/nodex-app-tools/workbench";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import type { DocumentWaitOptions } from "@/lib/document-wait";
 import { registerPageEditorObservationParticipant } from "@/lib/page-editor-observation-registry";
@@ -192,7 +193,6 @@ import type { EditorSurfaceLease } from "@/lib/document-session-registry";
 import {
   useCodexAvailableModels,
   useCodexPermissionState,
-  useDefaultCodexAppServerManager,
   useProjectThreadSummaries,
 } from "@/features/local-conversation/local-conversation-store";
 import type { ModifyShortcutEditor } from "./modify-block-shortcut";
@@ -250,13 +250,15 @@ interface NfmEditorCommonProps {
     targetSessionId?: string;
     prompt: string;
     promptInput?: CodexPromptInput;
+    submittedPresentation?: WorkbenchSubmitPresentation;
     threadName?: string;
   }) => Promise<{ threadId: string; sessionId?: string }>;
-  onSendThreadSectionPrompt?: (input: {
+  onSendPagePrompt?: (input: {
     projectId: string;
     threadId: string;
     prompt: string;
     promptInput?: CodexPromptInput;
+    submittedPresentation?: WorkbenchSubmitPresentation;
   }) => Promise<void>;
   isActivePanelTab?: boolean;
   headingRail?: {
@@ -455,7 +457,7 @@ function NfmEditorInstance({
   onOpenDatabase,
   onOpenCanvas,
   onStartNewSessionThreadFromEditor,
-  onSendThreadSectionPrompt,
+  onSendPagePrompt,
   isActivePanelTab = true,
   headingRail,
   className,
@@ -471,7 +473,6 @@ function NfmEditorInstance({
   const { resolved: themeMode } = useTheme();
   const { spellcheck } = useSpellcheck();
   const { settings: pasteResourceSettings } = usePasteResourceSettings();
-  const codexManager = useDefaultCodexAppServerManager();
   const workbenchOwner = useWorkbenchWindowOwner();
   const codexPermissionState = useCodexPermissionState(executionProjectId);
   const availableCodexModels = useCodexAvailableModels();
@@ -984,7 +985,7 @@ function NfmEditorInstance({
         restoreEditorFocus();
         return false;
       }
-      if (sendRequest.target.kind === "thread" && !onSendThreadSectionPrompt) {
+      if (sendRequest.target.kind === "thread" && !onSendPagePrompt) {
         toast.danger("Thread sending is not available.", {
           id: "nfm-thread-section",
         });
@@ -999,6 +1000,7 @@ function NfmEditorInstance({
         return false;
       }
 
+      const submittedPresentation = readCodexSubmissionPresentation(workbenchOwner);
       let markerBlockId = request.markerBlockId;
       if (!markerBlockId && request.createMarkerBeforeBlockId) {
         const [insertedMarker] = editor.insertBlocks(
@@ -1017,11 +1019,12 @@ function NfmEditorInstance({
         return false;
       }
 
-      const sendExistingThreadPrompt = onSendThreadSectionPrompt;
+      const sendExistingThreadPrompt = onSendPagePrompt;
       const startNewSessionThread = onStartNewSessionThreadFromEditor;
 
       try {
         await withPendingThreadSection(markerBlockId, async () => {
+          await surfaceMutationBarrier?.flushAndFence();
           const threadId =
             sendRequest.target.kind === "thread"
               ? sendRequest.target.threadId
@@ -1031,6 +1034,7 @@ function NfmEditorInstance({
                     targetSessionId: sendRequest.target.sessionId,
                     prompt: request.prompt,
                     promptInput: request.promptInput,
+                    submittedPresentation,
                     threadName: request.sectionTitle,
                   })
                 ).threadId;
@@ -1041,6 +1045,7 @@ function NfmEditorInstance({
               threadId,
               prompt: request.prompt,
               promptInput: request.promptInput,
+              submittedPresentation,
             });
           }
 
@@ -1067,9 +1072,11 @@ function NfmEditorInstance({
       editor,
       executionProjectId,
       onStartNewSessionThreadFromEditor,
-      onSendThreadSectionPrompt,
+      onSendPagePrompt,
       restoreEditorFocus,
       withPendingThreadSection,
+      workbenchOwner,
+      surfaceMutationBarrier,
     ],
   );
 
@@ -1085,7 +1092,7 @@ function NfmEditorInstance({
 
   const handleSendThreadSectionByBlockId = useCallback(
     (blockId: string, anchor?: HTMLElement) => {
-      if (!editor || executionProjectId === null || !onSendThreadSectionPrompt) {
+      if (!editor || executionProjectId === null || !onSendPagePrompt) {
         return false;
       }
 
@@ -1130,7 +1137,7 @@ function NfmEditorInstance({
     [
       editor,
       executionProjectId,
-      onSendThreadSectionPrompt,
+      onSendPagePrompt,
       prepareThreadSectionSend,
       resolveThreadSectionPreferredThread,
     ],
@@ -2043,6 +2050,8 @@ function NfmEditorInstance({
         return;
       }
 
+      const submittedPresentation = readCodexSubmissionPresentation(workbenchOwner);
+      await surfaceMutationBarrier?.flushAndFence();
       let threadId: string;
       if (request.target.kind === "thread") {
         threadId = request.target.threadId;
@@ -2056,24 +2065,20 @@ function NfmEditorInstance({
             targetSessionId: request.target.sessionId,
             prompt: promptInput.text,
             promptInput,
+            submittedPresentation,
           })
         ).threadId;
       }
 
       if (request.target.kind === "thread") {
-        const presentationTicket = await captureCodexTurnPresentation(workbenchOwner, {
-          kind: "thread",
+        if (!onSendPagePrompt) throw new Error("Chat sending is not available.");
+        await onSendPagePrompt({
+          projectId: executionProjectId,
           threadId,
+          prompt: promptInput.text,
+          promptInput,
+          submittedPresentation,
         });
-        await codexManager.startTurn(
-          threadId,
-          promptInput.text,
-          {
-            permissionMode: codexPermissionState.mode,
-            promptInput,
-          },
-          presentationTicket,
-        );
       }
 
       if (request.mode === "wrap-toggle") {
@@ -2101,9 +2106,9 @@ function NfmEditorInstance({
       restoreEditorFocus();
     },
     [
-      codexManager,
+      onSendPagePrompt,
       workbenchOwner,
-      codexPermissionState.mode,
+      surfaceMutationBarrier,
       editor,
       executionProjectId,
       onStartNewSessionThreadFromEditor,
@@ -2281,6 +2286,11 @@ function NfmEditorInstance({
   );
   const sideMenuHandlersRef = useRef({
     canSendBlocks: blockActionCapabilities.canMoveBlocks,
+    canSendToThread: blockActionCapabilities.canSendBlocksToThread,
+    sendToThreadProjectNameById,
+    sendToThreadPreferredTarget: sessionSendToThreadPreferredTarget,
+    onSendBlocksToThread: (request: NfmSendToThreadRequest, blockIds: readonly string[]) =>
+      sendBlocksToThread(request, blockIds[0] ?? "", blockIds),
     hasConvertDividerToThreadSection: true,
     sourceProjectId: sourcePageContext ? executionProjectId : null,
     sourcePageId: sourcePageContext?.pageId ?? null,
@@ -2296,6 +2306,11 @@ function NfmEditorInstance({
   });
   sideMenuHandlersRef.current = {
     canSendBlocks: blockActionCapabilities.canMoveBlocks,
+    canSendToThread: blockActionCapabilities.canSendBlocksToThread,
+    sendToThreadProjectNameById,
+    sendToThreadPreferredTarget: sessionSendToThreadPreferredTarget,
+    onSendBlocksToThread: (request: NfmSendToThreadRequest, blockIds: readonly string[]) =>
+      sendBlocksToThread(request, blockIds[0] ?? "", blockIds),
     hasConvertDividerToThreadSection: true,
     sourceProjectId: sourcePageContext ? executionProjectId : null,
     sourcePageId: sourcePageContext?.pageId ?? null,

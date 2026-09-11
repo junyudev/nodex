@@ -1,3 +1,4 @@
+import { materializePagePromptInput } from "./page-prompt-input";
 import type { CodexPromptInput } from "@/lib/types";
 import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { parseNfm } from "@/lib/nfm";
@@ -129,13 +130,21 @@ export async function loadPagePromptContext(input: {
     ...input,
     accessContext: { kind: "project", projectId: input.projectId },
   });
-  return buildPagePromptContext({
+  const context = buildPagePromptContext({
     projectId: input.projectId,
     pageId: input.pageId,
     pageKey: input.pageKey,
     title: materialized.title.trim() || input.titleSnapshot || "Untitled Page",
     nfm: materialized.nfm,
   });
+  return {
+    ...context,
+    promptInput: (await materializePagePromptInput(
+      { kind: "project", projectId: input.projectId },
+      input.pageId,
+      context.promptInput,
+    ))!,
+  };
 }
 
 function createPageDocumentRuntime(

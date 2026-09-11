@@ -813,7 +813,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
 
     const pageStageProps = (globalThis as { __lastPageStageProps?: Record<string, unknown> })
       .__lastPageStageProps;
-    const sendSection = pageStageProps?.onSendThreadSectionPrompt as
+    const sendSection = pageStageProps?.onSendPagePrompt as
       | ((input: {
           projectId: string;
           threadId: string;

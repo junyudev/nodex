@@ -1,6 +1,5 @@
 import {
   Fragment,
-  useEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -67,9 +66,13 @@ import {
 } from "./database-view-page-copy-model";
 import { PageMoveDestinationPicker } from "@/components/library/page-move-destination-picker";
 
-interface ChatPickerState {
+import { appScope, useScopeHandle } from "@/lib/maitai";
+import { openModal } from "@/lib/modal-registry";
+
+interface ChatPickerSnapshot {
   readonly anchorRect: DOMRect;
-  readonly open: boolean;
+  readonly page: DatabaseViewPageTarget;
+  readonly actionPort: DatabaseViewPageActionPort;
 }
 
 const copyWithFeedback = async (
@@ -162,22 +165,22 @@ function PageActionSubmenu({
 }
 
 function ChatPicker({
-  state,
+  anchorRect,
   page,
   actionPort,
   onClose,
 }: {
-  readonly state: ChatPickerState | null;
+  readonly anchorRect: DOMRect;
   readonly page: DatabaseViewPageTarget;
   readonly actionPort: DatabaseViewPageActionPort;
   readonly onClose: () => void;
 }) {
   const projectId = page.projectId;
-  if (!state || !projectId || !actionPort.sendToChat) return null;
+  if (!projectId || !actionPort.sendToChat) return null;
 
   return (
     <NodexPopover
-      open={state.open}
+      open
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
@@ -187,38 +190,36 @@ function ChatPicker({
           aria-hidden="true"
           className="pointer-events-none fixed size-px"
           style={{
-            left: state.anchorRect.left,
-            top: state.anchorRect.bottom,
+            left: anchorRect.left,
+            top: anchorRect.bottom,
           }}
         />
       </NodexPopoverAnchor>
-      {state.open ? (
-        <NodexPopoverContent
-          align="start"
-          side="bottom"
-          sideOffset={6}
-          className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-1"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-          finalFocus={false}
-        >
-          <NfmSendToThreadMenu
-            projectId={projectId}
-            onAccept={async ({ target }) => {
-              await actionPort.sendToChat?.({
-                projectId,
-                pageId: page.pageId,
-                ...(page.pageKey ? { pageKey: page.pageKey } : {}),
-                titleSnapshot: page.titleSnapshot,
-                target,
-              });
-              onClose();
-            }}
-            onClose={onClose}
-            showModeSelector={false}
-          />
-        </NodexPopoverContent>
-      ) : null}
+      <NodexPopoverContent
+        align="start"
+        side="bottom"
+        sideOffset={6}
+        className="w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-1"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+        finalFocus={false}
+      >
+        <NfmSendToThreadMenu
+          projectId={projectId}
+          onAccept={async ({ target }) => {
+            await actionPort.sendToChat?.({
+              projectId,
+              pageId: page.pageId,
+              ...(page.pageKey ? { pageKey: page.pageKey } : {}),
+              titleSnapshot: page.titleSnapshot,
+              target,
+            });
+            onClose();
+          }}
+          onClose={onClose}
+          showModeSelector={false}
+        />
+      </NodexPopoverContent>
     </NodexPopover>
   );
 }
@@ -237,7 +238,6 @@ export interface DatabaseViewPageMenuSession {
 const EMPTY_PAGE_ACTION_PORT: DatabaseViewPageActionPort = {};
 
 export function DatabaseViewPageContextMenuOverlay({
-  menuOpen,
   onMenuOpenChange,
   returnFocusRef,
   page,
@@ -254,7 +254,8 @@ export function DatabaseViewPageContextMenuOverlay({
   readonly returnFocusRef?: RefObject<HTMLElement | null>;
 } & DatabaseViewPageMenuSession) {
   const [query, setQuery] = useState("");
-  const [chatPicker, setChatPicker] = useState<ChatPickerState | null>(null);
+  const appHandle = useScopeHandle(appScope);
+  const pendingChatPickerRef = useRef<ChatPickerSnapshot | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const redirectedInitialFocusRef = useRef(false);
@@ -279,17 +280,8 @@ export function DatabaseViewPageContextMenuOverlay({
   const handleMenuOpenChange = (open: boolean): void => {
     onMenuOpenChange(open);
     redirectedInitialFocusRef.current = false;
-    if (open) setChatPicker(null);
     if (!open) setQuery("");
   };
-
-  useEffect(() => {
-    if (menuOpen || !chatPicker || chatPicker.open) return;
-    const frame = requestAnimationFrame(() => {
-      setChatPicker((current) => (current ? { ...current, open: true } : null));
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [chatPicker, menuOpen]);
 
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === "Escape") {
@@ -356,7 +348,9 @@ export function DatabaseViewPageContextMenuOverlay({
     }
     if (actionId === "send-to-chat") {
       const anchorRect = contentRef.current?.getBoundingClientRect();
-      if (anchorRect) setChatPicker({ anchorRect, open: false });
+      if (anchorRect) {
+        pendingChatPickerRef.current = { anchorRect, page: presentedPage, actionPort };
+      }
       return;
     }
     if (actionId !== "delete" || !actionPort.deletePage) return;
@@ -426,7 +420,13 @@ export function DatabaseViewPageContextMenuOverlay({
       <NodexContextMenuPortal>
         <NodexContextMenuContent
           ref={contentRef}
-          finalFocus={returnFocusRef}
+          finalFocus={() => {
+            const pending = pendingChatPickerRef.current;
+            if (!pending) return returnFocusRef?.current ?? true;
+            pendingChatPickerRef.current = null;
+            openModal(appHandle, ChatPicker, pending);
+            return false;
+          }}
           onFocusCapture={(event) => {
             if (redirectedInitialFocusRef.current) return;
             redirectedInitialFocusRef.current = true;
@@ -464,12 +464,6 @@ export function DatabaseViewPageContextMenuOverlay({
           {actions.map(renderAction)}
         </NodexContextMenuContent>
       </NodexContextMenuPortal>
-      <ChatPicker
-        state={chatPicker}
-        page={presentedPage}
-        actionPort={actionPort}
-        onClose={() => setChatPicker(null)}
-      />
     </>
   );
 }

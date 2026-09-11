@@ -1,11 +1,24 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
+import { NodexModalHost } from "@/lib/modal-registry";
 import { createRef } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { dataSourcePagePropertyMenuSourceFromBindings } from "@/components/database/data-source-page-property-menu-source";
-import { render } from "@/test/dom";
+import { renderWithMaitai as render } from "@/test/thread-maitai";
 import type { DatabaseViewPageMenuSession } from "./database-view-page-context-menu";
 import { DatabaseViewPageContextMenuHost } from "./database-view-page-context-menu-host";
+
+vi.mock("@/components/board/editor/nfm-send-to-thread-menu", () => ({
+  NfmSendToThreadMenu: ({
+    onAccept,
+  }: {
+    readonly onAccept: (request: { target: { kind: "new-thread" }; mode: "send" }) => Promise<void>;
+  }) => (
+    <button onClick={() => onAccept({ target: { kind: "new-thread" }, mode: "send" })}>
+      Choose chat
+    </button>
+  ),
+}));
 
 const session = (pageId: string): DatabaseViewPageMenuSession => ({
   page: {
@@ -24,6 +37,70 @@ const session = (pageId: string): DatabaseViewPageMenuSession => ({
 });
 
 describe("DatabaseViewPageContextMenuHost", () => {
+  test("keeps the chat chooser alive after its menu and View unmount", async () => {
+    const sendToChat = vi.fn().mockResolvedValue(undefined);
+    const ancestorPointerDown = vi.fn();
+    const renderHost = (visible: boolean) => (
+      <>
+        <NodexModalHost />
+        {visible ? (
+          <div onPointerDown={ancestorPointerDown}>
+            <DatabaseViewPageContextMenuHost
+              resolveSession={(key) => ({ ...session(key), actionPort: { sendToChat } })}
+            >
+              <button data-database-view-page-menu-target="page-1">Page</button>
+            </DatabaseViewPageContextMenuHost>
+          </div>
+        ) : null}
+      </>
+    );
+    const view = render(renderHost(true));
+    await act(async () => {
+      fireEvent.contextMenu(view.getByRole("button", { name: "Page" }), {
+        clientX: 80,
+        clientY: 60,
+      });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.pointerMove(await view.findByRole("menuitem", { name: "Open in" }), {
+        pointerType: "mouse",
+      });
+      await Promise.resolve();
+    });
+    const send = await view.findByRole("menuitem", { name: "Send to chat…" });
+    await act(async () => {
+      fireEvent.click(send);
+      await Promise.resolve();
+    });
+    const choose = await view.findByRole("button", { name: "Choose chat" });
+    await waitFor(() =>
+      expect(
+        view.queryByRole("textbox", { name: "Search Page actions and properties" }),
+      ).toBeNull(),
+    );
+    await act(async () => {
+      fireEvent.pointerDown(choose);
+      await Promise.resolve();
+    });
+    expect(ancestorPointerDown).not.toHaveBeenCalled();
+    view.rerender(renderHost(false));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Choose chat" }));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(sendToChat).toHaveBeenCalledWith({
+        projectId: "project-1",
+        pageId: "page-1",
+        pageKey: "PAGE-1",
+        titleSnapshot: "Page page-1",
+        target: { kind: "new-thread" },
+      }),
+    );
+    await waitFor(() => expect(view.queryByRole("button", { name: "Choose chat" })).toBeNull());
+  });
+
   test("returns focus to the surviving View when a menu action removes its Page target", async () => {
     const returnFocusRef = createRef<HTMLDivElement>();
     const renderHost = (showPage: boolean) => (

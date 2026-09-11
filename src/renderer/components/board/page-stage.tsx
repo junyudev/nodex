@@ -90,7 +90,7 @@ interface PageStageDescriptionEditorProps {
   readonly onOpenDatabase: PageStageProps["onOpenDatabase"];
   readonly onOpenCanvas: PageStageProps["onOpenCanvas"];
   readonly onStartNewSessionThreadFromEditor: PageStageProps["onStartNewSessionThreadFromEditor"];
-  readonly onSendThreadSectionPrompt: PageStageProps["onSendThreadSectionPrompt"];
+  readonly onSendPagePrompt: PageStageProps["onSendPagePrompt"];
   readonly isActivePanelTab: boolean;
   readonly headingRailPortalElement: HTMLElement | null;
   readonly scrollContainerRef: RefObject<HTMLDivElement | null>;
@@ -136,7 +136,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
   onOpenDatabase,
   onOpenCanvas,
   onStartNewSessionThreadFromEditor,
-  onSendThreadSectionPrompt,
+  onSendPagePrompt,
   isActivePanelTab,
   headingRailPortalElement,
   scrollContainerRef,
@@ -280,7 +280,7 @@ const PageStageDescriptionEditor = memo(function PageStageDescriptionEditor({
       onOpenDatabase={onOpenDatabase}
       onOpenCanvas={onOpenCanvas}
       onStartNewSessionThreadFromEditor={onStartNewSessionThreadFromEditor}
-      onSendThreadSectionPrompt={onSendThreadSectionPrompt}
+      onSendPagePrompt={onSendPagePrompt}
       isActivePanelTab={isActivePanelTab}
       headingRail={{
         portalElement: headingRailPortalElement,
@@ -448,7 +448,7 @@ export function PageStage(props: PageStageProps) {
           onOpenDatabase={props.onOpenDatabase}
           onOpenCanvas={props.onOpenCanvas}
           onStartNewSessionThreadFromEditor={props.onStartNewSessionThreadFromEditor}
-          onSendThreadSectionPrompt={props.onSendThreadSectionPrompt}
+          onSendPagePrompt={props.onSendPagePrompt}
           isActivePanelTab={props.isActivePanelTab ?? true}
           headingRailPortalElement={headingRailPortalElement}
           scrollContainerRef={scrollContainerRef}

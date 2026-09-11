@@ -78,6 +78,11 @@ import {
 import { NfmEditorPopoverContent } from "./nfm-editor-popover-content";
 import { NfmStructuredClipboardExtension, type NfmClipboardCommand } from "./nfm-editor-extensions";
 import { NfmFloatingPopover, type NfmPopoverReference } from "./nfm-floating-popover";
+import { NfmSendToThreadMenu } from "./nfm-send-to-thread-menu";
+import type {
+  NfmSendToThreadPreferredTarget,
+  NfmSendToThreadRequest,
+} from "./nfm-send-to-thread-menu-model";
 import { NfmMoveToMenu } from "./nfm-move-to-menu";
 import { NfmTurnIntoBlockIcon, type NfmTurnIntoBlockKey } from "./nfm-turn-into-block-icon";
 import type { NfmMoveToDestination, NfmMoveToResultScope } from "./nfm-move-to-menu-model";
@@ -248,6 +253,9 @@ interface NfmSideMenuSurfaceProps {
   canUseTextColor: boolean;
   canUseBackgroundColor: boolean;
   canSendBlocks: boolean;
+  sendToThreadProjectNameById?: Record<string, string>;
+  sendToThreadPreferredTarget?: NfmSendToThreadPreferredTarget | null;
+  onSendBlocksToThread?: (request: NfmSendToThreadRequest) => Promise<void> | void;
   sourceProjectId: string | null;
   sourcePageId: string | null;
   textColor: string;
@@ -583,6 +591,7 @@ function getActionIcon(key: NfmSideMenuActionKey) {
   if (key === "color") return <NfmSideMenuColorIcon />;
   if (key === "copy-link-to-block") return <NfmSideMenuCopyLinkIcon />;
   if (key === "duplicate") return <NfmSideMenuDuplicateIcon />;
+  if (key === "send-to-thread") return <NfmSideMenuCommentIcon />;
   if (key === "move-to") return <MoveToIcon />;
   if (key === "delete") return <NfmSideMenuDeleteIcon />;
   if (key === "comment") return <NfmSideMenuCommentIcon />;
@@ -791,8 +800,8 @@ function NfmSideMenuRow({
 
   if (row.kind !== "submenu" || !row.submenu || !submenuContent) return rowElement;
 
-  const submenuWidth = row.submenu === "move-to" ? 330 : row.submenu === "language" ? 240 : 226;
-  const isMoveToSubmenu = row.submenu === "move-to";
+  const isDestinationSubmenu = row.submenu === "move-to" || row.submenu === "send-to-thread";
+  const submenuWidth = isDestinationSubmenu ? 330 : row.submenu === "language" ? 240 : 226;
 
   return (
     <NodexPopover
@@ -817,7 +826,7 @@ function NfmSideMenuRow({
         data-nfm-side-menu-submenu="true"
         className={cn(
           "text-[14px] leading-[1.2] shadow-xl-spread backdrop-blur-xl",
-          isMoveToSubmenu
+          isDestinationSubmenu
             ? "w-[330px] max-w-[calc(100vw-24px)] overflow-hidden p-0"
             : row.submenu === "language"
               ? "w-[240px] max-h-[50vh] overflow-y-auto p-1"
@@ -1225,6 +1234,9 @@ export function NfmSideMenuSurface({
   onClipboardCommand,
   onMoveBlocksToDestination,
   renderMoveToMenu,
+  sendToThreadProjectNameById,
+  sendToThreadPreferredTarget,
+  onSendBlocksToThread,
 }: NfmSideMenuSurfaceProps) {
   let rowIndex = 0;
   const flatRowsForSeparators = useMemo(() => flattenNfmSideMenuRows(sections), [sections]);
@@ -1265,6 +1277,18 @@ export function NfmSideMenuSurface({
     });
   };
   const renderSubmenu = (submenu: NfmSideMenuSubmenuKey) => {
+    if (submenu === "send-to-thread") {
+      if (!onSendBlocksToThread) return null;
+      return (
+        <NfmSendToThreadMenu
+          projectId={sourceProjectId}
+          projectNameById={sendToThreadProjectNameById}
+          preferredTarget={sendToThreadPreferredTarget}
+          onAccept={onSendBlocksToThread}
+          onClose={closeSubmenuAndRestoreFocus}
+        />
+      );
+    }
     if (submenu === "move-to") {
       const moveToMenuProps = {
         sourceProjectId,
@@ -1477,6 +1501,7 @@ function NfmSideMenuPopup({
         isEditable,
         canUseColor: colorSupport.text || colorSupport.background,
         canSendBlocks: runtimeSnapshot.canSendBlocks,
+        canSendToThread: runtimeSnapshot.canSendToThread,
         hasConvertDividerToThreadSection: runtimeSnapshot.hasConvertDividerToThreadSection,
         isTableBlock: selectedTopLevelBlock?.type === "table",
         canUseTableHeaders: editor.settings?.tables?.headers === true,
@@ -1503,6 +1528,7 @@ function NfmSideMenuPopup({
       isEditable,
       isSingleCodeBlock,
       runtimeSnapshot.canSendBlocks,
+      runtimeSnapshot.canSendToThread,
       selectionTitle,
       topLevelSelectedBlocks.length,
     ],
@@ -1948,6 +1974,17 @@ function NfmSideMenuPopup({
         canUseTextColor={colorSupport.text}
         canUseBackgroundColor={colorSupport.background}
         canSendBlocks={runtimeSnapshot.canSendBlocks}
+        sendToThreadProjectNameById={runtimeSnapshot.sendToThreadProjectNameById}
+        sendToThreadPreferredTarget={runtimeSnapshot.sendToThreadPreferredTarget}
+        onSendBlocksToThread={async (request) => {
+          const blockIds = getSideMenuActionBlocks(openState, block)
+            .map((selectedBlock) => selectedBlock.id)
+            .filter((id): id is string => Boolean(id));
+          if (!blockIds.length || !runtimeSnapshot.onSendBlocksToThread)
+            throw new Error("No blocks selected.");
+          await runtimeSnapshot.onSendBlocksToThread(request, blockIds);
+          close("action");
+        }}
         sourceProjectId={runtimeSnapshot.sourceProjectId}
         sourcePageId={runtimeSnapshot.sourcePageId}
         textColor={toStringProp(block.props, "textColor")}
