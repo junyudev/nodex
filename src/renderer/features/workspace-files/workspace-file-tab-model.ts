@@ -1,3 +1,4 @@
+import { workbenchFileResourceId } from "../../../shared/workbench-resource-identity";
 export type WorkspaceFileOpenMode = "preview" | "durable";
 
 export interface WorkspaceFileTabCandidate {
@@ -26,19 +27,17 @@ export function decideWorkspaceFileTabOpen(input: {
   readonly previewTab: WorkspaceFileTabCandidate | null;
 }): WorkspaceFileTabOpenDecision {
   const existing = input.durableTabs.find(
-    (tab) => tab.hostId === input.hostId && tab.path === input.path,
+    (tab) =>
+      tab.path !== null &&
+      workbenchFileResourceId(tab.hostId, tab.path) ===
+        workbenchFileResourceId(input.hostId, input.path),
   );
   if (existing) return { kind: "focus-durable", tabId: existing.id };
 
-  const activeEmpty = input.durableTabs.find(
-    (tab) => tab.id === input.activeDurableTabId && tab.path === null,
-  );
-  if (activeEmpty) {
-    return { kind: "create-from-empty", emptyTabId: activeEmpty.id };
-  }
-
   const matchingPreview =
-    input.previewTab?.hostId === input.hostId && input.previewTab.path === input.path
+    input.previewTab?.path &&
+    workbenchFileResourceId(input.previewTab.hostId, input.previewTab.path) ===
+      workbenchFileResourceId(input.hostId, input.path)
       ? input.previewTab
       : null;
   if (matchingPreview && input.mode === "durable") {
@@ -46,6 +45,13 @@ export function decideWorkspaceFileTabOpen(input: {
   }
   if (matchingPreview) {
     return { kind: "focus-preview", tabId: matchingPreview.id };
+  }
+
+  const activeEmpty = input.durableTabs.find(
+    (tab) => tab.id === input.activeDurableTabId && tab.path === null,
+  );
+  if (activeEmpty) {
+    return { kind: "create-from-empty", emptyTabId: activeEmpty.id };
   }
 
   if (input.mode === "durable") return { kind: "create-durable" };

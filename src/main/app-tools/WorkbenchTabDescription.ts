@@ -104,6 +104,14 @@ export const make = Effect.gen(function* () {
         status: "authorized",
         kind: surface.kind,
         projectId: surface.config.projectId,
+        ...(surface.kind === "files"
+          ? {
+              hostId: surface.config.hostId,
+              path: surface.config.path ?? null,
+              workspaceRoot: surface.config.workspaceRoot,
+              cwd: surface.config.cwd,
+            }
+          : {}),
         title: surface.titleSnapshot.slice(0, 300),
       };
     }

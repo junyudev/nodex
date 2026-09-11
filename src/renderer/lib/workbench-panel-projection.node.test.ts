@@ -183,6 +183,7 @@ function preview(): ProjectSessionPreviewTab {
       kind: "browser",
     }),
     preview: true,
+    previewInstanceId: "preview-instance",
   };
 }
 
@@ -360,6 +361,7 @@ describe("workbench panel projection", () => {
         [makeWorkbenchSessionPanelSlotKey(session.id, "right", "right-leaf")]: {
           ...durable,
           preview: true,
+          previewInstanceId: "preview-instance",
         },
       }),
     ).toBeNull();

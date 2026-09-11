@@ -311,7 +311,7 @@ export function buildSessionPanelRenderModel(
   const browserRetentionTabs = [
     ...session.tabs.filter((tab) => tab.kind === "browser"),
     ...Object.values(previewTabsByPanel).filter(
-      (tab): tab is WorkbenchTabProjection & { preview: true } =>
+      (tab): tab is Extract<ProjectSessionPreviewTab, { kind: "browser" }> =>
         tab.sessionId === session.id &&
         tab.kind === "browser" &&
         typeof tab.browserTabId === "string",

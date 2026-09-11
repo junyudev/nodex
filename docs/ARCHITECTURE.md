@@ -894,7 +894,7 @@ Live Scene changes are pure renderer transitions. Main persists validated, revis
 
 `WindowRuntime` owns one live physical-window registry and publishes a bounded typed snapshot plus lifecycle Stream. Primary entries alone attach to the durable Window Session catalog and retain the existing application-window authorization/broadcast semantics; explicitly registered auxiliary entries share lifecycle and focus ordering without acquiring a Window Session or entering restore state. Each committed main-frame document receives a fresh renderer generation, revoked at navigation start, renderer loss, or window release. This identity fences live presentation requests independently of the durable Window Session. The active Session projection is derived from the persisted Workbench location, including Settings and Automations return locations, rather than from the renderer document URL.
 
-Surface descriptors contain stable resource or runtime references, not live Query observers, Documents, editors, Browser WebContents, PTYs, DOM nodes, or Promises. Browser and Terminal lifetimes remain with their Main-owned aggregates when a React surface unmounts.
+Surface resource identity is independent of placement and preview lifetime. Surface descriptors contain stable resource or runtime references, not live Query observers, Documents, editors, Browser WebContents, PTYs, DOM nodes, or Promises. Browser and Terminal lifetimes remain with their Main-owned aggregates when a React surface unmounts.
 
 See [the Workbench shell specification](docs/product-specs/workbench-shell.md), [ADR 0032](docs/adr/0032-workbench-window-state-and-routing.md), and [ADR 0034](docs/adr/0034-owner-scoped-workbench-scenes.md).
 

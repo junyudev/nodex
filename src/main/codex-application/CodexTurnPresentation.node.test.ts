@@ -118,10 +118,7 @@ it.effect("retains queued origins across time and prunes only settled queue clai
       presentation: testSubmitPresentation,
     });
     yield* TestClock.adjust("16 minutes");
-    assert.equal(
-      (yield* presentation.claim(expired, target, "expired-client").pipe(Effect.flip)).reason,
-      "expired",
-    );
+    assert.isUndefined(yield* presentation.claim(expired, target, "expired-client"));
     assert.deepEqual(presentation.readQueued(target.threadId, "queued-client"), queued);
     assert.isUndefined(presentation.readQueued("other-thread", "queued-client"));
     presentation.reconcileQueued(target.threadId, []);
@@ -260,4 +257,79 @@ it.effect(
       yield* presentation.capture(11, { target, presentation: snapshot });
       yield* Scope.close(scope, Exit.void);
     }),
+);
+
+it.effect(
+  "uses the latest accepted submission and ignores delayed acknowledgements of older origins",
+  () =>
+    Effect.gen(function* () {
+      const { scope, presentation, ticket } = yield* setup;
+      const first = yield* presentation.begin(
+        yield* presentation.claim(ticket, target, "first-message"),
+        target.threadId,
+      );
+      const secondTicket = yield* presentation.capture(22, {
+        target,
+        presentation: { ...testSubmitPresentation, rendererGeneration: "renderer-b" },
+      });
+      const second = yield* presentation.begin(
+        yield* presentation.claim(secondTicket, target, "second-message"),
+        target.threadId,
+      );
+      yield* presentation.observeUserMessage(target.threadId, "same-turn", "second-message");
+      const frozen = presentation.read(target.threadId, "same-turn");
+      yield* presentation.bind(first, "same-turn");
+      expectOrigin(presentation.read(target.threadId, "same-turn"), "window-b");
+      yield* presentation.bind(second, "same-turn");
+      expectOrigin(presentation.read(target.threadId, "same-turn"), "window-b");
+      assert.equal(frozen?.windowSessionId, "window-b");
+      presentation.finish(target.threadId, "same-turn");
+      assert.isNull(presentation.read(target.threadId, "same-turn"));
+      yield* presentation.bind(first, "same-turn");
+      yield* presentation.bind(second, "same-turn");
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
+
+function expectOrigin(anchor: { windowSessionId: string } | null, windowSessionId: string) {
+  assert.equal(anchor?.windowSessionId, windowSessionId);
+}
+
+it.effect(
+  "an accepted submission without context clears the older origin without affecting frozen readers",
+  () =>
+    Effect.gen(function* () {
+      const { scope, presentation, ticket } = yield* setup;
+      const first = yield* presentation.begin(
+        yield* presentation.claim(ticket, target, "first-message"),
+        target.threadId,
+      );
+      yield* presentation.bind(first, "turn");
+      const frozen = presentation.read(target.threadId, "turn");
+      const absent = yield* presentation.begin(
+        undefined,
+        target.threadId,
+        "restored-queued-message",
+      );
+      yield* presentation.observeUserMessage(target.threadId, "turn", "restored-queued-message");
+      assert.isNull(presentation.read(target.threadId, "turn"));
+      expectOrigin(frozen, "window-a");
+      yield* presentation.bind(absent, "turn");
+      yield* presentation.bind(first, "turn");
+      assert.isNull(presentation.read(target.threadId, "turn"));
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
+
+it.effect("does not resurrect context when completion precedes a late steer response", () =>
+  Effect.gen(function* () {
+    const { scope, presentation, ticket } = yield* setup;
+    const claim = yield* presentation.claim(ticket, target, "late-message");
+    const launch = yield* presentation.begin(claim, target.threadId);
+    presentation.finish(target.threadId, "completed-turn");
+    yield* presentation.bind(launch, "completed-turn");
+    assert.isNull(presentation.read(target.threadId, "completed-turn"));
+    yield* presentation.bind(launch, "completed-turn");
+    yield* Scope.close(scope, Exit.void);
+  }),
 );

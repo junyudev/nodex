@@ -265,7 +265,7 @@ describe("Workbench renderer Agent bridge", () => {
     expect(subject.port.release.mock.calls[1]?.[0]).toEqual(replacementReference);
   });
 
-  test("returns a bounded explicit failure for oversized observation evidence", async () => {
+  test("observes Browser runtime identity without copying oversized display metadata", async () => {
     const subject = harness();
     subject.owner.setScene(subject.sceneOwner, (scene) =>
       createWorkbenchSceneSurface(scene!, {
@@ -285,11 +285,21 @@ describe("Workbench renderer Agent bridge", () => {
     await bridge.ready;
     subject.emitRequest(subject.request("large"));
     await vi.waitFor(() => expect(subject.port.reply).toHaveBeenCalledTimes(1));
-    expect(subject.port.reply.mock.calls[0]?.[0]).toEqual({
+    const reply = subject.port.reply.mock.calls[0]?.[0];
+    expect(reply).toMatchObject({
       ...subject.reference,
       requestId: "large",
-      outcome: { ok: false, error: "result_too_large" },
+      outcome: { ok: true, result: { kind: "observe" } },
     });
+    if (!reply?.outcome.ok || reply.outcome.result.kind !== "observe")
+      throw new Error("Expected an observation");
+    expect(
+      reply.outcome.result.observation?.tabs.find((tab) => tab.tabId === "large-browser")?.surface
+        ?.config,
+    ).toEqual({ browserTabId: "browser-a" });
+    expect(new TextEncoder().encode(JSON.stringify(reply)).byteLength).toBeLessThan(
+      WORKBENCH_AGENT_MAX_REPLY_BYTES,
+    );
     expect(
       subject.owner.read().windowState.scenesByOwnerKey["session:session-a"]?.panelSurfacesById[
         "large-browser"

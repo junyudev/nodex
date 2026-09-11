@@ -1,3 +1,4 @@
+import { workbenchScriptedTitle } from "./support/workbench-scripted-title";
 import { expect, test } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -85,6 +86,7 @@ test("native Workbench observations keep two windows independent and preserve th
   await withScriptedModelServer(
     {
       exchanges: [
+        workbenchScriptedTitle,
         {
           name: "create the shared Session",
           match: (request) =>

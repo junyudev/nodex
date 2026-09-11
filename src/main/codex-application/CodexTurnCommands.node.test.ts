@@ -451,3 +451,99 @@ it.effect("binds an accepted projectless Turn to the original submission receipt
     yield* Scope.close(harness.scope, Exit.void);
   }),
 );
+
+const contextSteerIntent = {
+  steerId: "steer-context",
+  recoveryRow: {
+    followUpId: "follow-up-context",
+    clientUserMessageId: "steer-client",
+    threadId: "thread-a",
+    prompt: "answer",
+    promptInput: { text: "answer" },
+    createdAtMs: 1,
+    collaborationMode: null,
+    serviceTier: null,
+    summary: null,
+    pause: null,
+    payloadRef: null,
+  },
+};
+const contextSteerPlan = (): CodexTurnSteerPlan => {
+  const original = questionSteerPlan();
+  return { ...original, item: { ...original.item, clientUserMessageId: "steer-client" } };
+};
+
+for (const outcome of ["accepted", "unknown", "rejected", "unavailable"] as const) {
+  it.effect(`associates steer presentation only with ${outcome} submission evidence`, () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        request: () => Effect.succeed(response()),
+        steerPlan: contextSteerPlan(),
+        steerRequest: (turnId) =>
+          outcome === "unknown" || outcome === "rejected"
+            ? Effect.fail(
+                codexRuntimeError({
+                  operation: "gateway.request",
+                  reason: outcome === "unknown" ? "outcome-unknown" : "request",
+                  retryable: false,
+                  hostId: "local",
+                  method: "turn/steer",
+                  cause: new Error("steer outcome"),
+                }),
+              )
+            : Effect.succeed({ turnId }),
+      });
+      const target = { kind: "thread", threadId: "thread-a" } as const;
+      const firstTicket = yield* harness.presentation.capture(11, {
+        target,
+        presentation: testSubmitPresentation,
+      });
+      const first = yield* harness.presentation.begin(
+        yield* harness.presentation.claim(firstTicket, target, "original-message"),
+        target.threadId,
+      );
+      yield* harness.presentation.bind(first, "question-turn");
+      const ticket =
+        outcome === "unavailable"
+          ? undefined
+          : yield* harness.presentation.capture(22, {
+              target,
+              presentation: { ...testSubmitPresentation, rendererGeneration: "renderer-b" },
+            });
+      const result = yield* Effect.exit(
+        harness.commands.steer({
+          threadId: target.threadId,
+          expectedTurnId: "question-turn",
+          prompt: "answer",
+          intent: contextSteerIntent,
+          presentationTicket: ticket,
+        }),
+      );
+      if (outcome === "rejected") {
+        assert.isTrue(Exit.isFailure(result));
+        assert.equal(
+          harness.presentation.read(target.threadId, "question-turn")?.windowSessionId,
+          "window-a",
+        );
+      } else {
+        assert.isTrue(Exit.isSuccess(result));
+        if (outcome === "unknown") {
+          assert.equal(
+            harness.presentation.read(target.threadId, "question-turn")?.windowSessionId,
+            "window-a",
+          );
+          yield* harness.presentation.observeUserMessage(
+            target.threadId,
+            "question-turn",
+            "steer-client",
+          );
+        }
+        assert.equal(
+          harness.presentation.read(target.threadId, "question-turn")?.windowSessionId ?? null,
+          outcome === "unavailable" ? null : "window-b",
+        );
+      }
+      yield* Scope.close(harness.scope, Exit.void);
+    }),
+  );
+}

@@ -80,11 +80,11 @@ results must satisfy their content contract and the complete-response byte budge
 Local Codex Sessions use the bundled `nodex_app` MCP server when the verified Node runtime
 is available. `get_session_context` returns the calling Session, Thread, Turn, Project, Host,
 and working directory. Execution identity cannot be supplied in arguments. Its default
-`anchored` mode describes the submitting Window and Scene captured for the Turn;
+`anchored` mode describes the submitting Window and Scene captured for the latest accepted user submission, including an accepted steer;
 `refresh` explicitly observes that Window's current Scene. Exact discovered targets
 can be selected explicitly. Ambiguous windows return candidates instead of guessing.
 Missing Session or presentation context is reported explicitly. This operation reads
-metadata, not Page content.
+bounded semantic metadata, including exact file paths, not Page content. Only visible selected surfaces accompany submission; partial coverage and unavailable optional context are explicit and do not prevent a valid message. Existing observation handles retain their original evidence after a later submission.
 
 `list_projects` discovers available Projects and their local workspace paths. Git inspection
 distinguishes a repository, a non-repository directory, an unavailable inspection, and a Project

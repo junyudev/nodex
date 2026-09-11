@@ -1,3 +1,11 @@
+import { boundWorkbenchObservation } from "../../shared/nodex-app-tools/workbench-context-budget";
+import { WORKBENCH_SCENE_MAX_PANEL_SURFACES } from "../../shared/workbench-scene";
+import { WorkbenchSceneSnapshotSchema } from "../../shared/schemas/workbench-scene";
+import { makeTestWorkbenchSession } from "../components/workbench/workbench-testkit/panel-fixtures";
+import {
+  makePreviewWorkbenchTabProjection,
+  makeWorkbenchTabProjectionDraft,
+} from "./workbench-panel-preview";
 import { describe, expect, test } from "vite-plus/test";
 import {
   WorkbenchRendererObservationSchema,
@@ -304,6 +312,7 @@ describe("Workbench Agent presentation observation", () => {
         [slotKey]: {
           ...makeTestWorkbenchTab({ id: "preview", kind: "browser" }, owner.sessionId),
           preview: true as const,
+          previewInstanceId: "preview-instance",
         },
       },
     };
@@ -472,4 +481,91 @@ describe("Workbench Agent presentation observation", () => {
     expect(readWorkbenchSubmitPresentation(routed, "renderer-a").sceneOwner).toBeNull();
     expect(readWorkbenchAgentContext(routed, project.owner)?.mounted).toBe(false);
   });
+});
+
+test("distinct Browser previews in separate groups remain independently addressable", () => {
+  const owner = { kind: "session", sessionId: "session-a" } as const;
+  let scene = materializeInitialWorkbenchScene(owner);
+  for (const id of ["one", "two"])
+    scene = createWorkbenchSceneSurface(scene, { panelId: "right", surface: browser(id) });
+  scene = splitWorkbenchSceneLeaf(scene, {
+    panelId: "right",
+    leafId: scene.panels.right.layout.activeLeafId,
+    surfaceId: "two",
+    side: "right",
+  });
+  const session = makeTestWorkbenchSession({ id: "session-a" });
+  const draft = makeWorkbenchTabProjectionDraft(session, "browser")!;
+  const first = makePreviewWorkbenchTabProjection(session, "right", draft);
+  const second = makePreviewWorkbenchTabProjection(session, "right", draft);
+  const firstGroup = findWorkbenchPanelLeafForTab(scene.panels.right.layout, "one")!.id;
+  const secondGroup = findWorkbenchPanelLeafForTab(scene.panels.right.layout, "two")!.id;
+  const state = stateFor([scene], {
+    kind: "session",
+    sessionId: owner.sessionId,
+    projectContextId: null,
+  });
+  state.ephemeralPanels.previewTabsByPanel[
+    makeWorkbenchSessionPanelSlotKey(owner.sessionId, "right", firstGroup)
+  ] = first;
+  state.ephemeralPanels.previewTabsByPanel[
+    makeWorkbenchSessionPanelSlotKey(owner.sessionId, "right", secondGroup)
+  ] = second;
+  const observed = readWorkbenchAgentContext(state, owner)!;
+  expect(WorkbenchRendererObservationSchema.safeParse(observed).success).toBe(true);
+  expect(observed.tabs.filter((tab) => tab.preview).map((tab) => [tab.tabId, tab.groupId])).toEqual(
+    [
+      [first.id, firstGroup],
+      [second.id, secondGroup],
+    ],
+  );
+  expect(new Set(observed.tabs.map((tab) => tab.tabId)).size).toBe(observed.tabs.length);
+});
+
+test("hidden selections are excluded from submission references", () => {
+  const owner = { kind: "session", sessionId: "session-a" } as const;
+  const scene = patchWorkbenchScenePanel(
+    createWorkbenchSceneSurface(materializeInitialWorkbenchScene(owner), {
+      panelId: "right",
+      surface: browser("hidden"),
+    }),
+    "right",
+    { collapsed: true },
+  );
+  const state = stateFor([scene], {
+    kind: "session",
+    sessionId: owner.sessionId,
+    projectContextId: null,
+  });
+  expect(
+    readWorkbenchAgentContext(state, owner)!.tabs.find((tab) => tab.tabId === "hidden"),
+  ).toMatchObject({ selected: true, visible: false });
+  expect(
+    readWorkbenchSubmitPresentation(state, "generation").selectedTabs.some(
+      (tab) => tab.tabId === "hidden",
+    ),
+  ).toBe(false);
+});
+
+test("the maximum durable Scene plus its primary yields valid bounded observation evidence", () => {
+  const owner = { kind: "session", sessionId: "session-a" } as const;
+  let scene = materializeInitialWorkbenchScene(owner);
+  for (let index = 0; index < WORKBENCH_SCENE_MAX_PANEL_SURFACES; index += 1)
+    scene = createWorkbenchSceneSurface(scene, {
+      panelId: "right",
+      surface: browser(`tab-${index}`),
+    });
+  expect(WorkbenchSceneSnapshotSchema.safeParse(scene).success).toBe(true);
+  const state = stateFor([scene], {
+    kind: "session",
+    sessionId: owner.sessionId,
+    projectContextId: null,
+  });
+  const raw = readWorkbenchAgentContext(state, owner)!;
+  expect(raw.tabs).toHaveLength(WORKBENCH_SCENE_MAX_PANEL_SURFACES + 1);
+  expect(WorkbenchRendererObservationSchema.safeParse(raw).success).toBe(true);
+  const bounded = boundWorkbenchObservation(raw)!;
+  expect(WorkbenchRendererObservationSchema.safeParse(bounded).success).toBe(true);
+  expect(bounded.tabs.length + (bounded.omittedTabCount ?? 0)).toBe(raw.tabs.length);
+  if (bounded.omittedTabCount) expect(bounded.availability).toBe("partial");
 });

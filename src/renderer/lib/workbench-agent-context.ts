@@ -1,3 +1,6 @@
+import { boundWorkbenchSubmission } from "../../shared/nodex-app-tools/workbench-context-budget";
+import { workbenchSurfaceFromPreviewTab } from "./workbench-panel-preview";
+import { projectWorkbenchSurfaceReference } from "../../shared/nodex-app-tools/workbench";
 import type {
   WorkbenchAgentResult,
   WorkbenchObservedTab,
@@ -19,11 +22,7 @@ import {
 import type { PanelId } from "../../shared/types";
 import { buildSessionPanelRenderModel } from "./workbench-panel-projection";
 import { makeWorkbenchPanelSlotKey } from "./workbench-panel-slot-key";
-import {
-  isTransientPanelTab,
-  type ProjectSessionRenderableTab,
-  type WorkbenchTabProjectionPanelTab,
-} from "./workbench-panel-tab-model";
+import { isTransientPanelTab, type ProjectSessionRenderableTab } from "./workbench-panel-tab-model";
 import { presentWorkbenchSessionPanelsWithScene } from "./workbench-scene-presentation";
 import { projectWorkbenchScenePreviews } from "./workbench-scene-preview";
 import type { WorkbenchWindowPresentationState } from "./workbench-window-owner";
@@ -84,41 +83,7 @@ export function discoverWorkbenchAgentScenes(
 }
 
 function surfaceReference(surface: WorkbenchSurfaceDescriptor): WorkbenchSurfaceReference {
-  const { state: _state, stateKey: _stateKey, ...reference } = surface;
-  return reference;
-}
-
-/** The Session preview adapter preserves existing identities; observation never creates a tab. */
-function previewSurfaceReference(tab: WorkbenchTabProjectionPanelTab): WorkbenchSurfaceReference {
-  const common = { id: tab.id, titleSnapshot: tab.title };
-  if (tab.kind === "browser") {
-    const { projectId: _projectId, ...config } = tab.config;
-    return { ...common, kind: "browser", config: { ...config, browserTabId: tab.browserTabId } };
-  }
-  if (tab.kind === "db_view")
-    return {
-      ...common,
-      kind: "db_view",
-      config: tab.config,
-    };
-  if (tab.kind === "page_stage") {
-    return {
-      ...common,
-      kind: "page_stage",
-      config: tab.config,
-    };
-  }
-  if (tab.kind === "canvas_stage") {
-    return {
-      ...common,
-      kind: "canvas_stage",
-      config: tab.config,
-    };
-  }
-  if (tab.kind === "terminal") return { ...common, kind: "terminal", config: tab.config };
-  if (tab.kind === "files") return { ...common, kind: "files", config: tab.config };
-  if (tab.kind === "review") return { ...common, kind: "review", config: tab.config };
-  return { ...common, kind: "image_editor", config: tab.config };
+  return projectWorkbenchSurfaceReference(surface);
 }
 
 function auxiliaryReference(tab: ProjectSessionRenderableTab): WorkbenchObservedTab["auxiliary"] {
@@ -162,7 +127,7 @@ function sessionTabDescription(
     protected: false,
     persisted: false,
     preview: true,
-    surface: previewSurfaceReference(tab),
+    surface: projectWorkbenchSurfaceReference(workbenchSurfaceFromPreviewTab(tab)),
     auxiliary: null,
   };
 }
@@ -311,7 +276,8 @@ export function readWorkbenchAgentContext(
     splits.push(...describeSplits(panel.layout.root, panelId).splits);
     for (const leaf of listWorkbenchPanelLeaves(panel.layout)) {
       const groupTabs = projection.tabsByLeaf[panelId][leaf.id] ?? [];
-      const selectedTabId = projection.selectedTabsByLeaf[panelId][leaf.id] ?? null;
+      const activeTabId = projection.selectedTabsByLeaf[panelId][leaf.id] ?? null;
+      const selectedTabId = groupTabs.some((tab) => tab.tabId === activeTabId) ? activeTabId : null;
       const visible =
         mounted &&
         !collapsed &&
@@ -399,11 +365,11 @@ export function readWorkbenchSubmitPresentation(
 ): WorkbenchSubmitPresentation {
   const sceneOwner = selectedSceneOwner(state);
   const observation = sceneOwner ? readWorkbenchAgentContext(state, sceneOwner, options) : null;
-  return {
+  return boundWorkbenchSubmission({
     rendererGeneration,
     sceneOwner,
     presentationRevision: state.presentationRevision,
     focusedTarget: observation?.focusedTarget ?? null,
-    selectedTabs: observation?.tabs.filter((tab) => tab.selected) ?? [],
-  };
+    selectedTabs: observation?.tabs.filter((tab) => tab.selected && tab.visible) ?? [],
+  });
 }

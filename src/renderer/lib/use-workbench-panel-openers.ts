@@ -1,3 +1,7 @@
+import {
+  canonicalWorkbenchFilePath,
+  workbenchFileResourceId,
+} from "../../shared/workbench-resource-identity";
 import { useCallback, useEffect, useRef } from "react";
 import {
   normalizeUserAttachmentImageEditorOptions,
@@ -38,13 +42,11 @@ import {
   makePreviewWorkbenchTabProjection,
   makePreviewWorkspaceFileTab,
   makeWorkbenchTabProjectionDraft,
+  sameWorkbenchPreviewInstance,
 } from "./workbench-panel-preview";
 import { getRenderablePanelPreviewTab } from "./workbench-panel-projection";
 import { makeWorkbenchSessionPanelSlotKey } from "./workbench-panel-slot-key";
-import {
-  findWorkbenchPanelLeaf,
-  listWorkbenchPanelLeaves,
-} from "../../shared/workbench-panel-layout";
+import { listWorkbenchPanelLeaves } from "../../shared/workbench-panel-layout";
 import type { WorkbenchPanelController } from "./use-workbench-panel-controller";
 import type { WorkbenchSessionRenderProjection } from "./workbench-session-presentation";
 import type { useCodexAppServerControl } from "@/features/local-conversation";
@@ -760,6 +762,7 @@ export function useWorkbenchPanelOpeners({
     }) => {
       if (!activeSession) return false;
       const sessionProjectId = activeSession.projectId;
+      const previewsAtOpen = panelControllerRef.current.previewTabsByPanel;
       const leafId = resolveSessionPanelActiveLeafId(activeSession, input.panelId);
       const project =
         sessionProjectId === null
@@ -786,13 +789,8 @@ export function useWorkbenchPanelOpeners({
           : undefined) ??
         null;
       const activeTabId = resolveSessionPanelActiveTabId(activeSession, input.panelId);
-      const leaf = findWorkbenchPanelLeaf(activeSession.panels[input.panelId].layout, leafId);
       const durableFilesTabs = activeSession.tabs.flatMap((tab) => {
-        if (
-          tab.kind !== "files" ||
-          tab.panelId !== input.panelId ||
-          !leaf?.tabIds.includes(tab.id)
-        ) {
+        if (tab.kind !== "files") {
           return [];
         }
         return [
@@ -804,12 +802,27 @@ export function useWorkbenchPanelOpeners({
           },
         ];
       });
-      const renderablePreviewTab = getRenderablePanelPreviewTab(
-        activeSession,
-        input.panelId,
-        leafId,
-        previewTabsByPanel,
-      );
+      const canonicalPath = canonicalWorkbenchFilePath(input.path, cwd ?? workspaceRoot);
+      const matchingPreview = (["right", "bottom"] as const).flatMap((panelId) =>
+        listWorkbenchPanelLeaves(activeSession.panels[panelId].layout).flatMap((leaf) => {
+          const tab = getRenderablePanelPreviewTab(activeSession, panelId, leaf.id, previewsAtOpen);
+          if (tab?.kind !== "files" || !tab.config.path) return [];
+          if (
+            workbenchFileResourceId(
+              tab.config.hostId,
+              tab.config.path,
+              tab.config.cwd ?? tab.config.workspaceRoot,
+            ) !== workbenchFileResourceId(input.hostId ?? "local", canonicalPath)
+          )
+            return [];
+          return [{ panelId, leafId: leaf.id, tab }];
+        }),
+      )[0];
+      const previewPanelId = matchingPreview?.panelId ?? input.panelId;
+      const previewLeafId = matchingPreview?.leafId ?? leafId;
+      const renderablePreviewTab =
+        matchingPreview?.tab ??
+        getRenderablePanelPreviewTab(activeSession, input.panelId, leafId, previewsAtOpen);
       const filesPreviewTab =
         renderablePreviewTab?.kind === "files"
           ? {
@@ -826,7 +839,7 @@ export function useWorkbenchPanelOpeners({
         durableTabs: durableFilesTabs,
         hostId: input.hostId ?? "local",
         mode: input.mode ?? "preview",
-        path: input.path,
+        path: canonicalPath,
         previewTab: filesPreviewTab,
       });
       const fileConfig = {
@@ -834,7 +847,7 @@ export function useWorkbenchPanelOpeners({
         hostId: input.hostId ?? "local",
         cwd,
         workspaceRoot,
-        path: input.path,
+        path: canonicalPath,
       } as const;
       const applyRevealToDurableTab = (tabId: string) => {
         if (!input.location) return;
@@ -878,15 +891,17 @@ export function useWorkbenchPanelOpeners({
         });
       };
       if (decision.kind === "focus-durable") {
-        await setActivePanelTab(input.panelId, decision.tabId, { openPanel: true });
+        const existing = activeSession.tabs.find((tab) => tab.id === decision.tabId);
+        if (!existing) return false;
+        await setActivePanelTab(existing.panelId, decision.tabId, { openPanel: true });
         applyRevealToDurableTab(decision.tabId);
         return true;
       }
       if (decision.kind === "focus-preview") {
         applyRevealToPreviewTab(
-          makeWorkbenchSessionPanelSlotKey(activeSession.id, input.panelId, leafId),
+          makeWorkbenchSessionPanelSlotKey(activeSession.id, previewPanelId, previewLeafId),
         );
-        await ensureActivePanelOpenWithoutRefresh(input.panelId);
+        await setActivePanelTab(previewPanelId, decision.tabId, { openPanel: true });
         return true;
       }
       if (decision.kind === "create-from-empty") {
@@ -909,9 +924,9 @@ export function useWorkbenchPanelOpeners({
       }
       if (decision.kind === "pin-preview") {
         applyRevealToPreviewTab(
-          makeWorkbenchSessionPanelSlotKey(activeSession.id, input.panelId, leafId),
+          makeWorkbenchSessionPanelSlotKey(activeSession.id, previewPanelId, previewLeafId),
         );
-        await pinPreviewTab(input.panelId, decision.tabId, leafId);
+        await pinPreviewTab(previewPanelId, decision.tabId, previewLeafId);
         return true;
       }
 
@@ -932,11 +947,19 @@ export function useWorkbenchPanelOpeners({
           title: input.title || getWorkspaceFileName(input.path),
           config: fileConfig,
         });
-        if (created) applyRevealToDurableTab(created.id);
+        if (!created) return false;
+        applyRevealToDurableTab(created.id);
         await ensureActivePanelOpenWithoutRefresh(input.panelId);
         return true;
       }
 
+      const currentPreview = getRenderablePanelPreviewTab(
+        activeSession,
+        input.panelId,
+        leafId,
+        panelControllerRef.current.previewTabsByPanel,
+      );
+      if (!sameWorkbenchPreviewInstance(currentPreview, renderablePreviewTab)) return false;
       panelControllerRef.current.updatePreviewTabsByPanel((current) => ({
         ...current,
         [makeWorkbenchSessionPanelSlotKey(activeSession.id, input.panelId, leafId)]:
@@ -959,7 +982,6 @@ export function useWorkbenchPanelOpeners({
       createSessionViewTab,
       ensureActivePanelOpenWithoutRefresh,
       pinPreviewTab,
-      previewTabsByPanel,
       projects,
       refreshProjectSessions,
       setActivePanelTab,

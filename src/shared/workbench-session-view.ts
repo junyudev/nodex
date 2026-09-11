@@ -1,3 +1,4 @@
+import { workbenchFileResourceId } from "./workbench-resource-identity";
 import {
   activateWorkbenchPanelLeaf,
   findWorkbenchPanelLeaf,
@@ -797,7 +798,16 @@ function cloneSessionView(
   identityFactory: WorkbenchSessionViewIdentityFactory,
 ): WorkbenchSessionViewSnapshot {
   const tabIds = new Map(
-    Object.keys(view.tabsById).map((tabId) => [tabId, identityFactory.createId("tab")]),
+    Object.values(view.tabsById).map((tab) => [
+      tab.id,
+      tab.kind === "files" && tab.config.path
+        ? workbenchFileResourceId(
+            tab.config.hostId,
+            tab.config.path,
+            tab.config.cwd ?? tab.config.workspaceRoot,
+          )
+        : identityFactory.createId("tab"),
+    ]),
   );
   const tabsById = Object.fromEntries(
     Object.values(view.tabsById).map((tab) => {

@@ -41,6 +41,7 @@ export interface CodexTurnPresentationClaim {
 export interface CodexTurnPresentationLaunch extends CodexTurnPresentationClaim {
   readonly launchId: string;
   readonly threadId: string;
+  readonly sequence: number;
 }
 
 type EntryState =
@@ -55,11 +56,12 @@ type EntryState =
 
 interface PresentationEntry {
   readonly target: CodexTurnPresentationTarget;
-  readonly anchor: PresentationAnchor;
+  readonly anchor: PresentationAnchor | null;
   readonly expiresAt: number;
   readonly byteLength: number;
   state: EntryState;
   queued: boolean;
+  readonly withoutTicket: boolean;
 }
 
 export class CodexTurnPresentation extends Context.Service<
@@ -73,10 +75,11 @@ export class CodexTurnPresentation extends Context.Service<
       ticket: CodexTurnPresentationTicket,
       target: CodexTurnPresentationTarget,
       submissionId: string,
-    ) => Effect.Effect<CodexTurnPresentationClaim, CodexTurnPresentationError>;
+    ) => Effect.Effect<CodexTurnPresentationClaim | undefined, CodexTurnPresentationError>;
     readonly begin: (
       claim: CodexTurnPresentationClaim | undefined,
       threadId: string,
+      submissionId?: string,
     ) => Effect.Effect<CodexTurnPresentationLaunch | null, CodexTurnPresentationError>;
     readonly bind: (
       launch: CodexTurnPresentationLaunch | null,
@@ -137,6 +140,8 @@ export const make: Effect.Effect<
   const entries = new Map<string, PresentationEntry>();
   const boundTurns = new Map<string, string>();
   const finishedLaunches = new Map<string, string>();
+  const finishedTurns = new Set<string>();
+  let admissionSequence = 0;
   const maxEntries = 2_048;
   const maxSnapshotBytes = 768 * 1024;
   const maxRetainedBytes = 32 * 1024 * 1024;
@@ -156,9 +161,12 @@ export const make: Effect.Effect<
   ) {
     if (!open) return yield* failure("closed", "Turn presentation is unavailable after shutdown");
     const reference = bridge.referenceForSender(webContentsId);
-    if (!reference)
+    if (!reference && input.presentation.availability !== "unavailable")
       return yield* failure("unavailable", "The submitting Workbench is not registered");
-    if (reference.rendererGeneration !== input.presentation.rendererGeneration) {
+    if (
+      input.presentation.availability !== "unavailable" &&
+      reference?.rendererGeneration !== input.presentation.rendererGeneration
+    ) {
       return yield* failure(
         "stale_renderer",
         "The submitting Workbench has been replaced; submit again",
@@ -171,7 +179,10 @@ export const make: Effect.Effect<
     }
     if (entries.size >= maxEntries)
       return yield* failure("capacity", "Too many pending Turn presentations");
-    const anchor = { ...input.presentation, ...reference, capturedAt: DateTime.formatIso(now) };
+    const anchor =
+      input.presentation.availability === "unavailable"
+        ? null
+        : { ...input.presentation, ...reference!, capturedAt: DateTime.formatIso(now) };
     const byteLength = Buffer.byteLength(JSON.stringify(anchor), "utf8");
     if (byteLength > maxSnapshotBytes)
       return yield* failure("capacity", "Submission presentation exceeds the 768 KiB size limit");
@@ -188,6 +199,7 @@ export const make: Effect.Effect<
       byteLength,
       state: { kind: "captured" },
       queued: false,
+      withoutTicket: false,
     });
     retainedBytes += byteLength;
     return { ticketId };
@@ -200,8 +212,7 @@ export const make: Effect.Effect<
   ) {
     if (!open) return yield* failure("closed", "Turn presentation is unavailable after shutdown");
     const entry = entries.get(ticket.ticketId);
-    if (!entry)
-      return yield* failure("expired", "This submission presentation is unavailable; submit again");
+    if (!entry) return undefined;
     if (!sameTarget(entry.target, target))
       return yield* failure(
         "target_mismatch",
@@ -215,7 +226,7 @@ export const make: Effect.Effect<
     if (entry.state.kind === "bound")
       return yield* failure(
         "already_accepted",
-        "This submission already started a Turn",
+        "This message was already accepted",
         entry.state.turnId,
       );
     if (entry.state.kind === "admitted")
@@ -229,20 +240,45 @@ export const make: Effect.Effect<
     const now = yield* DateTime.now;
     if (entry.state.kind === "captured" && entry.expiresAt <= DateTime.toEpochMillis(now)) {
       removeEntry(ticket.ticketId);
-      return yield* failure("expired", "This submission presentation expired; submit again");
+      return undefined;
     }
     entry.state = { kind: "claimed", submissionId };
     return { ticketId: ticket.ticketId, submissionId };
   });
 
+  const beginWithoutTicket = (
+    threadId: string,
+    submissionId: string,
+  ): CodexTurnPresentationLaunch => {
+    const launch = {
+      ticketId: createUuidV7(),
+      submissionId,
+      threadId,
+      launchId: createUuidV7(),
+      sequence: ++admissionSequence,
+    };
+    // Explicit absence follows the same acceptance lifecycle, including restored queued messages.
+    entries.set(launch.ticketId, {
+      target: { kind: "thread", threadId },
+      anchor: null,
+      expiresAt: 0,
+      byteLength: 0,
+      state: { kind: "admitted", launch },
+      queued: false,
+      withoutTicket: true,
+    });
+    return launch;
+  };
+
   const begin = Effect.fn("CodexTurnPresentation.begin")(function* (
     claim: CodexTurnPresentationClaim | undefined,
     threadId: string,
+    submissionId?: string,
   ) {
-    if (!claim) return null;
+    if (!open) return yield* failure("closed", "Turn presentation is unavailable after shutdown");
+    if (!claim) return submissionId ? beginWithoutTicket(threadId, submissionId) : null;
     const entry = entries.get(claim.ticketId);
-    if (!open || !entry)
-      return yield* failure("unavailable", "Submission presentation is unavailable");
+    if (!entry) return beginWithoutTicket(threadId, claim.submissionId);
     if (entry.target.kind === "thread" && entry.target.threadId !== threadId)
       return yield* failure(
         "target_mismatch",
@@ -251,14 +287,14 @@ export const make: Effect.Effect<
     if (entry.state.kind === "bound")
       return yield* failure(
         "already_accepted",
-        "This submission already started a Turn",
+        "This message was already accepted",
         entry.state.turnId,
       );
     if (entry.state.kind === "admitted")
       return yield* failure("in_flight", "This submission is already awaiting its accepted Turn");
     if (entry.state.kind !== "claimed" || entry.state.submissionId !== claim.submissionId)
       return yield* failure("submission_mismatch", "Submission presentation has no matching claim");
-    const launch = { ...claim, threadId, launchId: createUuidV7() };
+    const launch = { ...claim, threadId, launchId: createUuidV7(), sequence: ++admissionSequence };
     entry.state = { kind: "admitted", launch };
     return launch;
   });
@@ -289,13 +325,21 @@ export const make: Effect.Effect<
         "Submission presentation cannot be rebound to a different Turn",
       );
     const key = turnKey(launch.threadId, turnId);
-    const boundTicket = boundTurns.get(key);
-    if (boundTicket && boundTicket !== launch.ticketId)
-      return yield* failure(
-        "turn_mismatch",
-        "Accepted Turn already has another submission presentation",
-      );
+    if (state.kind === "bound") return;
+    if (finishedTurns.has(key)) {
+      finishedLaunches.set(launch.launchId, turnId);
+      removeEntry(launch.ticketId);
+      return;
+    }
     entry.state = { kind: "bound", launch, turnId };
+    const currentTicket = boundTurns.get(key);
+    const currentEntry = currentTicket ? entries.get(currentTicket) : undefined;
+    const current = currentEntry?.state;
+    if (current?.kind === "bound" && current.launch.sequence > launch.sequence) return;
+    if (currentTicket && currentEntry) {
+      retainedBytes -= currentEntry.byteLength;
+      entries.set(currentTicket, { ...currentEntry, anchor: null, byteLength: 0 });
+    }
     boundTurns.set(key, launch.ticketId);
   });
 
@@ -304,7 +348,7 @@ export const make: Effect.Effect<
     turnId: string,
     clientUserMessageId: string | null,
   ) {
-    if (!clientUserMessageId || boundTurns.has(turnKey(threadId, turnId))) return;
+    if (!clientUserMessageId) return;
     const candidates = [...entries.values()].flatMap((entry) =>
       entry.state.kind === "admitted" &&
       entry.state.launch.threadId === threadId &&
@@ -323,6 +367,7 @@ export const make: Effect.Effect<
       retainedBytes = 0;
       boundTurns.clear();
       finishedLaunches.clear();
+      finishedTurns.clear();
     }),
   );
 
@@ -355,7 +400,8 @@ export const make: Effect.Effect<
       if (!launch) return;
       const entry = entries.get(launch.ticketId);
       if (entry?.state.kind === "admitted" && entry.state.launch.launchId === launch.launchId) {
-        entry.state = { kind: "claimed", submissionId: launch.submissionId };
+        if (entry.withoutTicket) removeEntry(launch.ticketId);
+        else entry.state = { kind: "claimed", submissionId: launch.submissionId };
       }
     },
     releaseClaim: (claim) => {
@@ -368,8 +414,14 @@ export const make: Effect.Effect<
     retainQueued: (claim) => {
       if (!claim) return;
       const entry = entries.get(claim.ticketId);
-      if (entry?.state.kind === "claimed" && entry.state.submissionId === claim.submissionId)
-        entry.queued = true;
+      if (!entry) return;
+      const submissionId =
+        entry.state.kind === "claimed"
+          ? entry.state.submissionId
+          : entry.state.kind === "admitted"
+            ? entry.state.launch.submissionId
+            : null;
+      if (submissionId === claim.submissionId) entry.queued = true;
     },
     readQueued: (threadId, clientUserMessageId) =>
       matchingClaim({ kind: "thread", threadId }, clientUserMessageId, true),
@@ -393,18 +445,23 @@ export const make: Effect.Effect<
     },
     finish: (threadId, turnId) => {
       const key = turnKey(threadId, turnId);
-      const ticketId = boundTurns.get(key);
-      if (!ticketId) return;
-      const entry = entries.get(ticketId);
-      if (entry?.state.kind === "bound") {
-        finishedLaunches.set(entry.state.launch.launchId, turnId);
-        if (finishedLaunches.size > 256) {
-          const oldest = finishedLaunches.keys().next().value;
-          if (oldest) finishedLaunches.delete(oldest);
-        }
-      }
       boundTurns.delete(key);
-      removeEntry(ticketId);
+      finishedTurns.add(key);
+      if (finishedTurns.size > 256) finishedTurns.delete(finishedTurns.values().next().value!);
+      for (const [ticketId, entry] of entries) {
+        if (
+          entry.state.kind !== "bound" ||
+          entry.state.launch.threadId !== threadId ||
+          entry.state.turnId !== turnId
+        )
+          continue;
+        finishedLaunches.set(entry.state.launch.launchId, turnId);
+        removeEntry(ticketId);
+      }
+      while (finishedLaunches.size > 256) {
+        const oldest = finishedLaunches.keys().next().value;
+        if (oldest) finishedLaunches.delete(oldest);
+      }
     },
   });
 });

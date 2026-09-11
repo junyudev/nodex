@@ -7,6 +7,7 @@ import {
   makePreviewWorkbenchTabProjection,
   makePreviewWorkspaceFileTab,
   makeWorkbenchTabProjectionDraft,
+  sameWorkbenchPreviewInstance,
 } from "./workbench-panel-preview";
 import { makeTestWorkbenchSession } from "@/components/workbench/workbench-testkit/panel-fixtures";
 
@@ -56,7 +57,7 @@ describe("workbench panel preview", () => {
     expect(makeWorkbenchTabProjectionDraft(attached, "terminal")).toMatchObject({
       kind: "terminal",
       config: {
-        terminalSessionId: expect.stringContaining("session:session-1:terminal:"),
+        terminalSessionId: expect.any(String),
       },
     });
     expect(makeWorkbenchTabProjectionDraft(attached, "review")).toMatchObject({
@@ -65,18 +66,20 @@ describe("workbench panel preview", () => {
     });
   });
 
-  test("uses one stable preview identity per panel and kind", () => {
+  test("gives each Browser runtime a distinct preview identity that survives promotion", () => {
     const session = makeTestWorkbenchSession();
     const draft = makeWorkbenchTabProjectionDraft(session, "browser");
     if (!draft) throw new Error("Browser draft should be available");
     const first = makePreviewWorkbenchTabProjection(session, "right", draft);
     const replacement = makePreviewWorkbenchTabProjection(session, "right", draft);
-    expect(first.id).toBe("preview:session-1:right:browser");
-    expect(replacement.id).toBe(first.id);
+    expect(replacement.id).not.toBe(first.id);
+    expect(
+      makePinnedPreviewTabCreateInput(session, "bottom", "another-group", first).clientTabId,
+    ).toBe(first.id);
     expect(replacement.browserTabId).not.toBe(first.browserTabId);
   });
 
-  test("keys file preview identity by leaf and path", () => {
+  test("reuses canonical file identity across groups", () => {
     const session = makeTestWorkbenchSession();
     const first = makePreviewWorkspaceFileTab(session, "right", {
       cwd: "/workspace",
@@ -92,8 +95,18 @@ describe("workbench panel preview", () => {
       title: "a.ts",
       workspaceRoot: "/workspace",
     });
-    expect(first.id).toContain("leaf-1:files:src/a.ts");
-    expect(differentLeaf.id).not.toBe(first.id);
+    expect(first.id).toBe("file:local:/workspace/src/a.ts");
+    expect(differentLeaf.id).toBe(first.id);
+    expect(
+      sameWorkbenchPreviewInstance(first, {
+        ...first,
+        stateKey: 4,
+        state: { pendingReveal: { line: 20 } },
+        panelId: "bottom",
+      }),
+    ).toBe(true);
+    expect(sameWorkbenchPreviewInstance(first, differentLeaf)).toBe(false);
+    expect(first.config.path).toBe("/workspace/src/a.ts");
   });
 
   test("carries a file reference reveal location into preview state", () => {

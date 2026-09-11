@@ -1,3 +1,4 @@
+import { sameWorkbenchObservedTarget } from "../../shared/nodex-app-tools/workbench";
 import * as Effect from "effect/Effect";
 import { nodexAgentAuthorityFingerprint } from "../../shared/nodex-agent-authority";
 import { workbenchObservationSchemas } from "../../shared/nodex-app-tools/workbench-observation-schemas";
@@ -206,10 +207,7 @@ export const make = Effect.gen(function* () {
             Effect.gen(function* () {
               const description = yield* describeTab(record, tab, anchored);
               const current = observed.tabs.find((candidate) => candidate.tabId === tab.tabId);
-              const sameTarget =
-                current &&
-                JSON.stringify(current.surface) === JSON.stringify(tab.surface) &&
-                JSON.stringify(current.auxiliary) === JSON.stringify(tab.auxiliary);
+              const sameTarget = current && sameWorkbenchObservedTarget(current, tab);
               if (!anchored || sameTarget) return { ...description, targetState: "present" };
               return {
                 ...description,
@@ -228,32 +226,53 @@ export const make = Effect.gen(function* () {
               (observed.selectedSceneOwner
                 ? makeWorkbenchSceneKey(observed.selectedSceneOwner)
                 : null));
-        return toolSuccess(
-          {
-            ...execution,
-            presentation: {
-              status: "available",
-              origin: parsed.data.target
-                ? "explicit"
-                : anchored
-                  ? "submission"
-                  : anchor
-                    ? "refresh"
-                    : "discovered",
-              reference: record.reference,
-              observationId: record.observationId,
-              capturedAt: record.capturedAt,
-              expiresAt: record.expiresAt,
-              presentationRevision: observed.presentationRevision,
-              changedSinceSubmission: changed,
-              selectedTabs: tabs,
-              selectedTabsSource: anchored ? "submission" : "observation",
-              tabCount: observed.tabs.length,
-              groupCount: observed.groups.length,
-            },
+        const context = {
+          ...execution,
+          presentation: {
+            status: "available",
+            completeness: anchored
+              ? (anchor.availability ?? "available")
+              : (observed.availability ?? "available"),
+            omittedTabCount: anchored
+              ? (anchor.omittedTabCount ?? 0)
+              : (observed.omittedTabCount ?? 0),
+            origin: parsed.data.target
+              ? "explicit"
+              : anchored
+                ? "submission"
+                : anchor
+                  ? "refresh"
+                  : "discovered",
+            reference: record.reference,
+            observationId: record.observationId,
+            capturedAt: record.capturedAt,
+            expiresAt: record.expiresAt,
+            presentationRevision: observed.presentationRevision,
+            changedSinceSubmission: changed,
+            selectedTabs: tabs,
+            selectedTabsSource: anchored ? "submission" : "observation",
+            tabCount: observed.tabs.length,
+            groupCount: observed.groups.length,
           },
-          24 * 1024,
-        );
+        };
+        for (let retained = tabs.length; retained >= 0; retained -= 1) {
+          const omitted = tabs.length - retained;
+          const result = toolSuccess(
+            {
+              ...context,
+              presentation: {
+                ...context.presentation,
+                selectedTabs: tabs.slice(0, retained),
+                ...(omitted > 0
+                  ? { completeness: "partial", omittedSelectedTabCount: omitted }
+                  : {}),
+              },
+            },
+            24 * 1024,
+          );
+          if (!result.isError || retained === 0) return result;
+        }
+        return toolFailure("result_too_large");
       }
       const schema =
         input.name === "list_session_tabs"
@@ -279,7 +298,16 @@ export const make = Effect.gen(function* () {
         const items = yield* Effect.forEach(page.items, (tab) => describeTab(record, tab), {
           concurrency: 4,
         });
-        return toolSuccess({ observationId: record.observationId, ...page, items }, 24 * 1024);
+        return toolSuccess(
+          {
+            observationId: record.observationId,
+            completeness: record.observation.availability ?? "available",
+            omittedTabCount: record.observation.omittedTabCount ?? 0,
+            ...page,
+            items,
+          },
+          24 * 1024,
+        );
       }
       const groups = record.observation.groups.filter(
         (group) => !parsed.data.panelId || group.panelId === parsed.data.panelId,

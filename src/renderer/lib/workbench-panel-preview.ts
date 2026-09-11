@@ -1,3 +1,8 @@
+import type { WorkbenchSurfaceDescriptor } from "../../shared/workbench-scene";
+import {
+  canonicalWorkbenchFilePath,
+  workbenchFileResourceId,
+} from "../../shared/workbench-resource-identity";
 import { requireWorkbenchBrowserTabProjectionId } from "../../shared/browser-sidebar";
 import { createSecureRuntimeId } from "../../shared/secure-runtime-id";
 import type {
@@ -10,6 +15,7 @@ import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-p
 import {
   isProjectSessionFilesPreviewTab,
   type ProjectSessionFilesPreviewTab,
+  type WorkbenchTabProjectionPanelTab,
 } from "@/lib/workbench-panel-tab-model";
 import type { WorkspaceFileRevealLocation } from "@/features/workspace-files/workspace-file-types";
 import { normalizeOptionalPath } from "@/lib/workbench-workspace-context";
@@ -26,17 +32,13 @@ const PREVIEWABLE_PROJECT_SESSION_TAB_KIND_SET = new Set<WorkbenchTabProjection[
 );
 
 export type ProjectSessionPreviewTab =
-  | (WorkbenchTabProjection & { preview: true })
+  | (WorkbenchTabProjection & { preview: true; readonly previewInstanceId: string })
   | ProjectSessionFilesPreviewTab;
 
 export type WorkbenchTabProjectionDraft = WorkbenchProjectionTabConfiguration & { title: string };
 
 function makeClientWorkbenchTabProjectionId(): string {
   return createSecureRuntimeId("tab");
-}
-
-function makeTerminalSessionId(sessionId: string): string {
-  return `session:${sessionId}:terminal:${Date.now()}`;
 }
 
 function resolveProjectBoundSessionId(session: WorkbenchSessionRenderProjection): string | null {
@@ -80,7 +82,7 @@ export function makeWorkbenchTabProjectionDraft(
       kind,
       title: "Terminal",
       config: {
-        terminalSessionId: makeTerminalSessionId(session.id),
+        terminalSessionId: createSecureRuntimeId("terminal"),
       },
     };
   }
@@ -129,7 +131,7 @@ export function makePreviewWorkbenchTabProjection(
   }
   const now = new Date().toISOString();
   const base = {
-    id: `preview:${session.id}:${panelId}:${draft.kind}`,
+    id: makeClientWorkbenchTabProjectionId(),
     sessionId: session.id,
     projectId,
     panelId,
@@ -138,6 +140,7 @@ export function makePreviewWorkbenchTabProjection(
     stateKey: 0,
     state: {},
     preview: true,
+    previewInstanceId: createSecureRuntimeId("preview"),
     createdAt: now,
     updatedAt: now,
   } as const;
@@ -147,6 +150,7 @@ export function makePreviewWorkbenchTabProjection(
       const browserTabId = makeClientWorkbenchTabProjectionId();
       return {
         ...base,
+        id: `browser:${browserTabId}`,
         kind: draft.kind,
         config: {
           ...draft.config,
@@ -181,6 +185,7 @@ export function makePinnedPreviewTabCreateInput(
     sessionId: session.id,
     panelId,
     targetLeafId,
+    clientTabId: previewTab.id,
     title: previewTab.title,
   } as const;
 
@@ -208,7 +213,6 @@ export function makePinnedPreviewTabCreateInput(
         ...base,
         kind: previewTab.kind,
         config: previewTab.config,
-        clientTabId: previewTab.id,
       };
     case "canvas_stage":
       return {
@@ -227,7 +231,6 @@ export function makePinnedPreviewTabCreateInput(
       return {
         ...base,
         kind: previewTab.kind,
-        clientTabId: previewTab.id,
         config: isProjectSessionFilesPreviewTab(previewTab)
           ? {
               ...previewTab.config,
@@ -239,7 +242,6 @@ export function makePinnedPreviewTabCreateInput(
       return {
         ...base,
         kind: previewTab.kind,
-        clientTabId: previewTab.id,
         config: previewTab.config,
       };
   }
@@ -260,7 +262,7 @@ export function makePreviewWorkspaceFileTab(
   const now = new Date().toISOString();
   const projectId = session.projectId;
   return {
-    id: `preview:${session.id}:${panelId}:${input.leafId}:files:${input.path}`,
+    id: workbenchFileResourceId("local", input.path, input.cwd ?? input.workspaceRoot),
     sessionId: session.id,
     projectId,
     browserTabId: null,
@@ -273,11 +275,12 @@ export function makePreviewWorkspaceFileTab(
       hostId: "local",
       cwd: input.cwd,
       workspaceRoot: input.workspaceRoot,
-      path: input.path,
+      path: canonicalWorkbenchFilePath(input.path, input.cwd ?? input.workspaceRoot),
     },
     stateKey: 0,
     state: input.location ? { pendingReveal: input.location } : {},
     preview: true,
+    previewInstanceId: createSecureRuntimeId("preview"),
     createdAt: now,
     updatedAt: now,
   };
@@ -315,7 +318,33 @@ export function makePreviewPageStageTab(
     stateKey: 0,
     state: {},
     preview: true,
+    previewInstanceId: createSecureRuntimeId("preview"),
     createdAt: now,
     updatedAt: now,
   };
+}
+
+/** Read a full preview descriptor from the owner, including pending view state. */
+export function workbenchSurfaceFromPreviewTab(
+  tab: WorkbenchTabProjectionPanelTab,
+): WorkbenchSurfaceDescriptor {
+  const base = { id: tab.id, titleSnapshot: tab.title, stateKey: tab.stateKey, state: tab.state };
+  if (tab.kind === "browser") {
+    const { projectId: _projectId, ...config } = tab.config;
+    return {
+      ...base,
+      kind: "browser",
+      config: { ...config, browserTabId: requireWorkbenchBrowserTabProjectionId(tab) },
+    };
+  }
+  return { ...base, kind: tab.kind, config: tab.config } as WorkbenchSurfaceDescriptor;
+}
+
+/** View-state updates and moves preserve an instance; closing and reopening the same file do not. */
+export function sameWorkbenchPreviewInstance(
+  left: ProjectSessionPreviewTab | null | undefined,
+  right: ProjectSessionPreviewTab | null | undefined,
+): boolean {
+  if (!left || !right) return !left && !right;
+  return left.id === right.id && left.previewInstanceId === right.previewInstanceId;
 }

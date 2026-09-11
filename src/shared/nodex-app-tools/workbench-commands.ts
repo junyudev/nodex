@@ -1,3 +1,4 @@
+import { WorkbenchSurfaceIdSchema } from "../workbench-resource-identity";
 import { z } from "zod";
 import { WorkbenchSurfaceRevealSchema } from "./workbench-reveal";
 import type { WorkbenchSurfaceDescriptor } from "../workbench-scene";
@@ -21,7 +22,7 @@ export const WorkbenchOpenSurfaceSchema = z.discriminatedUnion("kind", [
 ]);
 
 export const WorkbenchCommandSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("activate_surface"), tabId: identity }),
+  z.strictObject({ kind: z.literal("activate_surface"), tabId: WorkbenchSurfaceIdSchema }),
   z.strictObject({ kind: z.literal("navigate_session"), projectId: identity.nullable() }),
   z.strictObject({
     kind: z.literal("open_surface"),
@@ -32,12 +33,12 @@ export const WorkbenchCommandSchema = z.discriminatedUnion("kind", [
   z
     .object({ kind: z.literal("open_tab"), ...groupTarget, surface: WorkbenchOpenSurfaceSchema })
     .strict(),
-  z.object({ kind: z.literal("activate_tab"), tabId: identity }).strict(),
-  z.object({ kind: z.literal("close_tab"), tabId: identity }).strict(),
+  z.object({ kind: z.literal("activate_tab"), tabId: WorkbenchSurfaceIdSchema }).strict(),
+  z.object({ kind: z.literal("close_tab"), tabId: WorkbenchSurfaceIdSchema }).strict(),
   z
     .object({
       kind: z.literal("move_tab"),
-      tabId: identity,
+      tabId: WorkbenchSurfaceIdSchema,
       ...groupTarget,
       index: z.number().int().min(0).max(2_048),
       splitSide: z.enum(["left", "right", "up", "down"]).optional(),
@@ -47,7 +48,7 @@ export const WorkbenchCommandSchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("reorder_tabs"),
       ...groupTarget,
-      tabIds: z.array(identity).max(2_048),
+      tabIds: z.array(WorkbenchSurfaceIdSchema).max(2_048),
     })
     .strict(),
   z
@@ -55,7 +56,7 @@ export const WorkbenchCommandSchema = z.discriminatedUnion("kind", [
       kind: z.literal("split_group"),
       ...groupTarget,
       side: z.enum(["left", "right", "up", "down"]),
-      tabId: identity.optional(),
+      tabId: WorkbenchSurfaceIdSchema.optional(),
     })
     .strict(),
   z.object({ kind: z.literal("merge_group"), ...groupTarget }).strict(),
@@ -127,7 +128,7 @@ export const WorkbenchCommandReceiptSchema = z
     persisted: z.boolean(),
     presentationRevision: revision,
     layoutRevision: revision.nullable(),
-    tabId: identity.nullable(),
+    tabId: WorkbenchSurfaceIdSchema.nullable(),
     groupId: identity.nullable(),
     error: WorkbenchCommandErrorSchema.nullable(),
   })

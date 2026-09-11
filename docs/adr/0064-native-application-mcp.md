@@ -26,8 +26,8 @@ connection credentials or application catalog.
 
 The renderer's Window/Scene owner provides bounded live observations and handles
 presentation commands. Main retains immutable observation references, not another
-persistent Scene. Submitted context anchors user references; explicit refresh selects
-a new observation. An observed tab is an exact occurrence, not a mutable current-tab
+persistent Scene. Optional submitted context anchors user references to the latest accepted user submission; explicit refresh selects
+a new observation. Missing supplemental context does not block message admission, and later submissions do not rewrite existing observation evidence. An observed tab is an exact occurrence, not a mutable current-tab
 alias. Content access remains independent of presentation access.
 
 Page editor synchronization precedes canonical content reads and does not replace
