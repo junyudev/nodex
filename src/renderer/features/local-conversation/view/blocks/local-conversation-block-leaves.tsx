@@ -1,3 +1,4 @@
+import { AssistantRatingMenu } from "../shared/assistant-rating-menu";
 import { HookStatsIndicator } from "../shared/hook-stats-indicator";
 import {
   useCallback,
@@ -20,7 +21,6 @@ import { ReasoningSurface } from "../shared/reasoning-surface";
 import { SubagentAvatar } from "../shared/subagent-avatar";
 import { TurnDiffSurface } from "../shared/turn-diff-surface";
 import {
-  AssistantRatingButton,
   CopyMessageActionButton,
   EditMessageIcon,
   ForkMessageIcon,
@@ -1073,18 +1073,7 @@ function AssistantMessageActionsRow({
         <>
           <CopyMessageActionButton text={actions.copyText} label="Copy" stopPropagation />
           {actions.canRate ? (
-            <>
-              <AssistantRatingButton
-                rating="thumbs_up"
-                selectedRating={selectedRating}
-                onSelect={setSelectedRating}
-              />
-              <AssistantRatingButton
-                rating="thumbs_down"
-                selectedRating={selectedRating}
-                onSelect={setSelectedRating}
-              />
-            </>
+            <AssistantRatingMenu selectedRating={selectedRating} onSelect={setSelectedRating} />
           ) : null}
         </>
       ) : null}
