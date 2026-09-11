@@ -7,6 +7,8 @@ import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
 import { TestQueryProvider } from "../../test/query";
 import { CodexSidebarThreadRow } from "./codex-sidebar";
+import { CODEX_SIDEBAR_PROJECT_THREAD_PAGER_ROW_CLASS } from "@/lib/codex-sidebar-pagination";
+import { SidebarPaginatedItems } from "./sidebar-paginated-items";
 import "../../globals.css";
 
 const THREAD: CodexSidebarThreadItem = {
@@ -88,3 +90,46 @@ test.each(["hover", "keyboard", "menu"] as const)(
     expect(onSelect).not.toHaveBeenCalled();
   },
 );
+
+test.each([240, 320])("aligns project pagination text with Session titles at %ipx", (width) => {
+  const view = render(
+    <TestQueryProvider>
+      <NodexHoverCardProvider>
+        <NodexTooltipProvider>
+          <div style={{ width }}>
+            <SidebarPaginatedItems
+              items={[THREAD, { ...THREAD, key: "second" }]}
+              getKey={(item) => item.key}
+              maxItems={1}
+              expanded={false}
+              onExpandedChange={() => undefined}
+              pagerClassName={CODEX_SIDEBAR_PROJECT_THREAD_PAGER_ROW_CLASS}
+            >
+              {({ visibleItems }, pager) => (
+                <>
+                  {visibleItems.map((item) => (
+                    <CodexSidebarThreadRow
+                      key={item.key}
+                      item={item}
+                      active={false}
+                      grouped
+                      onSelect={() => undefined}
+                    />
+                  ))}
+                  {pager}
+                </>
+              )}
+            </SidebarPaginatedItems>
+          </div>
+        </NodexTooltipProvider>
+      </NodexHoverCardProvider>
+    </TestQueryProvider>,
+  );
+  const title = view.container.querySelector("[data-thread-title]");
+  if (!title) throw new Error("Expected Session title");
+  const range = document.createRange();
+  range.selectNodeContents(view.getByRole("button", { name: "Show more" }));
+  expect(
+    Math.abs(range.getBoundingClientRect().left - title.getBoundingClientRect().left),
+  ).toBeLessThan(0.5);
+});
