@@ -1,7 +1,7 @@
 /*
- * Generated semantic theme contract (refVersion 26.810.41047).
+ * Generated semantic theme contract (refVersion 26.903.71938).
  * Do not edit by hand. Run:
- *   pnpm run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.810.41047
+ *   pnpm run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.903.71938
  */
 
 @layer components {
@@ -62,13 +62,13 @@
   }
 
   .icon-2xs {
-    width: 14px;
-    height: 14px;
+    height: var(--icon-secondary-size, 14px);
+    width: var(--icon-secondary-size, 14px);
   }
 
   .icon-xs {
-    width: 16px;
-    height: 16px;
+    height: var(--icon-size, 16px);
+    width: var(--icon-size, 16px);
   }
 
   .icon-sm {

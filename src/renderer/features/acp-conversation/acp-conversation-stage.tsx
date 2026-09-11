@@ -126,8 +126,10 @@ function AcpMessageUpdate({
   return (
     <div
       className={cn(
-        "min-w-0 text-sm text-foreground",
-        update.role === "user" && "rounded-lg bg-text/10 px-3 py-2",
+        "min-w-0 text-sm",
+        update.role === "user"
+          ? "rounded-lg bg-background-user-message px-3 py-2 text-text-user-message"
+          : "text-foreground",
       )}
       data-acp-message-role={update.role}
     >
@@ -272,7 +274,7 @@ function AcpTurn({
     <section className="flex min-w-0 flex-col gap-3" aria-label="Conversation turn">
       {turn.promptText ? (
         <div
-          className="ml-auto max-w-[85%] rounded-lg bg-text/10 px-3 py-2 text-sm whitespace-pre-wrap text-foreground"
+          className="ml-auto max-w-[85%] rounded-lg bg-background-user-message px-3 py-2 text-sm whitespace-pre-wrap text-text-user-message"
           data-user-message-bubble="true"
         >
           {turn.promptText}
@@ -498,7 +500,7 @@ export function AcpConversationStageView({
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 py-5">
           {firstSubmission ? (
             <div
-              className="ml-auto max-w-[85%] rounded-lg bg-text/10 px-3 py-2 text-sm whitespace-pre-wrap text-foreground"
+              className="ml-auto max-w-[85%] rounded-lg bg-background-user-message px-3 py-2 text-sm whitespace-pre-wrap text-text-user-message"
               data-client-user-message-id={firstSubmission.clientUserMessageId}
               data-user-message-bubble="true"
             >

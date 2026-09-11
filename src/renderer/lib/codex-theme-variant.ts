@@ -15,12 +15,7 @@ interface BaseTheme {
     yellow: string;
   };
   contrast: number;
-  fonts: {
-    code: string | null;
-    ui: string | null;
-  };
   ink: string;
-  opaqueWindows: boolean;
   semanticColors: {
     diffAdded: string;
     diffModified: string;
@@ -82,11 +77,11 @@ interface DerivedTheme {
 
 const BLACK: Rgb = { blue: 0, green: 0, red: 0 };
 const WHITE: Rgb = { blue: 255, green: 255, red: 255 };
-const DARK_PRIMARY_FOREGROUND = "#dfdfdf";
 
+// Resolved preset colors. Interpolation baselines below are a separate contract.
 const DEFAULT_THEMES: Record<ThemeVariant, BaseTheme> = {
   dark: {
-    accent: "#339cff",
+    accent: "#3a83f7",
     accentColors: {
       green: "#40c977",
       orange: "#fb6a22",
@@ -94,19 +89,17 @@ const DEFAULT_THEMES: Record<ThemeVariant, BaseTheme> = {
       yellow: "#ffd240",
     },
     contrast: 60,
-    fonts: { code: null, ui: null },
-    ink: "#ffffff",
-    opaqueWindows: false,
+    ink: "#fcfcfc",
     semanticColors: {
-      diffAdded: "#40c977",
+      diffAdded: "#00a240",
       diffModified: "#ff8549",
-      diffRemoved: "#fa423e",
-      skill: "#ad7bf9",
+      diffRemoved: "#e02e2a",
+      skill: "#b06dff",
     },
-    surface: "#181818",
+    surface: "#111111",
   },
   light: {
-    accent: "#339cff",
+    accent: "#3a83f7",
     accentColors: {
       green: "#00a240",
       orange: "#e25507",
@@ -114,22 +107,20 @@ const DEFAULT_THEMES: Record<ThemeVariant, BaseTheme> = {
       yellow: "#ffc300",
     },
     contrast: 45,
-    fonts: { code: null, ui: null },
-    ink: "#1a1c1f",
-    opaqueWindows: false,
+    ink: "#0d0d0d",
     semanticColors: {
       diffAdded: "#00a240",
       diffModified: "#923b0f",
-      diffRemoved: "#ba2623",
-      skill: "#924ff7",
+      diffRemoved: "#e02e2a",
+      skill: "#751ed9",
     },
     surface: "#ffffff",
   },
 };
 
 const BASE_CONTRAST: Record<ThemeVariant, number> = {
-  dark: DEFAULT_THEMES.dark.contrast,
-  light: DEFAULT_THEMES.light.contrast,
+  dark: 60,
+  light: 45,
 };
 
 const CONTRAST_BLEND = 0.7;
@@ -159,9 +150,15 @@ export function getCodexThemeVariantStyle(variant: ThemeVariant): Record<string,
   const base = DEFAULT_THEMES[variant];
   const prepared = prepareTheme(base, variant);
   const derived = variant === "light" ? deriveLightTheme(prepared) : deriveDarkTheme(prepared);
+  const applicationMenu = mixRgb(prepared.surface, prepared.ink, 0.02 + prepared.contrast * 0.02);
 
   return {
     ...CODEX_RUNTIME_DOCUMENT_STYLE,
+    // Legacy content consumers share the same surface and text hierarchy.
+    "--background": base.surface,
+    "--foreground": derived.textForeground,
+    "--foreground-secondary": derived.textForegroundSecondary,
+    "--foreground-tertiary": derived.textForegroundTertiary,
     "--codex-base-accent": prepared.theme.accent,
     "--codex-base-contrast": String(prepared.theme.contrast),
     "--codex-base-ink": prepared.theme.ink,
@@ -175,6 +172,7 @@ export function getCodexThemeVariantStyle(variant: ThemeVariant): Record<string,
     "--color-background-accent": derived.accentBackground,
     "--color-background-accent-active": derived.accentBackgroundActive,
     "--color-background-accent-hover": derived.accentBackgroundHover,
+    "--color-background-application-menu": toHex(applicationMenu),
     "--color-background-button-primary": derived.buttonPrimaryBackground,
     "--color-background-button-primary-active": derived.buttonPrimaryBackgroundActive,
     "--color-background-button-primary-hover": derived.buttonPrimaryBackgroundHover,
@@ -186,6 +184,9 @@ export function getCodexThemeVariantStyle(variant: ThemeVariant): Record<string,
     "--color-background-button-tertiary": derived.buttonTertiaryBackground,
     "--color-background-button-tertiary-active": derived.buttonTertiaryBackgroundActive,
     "--color-background-button-tertiary-hover": derived.buttonTertiaryBackgroundHover,
+    "--color-background-callout-surface": derived.elevatedPrimary,
+    "--color-background-composer-action-bar":
+      variant === "light" ? prepared.surfaceUnder : derived.elevatedSecondary,
     "--color-background-control": derived.controlBackground,
     "--color-background-control-opaque": derived.controlBackgroundOpaque,
     "--color-background-editor-opaque": toRgb(prepared.editorBackground),
@@ -193,13 +194,22 @@ export function getCodexThemeVariantStyle(variant: ThemeVariant): Record<string,
     "--color-background-elevated-primary-opaque": derived.elevatedPrimaryOpaque,
     "--color-background-elevated-secondary": derived.elevatedSecondary,
     "--color-background-elevated-secondary-opaque": derived.elevatedSecondaryOpaque,
+    "--color-background-mode-toggle-track":
+      variant === "light" ? prepared.surfaceUnder : derived.buttonTertiaryBackgroundHover,
+    "--color-background-mode-toggle-selected":
+      variant === "dark"
+        ? derived.controlBackgroundOpaque
+        : `color-mix(in oklab, ${derived.controlBackground} 90%, transparent)`,
     "--color-background-panel": computePanelBackground(prepared),
     "--color-background-surface": prepared.theme.surface,
     "--color-background-surface-under": prepared.surfaceUnder,
     "--color-border": derived.border,
+    "--color-border-application-menu-separator":
+      variant === "dark" ? mixHex(applicationMenu, prepared.ink, 0.28) : derived.borderHeavy,
     "--color-border-focus": derived.borderFocus,
     "--color-border-heavy": derived.borderHeavy,
     "--color-border-light": derived.borderLight,
+    "--color-border-mode-toggle-selected": derived.border,
     "--color-decoration-added": prepared.theme.semanticColors.diffAdded,
     "--color-decoration-modified": prepared.theme.semanticColors.diffModified,
     "--color-decoration-deleted": prepared.theme.semanticColors.diffRemoved,
@@ -216,8 +226,12 @@ export function getCodexThemeVariantStyle(variant: ThemeVariant): Record<string,
     "--color-icon-primary": derived.iconPrimary,
     "--color-icon-secondary": derived.iconSecondary,
     "--color-icon-tertiary": derived.iconTertiary,
+    "--color-foreground-application-menu":
+      variant === "dark" ? mixHex(applicationMenu, prepared.ink, 0.875) : derived.textForeground,
     "--color-simple-scrim": derived.simpleScrim,
     "--color-text-accent": derived.textAccent,
+    // The default accent's luminance selects black in both appearances.
+    "--color-text-on-accent": toRgb(BLACK),
     "--color-text-button-primary": derived.textButtonPrimary,
     "--color-text-button-secondary": derived.textButtonSecondary,
     "--color-text-button-tertiary": derived.textButtonTertiary,
@@ -225,7 +239,30 @@ export function getCodexThemeVariantStyle(variant: ThemeVariant): Record<string,
     "--color-text-foreground": derived.textForeground,
     "--color-text-foreground-secondary": derived.textForegroundSecondary,
     "--color-text-foreground-tertiary": derived.textForegroundTertiary,
+    "--color-text-mode-toggle-inactive": `color-mix(in oklab, ${derived.textForeground} 80%, transparent)`,
     "--color-text-warning": prepared.theme.accentColors.orange,
+    "--shadow-mode-toggle-selected": "var(--shadow-md)",
+    ...getDefaultAccentStyle(variant),
+  };
+}
+
+/** The default accent also owns conversation, selection, and focus roles. */
+function getDefaultAccentStyle(variant: ThemeVariant): Record<string, string> {
+  const isDark = variant === "dark";
+  const soft = isDark ? "#133463" : "#e8f3fe";
+  return {
+    "--color-background-accent": soft,
+    "--color-background-accent-active": soft,
+    "--color-background-accent-hover": soft,
+    "--color-border-focus": DEFAULT_THEMES[variant].accent,
+    "--color-icon-accent": "#2c67c5",
+    "--color-text-accent": "#2c67c5",
+    "--color-background-composer-primary": isDark ? "#ffffff" : "#000000",
+    "--color-text-composer-primary": isDark ? "#000000" : "#ffffff",
+    "--color-background-user-message": isDark ? "rgb(50 50 50 / 85%)" : "rgb(233 233 233 / 50%)",
+    "--color-text-user-message": isDark ? "#ffffff" : "#0d0d0d",
+    "--color-background-text-selection": isDark ? "#63a8f866" : "#539af859",
+    "--color-background-attribution-highlight": isDark ? "#734615" : "#fcefbe",
   };
 }
 
@@ -309,9 +346,9 @@ function deriveLightTheme(theme: PreparedTheme): DerivedTheme {
 }
 
 function deriveDarkTheme(theme: PreparedTheme): DerivedTheme {
-  const controlBase = mixRgb(theme.surface, WHITE, 0.06 + theme.contrast * 0.05);
+  const controlBase = mixRgb(theme.surface, theme.ink, 0.06 + theme.contrast * 0.05);
   const accentTextBase = mixRgb(theme.accent, WHITE, 0.3 + theme.contrast * 0.15);
-  const buttonPrimaryBase = mixRgb(theme.surface, theme.ink, 0.38 + theme.contrast * 0.12);
+  const buttonPrimaryBase = mixRgb(theme.surface, BLACK, 0.38 + theme.contrast * 0.12);
   const elevatedPrimaryBase = mixRgb(theme.surface, theme.ink, 0.08 + theme.contrast * 0.08);
 
   return {
@@ -348,7 +385,7 @@ function deriveDarkTheme(theme: PreparedTheme): DerivedTheme {
     textButtonPrimary: toRgb(buttonPrimaryBase),
     textButtonSecondary: mixHex(theme.ink, theme.surface, 0.7 + theme.contrast * 0.1),
     textButtonTertiary: toRgba(theme.ink, 0.45 + theme.contrast * 0.1),
-    textForeground: DARK_PRIMARY_FOREGROUND,
+    textForeground: theme.theme.ink,
     textForegroundSecondary: toRgba(theme.ink, 0.65 + theme.contrast * 0.1),
     textForegroundTertiary: toRgba(theme.ink, 0.42 + theme.contrast * 0.13),
   };

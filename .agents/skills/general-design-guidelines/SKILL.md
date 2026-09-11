@@ -444,19 +444,15 @@ border-top: 0.5px solid var(--border-token);
 
 ## Dark Mode
 
-Design dark-first. The exemplar palette is:
+Use the resolved palette from
+[`codex-theme-variant.ts`](../../../src/renderer/lib/codex-theme-variant.ts)
+through semantic tokens. Main content, code editors, menus, controls, and the
+underlying window surface have distinct roles. Palette fallback values and
+syntax-theme colors alone do not establish those rendered roles.
 
-| Role              | Value     |
-| ----------------- | --------- |
-| Editor bg         | `#0d0d0d` |
-| Surface secondary | `#131313` |
-| Input bg          | `#161616` |
-| Muted text        | `#414141` |
-| Secondary text    | `#8f8f8f` |
-| Foreground        | `#fcfcfc` |
-| Accent (blue)     | `#0169cc` |
-
-All surfaces are **very close in value** — hierarchy comes from subtle shifts, not dramatic contrast between panels.
+Keep neighboring surfaces close in value and validate both appearances with
+the runtime theme applied. Primary text, secondary opacity, borders, and
+conversation accents must resolve together.
 
 ## Checklist
 

@@ -86,7 +86,7 @@ export function AcpNewConversationStage({
       <div className="flex min-h-0 flex-1 items-center justify-center px-6 pb-16 text-center">
         {firstSubmission ? (
           <div
-            className="ml-auto max-w-[85%] rounded-lg bg-text/10 px-3 py-2 text-left text-sm whitespace-pre-wrap text-foreground"
+            className="ml-auto max-w-[85%] rounded-lg bg-background-user-message px-3 py-2 text-left text-sm whitespace-pre-wrap text-text-user-message"
             data-client-user-message-id={firstSubmission.clientUserMessageId}
             data-user-message-bubble="true"
           >

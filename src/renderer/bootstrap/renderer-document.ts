@@ -3,6 +3,7 @@ import {
   resolveCodexRendererOs,
   resolveCodexRendererWindowChrome,
 } from "../lib/codex-window-runtime";
+import { applyCodexThemeVariant } from "../lib/codex-theme-variant";
 
 export interface RendererDocumentOptions {
   readonly storybook?: boolean;
@@ -55,6 +56,7 @@ function clearElectronRuntimeDocumentState(root: HTMLElement): void {
 /** Reconciles parser-time appearance with the live Electron bridge before React loads. */
 export function initializeRendererDocument(options?: RendererDocumentOptions): void {
   const root = document.documentElement;
+  applyCodexThemeVariant(root, root.classList.contains("dark") ? "dark" : "light", document.body);
   const isElectronWindow = Boolean(window.api);
   const shouldEmulateElectronWindow = isElectronWindow || options?.storybook === true;
   const shouldEmulateOpaqueElectronWindow =

@@ -1,4 +1,5 @@
 import type { Plugin } from "vite";
+import { getCodexThemeVariantStyle } from "../src/renderer/lib/codex-theme-variant";
 import {
   NODEX_LOGO_GEOMETRY,
   NODEX_LOGO_MASK_IMAGE,
@@ -27,18 +28,26 @@ export function createStartupShellMarkup(): string {
 }
 
 export function createStartupShellCriticalCss(): string {
-  return `:root {
+  const themeCss = (["light", "dark"] as const)
+    .map((variant) => {
+      const declarations = Object.entries(getCodexThemeVariantStyle(variant))
+        .map(([name, value]) => `${name}: ${value};`)
+        .join("\n");
+      return `${variant === "dark" ? ":root.dark" : ":root"} {\n${declarations}\n}`;
+    })
+    .join("\n");
+  return `${themeCss}
+:root {
   --startup-logo-base: #26272c;
   --startup-logo-highlight: rgba(255, 255, 255, 0.92);
   --startup-text: rgba(38, 39, 44, 0.58);
-  --startup-surface: #f5f4f1;
+  --startup-surface: var(--color-background-surface-under);
   color-scheme: light;
 }
 :root.dark {
   --startup-logo-base: #d9dade;
   --startup-logo-highlight: rgba(255, 255, 255, 0.96);
   --startup-text: rgba(229, 230, 234, 0.58);
-  --startup-surface: #202125;
   color-scheme: dark;
 }
 html, body, #root { width: 100%; height: 100%; margin: 0; background: transparent; }
