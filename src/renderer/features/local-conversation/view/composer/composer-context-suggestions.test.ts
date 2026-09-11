@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   buildComposerContextSuggestionSections,
+  rankComposerContextSuggestionCandidates,
   shouldDismissComposerSuggestionMenu,
   type ComposerContextSuggestionCandidate,
 } from "./composer-context-suggestions";
@@ -267,4 +268,25 @@ describe("composer context suggestions", () => {
       }),
     ).toBe(false);
   });
+});
+
+test("bounded search considers late candidates and preserves the full picker order", () => {
+  const candidates = Array.from({ length: 800 }, (_, index) =>
+    candidate({
+      id: String(index),
+      label: index === 799 ? "abc" : `abc tool ${index % 10}`,
+      section: "Skills",
+    }),
+  );
+  const full = rankComposerContextSuggestionCandidates({ candidates, query: "abc" });
+  expect(full).toHaveLength(800);
+  expect(full[0]?.id).toBe("799");
+  for (const maxResults of [0, 1, 8, 24, 800]) {
+    expect(
+      rankComposerContextSuggestionCandidates({ candidates, query: "abc", maxResults }),
+    ).toEqual(full.slice(0, maxResults));
+  }
+  expect(full.filter((item) => item.label === "abc tool 0").map((item) => item.id)).toEqual(
+    candidates.filter((item) => item.label === "abc tool 0").map((item) => item.id),
+  );
 });

@@ -18,23 +18,24 @@ describe("composer context operations", () => {
     vi.resetAllMocks();
   });
 
+  test("bypasses the native skills cache for an explicit reload", async () => {
+    transport.query.mockResolvedValue([]);
+    await composerContextOperations.reloadSkills(["/repo"]);
+    expect(transport.query).toHaveBeenCalledWith("codex:composer-skills:list", {
+      cwds: ["/repo"],
+      forceReload: true,
+    });
+  });
+
   test("reads context sources through typed query boundaries", async () => {
     transport.query
       .mockResolvedValueOnce({ available: false, target: null })
-      .mockResolvedValueOnce({ matches: [], ancestorDirectories: [], truncated: false })
       .mockResolvedValueOnce({ available: true, conversations: [] });
 
     await expect(composerContextOperations.readAppshotTarget()).resolves.toEqual({
       available: false,
       target: null,
     });
-    await expect(
-      composerContextOperations.searchWorkspaceFiles({
-        workspaceRoot: "/repo",
-        query: "renderer",
-        maxResults: 24,
-      }),
-    ).resolves.toEqual({ matches: [], ancestorDirectories: [], truncated: false });
     await expect(composerContextOperations.searchChatGptConversations("causal")).resolves.toEqual({
       available: true,
       conversations: [],
@@ -42,7 +43,6 @@ describe("composer context operations", () => {
 
     expect(transport.query.mock.calls).toEqual([
       ["codex:composer-appshot:target"],
-      ["workspace-file-search", { workspaceRoot: "/repo", query: "renderer", maxResults: 24 }],
       ["codex:composer-chatgpt-conversations:list", { query: "causal" }],
     ]);
   });

@@ -225,6 +225,8 @@ alone owns the durable snapshot, capability validation, source deletion, cut
 claim, paste identity, history, and exact File-reference authority. The decision is
 recorded in [ADR 0053](adr/0053-structural-clipboard-private-protocol-and-host-lifecycle.md).
 
+Composer file indexing and fuzzy matching belong to the native Codex app-server. Main owns only renderer-scoped session controls, generation fences, and notification routing; the renderer owns current-query presentation. Skill inventory changes flow from native notifications to workspace-keyed renderer cache invalidation. See [Composer behavior](product-specs/codex-thread-transcript-behavior.md#composer-shell).
+
 Native filesystem watching is one scoped Stream Adapter around synchronous `fs.watch`; readiness,
 changes, and typed failure flow through the Stream, and stream finalization closes the native handle.
 Workspace-file subscriptions are owner-and-subscription-keyed fibers, while a zero-idle `LayerMap`

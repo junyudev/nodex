@@ -1,3 +1,4 @@
+import * as ComposerFileSearchIpc from "../ipc/handlers/ComposerFileSearchIpc";
 import * as CodexThreadHandoffIpc from "../ipc/handlers/CodexThreadHandoffIpc";
 import * as Layer from "effect/Layer";
 import * as WorkbenchAgentIpc from "../ipc/handlers/WorkbenchAgentIpc";
@@ -62,6 +63,7 @@ export const live = Layer.mergeAll(
   DictationIpc.live(),
   ApplicationSyncIpc.live,
   WorkspaceFileIpc.live(),
+  ComposerFileSearchIpc.live,
   ApplicationLifecycleIpc.live,
   ComposerAppshotIpc.live,
   CodexApplicationIpc.live,

@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query";
+import { codexComposerSkillsListQueryOptions } from "./query-options";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test } from "vite-plus/test";
 import { render, settleAsyncRender } from "@/test/dom";
@@ -112,6 +114,11 @@ function makeApp(name: string): ProtocolAppInfo {
   };
 }
 
+function SkillsCatalogConsumer({ cwd }: { cwd: string }) {
+  const { data = [] } = useQuery(codexComposerSkillsListQueryOptions([cwd]));
+  return <div data-testid={cwd}>{data.map((skill) => skill.name).join(",")}</div>;
+}
+
 function AppsCatalogConsumer() {
   const { data = [] } = useMcpApps();
   return <div data-testid="apps">{data.map((app) => app.name).join(",")}</div>;
@@ -126,6 +133,8 @@ describe("server state query hooks", () => {
   let mcpStatusCalls = 0;
   let mcpStatusArgs: unknown[] = [];
   let appListCalls = 0;
+  let skillNames: string[] = [];
+  let skillsListCwds: unknown[] = [];
   let codexEventListeners = new Set<(...args: unknown[]) => void>();
 
   beforeEach(() => {
@@ -137,6 +146,8 @@ describe("server state query hooks", () => {
     mcpStatusCalls = 0;
     mcpStatusArgs = [];
     appListCalls = 0;
+    skillNames = ["original"];
+    skillsListCwds = [];
     codexEventListeners = new Set();
 
     installWindowApi({
@@ -190,6 +201,18 @@ describe("server state query hooks", () => {
           };
         }
 
+        if (channel === "codex:composer-skills:list") {
+          skillsListCwds.push(args[0]);
+          return skillNames.map((name) => ({
+            name,
+            displayName: name,
+            description: "",
+            path: `/skills/${name}/SKILL.md`,
+            scope: "user",
+            iconUrl: null,
+            brandColor: null,
+          }));
+        }
         if (channel === "codex:mcp-apps:list") {
           appListCalls += 1;
           return [makeApp("Docs")];
@@ -303,5 +326,28 @@ describe("server state query hooks", () => {
     expect(client.getQueryData<ProtocolAppInfo[]>(queryKeys.mcp.apps())?.[0]?.name).toBe(
       "Calendar",
     );
+  });
+  test("refreshes active skill inventories for their own cwd after a native change notification", async () => {
+    const view = render(
+      <NodexQueryProvider>
+        <SkillsCatalogConsumer cwd="/first" />
+        <SkillsCatalogConsumer cwd="/second" />
+      </NodexQueryProvider>,
+    );
+    await waitFor(() => expect(view.getByTestId("/first").textContent).toBe("original"));
+    await waitFor(() => expect(view.getByTestId("/second").textContent).toBe("original"));
+    skillNames = ["original", "new-skill"];
+    await act(async () => {
+      for (const listener of codexEventListeners) listener({ type: "skillsChanged" });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(view.getByTestId("/first").textContent).toBe("original,new-skill"));
+    await waitFor(() => expect(view.getByTestId("/second").textContent).toBe("original,new-skill"));
+    expect(skillsListCwds).toEqual([
+      { cwds: ["/first"] },
+      { cwds: ["/second"] },
+      { cwds: ["/first"] },
+      { cwds: ["/second"] },
+    ]);
   });
 });

@@ -2653,9 +2653,10 @@ export interface CodexComposerSkill {
   scope: CodexAppServerSkillScope;
 }
 
-export interface CodexComposerSkillListInput {
-  cwds: string[];
-}
+export type CodexComposerSkillListInput = { cwds: string[] } & Pick<
+  import("@nodex/codex-app-server-protocol/v2").SkillsListParams,
+  "forceReload"
+>;
 
 /** Renderer-safe projection of one Sites project for composer suggestions. */
 export interface CodexComposerSite {
@@ -4701,6 +4702,7 @@ export type CodexEvent =
   | { type: "account"; account: CodexAccountSnapshot }
   | { type: "dictationState"; state: CodexDictationStateSnapshot }
   | { type: "rateLimits"; rateLimits: CodexRateLimitsSnapshot | null }
+  | { type: "skillsChanged" }
   | { type: "appsUpdated"; apps: ProtocolAppInfo[] }
   | { type: "threadSummary"; thread: CodexThreadSummary }
   | { type: "subagentOverviewInvalidated"; rootThreadId: string }
