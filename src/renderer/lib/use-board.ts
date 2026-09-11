@@ -210,10 +210,13 @@ export function useBoard(options: UseBoardOptions) {
     },
     [store],
   );
-  const refreshCanonicalDatabaseView = useCallback(async () => {
-    if (!(await store.fetchBoard()))
-      throw new Error("The Database View could not refresh its canonical projection.");
-  }, [store]);
+  const refreshCanonicalDatabaseView = useCallback(
+    async (minimum?: LocalProjectionCursor) => {
+      if (!(await store.fetchBoard(minimum)))
+        throw new Error("The Database View could not refresh its canonical projection.");
+    },
+    [store],
+  );
 
   const loadMore = useCallback(async () => {
     await store.loadMore();

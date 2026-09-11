@@ -508,6 +508,7 @@ fn whole_database_clipboard_copy_preserves_explicit_and_implicit_order() {
         "capture-complete-database",
         LibraryIntent::ApplyStructuralEdit {
             command: Box::new(LibraryStructuralEditCommand::CaptureClipboard {
+                file_export_candidates: None,
                 selection: LibraryStructuralSelection {
                     source_document_id: host.document_id.clone(),
                     root_block_ids: vec![NESTED_DB.into()],

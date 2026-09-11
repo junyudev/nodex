@@ -69,6 +69,11 @@ Database View drag feedback describes Move/Copy, Page count, and the predicted s
 Drag feedback uses only the window-local active session and MIME type because native drag payload data is protected before `drop`; presentation feedback must never gate whether the destination accepts the drop.
 Alt/Option selects Copy.
 Shift forces `literal` for that drop and composes with Alt/Option.
+The accepted gesture freezes its operation identity, modifier choices and shorthand
+preference before waiting for the source Document fence. Changing a setting during
+preparation cannot retarget or reinterpret that gesture. Accepted source/target
+feedback follows the independent presentation rules in
+[Database Pages and Views](database-pages-and-views-behavior.md).
 After commit, applied or preserved outcomes are aggregated into one quiet notification; ordinary literal drops stay silent.
 
 Core evidence is final.

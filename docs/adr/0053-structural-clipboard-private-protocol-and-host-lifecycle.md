@@ -87,7 +87,14 @@ and source deletion remain outside it.
 
 Electron Main hosts one application-scoped `StructuralClipboardRuntime` inside
 the Main Effect Scope. This is the single seam for native structural clipboard
-coordination across all trusted Nodex windows.
+coordination across all trusted Nodex windows. Accepted gestures register before
+content-history queue preparation. Optional local-path enhancement is a child
+fiber of the clipboard entry, independent of publication and Cut readiness.
+The Library File Export Runtime shares bounded asynchronous materialization with
+ordinary File export; Core validates frozen bundle versions and current source
+access. Enhancement rechecks authorization and updates only claimed plain text.
+A newer claim, source destruction, entry expiry, or Profile shutdown interrupts
+that child without changing an in-flight Cut's recovery responsibility.
 
 Its small interface supports four semantic operations:
 

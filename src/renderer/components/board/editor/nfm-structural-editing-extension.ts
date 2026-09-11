@@ -1,3 +1,9 @@
+import {
+  beginRendererStructuralSpan,
+  withRendererStructuralSpan,
+} from "@/lib/renderer-causal-trace";
+import type { NfmStructuralRemovalPresentation } from "./nfm-structural-removal-presentation";
+import { clipboardFileReferences } from "../../../../shared/clipboard-file-references";
 import { getBlockInfo, getNodeById, type BlockNoteEditor } from "@blocknote/core";
 import { TextSelection } from "@tiptap/pm/state";
 
@@ -154,7 +160,7 @@ export interface NfmStructuralEditingRuntime {
   };
   readonly participant: BlockDocumentStructuralMutationParticipant;
   readonly getContainer: () => HTMLElement | null;
-  readonly resolveClipboardText?: (portableText: string) => Promise<string>;
+  readonly copyFileReferencesAsLocalPaths?: () => boolean;
   readonly onError?: (message: string) => void;
   readonly onClipboardFallback?: (message: string) => void;
 }
@@ -307,6 +313,14 @@ const withoutPortableBlockIdentity = (
  */
 export class NfmStructuralEditingSession {
   private readonly editor: StructuralEditor;
+  private removalPresentation: NfmStructuralRemovalPresentation | undefined;
+
+  retainRemovalPresentation(
+    create: () => NfmStructuralRemovalPresentation,
+  ): NfmStructuralRemovalPresentation {
+    return (this.removalPresentation ??= create());
+  }
+
   private readonly apply: typeof applyLibraryModule;
   private readonly preparePromotion: typeof prepareNfmBlockPromotion;
   private readonly transfer: typeof transferBlocks;
@@ -334,6 +348,9 @@ export class NfmStructuralEditingSession {
       focusRevision: number;
       controller: AbortController;
       clipboardPublished?: boolean;
+      handle?: HistoryCommandHandle<NfmHistoryReceipt>;
+      clipboardRegistration?: ReturnType<typeof beginStructuralClipboard>;
+      finishQueuedSpan?: () => void;
     }
   >();
   private focusRevision = 0;
@@ -712,6 +729,7 @@ export class NfmStructuralEditingSession {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.removalPresentation?.dispose();
     this.releasePendingHistoryInput?.();
     this.preparationLifetime.abort();
     this.bindFocusDocument(null);
@@ -745,6 +763,11 @@ export class NfmStructuralEditingSession {
     if (roots.length === 0 || roots.length !== rootBlockIds.length) return false;
     return this.start({
       kind: "clipboard",
+      captureOperationId: createUuidV7(),
+      deleteOperationId: createUuidV7(),
+      fileExportCandidates: this.boundRuntime.copyFileReferencesAsLocalPaths?.()
+        ? clipboardFileReferences(presentation.text)?.map(({ fileId }) => fileId)
+        : undefined,
       action,
       roots: [...rootBlockIds],
       presentation: { ...presentation },
@@ -872,7 +895,62 @@ export class NfmStructuralEditingSession {
       focusRevision: ++this.focusRevision,
       controller: new AbortController(),
     });
-    return this.history.execute(command);
+    const handle = this.history.execute(command);
+    this.admissions.get(command)!.handle = handle;
+    if (handle.accepted && command.kind === "clipboard") {
+      const admission = this.admissions.get(command)!;
+      admission.finishQueuedSpan = beginRendererStructuralSpan({
+        gestureIdentity: command.writeClaim,
+        operationIdentity: command.captureOperationId,
+        phase: "queue",
+        blockCount: command.roots.length,
+      });
+      if (command.action === "cut") {
+        const storeEpoch = this.boundRuntime.source.storeEpoch;
+        this.boundRuntime.participant.presentRemoval?.({
+          operationId: command.deleteOperationId,
+          gestureIdentity: command.writeClaim,
+          rootBlockIds: command.roots,
+          action: "cut",
+          observe: (listener) =>
+            handle.observe((state) => {
+              if (state.status !== "committed") return listener(state);
+              if (state.receipt.kind !== "structural") return listener({ status: "noop" });
+              listener({
+                ...state,
+                receipt: {
+                  storeEpoch,
+                  documentCommits: state.receipt.result.documentCommits,
+                },
+              });
+            }),
+        });
+      }
+      try {
+        admission.clipboardRegistration = this.beginClipboard({
+          writeClaim: command.writeClaim,
+          actionHint: command.action,
+          libraryId: this.boundRuntime.libraryId,
+          storeEpoch: this.boundRuntime.source.storeEpoch,
+        });
+      } catch (error) {
+        admission.clipboardRegistration = Promise.reject(error);
+      }
+      // Registration runs at admission, even while content preparation is queued.
+      // Attach a handler now; preparation will still observe the original rejection.
+      void admission.clipboardRegistration.catch(() => undefined);
+      void handle.result.then(async (resolution) => {
+        admission.finishQueuedSpan?.();
+        if (resolution.status !== "rejected" || admission.clipboardPublished) return;
+        await admission.clipboardRegistration?.catch(() => undefined);
+        return this.settleClipboardSafely({
+          writeClaim: command.writeClaim,
+          outcome: "failed",
+          reason: "capture_failed",
+        });
+      });
+    }
+    return handle;
   }
 
   private start(command: NfmHistoryCommand): boolean {
@@ -923,12 +1001,13 @@ export class NfmStructuralEditingSession {
     operation: LibraryApplyOperation,
     presentation: NfmHistoryPresentation,
     replay = false,
+    operationId = createUuidV7(),
   ): NfmLibraryHistoryRequest {
     return {
       kind: "library",
       accessContext: this.boundRuntime.accessContext,
       request: {
-        operationId: createUuidV7(),
+        operationId,
         storeEpoch: this.boundRuntime.source.storeEpoch,
         operation,
       },
@@ -1325,22 +1404,42 @@ export class NfmStructuralEditingSession {
     presentation: NfmHistoryPresentation,
   ): Promise<HistoryPreparation<NfmHistoryRequest, NfmHistoryReceipt>> {
     const { action, roots, writeClaim } = command;
-    const begun = await this.beginClipboard({
-      writeClaim,
-      actionHint: action,
-      libraryId: this.boundRuntime.libraryId,
-      storeEpoch: this.boundRuntime.source.storeEpoch,
-    });
+    // The history adapter may enter preparation synchronously during admission.
+    // Yield once so the accepted handle can register its host claim first.
+    await Promise.resolve();
+    this.admissions.get(command)?.finishQueuedSpan?.();
+    const span = {
+      gestureIdentity: writeClaim,
+      operationIdentity: command.captureOperationId,
+      blockCount: roots.length,
+      fileCount: command.fileExportCandidates?.length ?? 0,
+    };
+    const registration = this.admissions.get(command)?.clipboardRegistration;
+    if (!registration) throw new Error("The structural clipboard session was not admitted.");
+    const begun = await registration;
+    this.assertGestureActive(command);
     if (!begun.ok) throw new Error("The structural clipboard session could not be started.");
-    const selection = await this.prepareSelection(roots);
-    const capturedResult = await this.apply(this.boundRuntime.accessContext, {
-      operationId: createUuidV7(),
-      storeEpoch: this.boundRuntime.source.storeEpoch,
-      operation: {
-        kind: "apply_structural_edit",
-        command: { kind: "capture_clipboard", selection },
-      },
-    });
+    const selection = await withRendererStructuralSpan({ ...span, phase: "source_flush" }, () =>
+      this.prepareSelection(roots),
+    );
+    const capturedResult = await withRendererStructuralSpan(
+      { ...span, phase: "clipboard_capture" },
+      () =>
+        this.apply(this.boundRuntime.accessContext, {
+          operationId: command.captureOperationId,
+          storeEpoch: this.boundRuntime.source.storeEpoch,
+          operation: {
+            kind: "apply_structural_edit",
+            command: {
+              kind: "capture_clipboard",
+              selection,
+              ...(command.fileExportCandidates?.length
+                ? { fileExportCandidates: command.fileExportCandidates }
+                : {}),
+            },
+          },
+        }),
+    );
     const captured = applyResult(capturedResult);
     const clipboard = captured.clipboard;
     if (!clipboard || !capturedResult.ok)
@@ -1355,16 +1454,18 @@ export class NfmStructuralEditingSession {
       manifestHash: clipboard.manifestHash,
       actionHint: action,
     };
-    const text = this.boundRuntime.resolveClipboardText
-      ? await this.boundRuntime.resolveClipboardText(command.presentation.text)
-      : command.presentation.text;
     this.assertGestureActive(command);
-    const written = await this.publishClipboard({
-      envelope,
-      writeClaim,
-      html: command.presentation.html,
-      text,
-    });
+    const written = await withRendererStructuralSpan({ ...span, phase: "native_publication" }, () =>
+      this.publishClipboard({
+        envelope,
+        writeClaim,
+        html: command.presentation.html,
+        text: command.presentation.text,
+        ...(command.fileExportCandidates?.length
+          ? { fileExportAccess: this.boundRuntime.accessContext }
+          : {}),
+      }),
+    );
     if (!written.ok) {
       if (written.failure === "superseded")
         return { kind: "complete", receipt: { kind: "no_content_change" } };
@@ -1376,7 +1477,10 @@ export class NfmStructuralEditingSession {
     }
     this.admissions.get(command)!.clipboardPublished = true;
     if (action === "copy") return { kind: "complete", receipt: { kind: "no_content_change" } };
-    const deleteSelection = await this.prepareSelection(roots);
+    const deleteSelection = await withRendererStructuralSpan(
+      { ...span, operationIdentity: command.deleteOperationId, phase: "source_flush" },
+      () => this.prepareSelection(roots),
+    );
     return {
       kind: "submit",
       request: this.requestFor(
@@ -1390,6 +1494,8 @@ export class NfmStructuralEditingSession {
           },
         },
         { ...presentation, cutClaim: writeClaim },
+        false,
+        command.deleteOperationId,
       ),
     };
   }

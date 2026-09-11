@@ -103,7 +103,7 @@ the source renderer is disposed, or the application Scope closes; Main never
 turns an active deletion into a portable-copy verdict merely because a timer
 expired.
 
-Electron Main owns the application-scoped pending lifecycle for structural copy and cut. A paste in another Nodex window may begin waiting before source capture has registered; both sides still rendezvous by the exact write claim. Main does not require immediate native readback during registration because the browser may not have committed the ClipboardEvent yet. Final publication performs the exact slot comparison and supersedes older sessions. Registration/capture timeout, explicit source settlement, sender loss, Profile replacement, or application shutdown eventually settles every waiter without transferring semantic authority to Main.
+Electron Main owns the application-scoped pending lifecycle for structural copy and cut. A paste in another Nodex window may begin waiting before source capture has registered; both sides still rendezvous by the exact write claim. A gesture registers immediately when content history admits it, before queued content preparation. Main does not require immediate native readback during registration because the browser may not have committed the ClipboardEvent yet. Final publication performs the exact slot comparison and supersedes older sessions. Registration/capture timeout, explicit source settlement, sender loss, Profile replacement, or application shutdown eventually settles every waiter without transferring semantic authority to Main.
 
 ### How copy payloads are derived
 
@@ -133,14 +133,16 @@ For a non-empty selection, the helper starts from `editor.getSelectionCutBlocks(
   capability. Invalid fragments fall back to the visible HTML/text.
 - `structuredText` from `blockNoteToNfm(...)` plus `serializeClipboardText(...)`
 
-If the cut-aware range path is unavailable or throws, the helper falls back to BlockNote's `selectedFragmentToHTML(...)` output and keeps the existing HTML-parse fallback for `text/plain`. A collapsed-caret Block target never degrades into an empty text-range payload.
+The fallback serializer is evaluated only if the normal selection serializer is unavailable or throws. In that case, the helper falls back to BlockNote's `selectedFragmentToHTML(...)` output and keeps the existing HTML-parse fallback for `text/plain`. A collapsed-caret Block target never degrades into an empty text-range payload.
 
 ### Plain-text File references
 
 Standard copy/cut keeps `nodex://assets/...` and `nodex://files/...` locators
 portable by default. The `Copy file references as local paths` setting is off
-by default. When enabled, Nodex resolves both locator families to their current
-absolute local files only inside `text/plain`. A Library File resolves to a
+by default. When enabled, ordinary selections resolve both locator families to
+local files only inside `text/plain`. Structural selections export supported
+Library File occurrences from their captured versions; unsupported or mixed
+legacy references keep the portable representation. A Library File resolves to a
 private materialization of the exact version authorized by the current read
 source; the File presentation name and rich HTML remain unchanged.
 
@@ -152,8 +154,14 @@ enhance only its plain-text representation. Main writes only when the claim
 still owns the system clipboard, so a newer copy from Nodex or another app is
 never overwritten. The portable payload remains usable while resolution is in
 flight or if it fails. The existing HTML and private clipboard formats are left
-intact. Structural copy uses the same conditional writer to enhance text and
-publish its HTML capability after Core prepares the authoritative bundle.
+intact. Structural copy publishes the portable text and its HTML capability first.
+When local-path copy is enabled at the gesture, Core captures a bounded, immutable
+File export manifest alongside the selected structure. Main exports those exact
+versions independently, then rechecks the bundle lease and source authorization
+before conditionally replacing only plain text. Cut readiness and internal Paste
+never wait for this optional export. An external paste made before enhancement
+receives the already available portable representation. Failed, unsupported,
+revoked, or superseded exports leave that representation intact.
 
 The rich fragment survives both ordinary enhancement and structural publication;
 rewriting plain-text paths never changes its File locators, Block hierarchy,

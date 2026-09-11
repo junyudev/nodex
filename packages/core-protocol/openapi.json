@@ -212,7 +212,7 @@
           {
             "name": "kind",
             "in": "query",
-            "description": "direct, page, document_revision, or canvas",
+            "description": "An explicit live, history, recovery, Canvas, or structural_clipboard File source",
             "required": true,
             "schema": {
               "type": "string"
@@ -252,6 +252,46 @@
           },
           {
             "name": "scene_file_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "draft_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "bundle_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "capability",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "manifest_hash",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "store_epoch",
             "in": "query",
             "required": false,
             "schema": {
@@ -19557,6 +19597,27 @@
             }
           },
           {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LibraryStructuralClipboardToken"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "structural_clipboard"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
             "type": "object",
             "required": [
               "page_id",
@@ -25185,6 +25246,15 @@
               "kind"
             ],
             "properties": {
+              "file_export_candidates": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
               "kind": {
                 "type": "string",
                 "enum": [

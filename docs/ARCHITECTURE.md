@@ -223,7 +223,11 @@ shutdown settlement. A bounded private MIME descriptor routes trusted windows
 to that runtime while standard HTML and text remain the portable fallback. Core
 alone owns the durable snapshot, capability validation, source deletion, cut
 claim, paste identity, history, and exact File-reference authority. The decision is
-recorded in [ADR 0053](adr/0053-structural-clipboard-private-protocol-and-host-lifecycle.md).
+recorded in [ADR 0053](adr/0053-structural-clipboard-private-protocol-and-host-lifecycle.md). The Library File Export Runtime owns bounded,
+authorized materialization through the Node filesystem Adapter. Clipboard
+entries own optional export fibers; Core's immutable export bindings retain
+version and access authority independently of Cut/Paste history. Export and
+native text enhancement never gate source LocalCommit admission.
 
 Composer file indexing and fuzzy matching belong to the native Codex app-server. Main owns only renderer-scoped session controls, generation fences, and notification routing; the renderer owns current-query presentation. Skill inventory changes flow from native notifications to workspace-keyed renderer cache invalidation. See [Composer behavior](product-specs/codex-thread-transcript-behavior.md#composer-shell).
 
@@ -616,8 +620,10 @@ Native capture identities are Adapter-owned resources, not chronological
 identities. Electron Main retains admitted exact requests across renderer loss;
 late outcomes cannot reopen a retired participant. Mutation presentation shares
 one receipt-fenced lifecycle while each semantic owner retains its canonical
-projection and rendered-handoff proof. Independent read authorities never share
-render retirement merely because they present the same View. Workbench content issues borrow
+projection and rendered-handoff proof. Read-only admitted-command observations
+remain attached through exact recovery; presentation consumers never resubmit
+content or acquire another command queue. Independent read authorities never
+share render retirement merely because they present the same View. Workbench content issues borrow
 observations and exact recovery actions from Content Interaction History, retained
 Document sessions, and DocumentRecovery. This observation does not retain content
 participation, own persistence, or introduce another command queue.

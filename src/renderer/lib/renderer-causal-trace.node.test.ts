@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  beginRendererStructuralSpan,
   createRendererCausalTrace,
   createRendererCausalTraceContext,
   recordRendererOwnerTrace,
@@ -316,4 +317,67 @@ describe("renderer causal trace", () => {
     expect(trace.snapshot()).toEqual({ capacity: 4, droppedEventCount: 0, events: [] });
     expect(trace.reduce()).toMatchObject({ historyComplete: true, legal: true, operations: [] });
   });
+});
+
+it("bounds phase observations independently from terminal command proof", () => {
+  let elapsed = 0;
+  const trace = createRendererCausalTrace({ enabled: true, capacity: 3 });
+  const command = context("capture-command", "returned_value");
+  record(
+    trace,
+    command,
+    { kind: "local_intent", reason: "local_intent" },
+    { kind: "submitted", reason: "transport_submit" },
+    { kind: "result", reason: "terminal_result" },
+  );
+  const reduced = trace.reduce();
+  for (let index = 0; index < 4; index += 1) {
+    const finish = beginRendererStructuralSpan(
+      {
+        gestureIdentity: "gesture",
+        operationIdentity: `command-${index}`,
+        consumerIdentity: "source",
+        phase: "clipboard_capture",
+        blockCount: 2,
+        byteCount: 120,
+      },
+      trace,
+      () => elapsed,
+    );
+    elapsed += 5;
+    finish();
+    finish();
+  }
+  expect(trace.reduce()).toEqual(reduced);
+  const snapshot = trace.snapshot();
+  expect(snapshot.events).toHaveLength(3);
+  expect(snapshot.droppedEventCount).toBe(0);
+  expect(snapshot.droppedSpanCount).toBe(1);
+  expect(snapshot.spans).toHaveLength(3);
+  expect(snapshot.spans?.map((span) => span.durationMs)).toEqual([5, 5, 5]);
+  expect(new Set(snapshot.spans?.map((span) => span.gestureIdentityHash)).size).toBe(1);
+  expect(new Set(snapshot.spans?.map((span) => span.operationIdentityHash)).size).toBe(3);
+  expect(JSON.stringify(snapshot)).not.toContain("command-1");
+  trace.clear();
+  expect(trace.snapshot()).toEqual({ capacity: 3, droppedEventCount: 0, events: [] });
+});
+
+it("rejects nonnumeric spans and strips runtime payload properties", () => {
+  const trace = createRendererCausalTrace({ enabled: true });
+  const span = {
+    gestureIdentityHash: "a".repeat(64),
+    operationIdentityHash: null,
+    consumerIdentityHash: null,
+    phase: "source_flush" as const,
+    durationMs: 5,
+    blockCount: 1,
+    fileCount: 0,
+    byteCount: 0,
+  };
+  expect(() => trace.recordSpan({ ...span, durationMs: Number.NaN })).toThrow();
+  expect(() => trace.recordSpan({ ...span, phase: "private-path" as never })).toThrow();
+  expect(() => trace.recordSpan({ ...span, gestureIdentityHash: "raw-identity" })).toThrow();
+  const unsafe = { ...span, clipboardHtml: "private" };
+  trace.recordSpan(unsafe);
+  expect(trace.snapshot().spans).toEqual([span]);
 });

@@ -801,13 +801,20 @@ class BoardProjectStore {
     throw new Error("Database View changed faster than a consistent window snapshot could be read");
   }
 
-  private rebuildFromGroups(): void {
+  private rebuildFromGroups(exactRead = false): void {
     const merged = mergeGroupWindows(
       [...this.groupWindows.values()].map((group) => group.snapshot),
     );
     this.baseBoardAuthority = merged;
     this.baseBoard = merged?.board ?? null;
-    this.baseDatabaseView = merged ? buildDatabaseViewWindowRenderModel(merged) : null;
+    this.baseDatabaseView = merged
+      ? buildDatabaseViewWindowRenderModel(merged, {
+          windowKey: JSON.stringify(
+            [...this.groupWindows].map(([key]) => [key, this.firstForScope(key)]),
+          ),
+          ...(exactRead ? {} : { boundedRead: this.baseDatabaseView?.boundedRead ?? null }),
+        })
+      : null;
   }
 
   private fetchBoardOnce = async (
@@ -905,7 +912,7 @@ class BoardProjectStore {
           },
         ]),
       );
-      this.rebuildFromGroups();
+      this.rebuildFromGroups(true);
       this.basePresentationGeneration = presentationGeneration;
       this.canonicalReadGeneration += 1;
       this.lastFetchedAt = this.dependencies.now();
@@ -1000,7 +1007,7 @@ class BoardProjectStore {
         snapshot,
         inlineError: null,
       });
-      this.rebuildFromGroups();
+      this.rebuildFromGroups(true);
       this.recomputeSnapshot();
     } catch (error) {
       this.setGroupState(scopeKey, { inlineError: toError(error).message });
@@ -1054,7 +1061,7 @@ class BoardProjectStore {
         snapshot: appendWindow(current.snapshot, next),
         inlineError: null,
       });
-      this.rebuildFromGroups();
+      this.rebuildFromGroups(true);
       this.recomputeSnapshot({ error: null });
     } catch (error) {
       if (error instanceof CoreApiError && error.isCursorRejection({ requestHadCursor: true })) {
@@ -1178,7 +1185,9 @@ class BoardProjectStore {
       };
       this.baseBoardAuthority = nextAuthority;
       if (hasQueryRow) {
-        this.baseDatabaseView = buildDatabaseViewWindowRenderModel(nextAuthority);
+        this.baseDatabaseView = buildDatabaseViewWindowRenderModel(nextAuthority, {
+          boundedRead: this.baseDatabaseView?.boundedRead ?? null,
+        });
       }
       this.requireMinimumCursor(cursor);
     }
@@ -1352,7 +1361,9 @@ class BoardProjectStore {
       const nextAuthority = advanceWindow(authority, null);
       this.baseBoard = nextAuthority.board;
       this.baseBoardAuthority = nextAuthority;
-      this.baseDatabaseView = buildDatabaseViewWindowRenderModel(nextAuthority);
+      this.baseDatabaseView = buildDatabaseViewWindowRenderModel(nextAuthority, {
+        boundedRead: this.baseDatabaseView?.boundedRead ?? null,
+      });
     }
     const nextAuthority = this.baseBoardAuthority;
     if (!nextAuthority) {
@@ -1701,7 +1712,9 @@ class BoardProjectStore {
     const nextAuthority = evictFromWindow(currentAuthority);
     this.baseBoardAuthority = nextAuthority;
     this.baseBoard = nextAuthority.board;
-    this.baseDatabaseView = buildDatabaseViewWindowRenderModel(nextAuthority);
+    this.baseDatabaseView = buildDatabaseViewWindowRenderModel(nextAuthority, {
+      boundedRead: this.baseDatabaseView?.boundedRead ?? null,
+    });
     this.groupWindows = new Map(
       [...this.groupWindows].map(([scopeKey, state]) => [
         scopeKey,

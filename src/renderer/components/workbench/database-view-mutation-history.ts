@@ -1,3 +1,4 @@
+import { resolveBlockDocumentStructuralMutationParticipant } from "@/lib/block-document-mutation-registry";
 import { useEffect, useEffectEvent, useLayoutEffect, useMemo, type RefObject } from "react";
 import type { DatabaseViewRenderModel } from "@/lib/database-view-render-model";
 import type { DatabaseViewMutationReceipt } from "@/lib/database-view-row-mutations";
@@ -123,6 +124,24 @@ export const createDatabaseViewMutationHistory = (
     executeBlockDrop: async (command) => {
       assertScope(command.historyScopeKey);
       const handle = owner.execute({ kind: "block_drop", command });
+      if (handle.accepted) {
+        command.onAdmitted?.(handle);
+        if (!command.altKey)
+          resolveBlockDocumentStructuralMutationParticipant(
+            command.session.payload.sourceSurfaceId,
+          )?.presentRemoval?.({
+            operationId: command.operationId,
+            gestureIdentity: command.session.sessionId,
+            rootBlockIds: command.session.payload.rootBlockIds,
+            action: "move",
+            observe: (listener) =>
+              handle.observe((state) => {
+                if (state.status !== "committed") return listener(state);
+                if (state.receipt.kind !== "transfer") return listener({ status: "noop" });
+                listener({ ...state, receipt: state.receipt.result.value });
+              }),
+          });
+      }
       const receipt = receiptOf(await handle.result);
       if (receipt?.kind !== "transfer" || handle.entryId === null) return null;
       return { result: receipt.result, target: { sequence: handle.entryId } };

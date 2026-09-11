@@ -54,6 +54,12 @@ pub(super) fn presentation(
     requested_version: Option<i64>,
 ) -> Result<nodex_core_contracts::library::LibraryFilePresentation, StoreError> {
     let (bound_version, default_name) = match source {
+        LibraryFileReadSource::StructuralClipboard { bundle } => {
+            let target = super::structural_edit::clipboard_file_exports::resolve(
+                connection, context, bundle, file_id,
+            )?;
+            (target.version, target.default_name)
+        }
         LibraryFileReadSource::Direct => {
             file_access::require_direct(connection, context, file_id, false)?;
             let file = files::metadata(connection, &context.library_id.0, file_id)?;

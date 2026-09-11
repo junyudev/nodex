@@ -755,7 +755,7 @@ fn compile_page_file_body_usage(
     library_id: &str,
     document_id: &str,
 ) -> Result<Vec<DeliveryAtomDraft>, StoreError> {
-    let (page_id, revision) = connection
+    let projection = connection
         .query_row(
             "SELECT projection.page_block_id, manifest.body_usage_revision \
              FROM page_read_model projection \
@@ -766,8 +766,25 @@ fn compile_page_file_body_usage(
             [library_id, document_id],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
         )
-        .optional()?
-        .ok_or_else(|| corrupt("Page File body usage event has no Page projection"))?;
+        .optional()?;
+    let Some((page_id, revision)) = projection else {
+        // A structural reversal can retire the Page capability after changing
+        // its Document. Compile against the sealed ownership: that Document no
+        // longer has a Page inventory to invalidate.
+        let has_page_owner: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM block_documents ownership \
+             JOIN blocks block ON block.id = ownership.block_id \
+               AND block.library_id = ownership.library_id \
+             WHERE ownership.library_id = ?1 AND ownership.document_id = ?2 \
+               AND block.type = 'page')",
+            [library_id, document_id],
+            |row| row.get(0),
+        )?;
+        if has_page_owner {
+            return Err(corrupt("Page File body usage event has no Page projection"));
+        }
+        return Ok(Vec::new());
+    };
     compile_library(
         library_id,
         LibraryEvent {

@@ -39,8 +39,8 @@ export class StaleAuthorizedReadError extends Error {
 }
 
 export class AuthorityFreshnessCapacityError extends Error {
-  constructor() {
-    super("Renderer authority freshness index is at capacity");
+  constructor(readonly boundary = "unknown") {
+    super(`Renderer authority freshness index is at capacity (${boundary})`);
     this.name = "AuthorityFreshnessCapacityError";
   }
 }
@@ -145,7 +145,7 @@ export class AuthorityFreshnessIndex {
     );
     if (this.#inFlightCount() >= this.#maxInFlightReads) {
       this.#failClosed(state, state.latestCommitSeq);
-      throw new AuthorityFreshnessCapacityError();
+      throw new AuthorityFreshnessCapacityError("in-flight reads");
     }
     const lease: AuthorityReadLease = {
       leaseId: Symbol("authority-read"),
@@ -232,7 +232,7 @@ export class AuthorityFreshnessIndex {
   ): AuthorityRegistration {
     if (this.#registrationCount() >= this.#maxRegistrations) {
       this.#failClosed(state, state.latestCommitSeq);
-      throw new AuthorityFreshnessCapacityError();
+      throw new AuthorityFreshnessCapacityError("registrations");
     }
     const roots = new Set(stamp.authorization_dependencies.map(authorityResourceKey));
     if (
@@ -241,7 +241,7 @@ export class AuthorityFreshnessIndex {
     ) {
       if (roots.size > this.#maxRootFloors) {
         this.#failClosed(state, state.latestCommitSeq);
-        throw new AuthorityFreshnessCapacityError();
+        throw new AuthorityFreshnessCapacityError("registration roots");
       }
       throw new StaleAuthorizedReadError(this.#requiredCommitSeq(state, roots));
     }
@@ -287,7 +287,7 @@ export class AuthorityFreshnessIndex {
     }
     if (state.rootFloors.size > this.#maxRootFloors) {
       this.#failClosed(state, input.commitSeq);
-      throw new AuthorityFreshnessCapacityError();
+      throw new AuthorityFreshnessCapacityError("visibility roots");
     }
     if (changedRoots.length === 0) return;
     const rootKeys = new Set(changedRoots.map(authorityResourceKey));
@@ -367,7 +367,7 @@ export class AuthorityFreshnessIndex {
       return existing;
     }
     if (this.#addresses.size >= this.#maxAddresses) {
-      throw new AuthorityFreshnessCapacityError();
+      throw new AuthorityFreshnessCapacityError("delivery addresses");
     }
     const state: AddressState = {
       deliveryAddress,

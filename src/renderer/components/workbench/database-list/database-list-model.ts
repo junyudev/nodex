@@ -619,27 +619,32 @@ export interface DatabaseListScrollAnchor {
 }
 
 export const captureDatabaseListScrollAnchor = (
-  rows: readonly DatabaseListProjectionRow[],
+  rows: readonly { readonly kind: string; readonly key: string; readonly height: number }[],
   scrollTop: number,
 ): DatabaseListScrollAnchor | null => {
   if (rows.length === 0) return null;
   const target = Math.max(0, scrollTop);
   let offset = 0;
+  let last: (typeof rows)[number] | undefined;
   for (const row of rows) {
+    if (row.kind === "pending_promotion") {
+      offset += row.height;
+      continue;
+    }
+    last = row;
     if (offset + row.height > target) {
       return {
         rowKey: row.key,
-        intraRowOffset: target - offset,
+        intraRowOffset: Math.max(0, target - offset),
       };
     }
     offset += row.height;
   }
-  const last = rows.at(-1);
   return last ? { rowKey: last.key, intraRowOffset: last.height } : null;
 };
 
 export const restoreDatabaseListScrollTop = (
-  rows: readonly DatabaseListProjectionRow[],
+  rows: readonly { readonly kind: string; readonly key: string; readonly height: number }[],
   anchor: DatabaseListScrollAnchor,
 ): number | null => {
   let offset = 0;
@@ -653,7 +658,11 @@ export const restoreDatabaseListScrollTop = (
 };
 
 export const databaseListScrollTopForOccurrence = (input: {
-  readonly rows: readonly DatabaseListProjectionRow[];
+  readonly rows: readonly {
+    readonly kind: string;
+    readonly key: string;
+    readonly height: number;
+  }[];
   readonly occurrenceKey: string;
   readonly viewportTop: number;
   readonly viewportHeight: number;
@@ -676,7 +685,11 @@ export const databaseListScrollTopForOccurrence = (input: {
 
 /** Mounted overscan and boundary padding are distinct from the scroll viewport. */
 export function databaseListViewportOccurrenceKeys(input: {
-  readonly rows: readonly DatabaseListProjectionRow[];
+  readonly rows: readonly {
+    readonly kind: string;
+    readonly key: string;
+    readonly height: number;
+  }[];
   readonly scrollTop: number;
   readonly viewportHeight: number;
   readonly mountedStartIndex: number;
@@ -714,7 +727,7 @@ const lowerBound = (offsets: readonly number[], value: number): number => {
 };
 
 export const computeDatabaseListVirtualWindow = (
-  rows: readonly DatabaseListProjectionRow[],
+  rows: readonly { readonly kind: string; readonly key: string; readonly height: number }[],
   scrollTop: number,
   viewportHeight: number,
   overscan: number,

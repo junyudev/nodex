@@ -1,3 +1,5 @@
+import * as Deferred from "effect/Deferred";
+import { FileExportRuntime } from "../library-application/FileExportRuntime";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -102,10 +104,16 @@ const rendererClientLayer = (events: RendererClientRuntime["Service"]["events"] 
 const withRuntime = (
   clipboard: ElectronClipboardPort,
   events: RendererClientRuntime["Service"]["events"] = Stream.empty,
+  clipboardText: FileExportRuntime["Service"]["clipboardText"] = (_access, _envelope, text) =>
+    Effect.succeed(text),
 ) =>
   live.pipe(
     Layer.provide(
-      Layer.merge(
+      Layer.mergeAll(
+        Layer.succeed(
+          FileExportRuntime,
+          FileExportRuntime.of({ materialize: () => Effect.die("unused"), clipboardText }),
+        ),
         Layer.succeed(ElectronClipboard, ElectronClipboard.of(clipboard)),
         rendererClientLayer(events),
       ),
@@ -407,4 +415,91 @@ it.effect("bounds an unregistered waiter with the Effect clock", () =>
       reason: "timeout",
     });
   }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "a suspended export does not delay Cut readiness and cannot overwrite a newer claim",
+  () =>
+    Effect.gen(function* () {
+      const clipboard = makeClipboard();
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
+      const context = yield* Layer.build(
+        withRuntime(clipboard.port, Stream.empty, () =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(started, undefined);
+            yield* Deferred.await(release);
+            return "/private/export.png";
+          }),
+        ),
+      );
+      const runtime = Context.get(context, StructuralClipboardRuntime);
+      yield* runtime.begin(
+        {
+          writeClaim: firstClaim,
+          actionHint: "cut",
+          libraryId: "library-1",
+          storeEpoch: "epoch-1",
+        },
+        "client-11",
+      );
+      assert.deepEqual(
+        yield* runtime.publish(
+          {
+            envelope: envelope("cut"),
+            writeClaim: firstClaim,
+            html: "<p>Portable</p>",
+            text: "Portable",
+            fileExportAccess: { kind: "library" },
+          },
+          "client-11",
+        ),
+        { ok: true },
+      );
+      yield* Deferred.await(started);
+      assert.deepEqual(
+        yield* runtime.settle({ writeClaim: firstClaim, outcome: "cut_committed" }, "client-11"),
+        { ok: true },
+      );
+      const resolution = yield* runtime.awaitResolution({ writeClaim: firstClaim });
+      assert.strictEqual(resolution.kind, "ready");
+      clipboard.setClaim(secondClaim);
+      yield* Deferred.succeed(release, undefined);
+      yield* Effect.yieldNow;
+      assert.strictEqual((yield* clipboard.port.readPaste).text, "Portable");
+    }),
+);
+
+it.effect("a completed Copy keeps its export alive and preserves structural HTML", () =>
+  Effect.gen(function* () {
+    const clipboard = makeClipboard();
+    const release = yield* Deferred.make<void>();
+    const context = yield* Layer.build(
+      withRuntime(clipboard.port, Stream.empty, () =>
+        Deferred.await(release).pipe(Effect.as("/private/export.png")),
+      ),
+    );
+    const runtime = Context.get(context, StructuralClipboardRuntime);
+    yield* runtime.begin(
+      { writeClaim: firstClaim, actionHint: "copy", libraryId: "library-1", storeEpoch: "epoch-1" },
+      "client-11",
+    );
+    yield* runtime.publish(
+      {
+        envelope: envelope("copy"),
+        writeClaim: firstClaim,
+        html: "<p>Portable</p>",
+        text: "Portable",
+        fileExportAccess: { kind: "library" },
+      },
+      "client-11",
+    );
+    const original = yield* clipboard.port.readPaste;
+    assert.strictEqual((yield* runtime.awaitResolution({ writeClaim: firstClaim })).kind, "ready");
+    yield* Deferred.succeed(release, undefined);
+    yield* Effect.yieldNow;
+    const enhanced = yield* clipboard.port.readPaste;
+    assert.strictEqual(enhanced.text, "/private/export.png");
+    assert.strictEqual(enhanced.html, original.html);
+  }),
 );

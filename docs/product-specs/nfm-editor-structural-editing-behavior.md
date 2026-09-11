@@ -57,6 +57,23 @@ Electron Main owns one application-scoped, ephemeral Structural Clipboard runtim
 
 Copy claims the native clipboard synchronously with the portable presentation and private preparing descriptor while Core captures the snapshot. An immediate paste in the same or another window waits for that exact claim. Session registration does not synchronously read the native slot because the browser may still be committing its clipboard event. The later final publication compares the exact claim carried by standard HTML before replacing the native presentation, so a newer copy inside or outside Nodex always wins. If the host runtime is unavailable or has restarted, a valid ready capability carried by the standard rich presentation may still be revalidated by Core; otherwise paste uses the portable fallback. Missing, foreign, malformed, expired, superseded, or unauthorized private data cannot create an owning Block or a live foreign-Profile Library File reference.
 
+History admission immediately registers the native write claim, even while an earlier
+content action is pending. Capture and deletion retain separately frozen operation
+identities. Optional local-path export is a Main-owned child task using Core's
+captured File versions and source access; publication, Cut commit, and internal
+Paste do not wait for its file I/O. Enhancement may replace only the still-current
+claim's plain text, leaving its structural capability and rich content intact.
+
+An admitted Cut marks its selected roots as Cutting after its synchronous clipboard
+claim, while capture, publication, and deletion are pending. An admitted move into a Database View marks its source roots as
+Moving. These operation-scoped editor decorations preserve content, layout and
+editing; they never enter Yjs or Undo. Copy has no pending-removal state. A source
+mark retires only after its receipt's Document generation/head and the actual
+editor DOM show the roots have left that Document. Unknown results retain their
+observation through exact recovery. Temporary view detachment preserves the
+retained editor's presentation; authority loss or editor disposal revokes it.
+Source and target rendering settle independently of each other and of Cut-ready.
+
 The structural participant has the same lifetime as its retained BlockNote editor and joins the window's shared content command queue and history. Page Stage may detach and remount a tab's React view while retaining that editor; each active view rebinds its current Document participant to the retained structural controller before input is accepted. Rebinding cannot change Library, authorization scope, Document, generation, or Store epoch; those changes require a new owner. External commands use the same admission, preparation lifetime, and focus-resume rules, never a late result-adoption path. Consecutive copy or cut commands therefore remain ordered while a prior commit updates the surface or the user switches tabs. Every pending capture reaches a terminal result; an unavailable or stalled session leaves the source unchanged and never silently degrades an owner to title-only clipboard content.
 
 Copy never changes the source. Cut follows the fixed order `capture → native clipboard claim verification → source delete and durable cut claim → source LocalCommit admission`. Main exposes a Cut as structurally ready only after the final step. A failure before source deletion leaves the complete source unchanged; if the claimed portable presentation is still valid, Paste inserts that safe copy instead. The first valid paste of an available Core cut claim moves the original identities, whether it inserts at a caret or replaces a selected forest. Later pastes clone the immutable snapshot with fresh Block, Document, Canvas, Database, Data Source, View, and row identities.

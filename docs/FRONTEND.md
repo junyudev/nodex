@@ -150,6 +150,12 @@ action and product semantics.
   a render acknowledgement: keep the overlay until the subscribed React owner
   has committed props that contain the result, and fence settlement by operation
   identity so an older completion cannot clear newer intent.
+- When history owns submission, presentation observes the admitted command handle
+  through exact-attempt recovery. An initial unknown result is not terminal.
+  Source and target projections maintain independent receipt/render fences via
+  observed journal entries; observing never submits another command or acquires
+  a transport lane. Detachment revokes presentation without claiming the durable
+  action failed.
 - Update a narrow Query cache when a mutation returns its complete next value;
   otherwise invalidate the exact affected projection. Preserve unaffected
   sibling/detail caches and let each projection owner decide canonical repair.

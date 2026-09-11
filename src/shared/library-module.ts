@@ -738,6 +738,7 @@ export type LibraryStructuralEditCommand =
   | {
       readonly kind: "capture_clipboard";
       readonly selection: LibraryStructuralSelection;
+      readonly fileExportCandidates?: readonly string[];
     }
   | {
       readonly kind: "delete_selection";

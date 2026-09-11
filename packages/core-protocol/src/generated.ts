@@ -4796,7 +4796,10 @@ export interface components {
         readonly LibraryFileReadSource: {
             /** @enum {string} */
             readonly kind: "direct";
-        } | {
+        } | (components["schemas"]["LibraryStructuralClipboardToken"] & {
+            /** @enum {string} */
+            readonly kind: "structural_clipboard";
+        }) | {
             /** @enum {string} */
             readonly kind: "page";
             readonly page_id: string;
@@ -6131,6 +6134,7 @@ export interface components {
             readonly kind: "restore_editor_history";
             readonly patch: components["schemas"]["EditorHistoryPatch"];
         } | {
+            readonly file_export_candidates?: readonly string[] | null;
             /** @enum {string} */
             readonly kind: "capture_clipboard";
             readonly selection: components["schemas"]["LibraryStructuralSelection"];
@@ -11277,13 +11281,18 @@ export interface operations {
     readonly read_file_blob: {
         readonly parameters: {
             readonly query: {
+                readonly bundle_id?: string;
                 readonly canvas_id?: string;
+                readonly capability?: string;
                 readonly document_id?: string;
-                /** @description direct, page, document_revision, or canvas */
+                readonly draft_id?: string;
+                /** @description An explicit live, history, recovery, Canvas, or structural_clipboard File source */
                 readonly kind: string;
+                readonly manifest_hash?: string;
                 readonly page_id?: string;
                 readonly revision_id?: string;
                 readonly scene_file_id?: string;
+                readonly store_epoch?: string;
                 readonly version?: number;
             };
             readonly header?: {

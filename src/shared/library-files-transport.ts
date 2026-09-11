@@ -39,6 +39,15 @@ const collision = z.enum(["reject", "suffix"]);
 
 export const fileReadSourceSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("direct") }).strict(),
+  z
+    .object({
+      kind: z.literal("structural_clipboard"),
+      bundle_id: identity,
+      capability: hash,
+      manifest_hash: hash,
+      store_epoch: identity,
+    })
+    .strict(),
   z.object({ kind: z.literal("page"), page_id: identity }).strict(),
   z
     .object({ kind: z.literal("document_revision"), document_id: identity, revision_id: identity })

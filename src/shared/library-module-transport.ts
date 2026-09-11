@@ -1376,7 +1376,22 @@ export const bindLibraryModuleApply = (value: unknown): LibraryModuleApplyReques
       };
     }
     if (command.kind === "capture_clipboard") {
-      exactKeys(command, "libraryModuleApply.operation.command", ["kind", "selection"]);
+      exactKeys(
+        command,
+        "libraryModuleApply.operation.command",
+        ["kind", "selection"],
+        ["fileExportCandidates"],
+      );
+      const candidates = command.fileExportCandidates;
+      if (candidates !== undefined && (!Array.isArray(candidates) || candidates.length > 128)) {
+        throw new TypeError("Clipboard File export candidates must be bounded");
+      }
+      const fileExportCandidates =
+        candidates === undefined
+          ? undefined
+          : candidates.map((id, index) =>
+              string(id, `fileExportCandidates[${index}]`, MAX_ID_LENGTH),
+            );
       return {
         operationId,
         storeEpoch,
@@ -1384,6 +1399,7 @@ export const bindLibraryModuleApply = (value: unknown): LibraryModuleApplyReques
           kind: operation.kind,
           command: {
             kind: command.kind,
+            ...(fileExportCandidates ? { fileExportCandidates } : {}),
             selection: parseStructuralSelection(
               command.selection,
               "libraryModuleApply.operation.command.selection",

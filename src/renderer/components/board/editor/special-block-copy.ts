@@ -683,7 +683,7 @@ function selectionIsClosedSlice(editor: SelectionEditorLike): boolean {
 
 export function createCopiedSelectionPayloadFromSelection(
   editor: SelectionEditorLike,
-  fallbackPayload?: StructuredSelectionPayloadFallback,
+  fallbackPayload?: () => StructuredSelectionPayloadFallback,
 ): CopiedSelectionPayload {
   try {
     const normalizedBlocks = resolveNormalizedSelectionBlocks(editor);
@@ -708,7 +708,7 @@ export function createCopiedSelectionPayloadFromSelection(
   }
 
   if (fallbackPayload) {
-    return createStructuredPlainTextPayload(fallbackPayload, editor);
+    return createStructuredPlainTextPayload(fallbackPayload(), editor);
   }
 
   throw new Error("Failed to create copied selection payload");

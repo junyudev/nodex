@@ -45,6 +45,10 @@ import {
   live as worktreeEnvironmentRuntimeLive,
 } from "../host-runtime/WorktreeEnvironmentRuntime";
 import { ApplicationInitializationRuntime } from "../host-runtime/ApplicationInitializationRuntime";
+import {
+  FileExportRuntime,
+  live as fileExportRuntimeLive,
+} from "../library-application/FileExportRuntime";
 import { LibraryModule, live as libraryModuleLive } from "../library-application/LibraryModule";
 import {
   NodexAgentApplication,
@@ -98,6 +102,7 @@ const hostResolver = threadHostResolverLive.pipe(
 const applicationData = Layer.merge(libraryModuleLive, databaseModuleLive).pipe(
   Layer.provideMerge(core),
 );
+const fileExports = fileExportRuntimeLive.pipe(Layer.provideMerge(applicationData));
 const automationRouting = automationRoutingIndexLive.pipe(Layer.provideMerge(core));
 const automation = automationApplicationLive.pipe(Layer.provideMerge(automationRouting));
 const storeAdministration = storeAdministrationLive.pipe(Layer.provideMerge(core));
@@ -133,6 +138,7 @@ export const live: Layer.Layer<
   | AutomationRoutingIndex
   | AutomationApplication
   | LibraryModule
+  | FileExportRuntime
   | DatabaseModule
   | StoreAdministration
   | WorktreeEnvironmentRuntime
@@ -145,6 +151,7 @@ export const live: Layer.Layer<
   CoreRuntimeError,
   MainConfig | MainShutdown | ScopedCallbackRuntime | ApplicationInitializationRuntime
 > = Layer.mergeAll(
+  fileExports,
   workspace,
   hostResolver,
   projectRuntimeLifecycleLive,

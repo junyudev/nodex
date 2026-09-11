@@ -33,6 +33,17 @@ export interface ReceiptOptimisticCommand<Model, Result> {
   readonly trace?: (event: RendererCausalTraceEventInput) => void;
 }
 
+export type ReceiptObservedCommand<Model, Result> = Omit<
+  ReceiptOptimisticCommand<Model, Result>,
+  "runRemote" | "remoteLane" | "refresh" | "classifyFailure"
+>;
+
+export interface ReceiptObservedOperation<Result> {
+  readonly acknowledge: (result: Result) => void;
+  readonly unknown: () => void;
+  readonly reject: () => void;
+}
+
 interface Entry<Model> {
   readonly opId: number;
   readonly operationIdentity: string | undefined;
@@ -107,9 +118,7 @@ export class ReceiptFencedOptimisticJournal<Model> {
     this.dependencies.onChange();
   }
 
-  run<Result>(
-    command: ReceiptOptimisticCommand<Model, Result>,
-  ): Promise<ReceiptOptimisticMutationResult<Result>> {
+  private admit<Result>(command: ReceiptObservedCommand<Model, Result>): Entry<Model> {
     const retained =
       command.operationIdentity === undefined
         ? undefined
@@ -147,6 +156,50 @@ export class ReceiptFencedOptimisticJournal<Model> {
       entry.trace?.({ kind: "local_intent", reason: "local_intent" });
     }
     this.dependencies.onChange();
+    return entry;
+  }
+
+  private acknowledge(entry: Entry<Model>, result: unknown): void {
+    if (entry.phase === "acknowledged") return;
+    const proof = entry.receiptProof(result);
+    entry.phase = "acknowledged";
+    entry.cursor = proof.cursor;
+    entry.materialized = proof.materialized;
+    // A superseded preview still owns its transport lane's canonical repair.
+    if (!this.entries.includes(entry)) return;
+    entry.trace?.({ kind: "acknowledged", reason: "committed" });
+    this.dependencies.onChange();
+  }
+
+  private fail(entry: Entry<Model>, outcome: "unknown" | "rejected"): void {
+    if (!this.entries.includes(entry) || entry.phase === "acknowledged") return;
+    if (outcome === "unknown") entry.phase = "unknown";
+    else {
+      entry.trace?.({ kind: "failed", reason: "domain_failure" });
+      this.entries = this.entries.filter((candidate) => candidate !== entry);
+      this.candidate = null;
+    }
+    this.dependencies.onChange();
+  }
+
+  /** Observe a command owned elsewhere without submitting or acquiring a remote lane. */
+  beginObserved<Result>(
+    command: ReceiptObservedCommand<Model, Result>,
+  ): ReceiptObservedOperation<Result> {
+    const entry = this.admit(command);
+    return {
+      acknowledge: (result) => {
+        if (this.entries.includes(entry)) this.acknowledge(entry, result);
+      },
+      unknown: () => this.fail(entry, "unknown"),
+      reject: () => this.fail(entry, "rejected"),
+    };
+  }
+
+  run<Result>(
+    command: ReceiptOptimisticCommand<Model, Result>,
+  ): Promise<ReceiptOptimisticMutationResult<Result>> {
+    const entry = this.admit(command);
     const generation = this.generation;
     const previous = command.remoteLane ? this.lanes.get(command.remoteLane) : undefined;
     let finishLane: (ready: boolean) => void = () => {};
@@ -170,12 +223,7 @@ export class ReceiptFencedOptimisticJournal<Model> {
           submitted = true;
           entry.trace?.({ kind: "submitted", reason: "transport_submit" });
           const result = await command.runRemote();
-          entry.phase = "acknowledged";
-          const proof = entry.receiptProof(result);
-          entry.cursor = proof.cursor;
-          entry.materialized = proof.materialized;
-          if (!entry.superseded) entry.trace?.({ kind: "acknowledged", reason: "committed" });
-          this.dependencies.onChange();
+          this.acknowledge(entry, result);
           resolve({ ok: true, result, superseded: entry.superseded, opId: entry.opId });
           // Repair failure belongs to the projection owner, never to the
           // already-acknowledged command or its durable interaction history.
@@ -193,12 +241,7 @@ export class ReceiptFencedOptimisticJournal<Model> {
         } catch (cause) {
           const error = cause instanceof Error ? cause : new Error(String(cause));
           const outcome = submitted ? (command.classifyFailure?.(error) ?? "rejected") : "rejected";
-          if (outcome === "unknown" && !entry.superseded) {
-            entry.phase = "unknown";
-          } else {
-            if (!entry.superseded) entry.trace?.({ kind: "failed", reason: "domain_failure" });
-            this.entries = this.entries.filter((candidate) => candidate !== entry);
-          }
+          this.fail(entry, outcome);
           finishLane(false);
           if (
             outcome === "rejected" &&

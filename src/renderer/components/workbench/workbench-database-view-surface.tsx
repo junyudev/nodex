@@ -285,8 +285,15 @@ export function WorkbenchDatabaseViewSurface({
     [windowsByScope],
   );
   const model = useMemo(
-    () => (mergedWindow ? buildDatabaseViewWindowRenderModel(mergedWindow) : undefined),
-    [mergedWindow],
+    () =>
+      mergedWindow
+        ? buildDatabaseViewWindowRenderModel(mergedWindow, {
+            windowKey: JSON.stringify(
+              [...windowsByScope].map(([key, windows]) => [key, windows.length]),
+            ),
+          })
+        : undefined,
+    [mergedWindow, windowsByScope],
   );
   useWorkbenchDatabaseViewPresentation(
     workbenchPresentation,
@@ -548,7 +555,12 @@ export function WorkbenchDatabaseViewSurface({
             initialSelectedPageIds={selectedPageIds}
             onSelectedPageIdsChange={setSelectedPageIds}
             mutationHistory={mutationHistory}
-            onCommitted={async () => {
+            onCommitted={async (cursor) => {
+              if (cursor && cursor.storeEpoch === model.storeEpoch)
+                requiredMinimumCommitSeqRef.current = Math.max(
+                  requiredMinimumCommitSeqRef.current,
+                  cursor.commitSeq,
+                );
               await query.refetch({ throwOnError: true });
             }}
           />

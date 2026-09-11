@@ -121,6 +121,7 @@ export function fileReadRevocationInvalidations(
       ? [{ ...revokeAll, fileIds: [revoked.resource_id] }]
       : [];
   }
+  if (source.kind === "structural_clipboard") return [revokeAll];
   if (revoked.resource_kind === "file") return [];
   if (source.kind === "page") {
     return (revoked.resource_kind === "page" && revoked.resource_id === source.page_id) ||

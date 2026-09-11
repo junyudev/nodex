@@ -17,7 +17,19 @@ pub(super) fn issue(
     read: &LibraryRead,
     value: &LibraryReadValue,
 ) -> Result<Option<AuthorizedReadStamp>, StoreError> {
-    let subject = if context.project_id.is_none()
+    let subject = if let LibraryRead::FilePresentation {
+        file_id,
+        source: nodex_core_contracts::library::LibraryFileReadSource::StructuralClipboard { bundle },
+        ..
+    } = read
+    {
+        let target = super::structural_edit::clipboard_file_exports::resolve(
+            connection, context, bundle, file_id,
+        )?;
+        Some(ResourceKey::Document {
+            document_id: target.source_document_id,
+        })
+    } else if context.project_id.is_none()
         && matches!(
             read,
             LibraryRead::FilePresentation {
@@ -25,7 +37,8 @@ pub(super) fn issue(
                     | nodex_core_contracts::library::LibraryFileReadSource::CanvasRecovery { .. },
                 ..
             }
-        ) {
+        )
+    {
         Some(library_resource(&context.library_id.0))
     } else {
         read_subject(&context.library_id.0, read, value)
@@ -62,6 +75,9 @@ fn read_subject(
         LibraryRead::FilePresentation {
             file_id, source, ..
         } => Some(match source {
+            nodex_core_contracts::library::LibraryFileReadSource::StructuralClipboard {
+                ..
+            } => return None,
             nodex_core_contracts::library::LibraryFileReadSource::Direct => ResourceKey::File {
                 file_id: file_id.clone(),
             },

@@ -2,6 +2,9 @@ import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as FiberMap from "effect/FiberMap";
+import { FileExportRuntime } from "../library-application/FileExportRuntime";
+import { parseContentAccessContext } from "../../shared/content-access-context";
 import * as FiberSet from "effect/FiberSet";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
@@ -71,12 +74,14 @@ const rejected = (
 export const live: Layer.Layer<
   StructuralClipboardRuntime,
   never,
-  ElectronClipboard | RendererClientRuntime
+  ElectronClipboard | RendererClientRuntime | FileExportRuntime
 > = Layer.effect(
   StructuralClipboardRuntime,
   Effect.gen(function* () {
     const clipboard = yield* ElectronClipboard;
     const rendererClients = yield* RendererClientRuntime;
+    const fileExports = yield* FileExportRuntime;
+    const exports = yield* FiberMap.make<string, void, never>();
     const callbacks = yield* FiberSet.makeRuntime<never, void, never>();
     const entries = new Map<string, StructuralClipboardEntry>();
     let closed = false;
@@ -90,7 +95,10 @@ export const live: Layer.Layer<
         const expired =
           now - (entry.completedAt ?? now) >= STRUCTURAL_CLIPBOARD_COMPLETION_RETENTION_MS;
         if (completed.length <= STRUCTURAL_CLIPBOARD_RECENT_COMPLETION_LIMIT && !expired) break;
-        if (entries.get(entry.writeClaim) === entry) entries.delete(entry.writeClaim);
+        if (entries.get(entry.writeClaim) === entry) {
+          entries.delete(entry.writeClaim);
+          callbacks(FiberMap.remove(exports, entry.writeClaim));
+        }
         completed.shift();
       }
     };
@@ -109,7 +117,10 @@ export const live: Layer.Layer<
         Effect.sleep(STRUCTURAL_CLIPBOARD_COMPLETION_RETENTION_MS).pipe(
           Effect.andThen(
             Effect.sync(() => {
-              if (entries.get(entry.writeClaim) === entry) entries.delete(entry.writeClaim);
+              if (entries.get(entry.writeClaim) === entry) {
+                entries.delete(entry.writeClaim);
+                callbacks(FiberMap.remove(exports, entry.writeClaim));
+              }
             }),
           ),
         ),
@@ -203,6 +214,10 @@ export const live: Layer.Layer<
       }
       if (entry.actionHint !== null) return ok();
 
+      for (const previous of entries.values()) {
+        if (previous.writeClaim !== input.writeClaim)
+          callbacks(FiberMap.remove(exports, previous.writeClaim));
+      }
       entry.actionHint = input.actionHint;
       entry.libraryId = input.libraryId ?? null;
       entry.storeEpoch = input.storeEpoch;
@@ -260,6 +275,18 @@ export const live: Layer.Layer<
       }
 
       entry.envelope = input.envelope;
+      if (input.fileExportAccess) {
+        const enhancement = Effect.gen(function* () {
+          const access = yield* Effect.try(() => parseContentAccessContext(input.fileExportAccess));
+          const text = yield* fileExports.clipboardText(access, input.envelope, input.text);
+          if (closed || entries.get(entry.writeClaim) !== entry || text === input.text) return;
+          yield* clipboard.replaceClaimedPresentation({ writeClaim: input.writeClaim, text });
+        }).pipe(
+          Effect.catch(() => Effect.void),
+          Effect.interruptible,
+        );
+        yield* FiberMap.run(exports, input.writeClaim, enhancement);
+      }
       if (entry.actionHint === "cut") {
         entry.state = "awaiting_source_commit";
         return { ok: true } as const;
@@ -348,10 +375,13 @@ export const live: Layer.Layer<
       Stream.runForEach((event) => {
         if (event.kind !== "disposed") return Effect.void;
         return Effect.forEach(
-          [...entries.values()].filter(
-            (entry) => entry.completedAt === null && entry.sourceClientId === event.clientId,
-          ),
-          (entry) => complete(entry, { kind: "portable_fallback", reason: "source_closed" }),
+          [...entries.values()].filter((entry) => entry.sourceClientId === event.clientId),
+          (entry) =>
+            FiberMap.remove(exports, entry.writeClaim).pipe(
+              Effect.andThen(
+                complete(entry, { kind: "portable_fallback", reason: "source_closed" }),
+              ),
+            ),
           { discard: true },
         );
       }),

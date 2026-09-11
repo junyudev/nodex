@@ -1,3 +1,6 @@
+import type { DatabasePromotionPresentationStore } from "@/lib/database-promotion-presentation";
+import { createUuidV7 } from "../../../shared/uuid-v7";
+import type { DatabaseViewBlockDropCommand } from "./database-view-history-adapter";
 import { toast } from "@/components/ui/toast";
 import type { BlockTransferDataSourcePlacement } from "../../../shared/block-transfer";
 import {
@@ -16,6 +19,11 @@ export interface DatabaseViewBlockDropCommitCursor {
 }
 
 export interface CommitDatabaseViewBlockDropInput {
+  readonly presentation?: Pick<DatabasePromotionPresentationStore, "accept">;
+  readonly onAdmitted?: (
+    operationId: string,
+    handle: Parameters<NonNullable<DatabaseViewBlockDropCommand["onAdmitted"]>>[0],
+  ) => void;
   readonly viewName?: string;
   readonly historyScopeKey: string;
   readonly session: LocalBlockDragSession;
@@ -52,9 +60,28 @@ export const commitDatabaseViewBlockDrop = async (
     toast.info("Database blocks can only move through a typed Database action.");
     return false;
   }
+  const operationId = createUuidV7();
   let committed;
   try {
     committed = await input.mutationHistory.executeBlockDrop({
+      operationId,
+      onAdmitted: (handle) => {
+        input.onAdmitted?.(operationId, handle);
+        input.presentation?.accept({
+          operationId,
+          gestureIdentity: input.session.sessionId,
+          rootBlockIds: payload.rootBlockIds,
+          placement: input.placement,
+          mode: input.altKey ? "copy" : "move",
+          refresh: (cursor) => input.onCommitted?.(cursor),
+          observe: (listener) =>
+            handle.observe((state) => {
+              if (state.status !== "committed") return listener(state);
+              if (state.receipt.kind !== "transfer") return listener({ status: "noop" });
+              listener({ ...state, receipt: state.receipt.result.value });
+            }),
+        });
+      },
       viewName: input.viewName,
       historyScopeKey: input.historyScopeKey,
       session: input.session,
@@ -102,6 +129,6 @@ export const commitDatabaseViewBlockDrop = async (
           storeEpoch: result.localCommit.observed.store_epoch,
           commitSeq: result.localCommit.observed.commit_head,
         };
-  await input.onCommitted?.(cursor);
+  if (!input.presentation) await input.onCommitted?.(cursor);
   return true;
 };

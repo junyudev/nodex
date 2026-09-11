@@ -14,6 +14,88 @@ const cursor = { storeEpoch: "epoch-1", commitSeq: 2 };
 const createJournal = () => new ReceiptFencedOptimisticJournal<number>({ onChange: () => {} });
 
 describe("receipt-fenced optimistic journal", () => {
+  test.each([true, false])(
+    "observed receipts require canonical proof and the current rendered token (ACK first: %s)",
+    (ackFirst) => {
+      const journal = createJournal();
+      const observed = journal.beginObserved({
+        operationIdentity: "move",
+        conflictKeys: ["move"],
+        apply: () => 2,
+        getCommitCursor: () => cursor,
+        isCommitMaterialized: (model) => model === 2,
+      });
+      observed.unknown();
+      if (ackFirst) observed.acknowledge(null);
+      expect(journal.project(ackFirst ? 0 : 2, cursor).renderToken).toBeNull();
+      if (!ackFirst) observed.acknowledge(null);
+      const stale = journal.project(2, cursor).renderToken!;
+      expect(journal.project(0, cursor).renderToken).toBeNull();
+      journal.markRendered(stale);
+      expect(journal.hasWork()).toBe(true);
+      const current = journal.project(2, cursor).renderToken!;
+      journal.markRendered(current);
+      expect(journal.hasWork()).toBe(false);
+    },
+  );
+
+  test("superseding a preview preserves the sent command's receipt floor for its lane", async () => {
+    const journal = createJournal();
+    const acknowledgement = deferred<typeof cursor>();
+    const repair = deferred<boolean>();
+    let repairedCursor: typeof cursor | null | undefined;
+    let nextSubmitted = false;
+    const first = journal.run({
+      conflictKeys: ["same"],
+      apply: () => 1,
+      runRemote: () => acknowledgement.promise,
+      getCommitCursor: (result) => result,
+      remoteLane: "placement",
+      refresh: (floor) => {
+        repairedCursor = floor;
+        return repair.promise;
+      },
+    });
+    const second = journal.run({
+      conflictKeys: ["same"],
+      apply: () => 2,
+      runRemote: async () => {
+        nextSubmitted = true;
+        return cursor;
+      },
+      remoteLane: "placement",
+    });
+    acknowledgement.resolve(cursor);
+    expect((await first).superseded).toBe(true);
+    expect(repairedCursor).toEqual(cursor);
+    expect(nextSubmitted).toBe(false);
+    repair.resolve(true);
+    expect((await second).ok).toBe(true);
+  });
+
+  test("independent observations settle separately and revoked handles cannot return", () => {
+    const source = createJournal();
+    const target = createJournal();
+    const command = {
+      operationIdentity: "move",
+      conflictKeys: ["move"],
+      apply: () => 2,
+      getCommitCursor: () => cursor,
+      isCommitMaterialized: (model: number) => model === 2,
+    };
+    const first = source.beginObserved(command);
+    const second = target.beginObserved(command);
+    first.acknowledge(null);
+    second.acknowledge(null);
+    source.markRendered(source.project(2, cursor).renderToken!);
+    expect(source.hasWork()).toBe(false);
+    expect(target.hasWork()).toBe(true);
+    target.revoke("authority_revoked");
+    second.unknown();
+    second.acknowledge(null);
+    expect(target.hasWork()).toBe(false);
+  });
+
   test("receipt-normalized materialization hands off canonical content without replaying the preview", async () => {
     const journal = createJournal();
     await journal.run({
