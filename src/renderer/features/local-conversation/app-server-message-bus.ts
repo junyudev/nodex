@@ -1,5 +1,6 @@
 import type {
   CodexConnectionState,
+  CodexHostMessage,
   CodexMcpNotificationMessage,
   CodexSharedObject,
   CodexThreadOwnerNotification,
@@ -38,6 +39,11 @@ export interface CodexThreadStreamFollowersChangedEvent {
   followerClientIds: string[];
   membershipEpoch: number;
 }
+
+export type CodexThreadStreamSnapshotRequestedEvent = Omit<
+  Extract<CodexHostMessage, { type: "threadStreamSnapshotRequested" }>,
+  "type"
+>;
 
 export interface CodexThreadStreamTransportResetEvent {
   hostId: string;
@@ -102,6 +108,7 @@ interface CodexAppServerMessageMap {
   "thread-stream-state-changed": CodexThreadStreamStateChangedEvent;
   "thread-stream-following-status-requested": CodexThreadStreamFollowingStatusRequestedEvent;
   "thread-stream-followers-changed": CodexThreadStreamFollowersChangedEvent;
+  "thread-stream-snapshot-requested": CodexThreadStreamSnapshotRequestedEvent;
   "thread-stream-transport-reset": CodexThreadStreamTransportResetEvent;
   "client-status-changed": CodexClientStatusChangedEvent;
   "thread-title-updated": CodexThreadTitleUpdatedEvent;
@@ -122,6 +129,7 @@ const listenersByType: {
   "thread-stream-state-changed": new Set(),
   "thread-stream-following-status-requested": new Set(),
   "thread-stream-followers-changed": new Set(),
+  "thread-stream-snapshot-requested": new Set(),
   "thread-stream-transport-reset": new Set(),
   "client-status-changed": new Set(),
   "thread-title-updated": new Set(),

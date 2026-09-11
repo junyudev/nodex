@@ -37,7 +37,6 @@ import {
   toCodexFrameTextDelta,
 } from "../../shared/codex-conversation-state/codex-frame-text-delta";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
-import { sanitizeCodexLiveLifecycleNotification } from "../../shared/codex-conversation-state/codex-live-turn-residency";
 import { CodexTerminalInteractionAccumulator } from "../../shared/codex-terminal-interaction";
 import { toCodexThreadStartedMetadataNotification } from "../../shared/codex-thread-start-metadata";
 import {
@@ -378,9 +377,7 @@ export const make: Effect.Effect<
     deferRootLifecycleNotification: boolean,
   ) {
     // Direct callers must retain the same no-history invariant as the ingress lane.
-    const notification = sanitizeCodexLiveLifecycleNotification(
-      toCodexThreadStartedMetadataNotification(input.notification),
-    );
+    const notification = toCodexThreadStartedMetadataNotification(input.notification);
     if (yield* globalProjection.observe(notification)) return;
     const threadId = codexProtocolNotificationThreadId(notification);
     if (!threadId) return;

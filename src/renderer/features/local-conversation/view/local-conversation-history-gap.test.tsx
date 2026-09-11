@@ -224,7 +224,7 @@ describe("local conversation history gap controller", () => {
     expect(requests).toEqual([progress, progress]);
   });
 
-  test("releases a failed progress key for retry without retrying the consumed revision", async () => {
+  test("stops a failed boundary across viewport changes and resumes only for a new cursor", async () => {
     const coordinator = createLocalConversationHistoryGapRequestCoordinator();
     const progress = boundary("older", "progress:retry");
     const layout = gapLayout(1_000, gapRow({ newerBoundary: progress }));
@@ -251,6 +251,17 @@ describe("local conversation history gap controller", () => {
     );
     await Promise.resolve();
 
+    expect(requests).toBe(1);
+    coordinator.observeViewport(
+      {
+        viewportRevision: 6,
+        viewportStartPx: 900,
+        viewportEndPx: 1_200,
+        gaps: [gapLayout(1_000, gapRow({ newerBoundary: boundary("older", "progress:new") }))],
+      },
+      request,
+    );
+    await Promise.resolve();
     expect(requests).toBe(2);
   });
 

@@ -274,12 +274,9 @@ it.effect("drains frame text before terminal turn consequences", () =>
     assert.strictEqual(forwardedItem.params.item.id, "giant-item");
     assert.strictEqual(forwardedItem.params.item.type, "agentMessage");
     if (forwardedItem.params.item.type !== "agentMessage") {
-      throw new Error("Expected overflowing lifecycle item to become an agent message");
+      throw new Error("Expected the original agent message to be preserved");
     }
-    assert.strictEqual(
-      forwardedItem.params.item.text,
-      "Live output exceeded the resident Turn limit. Additional output was omitted from memory; the persisted transcript remains authoritative.",
-    );
+    assert.strictEqual(forwardedItem.params.item.text, "x".repeat(2 * 1_024 * 1_024 + 1));
 
     trace.length = 0;
     deferLifecycle = true;

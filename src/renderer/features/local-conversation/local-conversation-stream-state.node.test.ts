@@ -1,12 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
 import { LocalConversationStreamState } from "./local-conversation-stream-state";
 
-function checkpoint(revision: number, ownerEpoch = 1, marker = "a") {
+function checkpoint(revision: number, ownerEpoch = 1) {
   return {
     protocolVersion: 1 as const,
     ownerEpoch,
     revision,
-    canonicalHash: marker.repeat(64),
   };
 }
 
@@ -152,10 +151,10 @@ describe("LocalConversationStreamState", () => {
   test("adopts the authoritative follower baseline returned by resume", () => {
     const streamState = new LocalConversationStreamState();
 
-    streamState.markOwner("thread-1", checkpoint(7, 1, "a"));
+    streamState.markOwner("thread-1", checkpoint(7, 1));
     streamState.adoptFollowerBaseline({
       conversationId: "thread-1",
-      checkpoint: checkpoint(11, 2, "b"),
+      checkpoint: checkpoint(11, 2),
       sourceClientId: "owner-b",
     });
 
@@ -163,7 +162,7 @@ describe("LocalConversationStreamState", () => {
       role: "follower",
       ownerClientId: "owner-b",
     });
-    expect(streamState.getCheckpoint("thread-1")).toEqual(checkpoint(11, 2, "b"));
+    expect(streamState.getCheckpoint("thread-1")).toEqual(checkpoint(11, 2));
   });
 
   test("resolves revision waiters when matching owner reaches the target revision", async () => {

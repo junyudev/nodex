@@ -626,7 +626,7 @@ it.effect("accepts a metadata-only import shell and hydrates only a bounded tail
             threadId: "thread-imported",
             turnId: "turn-tail",
             cursor: null,
-            limit: 1,
+            limit: 100,
             sortDirection: "desc",
           },
         },
@@ -1567,25 +1567,6 @@ it.effect(
               {
                 ...turn("too-many-items"),
                 items: Array.from({ length: 501 }, (_, index) => turn(`item-${index}`).items[0]!),
-              },
-            ],
-          },
-          {
-            ...page,
-            data: [
-              {
-                ...turn("oversized-turn"),
-                items: [
-                  {
-                    questions: null,
-                    type: "agentMessage",
-                    id: "oversized-item",
-                    text: "x".repeat(3 * 1024 * 1024),
-                    phase: null,
-                    memoryCitation: null,
-                    delivery: null,
-                  },
-                ],
               },
             ],
           },

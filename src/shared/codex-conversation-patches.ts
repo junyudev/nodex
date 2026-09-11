@@ -1,4 +1,12 @@
-import { applyPatches, enablePatches, produceWithPatches, type Draft, type Patch } from "immer";
+import {
+  applyPatches,
+  enablePatches,
+  isDraft,
+  original,
+  produceWithPatches,
+  type Draft,
+  type Patch,
+} from "immer";
 import type {
   CodexConversationPatchPathSegment,
   CodexConversationSnapshot,
@@ -69,7 +77,10 @@ function reconcileDraftValue(
   currentValue: unknown,
   nextValue: unknown,
 ): typeof KEEP_DRAFT_VALUE | unknown {
-  if (Object.is(currentValue, nextValue)) {
+  if (
+    Object.is(currentValue, nextValue) ||
+    (isDraft(currentValue) && Object.is(original(currentValue as Draft<object>), nextValue))
+  ) {
     return KEEP_DRAFT_VALUE;
   }
 

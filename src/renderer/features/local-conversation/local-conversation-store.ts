@@ -201,10 +201,7 @@ import type {
   CodexHistoryResidencyPinsInput,
   CodexHistoryResidencyPinsResult,
 } from "../../../shared/codex-history-residency-pins";
-import {
-  buildCodexThreadStreamCheckpoint,
-  hashCodexConversationReplica,
-} from "../../../shared/codex-owner-follower-replication";
+import { buildCodexThreadStreamCheckpoint } from "../../../shared/codex-owner-follower-replication";
 import {
   reduceCodexConversationEventWithEffects,
   type CodexItemLifecycleNotification,
@@ -226,7 +223,6 @@ import {
   type CodexFrameTextDeltaUpdate,
 } from "../../../shared/codex-conversation-state/codex-frame-text-delta-queue";
 import { CodexFrameTextDeltaSequenceTracker } from "../../../shared/codex-conversation-state/codex-frame-text-delta-sequence-tracker";
-import { boundChangedCodexLiveTurns } from "../../../shared/codex-conversation-state/codex-live-turn-residency";
 import {
   groupCodexCommandOutputUpdatesByConversation,
   reduceCodexConversationCommandOutput,
@@ -327,6 +323,7 @@ import {
   type CodexThreadOwnerUnavailableEvent,
   type CodexThreadStreamStateChangedEvent,
   type CodexThreadStreamFollowersChangedEvent,
+  type CodexThreadStreamSnapshotRequestedEvent,
   type CodexThreadStreamFollowingStatusRequestedEvent,
   type CodexThreadStreamTransportResetEvent,
   __resetCodexAppServerMessageBusForTests,
@@ -2082,11 +2079,7 @@ function resolveAcceptedConversationReplica(input: {
     );
   }
 
-  const replica = toSharedConversationDocument(input.conversation);
-  if (hashCodexConversationReplica(replica) !== input.checkpoint.canonicalHash) {
-    throw new Error(`${input.context} checkpoint diverged`);
-  }
-  return replica;
+  return toSharedConversationDocument(input.conversation);
 }
 
 type OwnerTurnLifecycleMethod = "turn/started" | "turn/completed";
@@ -2564,15 +2557,8 @@ function finalizeOwnerConversationMutation(
   if (!previousCanonical || !candidateCanonical || candidateCanonical === previousCanonical) {
     return candidate;
   }
-  const boundedCanonical = boundChangedCodexLiveTurns(previousCanonical, candidateCanonical);
-  const materialized = materializeOwnerCanonicalConversationSnapshot(
-    boundedCanonical === candidateCanonical
-      ? candidate
-      : { ...candidate, canonicalState: boundedCanonical },
-    previousCanonical,
-  );
-  // Read/unread is a standalone local state plane and is intentionally excluded from owner stream
-  // hashes. Reprojecting canonical Turn metadata must not resurrect an older unread bit.
+  const materialized = materializeOwnerCanonicalConversationSnapshot(candidate, previousCanonical);
+  // Reprojecting canonical Turn metadata must preserve the standalone local unread state.
   return applyStandaloneUnreadStateToSnapshot(
     materialized,
     candidate.hasUnreadTurn ?? previous.hasUnreadTurn ?? false,
@@ -3939,6 +3925,8 @@ export class CodexAppServerManager {
   >();
   private readonly attachmentStateByThreadId = new Map<string, LocalConversationAttachmentState>();
   private readonly interruptedTurnResumesInFlightByThreadId = new Map<string, Promise<unknown>>();
+  private readonly ownerHistoryOperationsByThread = new Map<string, Promise<void>>();
+  private readonly ownerHistoryReadBarriers = new Set<string>();
   private readonly historyPageLoadsInFlightByTarget = new Map<
     string,
     Promise<CodexConversationHistoryPageResult>
@@ -4065,6 +4053,9 @@ export class CodexAppServerManager {
       }),
       subscribeCodexAppServerMessage("thread-stream-state-changed", (event) => {
         this.handleThreadStreamStateChanged(event);
+      }),
+      subscribeCodexAppServerMessage("thread-stream-snapshot-requested", (event) => {
+        this.handleThreadStreamSnapshotRequested(event);
       }),
       subscribeCodexAppServerMessage("thread-stream-followers-changed", (event) => {
         this.handleThreadStreamFollowersChanged(event);
@@ -4435,6 +4426,9 @@ export class CodexAppServerManager {
   }
 
   async requestThreadStreamSnapshot(threadId: string): Promise<CodexConversationSnapshot | null> {
+    const current = this.conversationsById.get(threadId);
+    if (this.streamState.getRole(threadId)?.role === "owner" && current?.resumeState === "resumed")
+      return current;
     const conversation = (await runConversationOperation(
       "codex:thread:snapshot:request",
       threadId,
@@ -4491,9 +4485,10 @@ export class CodexAppServerManager {
             sourceClientId: result.ownerClientId,
           });
           this.applyConversationSnapshot(threadId, materialized);
-          this.setConversationAttachmentState(threadId, {
-            status: "attached",
-          });
+          // The host baseline is recovery data; attachment waits for the active owner's barrier.
+          await this.setThreadStreamFollowingWithOptions(threadId, true, { reannounce: true });
+          await this.waitForOwnerPublishedRevision(threadId, checkpoint.revision + 1);
+          this.setConversationAttachmentState(threadId, { status: "attached" });
           return this.conversationsById.get(threadId) ?? materialized;
         }
 
@@ -4722,15 +4717,16 @@ export class CodexAppServerManager {
     })();
 
     this.historyPageLoadsInFlightByTarget.set(key, loadPromise);
-    void loadPromise.finally(() => {
+    const release = () => {
       if (this.historyPageLoadsInFlightByTarget.get(key) === loadPromise) {
         this.historyPageLoadsInFlightByTarget.delete(key);
       }
-    });
+    };
+    void loadPromise.then(release, release);
     return loadPromise;
   }
 
-  /** Publishes a Main-authored bounded history mutation through the current owner authority. */
+  /** Commits a prepared history proposal through the current owner authority. */
   async publishLocalConversationHistoryMutation(
     threadId: string,
     mutation: CodexConversationHistoryMutation,
@@ -4748,7 +4744,15 @@ export class CodexAppServerManager {
     return await this.publishOwnerHistoryMutation(threadId, mutation);
   }
 
-  async setHistoryResidencyPins(
+  setHistoryResidencyPins(
+    pins: CodexHistoryResidencyPinsInput,
+  ): Promise<CodexHistoryResidencyPinsResult> {
+    return this.runOwnerHistoryOperation(pins.threadId, () =>
+      this.updateHistoryResidencyPins(pins),
+    );
+  }
+
+  private async updateHistoryResidencyPins(
     pins: CodexHistoryResidencyPinsInput,
   ): Promise<CodexHistoryResidencyPinsResult> {
     const result = (await runConversationOperation(
@@ -4770,22 +4774,67 @@ export class CodexAppServerManager {
       return result;
     }
     await this.ensureOwnerForConversationAction(pins.threadId, "publish history eviction");
-    await this.publishOwnerHistoryMutation(pins.threadId, result.mutation);
+    await this.commitOwnerHistoryMutation(pins.threadId, result.mutation);
     return result;
+  }
+
+  /** A history read and its visible owner commit share one lane with the publication outbox. */
+  private runOwnerHistoryOperation<T>(threadId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = this.ownerHistoryOperationsByThread.get(threadId) ?? Promise.resolve();
+    const run = previous.then(async () => {
+      await this.waitForOwnerStreamPublishIdle(threadId);
+      this.ownerHistoryReadBarriers.add(threadId);
+      try {
+        return await operation();
+      } finally {
+        this.ownerHistoryReadBarriers.delete(threadId);
+        this.processOwnerStreamPublishCursor(threadId);
+        this.resolveOwnerStreamPublishIdleWaiters(threadId);
+      }
+    });
+    const settled = run.then(
+      () => {},
+      () => {},
+    );
+    this.ownerHistoryOperationsByThread.set(threadId, settled);
+    void settled.then(() => {
+      if (this.ownerHistoryOperationsByThread.get(threadId) === settled) {
+        this.ownerHistoryOperationsByThread.delete(threadId);
+      }
+    });
+    return run;
   }
 
   private async loadHistoryPageAsOwner(
     request: CodexConversationHistoryPageRequest,
   ): Promise<CodexThreadOwnerHistoryMutationResult> {
     await this.ensureOwnerForConversationAction(request.threadId, "load history page");
-    const page = (await runConversationOperation(
-      "codex:thread:history-page:load",
-      request,
-    )) as CodexConversationHistoryPageResult;
-    return {
-      revision: await this.publishOwnerHistoryMutation(request.threadId, page.mutation),
-      page,
-    };
+    return this.runOwnerHistoryOperation(request.threadId, async () => {
+      const page = (await runConversationOperation(
+        "codex:thread:history-page:load",
+        request,
+      )) as CodexConversationHistoryPageResult;
+      const conversation = this.conversationsById.get(request.threadId);
+      const proposal =
+        page.status !== "stale" && conversation
+          ? applyCodexConversationHistoryMutation(conversation, page.mutation)
+          : undefined;
+      if (proposal) {
+        if (!proposal.ok && proposal.reason.startsWith("stale-")) {
+          return {
+            revision: this.streamState.getRevision(request.threadId) ?? 0,
+            page: { status: "stale" },
+          };
+        }
+      }
+      return {
+        revision:
+          page.status === "stale"
+            ? (this.streamState.getRevision(request.threadId) ?? 0)
+            : await this.commitOwnerHistoryMutation(request.threadId, page.mutation, proposal),
+        page,
+      };
+    });
   }
 
   async hydratePersistedHistoryOccurrence(
@@ -4821,18 +4870,20 @@ export class CodexAppServerManager {
       input.threadId,
       "hydrate persisted history occurrence",
     );
-    const result = (await runConversationOperation(
-      "codex:thread:history-search:hydrate",
-      input,
-    )) as CodexPersistedHistoryOccurrenceHydrateResult;
-    const { mutation, ...hydration } = result;
-    return {
-      revision:
-        mutation === null
-          ? (this.streamState.getRevision(input.threadId) ?? 0)
-          : await this.publishOwnerHistoryMutation(input.threadId, mutation),
-      hydration,
-    };
+    return this.runOwnerHistoryOperation(input.threadId, async () => {
+      const result = (await runConversationOperation(
+        "codex:thread:history-search:hydrate",
+        input,
+      )) as CodexPersistedHistoryOccurrenceHydrateResult;
+      const { mutation, ...hydration } = result;
+      return {
+        revision:
+          mutation === null
+            ? (this.streamState.getRevision(input.threadId) ?? 0)
+            : await this.commitOwnerHistoryMutation(input.threadId, mutation),
+        hydration,
+      };
+    });
   }
 
   private async publishOwnerSnapshotTransaction(
@@ -4927,66 +4978,63 @@ export class CodexAppServerManager {
     return this.streamState.getRevision(threadId) ?? expectedRevision;
   }
 
-  /** Publishes the exact bounded history delta without recursively diffing the resident graph. */
+  /** Commits history against the latest owner document and publishes its snapshot barrier. */
   private async publishOwnerHistoryMutation(
     threadId: string,
     mutation: CodexConversationHistoryMutation,
   ): Promise<number> {
-    await this.waitForOwnerStreamPublishIdle(threadId);
+    return this.runOwnerHistoryOperation(threadId, () =>
+      this.commitOwnerHistoryMutation(threadId, mutation),
+    );
+  }
+
+  /** Only callbacks that already own the history lane may call this synchronous merge boundary. */
+  private async commitOwnerHistoryMutation(
+    threadId: string,
+    mutation: CodexConversationHistoryMutation,
+    proposal?: ReturnType<typeof applyCodexConversationHistoryMutation>,
+  ): Promise<number> {
     const role = this.streamState.getRole(threadId);
     const checkpoint = this.streamState.getCheckpoint(threadId);
     const currentConversation = this.conversationsById.get(threadId);
     if (!role || role.role !== "owner" || !checkpoint || !currentConversation) {
-      throw new Error(`Cannot publish history mutation without owner authority for ${threadId}`);
+      throw new Error(`Cannot publish history without owner authority for ${threadId}`);
     }
-    const cursor = this.ensureOwnerStreamPublishCursor(threadId, checkpoint, currentConversation);
-    if (cursor.inFlight || cursor.dirty) {
-      throw new Error(`Cannot publish history mutation while owner stream is busy for ${threadId}`);
-    }
-    const accepted = applyCodexConversationHistoryMutation(cursor.acceptedDocument, mutation);
-    const presented = applyCodexConversationHistoryMutation(currentConversation, mutation);
-    if (!accepted.ok) {
-      throw new Error(`Could not apply history mutation for ${threadId}: ${accepted.reason}`);
-    }
+    const presented =
+      proposal ?? applyCodexConversationHistoryMutation(currentConversation, mutation);
     if (!presented.ok) {
       throw new Error(`Could not apply history mutation for ${threadId}: ${presented.reason}`);
     }
-
-    const baseCheckpoint = cursor.acceptedCheckpoint;
-    const nextCheckpoint = buildCodexThreadStreamCheckpoint({
-      ownerEpoch: baseCheckpoint.ownerEpoch,
-      revision: baseCheckpoint.revision + 1,
-      conversation: accepted.conversation,
-    });
+    const cursor = this.ensureOwnerStreamPublishCursor(threadId, checkpoint, currentConversation);
+    // History is a snapshot barrier from the latest owner document. Any live updates received
+    // during the read are included; later updates remain dirty behind the publication in flight.
+    const ownerNotificationSequence = this.reserveOwnerNotificationAck(threadId);
+    cursor.dirty = false;
     cursor.inFlight = true;
     this.applyConversationSnapshot(threadId, presented.conversation);
-    const result = await this.dispatchOwnerStreamHistoryMutation(
+    const shared = toSharedConversationDocument(presented.conversation);
+    const result = await this.publishOwnerSnapshotFromCursor(
       threadId,
-      baseCheckpoint,
-      nextCheckpoint,
-      mutation,
+      cursor,
+      shared,
+      ownerNotificationSequence || undefined,
     );
     if (this.ownerStreamPublishCursorsByConversationId.get(threadId) !== cursor) {
       throw new Error(`Owner authority changed while publishing history for ${threadId}`);
     }
+    cursor.inFlight = false;
     if (!result.accepted) {
-      cursor.inFlight = false;
-      if (result.recovery) {
-        this.adoptOwnerSnapshotRecovery(threadId, cursor, result.recovery);
-      } else {
-        this.markOwnerStreamPublishUnavailable(threadId);
-      }
-      throw new Error(`Could not publish history mutation for ${threadId}: ${result.reason}`);
+      this.markOwnerStreamPublishUnavailable(threadId);
+      throw new Error(`Could not publish history snapshot for ${threadId}: ${result.reason}`);
     }
     cursor.acceptedCheckpoint = result.checkpoint;
     cursor.acceptedDocument = this.consumeOwnerStandaloneUnreadStateOverride(
       cursor,
-      accepted.conversation,
+      result.conversation,
     );
-    cursor.inFlight = false;
+    this.confirmOwnerNotificationAck(threadId, ownerNotificationSequence);
+    this.flushOwnerNotificationCompletions(threadId);
     this.streamState.recordOwnerCheckpoint(threadId, result.checkpoint);
-    this.processOwnerStreamPublishCursor(threadId);
-    this.resolveOwnerStreamPublishIdleWaiters(threadId);
     return result.checkpoint.revision;
   }
 
@@ -9234,6 +9282,31 @@ export class CodexAppServerManager {
     });
   }
 
+  private handleThreadStreamSnapshotRequested(
+    event: CodexThreadStreamSnapshotRequestedEvent,
+  ): void {
+    if (event.hostId !== this.hostId) return;
+    if (this.streamState.getRole(event.conversationId)?.role !== "owner") return;
+    if (this.streamState.getCheckpoint(event.conversationId)?.ownerEpoch !== event.ownerEpoch)
+      return;
+    void this.runOwnerHistoryOperation(event.conversationId, async () => {
+      if (this.streamState.getRole(event.conversationId)?.role !== "owner") return;
+      if (this.streamState.getCheckpoint(event.conversationId)?.ownerEpoch !== event.ownerEpoch)
+        return;
+      const conversation = this.conversationsById.get(event.conversationId);
+      if (!conversation) return;
+      await this.publishOwnerSnapshotFromIdle(
+        event.conversationId,
+        conversation,
+        "follower attachment",
+      );
+    }).catch(() => {
+      if (this.streamState.getCheckpoint(event.conversationId)?.ownerEpoch !== event.ownerEpoch)
+        return;
+      this.markOwnerStreamPublishUnavailable(event.conversationId);
+    });
+  }
+
   private handleThreadStreamFollowersChanged(event: CodexThreadStreamFollowersChangedEvent): void {
     if (event.hostId !== this.hostId) return;
 
@@ -9251,6 +9324,13 @@ export class CodexAppServerManager {
       followerClientIds: [...event.followerClientIds],
       membershipEpoch: event.membershipEpoch,
     });
+    if ((previous?.followerClientIds.length ?? 0) === 0 && event.followerClientIds.length > 0) {
+      const cursor = this.ownerStreamPublishCursorsByConversationId.get(event.conversationId);
+      if (!cursor || this.streamState.getRole(event.conversationId)?.role !== "owner") return;
+      // Catch up changes received after the attachment snapshot but before its acknowledgement.
+      cursor.dirty = true;
+      this.processOwnerStreamPublishCursor(event.conversationId);
+    }
   }
 
   private handleThreadStreamTransportReset(event: CodexThreadStreamTransportResetEvent): void {
@@ -9712,7 +9792,12 @@ export class CodexAppServerManager {
 
   private processOwnerStreamPublishCursor(conversationId: string): void {
     const cursor = this.ownerStreamPublishCursorsByConversationId.get(conversationId);
-    if (!cursor || cursor.inFlight || !cursor.dirty) {
+    if (
+      !cursor ||
+      cursor.inFlight ||
+      !cursor.dirty ||
+      this.ownerHistoryReadBarriers.has(conversationId)
+    ) {
       return;
     }
     const completionState = this.ownerNotificationCompletionByConversationId.get(conversationId);
@@ -9724,6 +9809,18 @@ export class CodexAppServerManager {
     const role = this.streamState.getRole(conversationId);
     if (!localConversation || !role || role.role !== "owner") {
       this.markOwnerStreamPublishUnavailable(conversationId);
+      return;
+    }
+    // No follower consumes live replica patches. Keep the owner document local and acknowledge
+    // transport delivery; a new follower explicitly requests a fresh owner snapshot.
+    if (
+      (this.followerMembershipByConversationId.get(conversationId)?.followerClientIds.length ??
+        0) === 0
+    ) {
+      cursor.dirty = false;
+      const sequence = this.reserveOwnerNotificationAck(conversationId);
+      if (sequence > 0) this.dispatchReservedOwnerNotificationAck(conversationId, sequence);
+      this.resolveOwnerStreamPublishIdleWaiters(conversationId);
       return;
     }
     const conversation = toSharedConversationDocument(localConversation);
@@ -9746,7 +9843,6 @@ export class CodexAppServerManager {
     const checkpoint = buildCodexThreadStreamCheckpoint({
       ownerEpoch: cursor.acceptedCheckpoint.ownerEpoch,
       revision,
-      conversation: publishedConversation,
     });
     cursor.inFlight = true;
 
@@ -9889,7 +9985,6 @@ export class CodexAppServerManager {
       const checkpoint = buildCodexThreadStreamCheckpoint({
         ownerEpoch: baseCheckpoint.ownerEpoch,
         revision: baseCheckpoint.revision + 1,
-        conversation,
       });
       const result = await this.dispatchOwnerStreamSnapshot(
         conversationId,
@@ -10086,37 +10181,6 @@ export class CodexAppServerManager {
           ownerNotificationSequence,
         }),
         `Owner patch publication for ${conversationId}`,
-      )) as CodexThreadOwnerStreamStatePublishResult | boolean;
-      if (result === true) return { accepted: true, checkpoint };
-      if (result === false) {
-        return { accepted: false, reason: "base-checkpoint-mismatch", recovery: null };
-      }
-      return result;
-    } catch {
-      return { accepted: false, reason: "not-owner", recovery: null };
-    }
-  }
-
-  private async dispatchOwnerStreamHistoryMutation(
-    conversationId: string,
-    baseCheckpoint: CodexThreadStreamCheckpoint,
-    checkpoint: CodexThreadStreamCheckpoint,
-    mutation: CodexConversationHistoryMutation,
-  ): Promise<CodexThreadOwnerStreamStatePublishResult> {
-    try {
-      const result = (await runWithOwnerStreamDeadline(
-        runConversationOperation("codex:thread-owner:stream-state:publish", {
-          conversationId,
-          change: {
-            type: "historyMutation",
-            baseRevision: baseCheckpoint.revision,
-            revision: checkpoint.revision,
-            mutation,
-          },
-          baseCheckpoint,
-          checkpoint,
-        }),
-        `Owner history publication for ${conversationId}`,
       )) as CodexThreadOwnerStreamStatePublishResult | boolean;
       if (result === true) return { accepted: true, checkpoint };
       if (result === false) {
@@ -10341,16 +10405,6 @@ export class CodexAppServerManager {
       return;
     }
     if (event.change.type === "snapshot") {
-      if (
-        hashCodexConversationReplica(event.change.conversationState) !== checkpoint.canonicalHash
-      ) {
-        this.requestOwnerFollowerStreamResync(
-          event.conversationId,
-          sourceClientId,
-          "checkpoint-hash-mismatch",
-        );
-        return;
-      }
       const decision = this.streamState.acceptSnapshot({
         conversationId: event.conversationId,
         checkpoint,
@@ -10427,25 +10481,7 @@ export class CodexAppServerManager {
     }
 
     try {
-      const nextReplica =
-        event.change.type === "historyMutation"
-          ? (() => {
-              const applied = applyCodexConversationHistoryMutation(
-                currentReplica,
-                event.change.mutation,
-              );
-              if (!applied.ok) throw new Error(applied.reason);
-              return applied.conversation;
-            })()
-          : applyCodexConversationStateUpdates(currentReplica, event.change.patches);
-      if (hashCodexConversationReplica(nextReplica) !== checkpoint.canonicalHash) {
-        this.requestOwnerFollowerStreamResync(
-          event.conversationId,
-          sourceClientId,
-          "checkpoint-hash-mismatch",
-        );
-        return;
-      }
+      const nextReplica = applyCodexConversationStateUpdates(currentReplica, event.change.patches);
       this.followerAcceptedReplicasByConversationId.set(event.conversationId, nextReplica);
       const currentPresentation = this.conversationsById.get(event.conversationId);
       const materialized = materializeOwnerCanonicalConversationSnapshot(nextReplica);

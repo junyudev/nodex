@@ -97,7 +97,10 @@ export function broadcastCodexHostMessageToRendererClients(
 type CodexThreadStreamControlMessage = Extract<
   CodexHostMessage,
   {
-    type: "threadStreamFollowersChanged" | "threadStreamTransportReset";
+    type:
+      | "threadStreamFollowersChanged"
+      | "threadStreamTransportReset"
+      | "threadStreamSnapshotRequested";
   }
 >;
 

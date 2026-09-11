@@ -4,7 +4,6 @@ import {
   applyCodexConversationStateUpdates,
   buildCodexConversationStateUpdates,
 } from "./codex-conversation-patches";
-import { hashCodexConversationReplica } from "./codex-owner-follower-replication";
 import {
   advanceRendererDeliveryAssembler,
   createRendererDeliveryAssemblerState,
@@ -104,7 +103,7 @@ describe("shared conversation document", () => {
       result: { text: "", enabled: false, count: 0, value: null },
     });
     expect(received.turns[0]?.completedAt).toBeNull();
-    expect(hashCodexConversationReplica(received)).toBe(hashCodexConversationReplica(local));
+    expect(received).toEqual(projectCodexConversationDocument(local));
     expect(projectCodexConversationDocument(local)).toBe(shared);
     expect(projectCodexConversationDocument(shared)).toBe(shared);
     expect(local.turns[0]).toHaveProperty("errorMessage", undefined);
@@ -124,7 +123,7 @@ describe("shared conversation document", () => {
     expect(patches).toEqual([{ op: "remove", path: ["turns", 0, "errorMessage"] }]);
     const follower = applyCodexConversationStateUpdates(relay(before), patches);
     expect(follower).toEqual(relay(next));
-    expect(hashCodexConversationReplica(follower)).toBe(hashCodexConversationReplica(next));
+    expect(follower).toEqual(projectCodexConversationDocument(next));
     expect(next.turns[0]?.items).toBe(before.turns[0]?.items);
   });
 

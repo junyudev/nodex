@@ -51,42 +51,59 @@ export function createLocalConversationHistoryGapLoadControllerState(): LocalCon
   return { lastRequestedViewportRevision: null };
 }
 
-/**
- * Owns request lifetime around the pure selector. A failed request releases its
- * progress key, but the consumed viewport revision remains fenced: retry needs a
- * later user/viewport revision instead of recursively draining in place.
- */
+/** Failed or stale cursors stay stopped until the owning boundary changes or the view reopens. */
+export function createLocalConversationHistoryRequestGate() {
+  const active = new Set<string>();
+  const stopped = new Set<string>();
+  return {
+    unavailableKeys: () => new Set([...active, ...stopped]),
+    retain: (keys: ReadonlySet<string>) => {
+      for (const key of stopped) if (!keys.has(key)) stopped.delete(key);
+    },
+    request: (key: string, load: () => Promise<unknown>) => {
+      if (active.has(key) || stopped.has(key)) return false;
+      active.add(key);
+      const fail = () => {
+        active.delete(key);
+        stopped.add(key);
+      };
+      try {
+        void load().then((result) => {
+          active.delete(key);
+          if (result === "stale" || result === "stop") stopped.add(key);
+        }, fail);
+      } catch {
+        fail();
+      }
+      return true;
+    },
+  };
+}
+
+/** Owns request lifetime around the pure viewport selector. */
 export function createLocalConversationHistoryGapRequestCoordinator(): LocalConversationHistoryGapRequestCoordinator {
   let state = createLocalConversationHistoryGapLoadControllerState();
-  const activeProgressKeys = new Set<string>();
-
+  const gate = createLocalConversationHistoryRequestGate();
   return {
-    activeProgressKeys: () => new Set(activeProgressKeys),
+    activeProgressKeys: gate.unavailableKeys,
     observeViewport: (input, request) => {
+      gate.retain(
+        new Set(
+          input.gaps.flatMap(({ row }) =>
+            [row.olderBoundary, row.newerBoundary].flatMap((boundary) =>
+              boundary ? [boundary.progressKey] : [],
+            ),
+          ),
+        ),
+      );
       const selection = selectLocalConversationHistoryGapBoundary(state, {
         ...input,
-        activeProgressKeys,
+        activeProgressKeys: gate.unavailableKeys(),
       });
       state = selection.state;
       const boundary = selection.boundary;
       if (!boundary) return null;
-
-      activeProgressKeys.add(boundary.progressKey);
-      const release = () => {
-        activeProgressKeys.delete(boundary.progressKey);
-      };
-      try {
-        void request(boundary).then(
-          () => {
-            release();
-          },
-          () => {
-            release();
-          },
-        );
-      } catch {
-        release();
-      }
+      gate.request(boundary.progressKey, () => request(boundary));
       return boundary;
     },
   };

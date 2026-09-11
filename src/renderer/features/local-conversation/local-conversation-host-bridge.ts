@@ -54,6 +54,11 @@ function applyHostMessage(message: CodexHostMessage): void {
     return;
   }
 
+  if (message.type === "threadStreamSnapshotRequested") {
+    dispatchCodexAppServerMessage("thread-stream-snapshot-requested", message);
+    return;
+  }
+
   if (message.type === "threadStreamTransportReset") {
     dispatchCodexAppServerMessage("thread-stream-transport-reset", {
       hostId: message.hostId,

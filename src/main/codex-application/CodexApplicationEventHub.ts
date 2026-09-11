@@ -30,7 +30,12 @@ export type CodexApplicationEvent =
         readonly targetClientIds: readonly string[];
         readonly message: Extract<
           CodexHostMessage,
-          { type: "threadStreamFollowersChanged" | "threadStreamTransportReset" }
+          {
+            type:
+              | "threadStreamFollowersChanged"
+              | "threadStreamTransportReset"
+              | "threadStreamSnapshotRequested";
+          }
         >;
       };
     }

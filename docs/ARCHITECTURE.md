@@ -815,15 +815,17 @@ replay. A settled failure exits the loading phase and may retain a truthful cach
 it never retains a visible loading state or an unusable owner role. An explicit retry or a
 subsequently accepted owner snapshot may attach the surface again. A follower
 acknowledges an exact owner snapshot barrier and then
-accepts only contiguous patches from the same owner epoch. A gap, hash mismatch, owner replacement,
+accepts only contiguous patches from the same owner epoch. A revision gap, owner replacement,
 or transport reset requests a fresh barrier instead of merging competing documents. The event hub
 fans accepted application changes to renderer projection and native notification consumers; those
 consumers own their subscriptions and cannot mutate canonical state.
 
 Conversation history inside the private Entity is a sparse topology of islands, entities, and
 explicit boundaries. Turn pages and per-Turn item pages merge atomically under host-generation and
-cursor fences. Count-and-byte retention updates canonical state, snapshots, accepted replicas,
-pagination, and renderer rows as one transaction; visible/search/live entities are pinned while
+cursor fences. The renderer owner serializes visible history commits with its publication stream;
+Main prepares history proposals without advancing the owned document's cursors, then mirrors the
+accepted owner revision without substituting its recovery projection. Visible/search/live entities
+are pinned while
 opaque retention cuts remain inert rather than inventing a cursor. Renderer gaps request one page
 through the current owner, and persisted search hydrates only a bounded island around the selected
 occurrence.

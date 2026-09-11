@@ -13,7 +13,6 @@ import {
   buildCodexConversationHistoryMutation,
   type CodexConversationHistoryPageRequest,
 } from "../../shared/codex-conversation-history-page";
-import { hashCodexConversationReplica } from "../../shared/codex-owner-follower-replication";
 import type {
   CodexConversationSnapshot,
   CodexConversationTurn,
@@ -38,7 +37,7 @@ interface MutationMeasurement {
   readonly upsertTurns: number;
   readonly upsertCanonicalTurns: number;
   readonly rowSplices: number;
-  readonly stableLeafReadsDuringMutationAndHash: number;
+  readonly stableLeafReadsDuringMutation: number;
   readonly elapsedMs: number;
 }
 
@@ -274,8 +273,7 @@ const measureMutation = (logicalTurnCount: number): MutationMeasurement => {
     target: { kind: "turnBoundary", boundary },
   };
 
-  hashCodexConversationReplica(before);
-  const readsAfterInitialHash = stableLeafReads;
+  const readsBeforeMutation = stableLeafReads;
   const startedAt = process.hrtime.bigint();
   const mutation = buildCodexConversationHistoryMutation({
     before,
@@ -284,7 +282,6 @@ const measureMutation = (logicalTurnCount: number): MutationMeasurement => {
   });
   const applied = applyCodexConversationHistoryMutation(before, mutation);
   if (!applied.ok) throw new Error(`History mutation did not apply: ${applied.reason}`);
-  hashCodexConversationReplica(applied.conversation);
   const elapsed = elapsedMs(startedAt);
 
   assert.strictEqual(applied.conversation.turns.length, RESIDENT_TAIL_TURNS + PAGE_TURNS);
@@ -301,12 +298,12 @@ const measureMutation = (logicalTurnCount: number): MutationMeasurement => {
     upsertTurns: mutation.upsertTurns.length,
     upsertCanonicalTurns: mutation.upsertCanonicalTurns.length,
     rowSplices: mutation.rowSplices.length,
-    stableLeafReadsDuringMutationAndHash: stableLeafReads - readsAfterInitialHash,
+    stableLeafReadsDuringMutation: stableLeafReads - readsBeforeMutation,
     elapsedMs: elapsed,
   };
 };
 
-it("keeps normal page mutation bytes and incremental hash work independent of logical history", () => {
+it("keeps page mutation bytes and unchanged payload reads independent of logical history", () => {
   const measurements = [100, 10_000].map(measureMutation);
 
   for (const measurement of measurements) {
@@ -315,7 +312,7 @@ it("keeps normal page mutation bytes and incremental hash work independent of lo
     assert.strictEqual(measurement.upsertTurns, PAGE_TURNS);
     assert.strictEqual(measurement.upsertCanonicalTurns, PAGE_TURNS);
     assert.strictEqual(measurement.rowSplices, 1);
-    assert.strictEqual(measurement.stableLeafReadsDuringMutationAndHash, 0);
+    assert.strictEqual(measurement.stableLeafReadsDuringMutation, 0);
     assert.isAtMost(measurement.mutationBytes, PAGE_MUTATION_MAX_BYTES);
   }
   // Stable IDs gain two decimal digits at 10k; only that O(log N) identifier width may differ.

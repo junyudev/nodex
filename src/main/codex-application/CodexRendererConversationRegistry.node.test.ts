@@ -8,11 +8,10 @@ import {
   makeCodexRendererConversationRegistryState,
 } from "./CodexRendererConversationRegistry";
 
-const checkpoint = (revision = 0, ownerEpoch = 1, marker = "a") => ({
+const checkpoint = (revision = 0, ownerEpoch = 1) => ({
   protocolVersion: 1 as const,
   ownerEpoch,
   revision,
-  canonicalHash: marker.repeat(64),
 });
 
 const request = (id: string | number, callId = "call-1"): CodexThreadOwnerServerRequest =>

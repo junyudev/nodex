@@ -10,7 +10,11 @@ export type LocalConversationPatchDecision =
   | { type: "drop"; reason: "missing-follower-role" }
   | {
       type: "resync";
-      reason: "owner-mismatch" | "owner-epoch-mismatch" | "revision-gap" | "base-hash-mismatch";
+      reason:
+        | "owner-mismatch"
+        | "owner-epoch-mismatch"
+        | "revision-gap"
+        | "base-checkpoint-mismatch";
     };
 
 export type LocalConversationSnapshotDecision =
@@ -18,7 +22,7 @@ export type LocalConversationSnapshotDecision =
   | { type: "drop"; reason: "owner-role" | "stale-snapshot" }
   | {
       type: "resync";
-      reason: "owner-mismatch" | "owner-epoch-mismatch" | "checkpoint-hash-mismatch";
+      reason: "owner-mismatch" | "owner-epoch-mismatch";
     };
 
 type StreamStateTimer = unknown;
@@ -155,12 +159,6 @@ export class LocalConversationStreamState {
         if (input.checkpoint.revision < currentCheckpoint.revision) {
           return { type: "drop", reason: "stale-snapshot" };
         }
-        if (
-          input.checkpoint.revision === currentCheckpoint.revision &&
-          input.checkpoint.canonicalHash !== currentCheckpoint.canonicalHash
-        ) {
-          return { type: "resync", reason: "checkpoint-hash-mismatch" };
-        }
       }
     }
     this.setRole(input.conversationId, buildSnapshotRole(input.sourceClientId));
@@ -211,7 +209,7 @@ export class LocalConversationStreamState {
       return { type: "resync", reason: "revision-gap" };
     }
     if (!areCodexThreadStreamCheckpointsEqual(currentCheckpoint, input.baseCheckpoint)) {
-      return { type: "resync", reason: "base-hash-mismatch" };
+      return { type: "resync", reason: "base-checkpoint-mismatch" };
     }
 
     return { type: "apply", sourceClientId: input.sourceClientId };

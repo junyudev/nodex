@@ -12,7 +12,6 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
-import { sanitizeCodexLiveLifecycleNotification } from "../../shared/codex-conversation-state/codex-live-turn-residency";
 import { toCodexThreadStartedMetadataNotification } from "../../shared/codex-thread-start-metadata";
 import type { CodexSessionTransport } from "../platform/node/CodexSessionTransport";
 import {
@@ -70,8 +69,8 @@ export const sanitizeCodexEndpointNotification = <
     } as T;
   }
   if (notification.protocol !== "generated") return notification;
-  const sanitized = sanitizeCodexLiveLifecycleNotification(
-    toCodexThreadStartedMetadataNotification(notification as unknown as ServerNotification),
+  const sanitized = toCodexThreadStartedMetadataNotification(
+    notification as unknown as ServerNotification,
   );
   if (sanitized === notification) return notification;
   return { ...notification, method: sanitized.method, params: sanitized.params } as T;

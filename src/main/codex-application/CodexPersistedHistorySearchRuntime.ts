@@ -403,13 +403,27 @@ export const make: Effect.Effect<
         });
       }
       const latest = aggregate.readCanonicalState();
-      if (latest && findCanonicalItem(latest, input.occurrence.turnId, input.occurrence.itemId)) {
-        return yield* result(input, { status: "found" }, page.mutation);
+      const foundInProposal =
+        page.status === "applied" &&
+        page.mutation.turnItems.some(
+          (entry) =>
+            entry.turnId === input.occurrence.turnId &&
+            entry.windowMutation.wireSegment.items.itemIds.includes(input.occurrence.itemId),
+        );
+      if (
+        foundInProposal ||
+        (latest && findCanonicalItem(latest, input.occurrence.turnId, input.occurrence.itemId))
+      ) {
+        return yield* result(
+          input,
+          { status: "found" },
+          page.status === "applied" ? page.mutation : undefined,
+        );
       }
       return yield* result(
         input,
         { status: "bounded-incomplete", reason: "next-item-page-required" },
-        page.mutation,
+        page.status === "applied" ? page.mutation : undefined,
       );
     },
   );

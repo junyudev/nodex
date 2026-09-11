@@ -140,7 +140,7 @@ const dedupeItems = (items: readonly ThreadItem[]): readonly ThreadItem[] => {
   return items.filter((item) => (seen.has(item.id) ? false : (seen.add(item.id), true)));
 };
 
-const cappedValueBytes = (value: unknown, limit = CODEX_HISTORY_ITEM_BYTE_BUDGET): number =>
+const cappedValueBytes = (value: unknown, limit = Number.MAX_SAFE_INTEGER): number =>
   cappedApproximateValueBytes(value, limit);
 
 /**
@@ -150,7 +150,7 @@ const cappedValueBytes = (value: unknown, limit = CODEX_HISTORY_ITEM_BYTE_BUDGET
  */
 export const estimateCodexHistoryProjectedItemPageBytes = (
   items: readonly ThreadItem[],
-  limit = CODEX_HISTORY_ITEM_BYTE_BUDGET,
+  limit = Number.MAX_SAFE_INTEGER,
 ): number => {
   const metadataBytes = items.length * 1_024;
   if (!Number.isSafeInteger(metadataBytes) || metadataBytes > limit) return limit + 1;
@@ -172,7 +172,6 @@ export const acceptCodexResumeInitialTurnsPage = Effect.fn("acceptCodexResumeIni
       });
     }
     let remainingItems = CODEX_HISTORY_INITIAL_ITEM_BUDGET;
-    let remainingBytes = CODEX_HISTORY_INITIAL_BYTE_BUDGET;
     for (const turn of page.data) {
       if (turn.itemsView !== "full") {
         return yield* error({
@@ -191,16 +190,6 @@ export const acceptCodexResumeInitialTurnsPage = Effect.fn("acceptCodexResumeIni
           turnId: turn.id,
           reason: "page-size-exceeded",
           cause: new Error("Resume history exceeded the resident item budget"),
-        });
-      }
-      remainingBytes -= estimateCodexHistoryProjectedItemPageBytes(turn.items, remainingBytes);
-      if (remainingBytes < 0) {
-        return yield* error({
-          operation: "items",
-          threadId,
-          turnId: turn.id,
-          reason: "item-byte-limit",
-          cause: new Error("Resume history exceeded the resident byte budget"),
         });
       }
     }
@@ -315,36 +304,28 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
       turn: GatewayHistoryTurn,
       purpose: CodexHistoryPagePurpose,
     ) {
-      let cursor: string | null = null;
-      for (let requestCount = 0; requestCount < 2; requestCount += 1) {
-        const opening: CodexHydratedHistoryItemPage = yield* loadItemsPage({
-          capability,
-          threadId,
-          turnId: turn.id,
-          cursor,
-          limit: 1,
-          sortDirection: "asc",
-          operation: "opening-user",
-          purpose,
-        });
-        const first = opening.items[0];
-        if (first?.type === "userMessage") {
-          return {
-            oldestUserInput: [...first.content],
-            openingUserMessageId: first.id,
-          } as const;
-        }
-        if (first && first.type !== "contextCompaction") {
-          return { oldestUserInput: null, openingUserMessageId: null } as const;
-        }
-        if (opening.nextCursor === null) {
-          return turn.status === "inProgress"
-            ? ({ oldestUserInput: null, openingUserMessageId: null } as const)
-            : ({ oldestUserInput: [], openingUserMessageId: null } as const);
-        }
-        cursor = opening.nextCursor;
+      const empty = { oldestUserInput: null, openingUserMessageId: null } as const;
+      const opening = yield* loadItemsPage({
+        capability,
+        threadId,
+        turnId: turn.id,
+        cursor: null,
+        limit: 2,
+        sortDirection: "asc",
+        operation: "opening-user",
+        purpose,
+      }).pipe(Effect.catch(() => Effect.succeed(null)));
+      if (!opening) return empty;
+      const first = opening.items.find((item) => item.type !== "contextCompaction");
+      if (first?.type === "userMessage")
+        return {
+          oldestUserInput: [...first.content],
+          openingUserMessageId: first.id,
+        };
+      if (first || (opening.nextCursor === null && turn.status !== "inProgress")) {
+        return { oldestUserInput: [], openingUserMessageId: null };
       }
-      return { oldestUserInput: null, openingUserMessageId: null } as const;
+      return empty;
     });
 
     const loadTurnPage = Effect.fn("CodexHistoryPageAdapter.loadTurnPage")(function* (
@@ -356,13 +337,8 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
         0,
         Math.min(input.itemBudget ?? defaultItemBudget, CODEX_HISTORY_INITIAL_ITEM_BUDGET),
       );
-      const byteBudgetLimit = Math.max(
-        0,
-        Math.min(
-          input.byteBudget ?? CODEX_HISTORY_INITIAL_BYTE_BUDGET,
-          CODEX_HISTORY_INITIAL_BYTE_BUDGET,
-        ),
-      );
+      // Interactive history is count-bounded. Background excerpt consumers may request a byte budget.
+      const byteBudgetLimit = Math.max(0, input.byteBudget ?? Number.MAX_SAFE_INTEGER);
       const sortDirection = input.sortDirection ?? "desc";
       const purpose = input.purpose ?? "initial";
       const response = yield* gateway
@@ -441,10 +417,7 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
           seenCursors.add(cursor);
           requested = true;
           itemPageRequestCount += 1;
-          // A first request of one item bounds the decoded working set before projected-byte
-          // admission. No item is retained when even that single-item page exceeds the budget.
-          const itemRequestLimit =
-            items.length === 0 ? 1 : Math.min(CODEX_HISTORY_ITEM_PAGE_SIZE, remainingBudget);
+          const itemRequestLimit = Math.min(CODEX_HISTORY_ITEM_PAGE_SIZE, remainingBudget);
           const itemPage = yield* loadItemsPage({
             capability: input.capability,
             threadId: input.threadId,
@@ -548,13 +521,7 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
         operation: "items",
         purpose: input.purpose ?? "older",
       });
-      const byteBudget = Math.max(
-        1,
-        Math.min(
-          input.byteBudget ?? CODEX_HISTORY_ITEM_BYTE_BUDGET,
-          CODEX_HISTORY_ITEM_BYTE_BUDGET,
-        ),
-      );
+      const byteBudget = Math.max(1, input.byteBudget ?? Number.MAX_SAFE_INTEGER);
       const projectedBytes = estimateCodexHistoryProjectedItemPageBytes(page.items, byteBudget);
       if (projectedBytes > byteBudget) {
         return yield* error({

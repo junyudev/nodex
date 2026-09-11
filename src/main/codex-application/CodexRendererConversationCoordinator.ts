@@ -180,6 +180,7 @@ export const applyCodexHistoryResidencyPins = (input: {
   }
   return conversation.setHistoryResidencyPins({
     clientId: input.clientId,
+    projectReplica: !input.rendererConversations.hasOwner(pins.threadId),
     expectedTopologyGeneration: pins.expectedTopologyGeneration,
     expectedHistoryMutationRevision: pins.expectedHistoryMutationRevision,
     turnIds: pins.turnIds,
@@ -302,20 +303,38 @@ export const make: Effect.Effect<
       emitSnapshot(conversationId, clientId);
     }
   };
+  /** Only the active renderer can supply the current document for a follower barrier. */
+  const requestOwnerSnapshot = (conversationId: string): boolean => {
+    const ownerClientId = registry.getOwnerClientId(conversationId);
+    const ownerEpoch = registry.getOwnerEpoch(conversationId);
+    if (!ownerClientId || ownerEpoch === null) return false;
+    events.publish({
+      kind: "rendererThreadStreamControlRelay",
+      value: {
+        targetClientIds: [ownerClientId],
+        message: {
+          type: "threadStreamSnapshotRequested",
+          hostId: DEFAULT_CODEX_HOST_ID,
+          conversationId,
+          ownerClientId,
+          ownerEpoch,
+        },
+      },
+    });
+    return true;
+  };
   const setOwnerState = (conversationId: string, clientId: string): boolean => {
     const result = registry.setOwner(conversationId, clientId);
     if (!result) return false;
     const current = acceptedReplica(conversationId);
     if (current) {
-      aggregate(conversationId)?.acceptReplica({
+      aggregate(conversationId)?.acceptOwnerReplica({
         conversation: current.conversation,
-        revision: current.checkpoint.revision,
-        ownerEpoch: result.ownerEpoch,
+        checkpoint: { ...current.checkpoint, ownerEpoch: result.ownerEpoch },
       });
     }
     emitActions(result.actions);
-    for (const targetClientId of result.snapshotClientIds)
-      emitSnapshot(conversationId, targetClientId);
+    if (result.snapshotClientIds.length > 0) requestOwnerSnapshot(conversationId);
     if (result.previousOwnerClientId !== clientId)
       ownerNotificationDrain.resetOwner(conversationId);
     return true;
@@ -421,7 +440,6 @@ export const make: Effect.Effect<
             revision: before.revision,
             ownerEpoch: registry.getOwnerEpoch(input.conversationId) ?? 0,
           });
-          flushSnapshots(input.conversationId);
         }
         const after = conversation.read();
         return {
@@ -437,7 +455,7 @@ export const make: Effect.Effect<
         Effect.tap((result) => {
           if (!result) return Effect.void;
           emitActions(result.actions);
-          if (result.shouldSendSnapshot) emitSnapshot(conversationId, clientId);
+          if (result.shouldSendSnapshot) requestOwnerSnapshot(conversationId);
           return retention.reconcile(conversationId);
         }),
         Effect.map((result) => result !== null),
@@ -448,7 +466,7 @@ export const make: Effect.Effect<
           if (!result.accepted) return Effect.void;
           if (result.following) {
             emitActions(result.following.actions);
-            if (result.following.shouldSendSnapshot) emitSnapshot(conversationId, clientId);
+            if (result.following.shouldSendSnapshot) requestOwnerSnapshot(conversationId);
           }
           return reconcilePresentation(conversationId);
         }),
@@ -562,7 +580,7 @@ export const make: Effect.Effect<
         });
         if (!result) return false;
         emitActions(result.actions);
-        if (result.shouldSendSnapshot) emitSnapshot(input.conversationId, sourceClientId);
+        if (result.shouldSendSnapshot) requestOwnerSnapshot(input.conversationId);
         return result.accepted;
       }).pipe(Effect.tap(() => retention.reconcile(input.conversationId))),
     requestStreamResync: (sourceClientId, input) =>
@@ -573,7 +591,7 @@ export const make: Effect.Effect<
           ownerClientId: input.ownerClientId,
           observedOwnerEpoch: input.observedCheckpoint?.ownerEpoch,
         });
-        return accepted && emitSnapshot(input.conversationId, sourceClientId);
+        return accepted && requestOwnerSnapshot(input.conversationId);
       }),
     publishOwnerStateChange: (sourceClientId, input) => {
       const reject = (
@@ -619,10 +637,9 @@ export const make: Effect.Effect<
               ...(!authoritativeUnread ? { unreadMessageCount: 0 } : {}),
             }
           : result.replica.conversation;
-      const checkpoint = aggregate(input.conversationId)?.acceptReplica({
+      const checkpoint = aggregate(input.conversationId)?.acceptOwnerReplica({
         conversation: nextConversation,
-        revision: input.checkpoint.revision,
-        ownerEpoch,
+        checkpoint: input.checkpoint,
       }).checkpoint;
       if (!checkpoint || !areCodexThreadStreamCheckpointsEqual(checkpoint, input.checkpoint)) {
         return reject("checkpoint-mismatch");
@@ -658,7 +675,7 @@ export const make: Effect.Effect<
           },
         });
       }
-      flushSnapshots(input.conversationId);
+      if (input.change.type === "snapshot") flushSnapshots(input.conversationId);
       return { accepted: true, checkpoint };
     },
     acknowledgeOwnerNotification: (sourceClientId, input) =>

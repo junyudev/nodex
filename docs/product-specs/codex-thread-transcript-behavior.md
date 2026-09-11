@@ -64,7 +64,7 @@ This spec does not cover:
 
 ## Bounded History and Search
 
-- A resumed paginated Thread initially owns only its metadata, latest five Turns, and a shared maximum of 500 hydrated items. Initial item admission is also capped by approximate resident bytes. No post-resume task may drain the remaining history implicitly.
+- A resumed paginated Thread initially owns only its metadata, latest five Turns, and a shared maximum of 500 hydrated items. Interactive pages use item counts rather than rejecting valid tool output by an estimated byte multiplier. No post-resume task may drain the remaining history implicitly.
 - Resident history is a sparse set of ordered islands separated by explicit gaps. A gap with a current server cursor may request exactly one adjacent page; a gap created by releasing the middle of an island is opaque and inert until a stable server boundary is available. Empty content is never used to pretend that missing history is complete.
 - Turn and item pagination are independent. Every partial Turn carries its own older-item cursor, completeness state, opening user-message identity, and opening user input. Each physical item segment retains exact cursors for both edges; after opposite-edge eviction, reloading derives the request cursor from the retained edge segment rather than from the most recently fetched page. App-server direction-reversal cursors deliberately re-include their anchor, so merge removes that one resident identity while preserving the returned continuation. Cursor progress is generation-fenced, deduplicated, and fail-closed.
 - Active resident history is bounded by both Turn count and approximate resident bytes. The latest tail, live optimistic Turns, current search result islands, newly revealed pages, and explicitly visible viewport Turns are protected. Releasing a Turn removes it atomically from canonical state, snapshots, accepted replicas, pagination maps, and row projections.
@@ -95,7 +95,7 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 
 - Sending from a new-chat composer creates a session-owned thread; editor/card send-to-chat flows keep focus in the originating surface.
 - Every durable new Thread requests `historyMode: paginated`. Before Session binding or any other durable Thread projection, Main fences the exact creating host generation and validates the returned empty paginated metadata shell. That concrete response proves the accepted storage contract; a version-derived capability flag is required only before optional history RPCs. A non-conforming response fails before Core state is mutated.
-- Resuming through a current host generation always requests a metadata-only Thread shell. Host version comes from the server-version token in `initialize.userAgent`; the client-controlled originator prefix is not a capability allowlist. When independent history RPCs are unproven, resume also requests an inline page of the latest five Turns with full items. Main validates its Turn, item, and resident-byte limits before accepting it. This page proves only its own contents, not support for further history RPCs; unloaded history remains an inert gap. If the page is absent, existing nonempty resident history may be retained for reconnect. A cold resume without authoritative history fails recoverably instead of presenting a metadata shell as an empty conversation. Genuine empty history requires an authoritative empty page.
+- Resuming through a current host generation always requests a metadata-only Thread shell. Host version comes from the server-version token in `initialize.userAgent`; the client-controlled originator prefix is not a capability allowlist. When independent history RPCs are unproven, resume also requests an inline page of the latest five Turns with full items. Main validates its Turn and item limits before accepting it. This page proves only its own contents, not support for further history RPCs; unloaded history remains an inert gap. If the page is absent, existing nonempty resident history may be retained for reconnect. A cold resume without authoritative history fails recoverably instead of presenting a metadata shell as an empty conversation. Genuine empty history requires an authoritative empty page.
 - Keyboard and pointer submission share one draft-transfer transaction. Renderer admission synchronously allocates one `launchId` and `clientUserMessageId`, publishes a Session-owned first-submission row, and only then clears the old new-chat composer or begins Project/Session/worktree/backend materialization. Admission immediately replaces the New Chat Home with the Thread surface; the Home hero and an admitted user row are mutually exclusive. The immutable presentation owner follows Session retargeting and a later real Thread without inventing a placeholder Thread. Main preserves both identities through first-Turn preparation. A matching renderer-optimistic row deduplicates the provisional row, but its nullable Turn id is not a completion boundary: only the matching app-server Turn with a server id may retire the fallback after the final transcript presentation commits. Generic reopen/resume must not compete while that fresh owner exists. Failures retain the submitted row, and progress from another `launchId` cannot replace the active attempt. The destination may never expose an intermediate empty surface, duplicate user row, or Stop/follow-up shell without the submitted row. Optional prompt-rail or persisted-search initialization may not delay, hide, or fail that transition.
 - As soon as submit begins, the transcript projects the submitted user prompt from a nullable in-progress turn's params and keeps that row above the pending turn-body `Thinking` state until live response items arrive. The nullable turn contains no synthetic raw user item. In an active owned thread, the renderer owner appends and publishes that params-owned occurrence, calls `turn/start` through the owner-scoped app-server facade with the same `clientUserMessageId`, then rebinds the occurrence to the app-server turn id and publishes that rebind revision. A local conversation with no stream role resumes into renderer ownership before appending it; there is no direct main-owned submit branch. Follower submits wait for the owner revision before resolving.
 - The owner-visible optimistic append is committed synchronously before transport dispatch or publication acknowledgement. Publication may remain in flight, but React must be able to observe the submitted row immediately; transport and publication latency must not create an empty interval below an existing Thread.
@@ -276,31 +276,41 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
   no-owner recovery facts, but an active owner's accepted replica advances only
   through an accepted owner publication and main never publishes a competing
   source-null transcript.
-- Every accepted replica has a content-addressed checkpoint
-  `(protocolVersion, ownerEpoch, revision, canonicalHash)`. Owner publications are
-  compare-and-swap transactions against the exact base checkpoint: main verifies
-  source ownership, epoch, contiguous revision, patch applicability, and the
-  resulting deterministic canonical hash before replacing its accepted document.
-  Rejection returns the current accepted checkpoint/snapshot; the owner rebases by
-  publishing one next-revision snapshot and acknowledges forwarded notification
-  sequences only after publication succeeds.
+- Every accepted replica has an ordering checkpoint `(protocolVersion, ownerEpoch, revision)`.
+  Main verifies source ownership, epoch, contiguous revision, and patch applicability before
+  mirroring the exact owner document. Live publication never serializes transcript contents for
+  hashing. Host recovery state cannot substitute its newer history or lifecycle projection into
+  an accepted owner revision. Rejection returns the current accepted checkpoint/snapshot.
+  With followers, forwarded notification sequences are acknowledged after publication succeeds.
+  Without followers, live updates remain local and acknowledge transport delivery directly; the
+  next follower requests a fresh owner snapshot, followed by any changes received before its ACK.
+- History reads, residency updates, and search hydration share one owner publication lane.
+  Main prepares proposals without advancing the resident history cursor. A completed page merges
+  against the latest visible owner document and publishes a snapshot barrier, including live updates received during the read. Superseded generation/cursor results
+  return `stale` without publishing. Automatic viewport loading stops a failed or stale boundary
+  until its cursor changes or the view is reopened; layout changes alone never retry it.
+- Large live and completed items retain their full content and protocol identity. Memory
+  accounting may evict unpinned resident history, but cannot replace a valid item or entire live Turn
+  with an output-omitted placeholder. Physical pages retain their exact continuation cursors;
+  a large page is never partially consumed while advancing past omitted items.
 - Shared conversation documents omit absent optional object members before
   checkpointing and patch generation. Clearing an optional field produces a removal;
   arrays preserve their ordered entries and reject invalid or missing values.
 - A follower first applies an owner snapshot behind a per-client barrier and sends
   an explicit snapshot-applied ACK. Main does not include that follower in delta
   fanout until the ACK matches both the sent and current checkpoint. Later patches
-  require the same source owner, owner epoch, exact base revision/hash, next
-  revision, and matching post-apply hash. A missing snapshot, owner mismatch, epoch
-  mismatch, revision gap, base-hash mismatch, patch failure, checkpoint mismatch,
+  require the same source owner, owner epoch, exact base revision and next
+  revision. A missing snapshot, owner mismatch, epoch
+  mismatch, revision gap, patch failure, checkpoint mismatch,
   or transport reset requests an explicit snapshot resync instead of best-effort
   merging. Replacing an owner increments the epoch, invalidates follower barriers,
   rejects stale publications/ACKs, and requires a fresh snapshot before deltas.
 - Owner adoption/resume and follower `thread/resume` carry the same mandatory
   checkpoint and exact shared document as a relayed snapshot. Renderer state
-  verifies the returned revision/hash and retains that exact document as the
+  verifies the returned revision and retains that exact document as the
   publication/patch CAS baseline before deriving the materialized UI snapshot.
-  A follower can therefore apply the first post-resume delta, and an owner can
+  A follower treats resume data as provisional and waits for a fresh owner snapshot before
+  completing attachment. It can then apply the first contiguous delta, and an owner can
   publish its first optimistic mutation plus any normalization delta, without an
   intermediate baseline mismatch or synthetic epoch.
 - Terminal item lifecycle is monotonic for one `(itemId, protocol type)` occurrence:

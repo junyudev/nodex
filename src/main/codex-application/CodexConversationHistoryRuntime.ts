@@ -17,7 +17,6 @@ import {
   type CodexHistoryBoundary,
   type CodexHistoryBoundaryHandle,
 } from "../../shared/codex-conversation-state/codex-history-topology";
-import { DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS } from "../../shared/codex-conversation-state/codex-history-item-window";
 import type { CodexCanonicalConversationState } from "../../shared/types";
 import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import {
@@ -275,19 +274,8 @@ export const make: Effect.Effect<
             }),
           catch: (cause) => historyError("projection-rejected", cause),
         });
-        const projectedBytes = cappedApproximateValueBytes(
-          projectedPage,
-          DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxApproximateBytes,
-        );
+        const projectedBytes = cappedApproximateValueBytes(projectedPage, Number.MAX_SAFE_INTEGER);
         const approximateBytes = Math.max(input.page.approximateBytes, projectedBytes);
-        if (approximateBytes > DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxApproximateBytes) {
-          return yield* historyError(
-            "projection-rejected",
-            new Error(
-              `Projected item page for Turn '${target.items.turnId}' exceeds its byte limit`,
-            ),
-          );
-        }
         return yield* mapCommit(
           entity.commitHistoryPage({
             request: input.request,
@@ -372,7 +360,14 @@ export const make: Effect.Effect<
         );
       }
       return yield* commitItems({ request, admission, page });
-    }).pipe(Effect.ensuring(release(request)));
+    }).pipe(
+      Effect.catch((cause) =>
+        cause.reason === "stale-target" || cause.reason === "stale-generation"
+          ? Effect.succeed({ status: "stale" } as const)
+          : Effect.fail(cause),
+      ),
+      Effect.ensuring(release(request)),
+    );
 
   const loadPage = (
     request: CodexConversationHistoryPageRequest,
