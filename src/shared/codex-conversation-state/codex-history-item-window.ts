@@ -1,24 +1,14 @@
 /**
- * One Turn's resident item history as bounded, independently transferable page segments.
+ * One Turn's loaded item history as independently transferable page segments.
  *
  * The window is an in-process value rather than a snapshot shape. Ordinary page admission never
- * materializes the accumulated Turn: it indexes the incoming page, prepends one segment, and
- * releases whole segments from the opposite edge. Callers cross the explicit materialization seam
+ * materializes the accumulated Turn: it indexes the incoming page and prepends one segment, then
+ * retains every loaded segment. Callers cross the explicit materialization seam
  * only when rebuilding a canonical/renderer view.
  */
 
-export const DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS = Object.freeze({
-  maxItems: 500,
-  maxApproximateBytes: 8 * 1024 * 1024,
-});
-
 export interface CodexHistoryItemIdentity {
   readonly id: string;
-}
-
-export interface CodexHistoryItemWindowLimits {
-  readonly maxItems: number;
-  readonly maxApproximateBytes: number;
 }
 
 export type CodexHistoryItemOlderBoundary =
@@ -31,7 +21,7 @@ export type CodexHistoryItemOlderBoundary =
       readonly status: "exhausted";
     }
   | {
-      /** Retention released an older segment without a server-provided reverse cursor. */
+      /** The older boundary has no proven server cursor. */
       readonly status: "opaque";
     };
 
@@ -46,7 +36,7 @@ export type CodexHistoryItemNewerBoundary =
       readonly status: "exhausted";
     }
   | {
-      /** Retention released a newer segment without inventing a reload cursor. */
+      /** The newer boundary has no proven server cursor. */
       readonly status: "opaque";
     };
 
@@ -96,16 +86,12 @@ export interface CodexHistoryItemWindowResidency {
   readonly itemCount: number;
   readonly approximateBytes: number;
   /** False only when one indivisible physical page is the minimum progress unit. */
-  readonly limitsSatisfied: boolean;
-  readonly protectedOverage: boolean;
 }
 
 /** Deterministic evidence that ordinary admission/apply did not flatten accumulated history. */
 export interface CodexHistoryItemWindowWork {
   readonly pageItemsVisited: number;
   readonly pageRendererItemsVisited: number;
-  readonly releasedSegmentsVisited: number;
-  readonly releasedItemsVisited: number;
   readonly itemIndexNodeVisits: number;
   readonly segmentIndexNodeVisits: number;
   readonly segmentTreeNodeVisits: number;
@@ -143,8 +129,7 @@ export type CodexHistoryItemWindowErrorCode =
   | "historyExhausted"
   | "cursorStalled"
   | "emptyPageContinuation"
-  | "staleBoundary"
-  | "releaseMismatch";
+  | "staleBoundary";
 
 export interface CodexHistoryItemWindowError {
   readonly _tag: "CodexHistoryItemWindowError";
@@ -157,7 +142,6 @@ export interface CreateCodexHistoryItemWindowInput<
   TRendererItem,
 > {
   readonly turnId: string;
-  readonly limits?: Partial<CodexHistoryItemWindowLimits>;
   readonly olderBoundary: CodexHistoryItemOlderBoundary;
   readonly newerBoundary?: CodexHistoryItemNewerBoundary;
   /** Already-bounded segments in chronological order. */
@@ -197,8 +181,6 @@ export interface CodexHistoryItemWindowMutation<
   TRendererItem,
 > {
   readonly wireSegment: CodexHistoryItemWireSegment<TCanonicalItem, TRendererItem>;
-  /** Newest-first eviction order; receivers verify this list exactly. */
-  readonly releasedSegmentIds: readonly string[];
 }
 
 export type CodexHistoryItemWindowTransitionResult<
@@ -209,8 +191,6 @@ export type CodexHistoryItemWindowTransitionResult<
       readonly ok: true;
       readonly window: CodexHistoryItemWindow<TCanonicalItem, TRendererItem>;
       readonly wireSegment: CodexHistoryItemWireSegment<TCanonicalItem, TRendererItem>;
-      readonly releasedSegmentIds: readonly string[];
-      readonly releasedSegments: readonly CodexHistoryItemSegment<TCanonicalItem, TRendererItem>[];
       readonly work: CodexHistoryItemWindowWork;
     }
   | {
@@ -225,7 +205,6 @@ export type ApplyCodexHistoryItemWindowMutationResult<
   | {
       readonly ok: true;
       readonly window: CodexHistoryItemWindow<TCanonicalItem, TRendererItem>;
-      readonly releasedSegments: readonly CodexHistoryItemSegment<TCanonicalItem, TRendererItem>[];
       readonly work: CodexHistoryItemWindowWork;
     }
   | {
@@ -282,7 +261,6 @@ export interface CodexHistoryItemWindow<
   TRendererItem,
 > {
   readonly turnId: string;
-  readonly limits: CodexHistoryItemWindowLimits;
   readonly olderBoundary: CodexHistoryItemOlderBoundary;
   readonly newerBoundary: CodexHistoryItemNewerBoundary;
   readonly residency: CodexHistoryItemWindowResidency;
@@ -295,8 +273,6 @@ export interface CodexHistoryItemWindow<
 interface MutableWork {
   pageItemsVisited: number;
   pageRendererItemsVisited: number;
-  releasedSegmentsVisited: number;
-  releasedItemsVisited: number;
   itemIndexNodeVisits: number;
   segmentIndexNodeVisits: number;
   segmentTreeNodeVisits: number;
@@ -314,8 +290,6 @@ function mutableWork(): MutableWork {
   return {
     pageItemsVisited: 0,
     pageRendererItemsVisited: 0,
-    releasedSegmentsVisited: 0,
-    releasedItemsVisited: 0,
     itemIndexNodeVisits: 0,
     segmentIndexNodeVisits: 0,
     segmentTreeNodeVisits: 0,
@@ -332,19 +306,6 @@ function freezeWork(work: MutableWork): CodexHistoryItemWindowWork {
 
 function isNonEmptyIdentity(value: string): boolean {
   return value.trim().length > 0;
-}
-
-function validateLimits(limits: CodexHistoryItemWindowLimits): CodexHistoryItemWindowError | null {
-  if (!Number.isSafeInteger(limits.maxItems) || limits.maxItems <= 0) {
-    return itemWindowError("malformedLimits", "Item-window maxItems must be a positive integer");
-  }
-  if (!Number.isSafeInteger(limits.maxApproximateBytes) || limits.maxApproximateBytes <= 0) {
-    return itemWindowError(
-      "malformedLimits",
-      "Item-window maxApproximateBytes must be a positive integer",
-    );
-  }
-  return null;
 }
 
 function validateOlderBoundary(
@@ -389,18 +350,6 @@ function newerBoundaryAfter(newerCursorAfter: string | null): CodexHistoryItemNe
   return newerCursorAfter === null
     ? Object.freeze({ status: "exhausted" as const })
     : Object.freeze({ status: "available" as const, cursor: newerCursorAfter });
-}
-
-function recoveredOlderBoundary(cursor: string | null | undefined): CodexHistoryItemOlderBoundary {
-  return typeof cursor === "string" && isNonEmptyIdentity(cursor)
-    ? availableOlderBoundary(cursor)
-    : Object.freeze({ status: "opaque" as const });
-}
-
-function recoveredNewerBoundary(cursor: string | null | undefined): CodexHistoryItemNewerBoundary {
-  return typeof cursor === "string" && isNonEmptyIdentity(cursor)
-    ? Object.freeze({ status: "available" as const, cursor })
-    : Object.freeze({ status: "opaque" as const });
 }
 
 function stringSetHeight(node: StringSetNode | null): number {
@@ -485,37 +434,6 @@ function stringSetInsert(
   }
   return balanceStringSet(
     makeStringSetNode(node.key, node.left, stringSetInsert(node.right, key, visit)),
-  );
-}
-
-function stringSetMinimum(node: StringSetNode): StringSetNode {
-  let current = node;
-  while (current.left) current = current.left;
-  return current;
-}
-
-function stringSetRemove(
-  node: StringSetNode | null,
-  key: string,
-  visit: () => void,
-): StringSetNode | null {
-  if (!node) return null;
-  visit();
-  if (key < node.key) {
-    return balanceStringSet(
-      makeStringSetNode(node.key, stringSetRemove(node.left, key, visit), node.right),
-    );
-  }
-  if (key > node.key) {
-    return balanceStringSet(
-      makeStringSetNode(node.key, node.left, stringSetRemove(node.right, key, visit)),
-    );
-  }
-  if (!node.left) return node.right;
-  if (!node.right) return node.left;
-  const successor = stringSetMinimum(node.right);
-  return balanceStringSet(
-    makeStringSetNode(successor.key, node.left, stringSetRemove(node.right, successor.key, visit)),
   );
 }
 
@@ -627,68 +545,6 @@ function segmentTreeInsert<TCanonicalItem extends CodexHistoryItemIdentity, TRen
   );
 }
 
-function removeNewestSegment<TCanonicalItem extends CodexHistoryItemIdentity, TRendererItem>(
-  node: SegmentTreeNode<TCanonicalItem, TRendererItem>,
-  visit: () => void,
-): {
-  readonly root: SegmentTreeNode<TCanonicalItem, TRendererItem> | null;
-  readonly segment: CodexHistoryItemSegment<TCanonicalItem, TRendererItem>;
-} {
-  visit();
-  if (!node.right) return { root: node.left, segment: node.segment };
-  const removed = removeNewestSegment(node.right, visit);
-  return {
-    root: balanceSegmentTree(
-      makeSegmentTreeNode(node.order, node.segment, node.left, removed.root),
-    ),
-    segment: removed.segment,
-  };
-}
-
-function removeOldestSegment<TCanonicalItem extends CodexHistoryItemIdentity, TRendererItem>(
-  node: SegmentTreeNode<TCanonicalItem, TRendererItem>,
-  visit: () => void,
-): {
-  readonly root: SegmentTreeNode<TCanonicalItem, TRendererItem> | null;
-  readonly segment: CodexHistoryItemSegment<TCanonicalItem, TRendererItem>;
-} {
-  visit();
-  if (!node.left) return { root: node.right, segment: node.segment };
-  const removed = removeOldestSegment(node.left, visit);
-  return {
-    root: balanceSegmentTree(
-      makeSegmentTreeNode(node.order, node.segment, removed.root, node.right),
-    ),
-    segment: removed.segment,
-  };
-}
-
-function newestSegment<TCanonicalItem extends CodexHistoryItemIdentity, TRendererItem>(
-  node: SegmentTreeNode<TCanonicalItem, TRendererItem> | null,
-  visit: () => void,
-): CodexHistoryItemSegment<TCanonicalItem, TRendererItem> | null {
-  let current = node;
-  while (current) {
-    visit();
-    if (!current.right) return current.segment;
-    current = current.right;
-  }
-  return null;
-}
-
-function oldestSegment<TCanonicalItem extends CodexHistoryItemIdentity, TRendererItem>(
-  node: SegmentTreeNode<TCanonicalItem, TRendererItem> | null,
-  visit: () => void,
-): CodexHistoryItemSegment<TCanonicalItem, TRendererItem> | null {
-  let current = node;
-  while (current) {
-    visit();
-    if (!current.left) return current.segment;
-    current = current.left;
-  }
-  return null;
-}
-
 function buildSegmentTree<TCanonicalItem extends CodexHistoryItemIdentity, TRendererItem>(
   segments: readonly CodexHistoryItemSegment<TCanonicalItem, TRendererItem>[],
   start: number,
@@ -771,34 +627,27 @@ function validateSegmentShape<TCanonicalItem extends CodexHistoryItemIdentity, T
 
 function residency<TCanonicalItem extends CodexHistoryItemIdentity, TRendererItem>(
   root: SegmentTreeNode<TCanonicalItem, TRendererItem> | null,
-  limits: CodexHistoryItemWindowLimits,
 ): CodexHistoryItemWindowResidency {
   const itemCount = root?.itemCount ?? 0;
   const approximateBytes = root?.approximateBytes ?? 0;
-  const limitsSatisfied =
-    itemCount <= limits.maxItems && approximateBytes <= limits.maxApproximateBytes;
   return Object.freeze({
     segmentCount: root?.segmentCount ?? 0,
     itemCount,
     approximateBytes,
-    limitsSatisfied,
-    protectedOverage: !limitsSatisfied && (root?.segmentCount ?? 0) === 1,
   });
 }
 
 function createWindowValue<TCanonicalItem extends CodexHistoryItemIdentity, TRendererItem>(input: {
   readonly turnId: string;
-  readonly limits: CodexHistoryItemWindowLimits;
   readonly olderBoundary: CodexHistoryItemOlderBoundary;
   readonly newerBoundary: CodexHistoryItemNewerBoundary;
   readonly state: CodexHistoryItemWindowState<TCanonicalItem, TRendererItem>;
 }): CodexHistoryItemWindow<TCanonicalItem, TRendererItem> {
   const window = {
     turnId: input.turnId,
-    limits: input.limits,
     olderBoundary: input.olderBoundary,
     newerBoundary: input.newerBoundary,
-    residency: residency(input.state.segments, input.limits),
+    residency: residency(input.state.segments),
   } as CodexHistoryItemWindow<TCanonicalItem, TRendererItem>;
   Object.defineProperty(window, codexHistoryItemWindowState, {
     value: input.state,
@@ -813,14 +662,6 @@ export function createCodexHistoryItemWindow<
 >(
   input: CreateCodexHistoryItemWindowInput<TCanonicalItem, TRendererItem>,
 ): CreateCodexHistoryItemWindowResult<TCanonicalItem, TRendererItem> {
-  const limits = Object.freeze({
-    maxItems: input.limits?.maxItems ?? DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxItems,
-    maxApproximateBytes:
-      input.limits?.maxApproximateBytes ??
-      DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxApproximateBytes,
-  });
-  const limitsError = validateLimits(limits);
-  if (limitsError) return { ok: false, error: limitsError };
   if (!isNonEmptyIdentity(input.turnId)) {
     return {
       ok: false,
@@ -833,7 +674,6 @@ export function createCodexHistoryItemWindow<
   const seedSegments: CodexHistoryItemSegment<TCanonicalItem, TRendererItem>[] = [];
   let itemIds: StringSetNode | null = null;
   let segmentIds: StringSetNode | null = null;
-  let seedItemCount = 0;
   for (const candidate of input.seedSegments ?? []) {
     const segment = copySegment(candidate);
     const segmentError = validateSegmentShape(segment);
@@ -879,16 +719,6 @@ export function createCodexHistoryItemWindow<
     for (const itemId of segment.items.itemIds) {
       itemIds = stringSetInsert(itemIds, itemId, () => undefined);
     }
-    seedItemCount += segment.items.itemIds.length;
-    if (seedItemCount > limits.maxItems) {
-      return {
-        ok: false,
-        error: itemWindowError(
-          "pageLimitExceeded",
-          "Seed item segments exceed the fixed resident window limits",
-        ),
-      };
-    }
     seedSegments.push(segment);
   }
 
@@ -897,7 +727,6 @@ export function createCodexHistoryItemWindow<
     ok: true,
     window: createWindowValue({
       turnId: input.turnId,
-      limits,
       olderBoundary: Object.freeze({ ...input.olderBoundary }),
       newerBoundary: Object.freeze({
         ...(input.newerBoundary ?? { status: "exhausted" }),
@@ -971,16 +800,6 @@ function prependTransition<TCanonicalItem extends CodexHistoryItemIdentity, TRen
       ),
     };
   }
-  if (copiedSegment.items.itemIds.length > window.limits.maxItems) {
-    return {
-      ok: false,
-      error: itemWindowError(
-        "pageLimitExceeded",
-        `Item segment '${copiedSegment.segmentId}' exceeds the fixed per-Turn window`,
-      ),
-    };
-  }
-
   const state = window[codexHistoryItemWindowState];
   if (
     copiedSegment.items.itemIds.length > 0 &&
@@ -1049,43 +868,9 @@ function prependTransition<TCanonicalItem extends CodexHistoryItemIdentity, TRen
     }
   }
 
-  const releasedSegmentIds: string[] = [];
-  const releasedSegments: CodexHistoryItemSegment<TCanonicalItem, TRendererItem>[] = [];
-  while (
-    segments &&
-    segments.segmentCount > 1 &&
-    (segments.itemCount > window.limits.maxItems ||
-      segments.approximateBytes > window.limits.maxApproximateBytes)
-  ) {
-    const released = removeNewestSegment(segments, () => {
-      work.segmentTreeNodeVisits += 1;
-    });
-    segments = released.root;
-    releasedSegmentIds.push(released.segment.segmentId);
-    releasedSegments.push(released.segment);
-    work.releasedSegmentsVisited += 1;
-    work.releasedItemsVisited += released.segment.items.itemIds.length;
-    segmentIds = stringSetRemove(segmentIds, released.segment.segmentId, () => {
-      work.segmentIndexNodeVisits += 1;
-    });
-    for (const itemId of released.segment.items.itemIds) {
-      itemIds = stringSetRemove(itemIds, itemId, () => {
-        work.itemIndexNodeVisits += 1;
-      });
-    }
-  }
-
-  const nextNewerBoundary =
-    releasedSegmentIds.length > 0
-      ? recoveredNewerBoundary(
-          newestSegment(segments, () => {
-            work.segmentTreeNodeVisits += 1;
-          })?.newerCursor,
-        )
-      : window.newerBoundary;
+  const nextNewerBoundary = window.newerBoundary;
   const nextWindow = createWindowValue({
     turnId: window.turnId,
-    limits: window.limits,
     olderBoundary: olderBoundaryAfter,
     newerBoundary: nextNewerBoundary,
     state: Object.freeze({
@@ -1100,8 +885,6 @@ function prependTransition<TCanonicalItem extends CodexHistoryItemIdentity, TRen
     ok: true,
     window: nextWindow,
     wireSegment: Object.freeze({ ...wireSegment, newerBoundaryAfter: nextNewerBoundary }),
-    releasedSegmentIds: Object.freeze(releasedSegmentIds),
-    releasedSegments: Object.freeze(releasedSegments),
     work: freezeWork(work),
   };
 }
@@ -1174,16 +957,6 @@ function appendTransition<TCanonicalItem extends CodexHistoryItemIdentity, TRend
       ),
     };
   }
-  if (copiedSegment.items.itemIds.length > window.limits.maxItems) {
-    return {
-      ok: false,
-      error: itemWindowError(
-        "pageLimitExceeded",
-        `Item segment '${copiedSegment.segmentId}' exceeds the fixed per-Turn window`,
-      ),
-    };
-  }
-
   const state = window[codexHistoryItemWindowState];
   if (
     copiedSegment.items.itemIds.length > 0 &&
@@ -1242,43 +1015,9 @@ function appendTransition<TCanonicalItem extends CodexHistoryItemIdentity, TRend
     }
   }
 
-  const releasedSegmentIds: string[] = [];
-  const releasedSegments: CodexHistoryItemSegment<TCanonicalItem, TRendererItem>[] = [];
-  while (
-    segments &&
-    segments.segmentCount > 1 &&
-    (segments.itemCount > window.limits.maxItems ||
-      segments.approximateBytes > window.limits.maxApproximateBytes)
-  ) {
-    const released = removeOldestSegment(segments, () => {
-      work.segmentTreeNodeVisits += 1;
-    });
-    segments = released.root;
-    releasedSegmentIds.push(released.segment.segmentId);
-    releasedSegments.push(released.segment);
-    work.releasedSegmentsVisited += 1;
-    work.releasedItemsVisited += released.segment.items.itemIds.length;
-    segmentIds = stringSetRemove(segmentIds, released.segment.segmentId, () => {
-      work.segmentIndexNodeVisits += 1;
-    });
-    for (const itemId of released.segment.items.itemIds) {
-      itemIds = stringSetRemove(itemIds, itemId, () => {
-        work.itemIndexNodeVisits += 1;
-      });
-    }
-  }
-
-  const nextOlderBoundary =
-    releasedSegmentIds.length > 0
-      ? recoveredOlderBoundary(
-          oldestSegment(segments, () => {
-            work.segmentTreeNodeVisits += 1;
-          })?.olderCursor,
-        )
-      : window.olderBoundary;
+  const nextOlderBoundary = window.olderBoundary;
   const nextWindow = createWindowValue({
     turnId: window.turnId,
-    limits: window.limits,
     olderBoundary: nextOlderBoundary,
     newerBoundary: nextNewerBoundary,
     state: Object.freeze({
@@ -1300,8 +1039,6 @@ function appendTransition<TCanonicalItem extends CodexHistoryItemIdentity, TRend
       newerBoundaryBefore: window.newerBoundary,
       newerBoundaryAfter: nextNewerBoundary,
     }),
-    releasedSegmentIds: Object.freeze(releasedSegmentIds),
-    releasedSegments: Object.freeze(releasedSegments),
     work: freezeWork(work),
   };
 }
@@ -1367,20 +1104,6 @@ export function applyCodexHistoryItemWindowMutation<
         });
   if (!result.ok) return result;
   if (
-    result.releasedSegmentIds.length !== mutation.releasedSegmentIds.length ||
-    result.releasedSegmentIds.some(
-      (segmentId, index) => mutation.releasedSegmentIds[index] !== segmentId,
-    )
-  ) {
-    return {
-      ok: false,
-      error: itemWindowError(
-        "releaseMismatch",
-        "Item-window mutation does not release the receiver's exact remote segments",
-      ),
-    };
-  }
-  if (
     !sameOlderBoundary(result.window.olderBoundary, mutation.wireSegment.olderBoundaryAfter) ||
     !sameNewerBoundary(result.window.newerBoundary, mutation.wireSegment.newerBoundaryAfter)
   ) {
@@ -1392,7 +1115,6 @@ export function applyCodexHistoryItemWindowMutation<
   return {
     ok: true,
     window: result.window,
-    releasedSegments: result.releasedSegments,
     work: result.work,
   };
 }

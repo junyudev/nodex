@@ -3,8 +3,6 @@ import { assert, it } from "@effect/vitest";
 import {
   applyCodexHistoryItemWindowMutation,
   createCodexHistoryItemWindow,
-  DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS,
-  materializeCodexHistoryItemWindow,
   prependCodexHistoryItemPage,
   type CodexHistoryItemSegment,
   type CodexHistoryItemWindow,
@@ -14,7 +12,6 @@ import {
 const TURN_ID = "turn-giant-item-window-performance";
 const PAGE_ITEMS = 100;
 const ITEM_APPROXIMATE_BYTES = 2 * 1024;
-const PAGE_APPROXIMATE_BYTES = PAGE_ITEMS * ITEM_APPROXIMATE_BYTES;
 const WIRE_MAX_BYTES = 384 * 1024;
 
 interface CanonicalItem {
@@ -88,16 +85,11 @@ const segment = (input: {
 };
 
 const createWindow = (input: {
-  readonly maxItems: number;
-  readonly maxApproximateBytes: number;
   readonly seedSegments: readonly CodexHistoryItemSegment<CanonicalItem, RendererItem>[];
 }): CodexHistoryItemWindow<CanonicalItem, RendererItem> => {
   const created = createCodexHistoryItemWindow<CanonicalItem, RendererItem>({
     turnId: TURN_ID,
-    limits: {
-      maxItems: input.maxItems,
-      maxApproximateBytes: input.maxApproximateBytes,
-    },
+
     olderBoundary: available("items:before-page"),
     seedSegments: input.seedSegments,
   });
@@ -115,8 +107,6 @@ const pageSegment = (): CodexHistoryItemSegment<CanonicalItem, RendererItem> =>
 const workUnits = (work: CodexHistoryItemWindowWork): number =>
   work.pageItemsVisited +
   work.pageRendererItemsVisited +
-  work.releasedSegmentsVisited +
-  work.releasedItemsVisited +
   work.itemIndexNodeVisits +
   work.segmentIndexNodeVisits +
   work.segmentTreeNodeVisits +
@@ -132,10 +122,7 @@ const measureScale = (baseResidentItems: number): ScaleMeasurement => {
       unchangedPayloadReads += 1;
     },
   });
-  const limits = {
-    maxItems: baseResidentItems + PAGE_ITEMS,
-    maxApproximateBytes: (baseResidentItems + PAGE_ITEMS) * ITEM_APPROXIMATE_BYTES,
-  };
+  const limits = {};
   const source = createWindow({ ...limits, seedSegments: [resident] });
   const receiver = createWindow({ ...limits, seedSegments: [resident] });
   unchangedPayloadReads = 0;
@@ -148,7 +135,6 @@ const measureScale = (baseResidentItems: number): ScaleMeasurement => {
   if (!transition.ok) throw new Error(transition.error.message);
   const mutation = {
     wireSegment: transition.wireSegment,
-    releasedSegmentIds: transition.releasedSegmentIds,
   };
   const encoded = JSON.stringify(mutation);
   const mutationHash = createHash("sha256").update(encoded).digest("hex");
@@ -166,7 +152,6 @@ const measureScale = (baseResidentItems: number): ScaleMeasurement => {
   assert.deepEqual(transition.window.olderBoundary, available("items:after-one-page"));
   assert.deepEqual(applied.window.olderBoundary, transition.window.olderBoundary);
   assert.deepEqual(applied.window.residency, transition.window.residency);
-  assert.strictEqual(transition.releasedSegmentIds.length, 0);
   assert.strictEqual(transition.work.pageItemsVisited, PAGE_ITEMS);
   assert.strictEqual(transition.work.pageRendererItemsVisited, PAGE_ITEMS);
   assert.strictEqual(transition.work.residentItemsMaterialized, 0);
@@ -218,170 +203,6 @@ it("keeps prepend mutation and hash page-local over 100 versus 10k resident item
         sourceWorkUnits: workUnits(measurement.sourceWork),
         receiverWorkUnits: workUnits(measurement.receiverWork),
       })),
-    })}\n`,
-  );
-});
-
-it("bounds a giant Turn independently by resident item count and bytes", () => {
-  const countSeed = Array.from({ length: 5 }, (_, index) =>
-    segment({
-      segmentId: `count-seed-${index}`,
-      prefix: `count-seed-${index}`,
-      itemCount: 100,
-      approximateBytes: 100 * 32,
-    }),
-  );
-  const countSource = createWindow({
-    maxItems: 500,
-    maxApproximateBytes: 1 * 1024 * 1024,
-    seedSegments: countSeed,
-  });
-  const countReceiver = createWindow({
-    maxItems: 500,
-    maxApproximateBytes: 1 * 1024 * 1024,
-    seedSegments: countSeed,
-  });
-  const countTransition = prependCodexHistoryItemPage(countSource, {
-    ...pageSegment(),
-    approximateBytes: PAGE_ITEMS * 32,
-    olderCursorAfter: "items:count-next",
-  });
-  if (!countTransition.ok) throw new Error(countTransition.error.message);
-  const countApplied = applyCodexHistoryItemWindowMutation(countReceiver, {
-    wireSegment: countTransition.wireSegment,
-    releasedSegmentIds: countTransition.releasedSegmentIds,
-  });
-  if (!countApplied.ok) throw new Error(countApplied.error.message);
-
-  const byteSeed = Array.from({ length: 4 }, (_, index) =>
-    segment({
-      segmentId: `byte-seed-${index}`,
-      prefix: `byte-seed-${index}`,
-      itemCount: 100,
-      approximateBytes: PAGE_APPROXIMATE_BYTES,
-    }),
-  );
-  const byteLimit = 4 * PAGE_APPROXIMATE_BYTES;
-  const byteSource = createWindow({
-    maxItems: 1_000,
-    maxApproximateBytes: byteLimit,
-    seedSegments: byteSeed,
-  });
-  const byteReceiver = createWindow({
-    maxItems: 1_000,
-    maxApproximateBytes: byteLimit,
-    seedSegments: byteSeed,
-  });
-  const byteTransition = prependCodexHistoryItemPage(byteSource, {
-    ...pageSegment(),
-    olderCursorAfter: "items:byte-next",
-  });
-  if (!byteTransition.ok) throw new Error(byteTransition.error.message);
-  const byteApplied = applyCodexHistoryItemWindowMutation(byteReceiver, {
-    wireSegment: byteTransition.wireSegment,
-    releasedSegmentIds: byteTransition.releasedSegmentIds,
-  });
-  if (!byteApplied.ok) throw new Error(byteApplied.error.message);
-
-  const defaultPageBytes = 1_600_000;
-  const defaultSeed = Array.from({ length: 5 }, (_, index) =>
-    segment({
-      segmentId: `default-seed-${index}`,
-      prefix: `default-seed-${index}`,
-      itemCount: 100,
-      approximateBytes:
-        index === 4
-          ? defaultPageBytes
-          : (DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxApproximateBytes - defaultPageBytes) / 4,
-    }),
-  );
-  const defaultCreated = createCodexHistoryItemWindow<CanonicalItem, RendererItem>({
-    turnId: TURN_ID,
-    olderBoundary: available("items:before-page"),
-    seedSegments: defaultSeed,
-  });
-  if (!defaultCreated.ok) throw new Error(defaultCreated.error.message);
-  const defaultTransition = prependCodexHistoryItemPage(defaultCreated.window, {
-    ...pageSegment(),
-    approximateBytes: defaultPageBytes,
-    olderCursorAfter: "items:default-next",
-  });
-  if (!defaultTransition.ok) throw new Error(defaultTransition.error.message);
-
-  assert.deepEqual(countTransition.releasedSegmentIds, ["count-seed-4"]);
-  assert.deepEqual(countTransition.window.residency, {
-    segmentCount: 5,
-    itemCount: 500,
-    approximateBytes: 16_000,
-    limitsSatisfied: true,
-    protectedOverage: false,
-  });
-  assert.deepEqual(countTransition.window.olderBoundary, available("items:count-next"));
-  assert.deepEqual(countTransition.window.newerBoundary, { status: "opaque" });
-  assert.deepEqual(countApplied.window.residency, countTransition.window.residency);
-  assert.deepEqual(countApplied.window.olderBoundary, countTransition.window.olderBoundary);
-  assert.deepEqual(countApplied.window.newerBoundary, countTransition.window.newerBoundary);
-
-  assert.deepEqual(byteTransition.releasedSegmentIds, ["byte-seed-3"]);
-  assert.deepEqual(byteTransition.window.residency, {
-    segmentCount: 4,
-    itemCount: 400,
-    approximateBytes: byteLimit,
-    limitsSatisfied: true,
-    protectedOverage: false,
-  });
-  assert.deepEqual(byteTransition.window.olderBoundary, available("items:byte-next"));
-  assert.deepEqual(byteTransition.window.newerBoundary, { status: "opaque" });
-  assert.deepEqual(byteApplied.window.residency, byteTransition.window.residency);
-  assert.deepEqual(byteApplied.window.olderBoundary, byteTransition.window.olderBoundary);
-  assert.deepEqual(byteApplied.window.newerBoundary, byteTransition.window.newerBoundary);
-  assert.strictEqual(countTransition.work.residentItemsMaterialized, 0);
-  assert.strictEqual(byteTransition.work.residentItemsMaterialized, 0);
-
-  assert.deepEqual(defaultCreated.window.limits, DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS);
-  assert.deepEqual(defaultTransition.releasedSegmentIds, ["default-seed-4"]);
-  assert.deepEqual(defaultTransition.window.residency, {
-    segmentCount: 5,
-    itemCount: DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxItems,
-    approximateBytes: DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxApproximateBytes,
-    limitsSatisfied: true,
-    protectedOverage: false,
-  });
-  assert.deepEqual(defaultTransition.window.olderBoundary, available("items:default-next"));
-  assert.deepEqual(defaultTransition.window.newerBoundary, { status: "opaque" });
-  assert.strictEqual(defaultTransition.work.residentItemsMaterialized, 0);
-
-  const countMaterialized = materializeCodexHistoryItemWindow(countTransition.window);
-  const byteMaterialized = materializeCodexHistoryItemWindow(byteTransition.window);
-  assert.strictEqual(countMaterialized.itemIds.length, 500);
-  assert.strictEqual(byteMaterialized.itemIds.length, 400);
-  assert.isTrue(countMaterialized.itemIds[0]?.startsWith("older-page:"));
-  assert.isTrue(byteMaterialized.itemIds[0]?.startsWith("older-page:"));
-
-  process.stdout.write(
-    `\nNODEX_LAZY_HISTORY_ACCEPTANCE ${JSON.stringify({
-      kind: "giant-turn-residency",
-      countPressure: {
-        limits: countSource.limits,
-        residency: countTransition.window.residency,
-        releasedSegmentIds: countTransition.releasedSegmentIds,
-        olderBoundary: countTransition.window.olderBoundary,
-        newerBoundary: countTransition.window.newerBoundary,
-      },
-      bytePressure: {
-        limits: byteSource.limits,
-        residency: byteTransition.window.residency,
-        releasedSegmentIds: byteTransition.releasedSegmentIds,
-        olderBoundary: byteTransition.window.olderBoundary,
-        newerBoundary: byteTransition.window.newerBoundary,
-      },
-      defaultSimultaneousPressure: {
-        limits: defaultCreated.window.limits,
-        residency: defaultTransition.window.residency,
-        releasedSegmentIds: defaultTransition.releasedSegmentIds,
-        olderBoundary: defaultTransition.window.olderBoundary,
-        newerBoundary: defaultTransition.window.newerBoundary,
-      },
     })}\n`,
   );
 });

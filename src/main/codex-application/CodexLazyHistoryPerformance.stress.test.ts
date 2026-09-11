@@ -4,17 +4,9 @@ import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import {
   availableCodexHistoryBoundary,
-  createCodexHistoryIslandTopology,
   exhaustedCodexHistoryBoundary,
   flattenCodexHistoryTopology,
-  type CodexHistoryEntity,
 } from "../../shared/codex-conversation-state/codex-history-topology";
-import {
-  DEFAULT_CODEX_ACTIVE_HISTORY_MAX_APPROXIMATE_BYTES,
-  DEFAULT_CODEX_ACTIVE_HISTORY_MAX_TURNS,
-  retainCodexHistoryResidency,
-} from "../../shared/codex-conversation-state/codex-history-residency";
-import { DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS } from "../../shared/codex-conversation-state/codex-history-item-window";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import {
@@ -43,11 +35,6 @@ import {
   makeCodexRendererConversationRegistryState,
 } from "./CodexRendererConversationRegistry";
 import { make as makeDirectory } from "./CodexThreadDirectory";
-import {
-  DEFAULT_RENDERER_OWNER_MAX_RETAINED,
-  DEFAULT_RENDERER_OWNER_MAX_RETAINED_APPROXIMATE_BYTES,
-  selectCodexRendererOwnerRetentionOverflow,
-} from "./CodexRendererOwnerRetention";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { makeConversationEntityStateRegistry } from "./internal/ConversationEntityState";
 
@@ -107,9 +94,8 @@ interface GiantTurnColdMeasurement {
 const THREAD_ID = "thread-history-performance";
 const HOST_ID = "remote-history-performance";
 const LARGE_ITEM_TEXT = "x".repeat(8 * 1024);
-const RESIDENCY_ITEMS_PER_TURN = 100;
-const COLD_RESIDENT_BYTES_BOUND = 6 * 1024 * 1024;
-const ONE_SCROLL_RESIDENT_BYTES_BOUND = 12 * 1024 * 1024;
+const COLD_RESIDENT_BYTES_BOUND = 9 * 1024 * 1024;
+const ONE_SCROLL_RESIDENT_BYTES_BOUND = 18 * 1024 * 1024;
 
 const coreThread = (): CoreThread =>
   ({
@@ -550,7 +536,7 @@ const measureLazyHistory = (logicalTurnCount: number): Effect.Effect<LazyHistory
             oldestLoadedTurnId: searchTurn.id,
           }),
           observedAtMs: 1,
-          projectReplica: false,
+          projectReplica: true,
         });
         if (inserted.status !== "committed") {
           return yield* Effect.die(new Error(`Search island rejected: ${inserted.status}`));
@@ -716,7 +702,7 @@ it.effect("keeps cold resume and one scroll physically bounded for a virtual 10k
     );
 
     for (const measurement of measurements) {
-      // Initial hydration probes each of the five Turn shells with one item. Work remains tied
+      // Initial hydration reads up to 100 items for each Turn shell. Work remains tied
       // to the fixed Turn page even when the persisted Thread contains ten thousand Turns.
       assert.strictEqual(measurement.cold.physicalRequests, 7);
       assert.deepEqual(measurement.cold.requestMethods, {
@@ -725,7 +711,7 @@ it.effect("keeps cold resume and one scroll physically bounded for a virtual 10k
         "thread/items/list": CODEX_HISTORY_TURN_PAGE_SIZE,
       });
       assert.strictEqual(measurement.cold.residentTurns, CODEX_HISTORY_TURN_PAGE_SIZE);
-      assert.strictEqual(measurement.cold.residentItems, CODEX_HISTORY_TURN_PAGE_SIZE);
+      assert.strictEqual(measurement.cold.residentItems, CODEX_HISTORY_INITIAL_ITEM_BUDGET);
       assert.isAtMost(measurement.cold.residentApproximateBytes, COLD_RESIDENT_BYTES_BOUND);
 
       assert.strictEqual(measurement.oneScroll.physicalRequests, 6);
@@ -734,7 +720,10 @@ it.effect("keeps cold resume and one scroll physically bounded for a virtual 10k
         "thread/items/list": CODEX_HISTORY_TURN_PAGE_SIZE,
       });
       assert.strictEqual(measurement.oneScroll.residentTurns, 10);
-      assert.strictEqual(measurement.oneScroll.residentItems, 2 * CODEX_HISTORY_TURN_PAGE_SIZE);
+      assert.strictEqual(
+        measurement.oneScroll.residentItems,
+        2 * CODEX_HISTORY_INITIAL_ITEM_BUDGET,
+      );
       assert.isAtMost(
         measurement.oneScroll.residentApproximateBytes,
         ONE_SCROLL_RESIDENT_BYTES_BOUND,
@@ -778,11 +767,9 @@ it.effect("bounds cold work and bytes for 5, 500, and 5k-item giant Turns", () =
     const measurements = yield* Effect.forEach([5, 500, 5_000], measureGiantTurnCold, {
       concurrency: 1,
     });
-    // One single-item probe bounds the first decode. With the conservative three-projection heap
-    // charge, one 100-item page fits and the next whole cursor page is rejected without residency.
-    // Persisted item cardinality never changes the number of physical reads.
-    const expectedItemPages = [2, 3, 3];
-    const expectedPhysicalRequests = [4, 5, 5];
+    // Cold reads stop at the shared item budget, regardless of persisted history length.
+    const expectedItemPages = [1, 5, 6];
+    const expectedPhysicalRequests = [3, 7, 8];
     for (let index = 0; index < measurements.length; index += 1) {
       const measurement = measurements[index]!;
       assert.strictEqual(measurement.physicalItemPages, expectedItemPages[index]);
@@ -791,22 +778,22 @@ it.effect("bounds cold work and bytes for 5, 500, and 5k-item giant Turns", () =
       assert.isAtMost(measurement.residentSegments, 5);
       assert.isAtMost(
         measurement.residentApproximateBytes,
-        DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxApproximateBytes,
+        7 * CODEX_HISTORY_INITIAL_ITEM_BUDGET * LARGE_ITEM_TEXT.length + 512 * 1024,
       );
       assert.isAtMost(
         measurement.snapshotWindowBytes,
-        DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxApproximateBytes + 512 * 1024,
+        3 * CODEX_HISTORY_INITIAL_ITEM_BUDGET * LARGE_ITEM_TEXT.length + 512 * 1024,
       );
     }
     assert.strictEqual(measurements[0]?.residentItems, 5);
-    assert.strictEqual(measurements[1]?.residentItems, 101);
-    assert.strictEqual(measurements[2]?.residentItems, 101);
+    assert.strictEqual(measurements[1]?.residentItems, 500);
+    assert.strictEqual(measurements[2]?.residentItems, 500);
     assert.isTrue(measurements[0]?.hasLoadedOldest);
-    assert.isFalse(measurements[1]?.hasLoadedOldest);
+    assert.isTrue(measurements[1]?.hasLoadedOldest);
     assert.isFalse(measurements[2]?.hasLoadedOldest);
     assert.isNull(measurements[0]?.olderCursor);
-    assert.strictEqual(measurements[1]?.olderCursor, "items:399");
-    assert.strictEqual(measurements[2]?.olderCursor, "items:4899");
+    assert.isNull(measurements[1]?.olderCursor);
+    assert.strictEqual(measurements[2]?.olderCursor, "items:4500");
     assert.isAtMost(
       Math.abs(
         measurements[1]!.residentApproximateBytes - measurements[2]!.residentApproximateBytes,
@@ -817,183 +804,13 @@ it.effect("bounds cold work and bytes for 5, 500, and 5k-item giant Turns", () =
     process.stdout.write(
       `\nNODEX_LAZY_HISTORY_ACCEPTANCE ${JSON.stringify({
         kind: "giant-turn-cold-window",
-        itemWindowLimits: DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS,
         measurements,
       })}\n`,
     );
   }),
 );
 
-const residencyEntity = (index: number): CodexHistoryEntity<Turn> => {
-  const turn = completedTurn(index);
-  return {
-    key: turn.id,
-    turn,
-    itemCount: RESIDENCY_ITEMS_PER_TURN,
-    approximateBytes: 256 * 1024,
-    itemsPagination: {
-      olderCursor: null,
-      isLoadingOlder: false,
-      hasLoadedOldest: true,
-      oldestUserInput: null,
-      openingUserMessageId: null,
-      itemsView: "full",
-    },
-    authority: "history",
-    revision: 1,
-  };
-};
-
-it("releases a 10k-Turn topology independently by count and bytes", () => {
-  const startedAt = process.hrtime.bigint();
-  const entities = Array.from({ length: 10_000 }, (_, index) => residencyEntity(index));
-  const created = createCodexHistoryIslandTopology({
-    generation: 1,
-    islandId: "tail:performance",
-    entries: entities.map((entity) => ({ key: `turn:${entity.key}`, entityKey: entity.key })),
-    entities,
-    olderBoundary: availableCodexHistoryBoundary("older:performance", {
-      cursor: "turns:older",
-      oldestLoadedTurnId: entities[0]?.key ?? null,
-    }),
-    newerBoundary: exhaustedCodexHistoryBoundary("newer:performance"),
-  });
-  if (!created.ok) throw new Error(created.error.message);
-
-  const countRetained = retainCodexHistoryResidency(created.topology, {
-    limits: {
-      maxTurns: DEFAULT_CODEX_ACTIVE_HISTORY_MAX_TURNS,
-      maxApproximateBytes: Number.MAX_SAFE_INTEGER,
-    },
-  });
-  const byteRetained = retainCodexHistoryResidency(created.topology, {
-    limits: {
-      maxTurns: entities.length,
-      maxApproximateBytes: DEFAULT_CODEX_ACTIVE_HISTORY_MAX_APPROXIMATE_BYTES,
-    },
-  });
-  const simultaneousRetained = retainCodexHistoryResidency(created.topology);
-  const elapsed = elapsedMs(startedAt);
-
-  assert.strictEqual(
-    countRetained.topology.residency.turnCount,
-    DEFAULT_CODEX_ACTIVE_HISTORY_MAX_TURNS,
-  );
-  assert.strictEqual(countRetained.evictedEntityKeys.length, 9_900);
-  assert.strictEqual(Object.keys(countRetained.topology.entitiesByKey).length, 100);
-  assert.isTrue(countRetained.limitsSatisfied);
-  assert.strictEqual(byteRetained.topology.residency.turnCount, 64);
-  assert.strictEqual(
-    byteRetained.topology.residency.approximateBytes,
-    DEFAULT_CODEX_ACTIVE_HISTORY_MAX_APPROXIMATE_BYTES,
-  );
-  assert.strictEqual(byteRetained.evictedEntityKeys.length, 9_936);
-  assert.strictEqual(Object.keys(byteRetained.topology.entitiesByKey).length, 64);
-  assert.isTrue(byteRetained.limitsSatisfied);
-
-  assert.isAtMost(
-    simultaneousRetained.topology.residency.turnCount,
-    DEFAULT_CODEX_ACTIVE_HISTORY_MAX_TURNS,
-  );
-  assert.isAtMost(
-    simultaneousRetained.topology.residency.approximateBytes,
-    DEFAULT_CODEX_ACTIVE_HISTORY_MAX_APPROXIMATE_BYTES,
-  );
-  assert.strictEqual(simultaneousRetained.topology.residency.turnCount, 64);
-  assert.strictEqual(simultaneousRetained.retainedEntityKeys.length, 64);
-  assert.strictEqual(simultaneousRetained.evictedEntityKeys.length, 9_936);
-  assert.strictEqual(Object.keys(simultaneousRetained.topology.entitiesByKey).length, 64);
-  assert.isTrue(simultaneousRetained.limitsSatisfied);
-  assert.isFalse(simultaneousRetained.protectedResidencyExceedsLimits);
-
-  process.stdout.write(
-    `\nNODEX_LAZY_HISTORY_ACCEPTANCE ${JSON.stringify({
-      kind: "resident-graph-retention",
-      logicalTurnCount: 10_000,
-      elapsedMs: elapsed,
-      countPressure: {
-        residentTurns: countRetained.topology.residency.turnCount,
-        residentApproximateBytes: countRetained.topology.residency.approximateBytes,
-        evictedTurns: countRetained.evictedEntityKeys.length,
-      },
-      bytePressure: {
-        residentTurns: byteRetained.topology.residency.turnCount,
-        residentApproximateBytes: byteRetained.topology.residency.approximateBytes,
-        evictedTurns: byteRetained.evictedEntityKeys.length,
-      },
-      simultaneousPressure: {
-        residentTurns: simultaneousRetained.topology.residency.turnCount,
-        residentApproximateBytes: simultaneousRetained.topology.residency.approximateBytes,
-        evictedTurns: simultaneousRetained.evictedEntityKeys.length,
-      },
-    })}\n`,
-  );
-});
-
-it("bounds passive conversation owners independently by count and resident bytes", () => {
-  const mib = 1024 * 1024;
-  const countCandidates = Array.from({ length: 5 }, (_, index) => ({
-    conversationId: `count-${index}`,
-    candidateSince: index,
-    generation: index + 1,
-    approximateBytes: 4 * mib,
-  }));
-  const countOverflow = selectCodexRendererOwnerRetentionOverflow({
-    candidates: countCandidates,
-    maxRetained: DEFAULT_RENDERER_OWNER_MAX_RETAINED,
-    maxRetainedApproximateBytes: DEFAULT_RENDERER_OWNER_MAX_RETAINED_APPROXIMATE_BYTES,
-  });
-  assert.deepEqual(countOverflow, [
-    {
-      conversationId: "count-0",
-      generation: 1,
-      reason: "inactive-owner-retained-limit",
-    },
-  ]);
-
-  const byteCandidates = Array.from({ length: 4 }, (_, index) => ({
-    conversationId: `bytes-${index}`,
-    candidateSince: index,
-    generation: index + 1,
-    approximateBytes: 10 * mib,
-  }));
-  const byteOverflow = selectCodexRendererOwnerRetentionOverflow({
-    candidates: byteCandidates,
-    maxRetained: DEFAULT_RENDERER_OWNER_MAX_RETAINED,
-    maxRetainedApproximateBytes: DEFAULT_RENDERER_OWNER_MAX_RETAINED_APPROXIMATE_BYTES,
-  });
-  assert.deepEqual(byteOverflow, [
-    {
-      conversationId: "bytes-0",
-      generation: 1,
-      reason: "inactive-owner-retained-byte-limit",
-    },
-  ]);
-
-  process.stdout.write(
-    `\nNODEX_LAZY_HISTORY_ACCEPTANCE ${JSON.stringify({
-      kind: "passive-owner-retention",
-      maxRetained: DEFAULT_RENDERER_OWNER_MAX_RETAINED,
-      maxRetainedApproximateBytes: DEFAULT_RENDERER_OWNER_MAX_RETAINED_APPROXIMATE_BYTES,
-      countPressure: {
-        candidates: countCandidates.length,
-        evicted: countOverflow.length,
-        retained: countCandidates.length - countOverflow.length,
-        retainedApproximateBytes: 16 * mib,
-        reason: countOverflow[0]?.reason,
-      },
-      bytePressure: {
-        candidates: byteCandidates.length,
-        evicted: byteOverflow.length,
-        retained: byteCandidates.length - byteOverflow.length,
-        retainedApproximateBytes: 30 * mib,
-        reason: byteOverflow[0]?.reason,
-      },
-    })}\n`,
-  );
-});
-
-it.effect("rejects one oversized partial-Turn item page at its exact cursor boundary", () =>
+it.effect("preserves an oversized partial-Turn item page and its exact continuation", () =>
   Effect.gen(function* () {
     const requests: PhysicalRequest[] = [];
     const cursor = "items:oversized-boundary";
@@ -1036,32 +853,32 @@ it.effect("rejects one oversized partial-Turn item page at its exact cursor boun
     );
     const heapBefore = process.memoryUsage().heapUsed;
     const startedAt = process.hrtime.bigint();
-    const failure = yield* adapter
-      .loadTurnItemsPage({
-        capability: capabilitySnapshot,
-        threadId: THREAD_ID,
-        turnId: "turn-oversized",
-        cursor,
-        purpose: "older",
-      })
-      .pipe(Effect.flip);
+    const page = yield* adapter.loadTurnItemsPage({
+      capability: capabilitySnapshot,
+      threadId: THREAD_ID,
+      turnId: "turn-oversized",
+      cursor,
+      purpose: "older",
+    });
 
-    assert.strictEqual(failure.reason, "item-byte-limit");
+    assert.strictEqual(page.items.length, 1);
+    assert.strictEqual(page.items[0]?.type, "agentMessage");
+    assert.strictEqual((page.items[0] as { text: string }).text, oversizedText);
+    assert.strictEqual(page.nextCursor, "items:next");
     assert.strictEqual(requests.length, 1);
     assert.strictEqual(requests[0]?.method, "thread/items/list");
     process.stdout.write(
       `\nNODEX_LAZY_HISTORY_ACCEPTANCE ${JSON.stringify({
-        kind: "partial-item-byte-cap",
+        kind: "partial-large-item",
         elapsedMs: elapsedMs(startedAt),
         heapDeltaBytes: process.memoryUsage().heapUsed - heapBefore,
         physicalRequests: requests.length,
         cursorPreserved: (requests[0]?.params as { readonly cursor?: unknown }).cursor === cursor,
         byteBudget: CODEX_HISTORY_ITEM_BYTE_BUDGET,
-        rejectedApproximateBytes: Buffer.byteLength(
+        acceptedApproximateBytes: Buffer.byteLength(
           JSON.stringify([{ text: oversizedText }]),
           "utf8",
         ),
-        reason: failure.reason,
       })}\n`,
     );
   }),

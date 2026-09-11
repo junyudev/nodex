@@ -32,10 +32,6 @@ import type {
   CodexPersistedHistorySearchResult,
 } from "./codex-persisted-history-search";
 import type {
-  CodexHistoryResidencyPinsInput,
-  CodexHistoryResidencyPinsResult,
-} from "./codex-history-residency-pins";
-import type {
   CodexConversationHistoryPageRequest,
   CodexConversationHistoryPageResult,
 } from "./codex-conversation-history-page";
@@ -2306,10 +2302,6 @@ export interface IpcApi {
   "codex:thread:prompt-rail:cancel": {
     args: [requestId: string];
     result: boolean;
-  };
-  "codex:thread:history-residency-pins:set": {
-    args: [input: CodexHistoryResidencyPinsInput];
-    result: CodexHistoryResidencyPinsResult;
   };
   "codex:thread:history-search": {
     args: [threadId: string, query: string];

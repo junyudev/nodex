@@ -287,7 +287,6 @@ type ControlEndpointPolicy =
   | "codex:thread:history-export:next"
   | "codex:thread:history-export:start"
   | "codex:thread:history-page:load"
-  | "codex:thread:history-residency-pins:set"
   | "codex:thread:history-search:hydrate"
   | "codex:thread:prompt-rail:cancel"
   | "codex:thread:prompt-rail:index"

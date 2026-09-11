@@ -197,10 +197,6 @@ import {
   type CodexConversationHistoryPageRequest,
   type CodexConversationHistoryPageResult,
 } from "../../../shared/codex-conversation-history-page";
-import type {
-  CodexHistoryResidencyPinsInput,
-  CodexHistoryResidencyPinsResult,
-} from "../../../shared/codex-history-residency-pins";
 import { buildCodexThreadStreamCheckpoint } from "../../../shared/codex-owner-follower-replication";
 import {
   reduceCodexConversationEventWithEffects,
@@ -4744,40 +4740,6 @@ export class CodexAppServerManager {
     return await this.publishOwnerHistoryMutation(threadId, mutation);
   }
 
-  setHistoryResidencyPins(
-    pins: CodexHistoryResidencyPinsInput,
-  ): Promise<CodexHistoryResidencyPinsResult> {
-    return this.runOwnerHistoryOperation(pins.threadId, () =>
-      this.updateHistoryResidencyPins(pins),
-    );
-  }
-
-  private async updateHistoryResidencyPins(
-    pins: CodexHistoryResidencyPinsInput,
-  ): Promise<CodexHistoryResidencyPinsResult> {
-    const result = (await runConversationOperation(
-      "codex:thread:history-residency-pins:set",
-      pins,
-    )) as CodexHistoryResidencyPinsResult;
-    if (result.status !== "applied" || !result.mutation) return result;
-    const role = this.streamState.getRole(pins.threadId);
-    if (role?.role === "follower") {
-      const publication = await this.runFollowerActionThroughOwner<{ revision: number }>(
-        pins.threadId,
-        {
-          type: "publishHistoryMutation",
-          threadId: pins.threadId,
-          mutation: result.mutation,
-        },
-      );
-      await this.waitForOwnerPublishedRevision(pins.threadId, publication.revision);
-      return result;
-    }
-    await this.ensureOwnerForConversationAction(pins.threadId, "publish history eviction");
-    await this.commitOwnerHistoryMutation(pins.threadId, result.mutation);
-    return result;
-  }
-
   /** A history read and its visible owner commit share one lane with the publication outbox. */
   private runOwnerHistoryOperation<T>(threadId: string, operation: () => Promise<T>): Promise<T> {
     const previous = this.ownerHistoryOperationsByThread.get(threadId) ?? Promise.resolve();
@@ -4900,7 +4862,7 @@ export class CodexAppServerManager {
     threadId: string,
     conversation: CodexConversationSnapshot,
     label: string,
-    options: { notifyMode?: ConversationNotifyMode } = {},
+    options: { notifyMode?: ConversationNotifyMode; broadcast?: boolean } = {},
   ): Promise<number> {
     const role = this.streamState.getRole(threadId);
     const currentCheckpoint = this.streamState.getCheckpoint(threadId);
@@ -4931,7 +4893,13 @@ export class CodexAppServerManager {
     );
     const latestConversation = this.conversationsById.get(threadId) ?? conversation;
     const sharedConversation = toSharedConversationDocument(latestConversation);
-    const result = await this.publishOwnerSnapshotFromCursor(threadId, cursor, sharedConversation);
+    const result = await this.publishOwnerSnapshotFromCursor(
+      threadId,
+      cursor,
+      sharedConversation,
+      undefined,
+      options.broadcast,
+    );
     if (!result.accepted) {
       cursor.inFlight = false;
       this.markOwnerStreamPublishUnavailable(threadId);
@@ -9299,6 +9267,7 @@ export class CodexAppServerManager {
         event.conversationId,
         conversation,
         "follower attachment",
+        { broadcast: true },
       );
     }).catch(() => {
       if (this.streamState.getCheckpoint(event.conversationId)?.ownerEpoch !== event.ownerEpoch)
@@ -9959,8 +9928,8 @@ export class CodexAppServerManager {
       typeof authoritativeUnread === "boolean"
         ? applyStandaloneUnreadStateToSnapshot(recovery.conversationState, authoritativeUnread)
         : recovery.conversationState;
-    // Main recovery is the accepted authority. Replaying the stale owner document here would
-    // resurrect history that Main already evicted; only the standalone unread override survives.
+    // A mismatched checkpoint recovers the accepted owner document. Do not replay an older
+    // owner generation over it; only the standalone unread override survives.
     this.applyConversationSnapshot(
       conversationId,
       materializeOwnerCanonicalConversationSnapshot(convergedConversation),
@@ -9973,6 +9942,7 @@ export class CodexAppServerManager {
     cursor: OwnerStreamPublishCursor,
     initialConversation: CodexConversationSnapshot,
     ownerNotificationSequence?: number,
+    broadcast = false,
   ): Promise<OwnerSnapshotPublishOutcome> {
     let conversation = initialConversation;
     let rejectionReason: Exclude<
@@ -9982,9 +9952,13 @@ export class CodexAppServerManager {
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const baseCheckpoint = cursor.acceptedCheckpoint;
+      const recoveryOnly =
+        !broadcast &&
+        (this.followerMembershipByConversationId.get(conversationId)?.followerClientIds.length ??
+          0) === 0;
       const checkpoint = buildCodexThreadStreamCheckpoint({
         ownerEpoch: baseCheckpoint.ownerEpoch,
-        revision: baseCheckpoint.revision + 1,
+        revision: baseCheckpoint.revision + (recoveryOnly ? 0 : 1),
       });
       const result = await this.dispatchOwnerStreamSnapshot(
         conversationId,
@@ -9992,6 +9966,7 @@ export class CodexAppServerManager {
         checkpoint,
         conversation,
         ownerNotificationSequence,
+        recoveryOnly,
       );
       if (this.ownerStreamPublishCursorsByConversationId.get(conversationId) !== cursor) {
         return { accepted: false, reason: "not-owner" };
@@ -10001,6 +9976,10 @@ export class CodexAppServerManager {
       }
 
       rejectionReason = result.reason;
+      if (result.reason === "followers-present") {
+        broadcast = true;
+        continue;
+      }
       if (!result.recovery) break;
       const recovered = this.adoptOwnerSnapshotRecovery(conversationId, cursor, result.recovery);
       if (!recovered) break;
@@ -10198,6 +10177,7 @@ export class CodexAppServerManager {
     checkpoint: CodexThreadStreamCheckpoint,
     conversation: CodexConversationSnapshot,
     ownerNotificationSequence?: number,
+    recoveryOnly = false,
   ): Promise<CodexThreadOwnerStreamStatePublishResult> {
     try {
       const result = (await runWithOwnerStreamDeadline(
@@ -10211,6 +10191,7 @@ export class CodexAppServerManager {
           baseCheckpoint,
           checkpoint,
           ownerNotificationSequence,
+          ...(recoveryOnly ? { recoveryOnly: true as const } : {}),
         }),
         `Owner snapshot publication for ${conversationId}`,
       )) as CodexThreadOwnerStreamStatePublishResult | boolean;
@@ -11580,12 +11561,6 @@ export function publishLocalConversationHistoryMutation(
     threadId,
     mutation,
   );
-}
-
-export function setLocalConversationHistoryResidencyPins(
-  pins: CodexHistoryResidencyPinsInput,
-): Promise<CodexHistoryResidencyPinsResult> {
-  return getDefaultLocalConversationManager().setHistoryResidencyPins(pins);
 }
 
 export function hydrateLocalPersistedHistoryOccurrence(

@@ -368,3 +368,49 @@ it.effect("owner IPC reset invalidates pending drains and fences late ACKs after
     yield* Fiber.join(current);
   }),
 );
+
+it.effect(
+  "recovery-only snapshots preserve revision and cannot bypass a pending follower barrier",
+  () =>
+    Effect.gen(function* () {
+      const { coordinator, conversations, published } = yield* build;
+      const conversationId = "thread-recovery-only";
+      seedOwner(conversations, conversationId);
+      const adopted = yield* coordinator.adoptRendererOwner({
+        conversationId,
+        ownerClientId: "owner",
+      });
+      const checkpoint = adopted.checkpoint!;
+      const latest = {
+        ...conversations.entity(conversationId).readSnapshot()!,
+        threadName: "Latest owner history",
+      };
+      const input = {
+        conversationId,
+        recoveryOnly: true as const,
+        baseCheckpoint: checkpoint,
+        checkpoint,
+        change: {
+          type: "snapshot" as const,
+          revision: checkpoint.revision,
+          conversationState: latest,
+        },
+      };
+      published.length = 0;
+      assert.deepEqual(coordinator.publishOwnerStateChange("owner", input), {
+        accepted: true,
+        checkpoint,
+      });
+      assert.strictEqual(
+        conversations.entity(conversationId).read().acceptedReplica?.conversation.threadName,
+        latest.threadName,
+      );
+      assert.strictEqual(published.length, 0);
+      assert.strictEqual(coordinator.publishOwnerStateChange("stranger", input).accepted, false);
+      yield* coordinator.handleClientConnected("follower");
+      yield* coordinator.setFollowing(conversationId, "follower", true);
+      const rejected = coordinator.publishOwnerStateChange("owner", input);
+      assert.isFalse(rejected.accepted);
+      if (!rejected.accepted) assert.strictEqual(rejected.reason, "followers-present");
+    }),
+);

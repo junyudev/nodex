@@ -18,13 +18,11 @@ import { cappedApproximateValueBytes } from "./codex-bounded-value-size";
 import {
   applyCodexHistoryItemWindowMutation,
   createCodexHistoryItemWindow,
-  DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS,
   materializeCodexHistoryItemWindow,
   type CodexHistoryItemNewerBoundary,
   type CodexHistoryItemOlderBoundary,
   type CodexHistoryItemSegment,
   type CodexHistoryItemWindow,
-  type CodexHistoryItemWindowLimits,
   type CodexHistoryItemWindowMutation,
 } from "./codex-conversation-state/codex-history-item-window";
 
@@ -32,7 +30,6 @@ const CODEX_HISTORY_ITEM_SEED_SEGMENT_SIZE = 100;
 
 export interface CodexConversationHistoryItemWindowSnapshot {
   readonly turnId: string;
-  readonly limits: CodexHistoryItemWindowLimits;
   readonly olderBoundary: CodexHistoryItemOlderBoundary;
   readonly newerBoundary: CodexHistoryItemNewerBoundary;
   /** Bounded chronological segments; item values are shared with the visible Turn projection. */
@@ -163,8 +160,7 @@ export function advanceCodexConversationHistoryItemWindowSnapshot(input: {
   readonly mutation: CodexHistoryItemWindowMutation<CodexCanonicalItem, CodexConversationItem>;
   readonly after: CodexHistoryItemWindow<CodexCanonicalItem, CodexConversationItem>;
 }): CodexConversationHistoryItemWindowSnapshot {
-  const released = new Set(input.mutation.releasedSegmentIds);
-  const retained = input.before.segments.filter((segment) => !released.has(segment.segmentId));
+  const retained = input.before.segments;
   const wire = input.mutation.wireSegment;
   const segment: CodexHistoryItemSegment<CodexCanonicalItem, CodexConversationItem> = {
     segmentId: wire.segmentId,
@@ -182,7 +178,6 @@ export function advanceCodexConversationHistoryItemWindowSnapshot(input: {
         : [...retained, segment];
   return {
     turnId: input.after.turnId,
-    limits: input.after.limits,
     olderBoundary: input.after.olderBoundary,
     newerBoundary: input.after.newerBoundary,
     segments,
@@ -208,7 +203,7 @@ export function codexConversationHistoryTurnItemsProgressKey(
 }
 
 const approximateHistoryItemSegmentBytes = (value: unknown): number =>
-  cappedApproximateValueBytes(value, DEFAULT_CODEX_HISTORY_ITEM_WINDOW_LIMITS.maxApproximateBytes);
+  cappedApproximateValueBytes(value, Number.MAX_SAFE_INTEGER);
 
 const historyTranscriptEntryKey = (item: CodexConversationItem): string =>
   JSON.stringify([item.entryId ?? null, item.itemId, item.kind, item.type, item.sequence ?? null]);
@@ -219,7 +214,6 @@ export function snapshotCodexConversationHistoryItemWindow(
   const materialized = materializeCodexHistoryItemWindow(window);
   return {
     turnId: window.turnId,
-    limits: window.limits,
     olderBoundary: window.olderBoundary,
     newerBoundary: window.newerBoundary,
     segments: materialized.segments,
@@ -231,7 +225,6 @@ export function restoreCodexConversationHistoryItemWindow(
 ): CodexHistoryItemWindow<CodexCanonicalItem, CodexConversationItem> | null {
   const restored = createCodexHistoryItemWindow({
     turnId: snapshot.turnId,
-    limits: snapshot.limits,
     olderBoundary: snapshot.olderBoundary,
     newerBoundary: snapshot.newerBoundary,
     seedSegments: snapshot.segments,
@@ -477,7 +470,7 @@ function persistedCanonicalTurns(
   );
 }
 
-/** Main-side builder for a page or eviction mutation. */
+/** Main-side builder for a page or search-island mutation. */
 export function buildCodexConversationHistoryMutation(input: {
   readonly before: CodexConversationSnapshot;
   readonly after: CodexConversationSnapshot;
@@ -784,34 +777,8 @@ export function applyCodexConversationHistoryMutation(
     const appliedWindow = applyCodexHistoryItemWindowMutation(window, itemMutation.windowMutation);
     if (!appliedWindow.ok) return { ok: false, reason: "stale-target-progress" };
     const wire = itemMutation.windowMutation.wireSegment;
-    const represented = new Set(
-      (
-        windowSnapshot?.segments ?? snapshotCodexConversationHistoryItemWindow(window).segments
-      ).flatMap((segment) => segment.items.itemIds),
-    );
-    // A newly arrived live suffix cannot be evicted using a count from an older physical page.
-    if (
-      appliedWindow.releasedSegments.length > 0 &&
-      canonicalTurn.items.some((item) => !represented.has(item.id))
-    ) {
-      return { ok: false, reason: "stale-target-progress" };
-    }
-    const releasedCanonicalIds = new Set(
-      appliedWindow.releasedSegments.flatMap((segment) => segment.items.itemIds),
-    );
-    const releasedRendererKeys = new Set(
-      appliedWindow.releasedSegments.flatMap((segment) =>
-        segment.items.rendererItems.map(historyTranscriptEntryKey),
-      ),
-    );
-    const retainedCanonicalItems = canonicalTurn.items.filter(
-      (item) => !releasedCanonicalIds.has(item.id),
-    );
-    const retainedRendererItems = turn.items.filter(
-      (item) =>
-        !releasedCanonicalIds.has(item.itemId) &&
-        !releasedRendererKeys.has(historyTranscriptEntryKey(item)),
-    );
+    const retainedCanonicalItems = canonicalTurn.items;
+    const retainedRendererItems = turn.items;
     const latestCanonical = new Map(retainedCanonicalItems.map((item) => [item.id, item]));
     const incomingIds = new Set(wire.items.itemIds);
     const fetchedCanonical = wire.items.canonicalItems.map(

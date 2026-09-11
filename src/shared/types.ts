@@ -4820,7 +4820,8 @@ export type CodexThreadStreamPublishRejectionReason =
   | "revision-gap"
   | "checkpoint-mismatch"
   | "owner-notification-sequence-mismatch"
-  | "patch-apply-failed";
+  | "patch-apply-failed"
+  | "followers-present";
 
 export type CodexThreadOwnerStreamStatePublishResult =
   | {
@@ -5029,11 +5030,13 @@ export interface CodexThreadOwnerHistoryMutationResult {
 }
 
 export interface CodexThreadOwnerStreamStatePublishInput {
+  /** Refreshes dormant recovery without advancing or broadcasting the follower stream. */
+  recoveryOnly?: true;
   conversationId: string;
   change: CodexThreadStreamStateChange;
   /** Exact compare-and-swap base; null is valid only for a first snapshot. */
   baseCheckpoint: CodexThreadStreamCheckpoint | null;
-  /** Hash and revision expected after applying `change`. */
+  /** Owner epoch and revision after applying `change`. */
   checkpoint: CodexThreadStreamCheckpoint;
   ownerNotificationSequence?: number;
 }

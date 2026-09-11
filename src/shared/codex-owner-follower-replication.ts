@@ -101,6 +101,26 @@ export function applyCodexThreadOwnerPublication(input: {
     return rejectedReplicaPublication("checkpoint-mismatch", current);
   }
 
+  if (publication.recoveryOnly) {
+    if (!current || !publication.baseCheckpoint)
+      return rejectedReplicaPublication("missing-base", current);
+    if (
+      publication.change.type !== "snapshot" ||
+      publication.change.revision !== current.checkpoint.revision ||
+      !areCodexThreadStreamCheckpointsEqual(publication.checkpoint, current.checkpoint) ||
+      !areCodexThreadStreamCheckpointsEqual(publication.baseCheckpoint, current.checkpoint)
+    ) {
+      return rejectedReplicaPublication("base-checkpoint-mismatch", current);
+    }
+    return {
+      accepted: true,
+      replica: {
+        checkpoint: current.checkpoint,
+        conversation: publication.change.conversationState,
+      },
+    };
+  }
+
   if (!current) {
     if (publication.baseCheckpoint !== null) {
       return rejectedReplicaPublication("missing-base", current);

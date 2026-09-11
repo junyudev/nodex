@@ -42,7 +42,7 @@ const pagination = {
   itemsView: "summary" as const,
 };
 
-function fixture(maxItems = 500) {
+function fixture() {
   const items = [canonicalItem("resident")];
   const rows = [rendererItem("resident")];
   const seeded = seedCodexConversationHistoryItemWindow({
@@ -53,7 +53,6 @@ function fixture(maxItems = 500) {
   })!;
   const windowSnapshot = {
     ...snapshotCodexConversationHistoryItemWindow(seeded),
-    limits: { ...seeded.limits, maxItems },
   };
   const window = restoreCodexConversationHistoryItemWindow(windowSnapshot)!;
   // Only the history-owned fields are relevant to this transport-neutral merge contract.
@@ -146,7 +145,6 @@ function fixture(maxItems = 500) {
         itemsView: "summary",
         windowMutation: {
           wireSegment: transition.wireSegment,
-          releasedSegmentIds: transition.releasedSegmentIds,
         },
       },
     ],
@@ -209,18 +207,5 @@ describe("owner item history merge", () => {
     );
     expect(window.olderBoundary).toEqual({ status: "available", cursor: "older:2" });
     expect(restoreCodexConversationHistoryItemWindow(window)!.residency.itemCount).toBe(3);
-  });
-
-  it("rejects a physical eviction that would discard an unobserved live suffix without mutating the owner", () => {
-    const { conversation, mutation } = fixture(1);
-    const latest = appendLive(conversation);
-    const result = applyCodexConversationHistoryMutation(latest, mutation);
-    expect(result).toEqual({ ok: false, reason: "stale-target-progress" });
-    expect(latest.canonicalState!.turns[0]!.items.map((item) => item.id)).toEqual([
-      "resident",
-      "live",
-    ]);
-    expect(latest.turnItemsPaginationById![turnId]!.olderCursor).toBe("older:1");
-    expect(latest.historyMutationRevision).toBe(0);
   });
 });

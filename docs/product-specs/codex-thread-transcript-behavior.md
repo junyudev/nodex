@@ -65,9 +65,9 @@ This spec does not cover:
 ## Bounded History and Search
 
 - A resumed paginated Thread initially owns only its metadata, latest five Turns, and a shared maximum of 500 hydrated items. Interactive pages use item counts rather than rejecting valid tool output by an estimated byte multiplier. No post-resume task may drain the remaining history implicitly.
-- Resident history is a sparse set of ordered islands separated by explicit gaps. A gap with a current server cursor may request exactly one adjacent page; a gap created by releasing the middle of an island is opaque and inert until a stable server boundary is available. Empty content is never used to pretend that missing history is complete.
-- Turn and item pagination are independent. Every partial Turn carries its own older-item cursor, completeness state, opening user-message identity, and opening user input. Each physical item segment retains exact cursors for both edges; after opposite-edge eviction, reloading derives the request cursor from the retained edge segment rather than from the most recently fetched page. App-server direction-reversal cursors deliberately re-include their anchor, so merge removes that one resident identity while preserving the returned continuation. Cursor progress is generation-fenced, deduplicated, and fail-closed.
-- Active resident history is bounded by both Turn count and approximate resident bytes. The latest tail, live optimistic Turns, current search result islands, newly revealed pages, and explicitly visible viewport Turns are protected. Releasing a Turn removes it atomically from canonical state, snapshots, accepted replicas, pagination maps, and row projections.
+- Resident history is a sparse set of ordered islands separated by explicit gaps. A gap with a current server cursor may request exactly one adjacent page; an unproven boundary is opaque and inert until a stable server boundary is available. Empty content is never used to pretend that missing history is complete.
+- Turn and item pagination are independent. Every partial Turn carries its own older-item cursor, completeness state, opening user-message identity, and opening user input. Each physical item segment retains exact cursors for both edges; adjacent reads use the requested edge segment rather than the most recently fetched page. App-server direction-reversal cursors deliberately re-include their anchor, so merge removes that one resident identity while preserving the returned continuation. Cursor progress is generation-fenced, deduplicated, and fail-closed.
+- Loaded Turns and item segments remain resident while the conversation owner is retained. Paging merges all loaded history and overlapping islands without evicting the opposite edge. Viewport geometry does not control data retention. Inactive owners expire after one hour, with failed cleanup retried after 15 seconds; active views, followers, in-progress Turns, and pending server requests prevent cleanup. Owner count and estimated bytes do not trigger eviction.
 - Scrolling near a loadable gap schedules one background page request. A follower asks the current owner for that single page and waits for the resulting stream revision; it never asks the owner to load the complete transcript.
 - Persisted search first returns bounded occurrence identities, then hydrates only a small island around the selected occurrence. Query bytes, page bytes, occurrence ids/cursor/snippet, the retained occurrence index, and pending hydration identities are independently bounded; malformed renderer occurrence data fails before any host request. Search navigation targets the exact Turn/item identity and may introduce a new island without bridging unloaded ranges.
 - The prompt rail keeps at most ten metadata-only pages of Turn shells. Shell locators are host-generation scoped, expire after 30 seconds, and use an offset smaller than the physical 100-Turn page; renderer input is revalidated before it can become an app-server page limit.
@@ -284,13 +284,15 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
   With followers, forwarded notification sequences are acknowledged after publication succeeds.
   Without followers, live updates remain local and acknowledge transport delivery directly; the
   next follower requests a fresh owner snapshot, followed by any changes received before its ACK.
-- History reads, residency updates, and search hydration share one owner publication lane.
+  Without followers, history snapshots update Main recovery state at the same checkpoint without
+  broadcasting. A pending follower rejects this recovery-only path and forces a fresh revision barrier.
+- History reads and search hydration share one owner publication lane.
   Main prepares proposals without advancing the resident history cursor. A completed page merges
   against the latest visible owner document and publishes a snapshot barrier, including live updates received during the read. Superseded generation/cursor results
   return `stale` without publishing. Automatic viewport loading stops a failed or stale boundary
   until its cursor changes or the view is reopened; layout changes alone never retry it.
 - Large live and completed items retain their full content and protocol identity. Memory
-  accounting may evict unpinned resident history, but cannot replace a valid item or entire live Turn
+  accounting is observational and cannot evict loaded history or replace valid content
   with an output-omitted placeholder. Physical pages retain their exact continuation cursors;
   a large page is never partially consumed while advancing past omitted items.
 - Shared conversation documents omit absent optional object members before

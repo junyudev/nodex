@@ -11,7 +11,6 @@ import {
   parseCodexUserInputAutoResolutionActivityInput,
   parseCodexUserInputAutoResolutionTarget,
 } from "../../../shared/codex-user-input-auto-resolution";
-import type { CodexHistoryResidencyPinsInput } from "../../../shared/codex-history-residency-pins";
 import { MainConfig } from "../../app/MainConfig";
 import { CodexAppProtocolTools } from "../../codex-application/CodexAppProtocolTools";
 import { CodexRendererConversationCoordinator } from "../../codex-application/CodexRendererConversationCoordinator";
@@ -159,13 +158,6 @@ export const live: Layer.Layer<
             : Effect.succeed(false);
         }),
       ),
-    );
-    yield* handleControl(
-      "codex:thread:history-residency-pins:set",
-      (event, input: CodexHistoryResidencyPinsInput) =>
-        authorize(event).pipe(
-          Effect.map((clientId) => coordinator.setHistoryResidencyPins(clientId, input)),
-        ),
     );
     yield* handleControl("codex:thread-owner:stream-state:publish", (event, input) =>
       authorize(event).pipe(
