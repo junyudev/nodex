@@ -1,0 +1,53 @@
+src/main/app/MainApplicationLive.ts
+  s_a5eaa05fd0049d::t_0eed3fcd01997d 68,95
+src/renderer/features/local-conversation/conversation-coordination-connection.ts
+  s_a5eaa05fd0049d::t_52563226683c30 36-83
+  s_a5eaa05fd0049d::t_ba77df9eac09f4 1,12,15-18,20,26,28-35,84-86
+src/renderer/features/local-conversation/conversation-coordination-connection.jsdom.test.ts
+  s_a5eaa05fd0049d::t_dc7f8844d1745a 68-99
+  s_a5eaa05fd0049d::t_200b75980c1ee1 1-37,39-44,51-53,57,59-67
+  s_a5eaa05fd0049d::t_52563226683c30 45-50,55-56
+  s_a5eaa05fd0049d::t_f2f06585dd85bf 38,54,58
+src/main/platform/electron/CodexConversationService.ts
+  s_a5eaa05fd0049d::t_cc25dafc5d44ed 17-21,24
+  s_a5eaa05fd0049d::t_eeb617d698fba4 2
+  s_a5eaa05fd0049d::t_87b0815ea04756 1,8
+src/main/ipc/handlers/CodexConversationServiceIpc.ts
+  s_a5eaa05fd0049d::t_0eed3fcd01997d 10,25
+  s_a5eaa05fd0049d::t_eeb617d698fba4 59
+src/shared/codex-service-port.test.ts
+  s_a5eaa05fd0049d::t_88e9cd17c32182 73-88
+  s_a5eaa05fd0049d::t_e6f90a0df34f6f 57-72
+docs/product-specs/conversation-peer-service.md
+  s_a5eaa05fd0049d::t_88e9cd17c32182 8-9,44,58-59
+src/main/platform/electron/CodexConversationService.node.test.ts
+  s_a5eaa05fd0049d::t_dc8a9deb1a367f 132-159,170-173,181-182,193-201
+  s_a5eaa05fd0049d::t_eeb617d698fba4 61-66,160-169,174-180,183-192
+  s_a5eaa05fd0049d::t_39b625859f0f32 21,41,60,67-86,118
+src/main/platform/node/CodexCoordinationPeer.ts
+  s_a5eaa05fd0049d::t_87b0815ea04756 1-17,21-183,185-188,190-196,202-213,215-224,226-245,249-278,285-289
+  s_a5eaa05fd0049d::t_eeb617d698fba4 18-20,197-201,246-248,279-284
+  s_a5eaa05fd0049d::t_cc25dafc5d44ed 184,189,214,225
+src/shared/codex-service-port.ts
+  s_a5eaa05fd0049d::t_e6f90a0df34f6f 55-56
+  s_a5eaa05fd0049d::t_a28218b3300c15 18,53-54
+src/main/platform/node/CodexConversationPeerRuntime.ts
+  s_a5eaa05fd0049d::t_eeb617d698fba4 23
+  s_a5eaa05fd0049d::t_0eed3fcd01997d 1-22,24-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "feabd78ee9c27c6dd5557b5dcfb9f3bab869d422",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
