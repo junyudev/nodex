@@ -1,0 +1,46 @@
+src/shared/codex-conversation-state/codex-command-output-queue.test.ts
+  s_a5eaa05fd0049d::t_116ecf042c7376 186,188,191,193-197,200,203,208,211-213,215
+src/shared/codex-conversation-state/codex-frame-text-delta-sequence-tracker.ts
+  s_a5eaa05fd0049d::t_8b071242709d39 53
+src/shared/codex-conversation-state/codex-frame-text-delta-queue.test.ts
+  s_a5eaa05fd0049d::t_fb8a09b72e39ea 260,262-263,265-269,294,296,299,301-312,314-319,321-324,326-327,330,332-333,337-343,346,349-356,414
+  s_a5eaa05fd0049d::t_a12417bf87e8ce 334-336,391,411-412
+src/main/codex-application/CodexConversationDeltaBufferRuntime.node.test.ts
+  s_a5eaa05fd0049d::t_fb8a09b72e39ea 124-140,144-202,204-218
+  s_a5eaa05fd0049d::t_116ecf042c7376 222-234
+  s_a5eaa05fd0049d::t_67cbd5eb3ad920 93,103,105-106
+src/shared/codex-conversation-state/codex-frame-text-delta-queue.ts
+  s_a5eaa05fd0049d::t_8b071242709d39 22,45-46,94-98,132,147,222-223,238,271-273,286-287
+  s_a5eaa05fd0049d::t_fb8a09b72e39ea 301-304
+docs/product-specs/codex-thread-owner-follower-streaming.md
+  s_a5eaa05fd0049d::t_8d631ba8266293 135-138,300
+src/main/codex-application/CodexConversationDeltaBufferRuntime.ts
+  s_a5eaa05fd0049d::t_116ecf042c7376 52-53
+  s_a5eaa05fd0049d::t_fb8a09b72e39ea 154
+  s_a5eaa05fd0049d::t_3d002109e14dfc 160,164
+src/shared/codex-conversation-state/codex-command-output-queue.ts
+  s_a5eaa05fd0049d::t_116ecf042c7376 28-29,42-43,51-52,60-61,69-70,78-79,124,145,147-149,153,161,170
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_a5eaa05fd0049d::t_8b071242709d39 8326
+docs/RELIABILITY.md
+  s_a5eaa05fd0049d::t_8d631ba8266293 396-397,406-410
+  s_a5eaa05fd0049d::t_dcd266de469732 412-413
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_a5eaa05fd0049d::t_203b203c1db189 1620,1626,1628-1640,1642-1666
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "09c092d98f1fbffa0c2bfdfc19ce5b5f47aba1f0",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
