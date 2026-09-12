@@ -59,6 +59,7 @@ test("sends text and Library images through text and Block menus to new and exis
       const harness = await ElectronScenarioHarness.create({
         label: "nfm-send-to-chat",
         cwd: process.cwd(),
+        codexApiKey: "nodex-scripted-model-test-key",
         prepareAgentRuntime: false,
         environment: {
           NODEX_LOG_FILE: "1",

@@ -4,38 +4,46 @@ import * as Stream from "effect/Stream";
 import type { IpcEvents } from "../../shared/ipc-api";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexFreshThreadLaunchRuntime } from "../codex-application/CodexFreshThreadLaunchRuntime";
-import { CodexRendererConversationCoordinator } from "../codex-application/CodexRendererConversationCoordinator";
-import { CodexRendererConversationRegistry } from "../codex-application/CodexRendererConversationRegistry";
+import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { CodexUserInputAutoResolution } from "../codex-application/CodexUserInputAutoResolution";
-import {
-  broadcastCodexHostMessageToRendererClients,
-  sendRendererOwnerHostMessage,
-  sendRendererThreadStreamControlRelay,
-  sendRendererThreadStreamRelay,
-} from "../codex/owner-follower-ipc-bridge";
 import { safeBroadcastToWindows } from "../ipc-safe-send";
 import { RendererClientRuntime } from "./RendererClientRuntime";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
+import { codexRequestTraceCoordinator } from "../codex-runtime/CodexRequestTraceCoordinator";
+import { codexRequestConversationId } from "../../shared/codex-request-lifecycle";
+import { runMainTraceSpan } from "../observability/sentry-main";
 
 export const live: Layer.Layer<
   never,
   never,
   | CodexApplicationEventHub
   | CodexFreshThreadLaunchRuntime
-  | CodexRendererConversationCoordinator
-  | CodexRendererConversationRegistry
+  | CodexRendererPresentationRegistry
   | CodexUserInputAutoResolution
   | RendererClientRuntime
   | WindowRuntime
 > = Layer.effectDiscard(
   Effect.gen(function* () {
-    const coordinator = yield* CodexRendererConversationCoordinator;
     const events = yield* CodexApplicationEventHub;
     const freshThreadLaunch = yield* CodexFreshThreadLaunchRuntime;
-    const registry = yield* CodexRendererConversationRegistry;
+    const presentation = yield* CodexRendererPresentationRegistry;
     const rendererClients = yield* RendererClientRuntime;
     const userInputAutoResolution = yield* CodexUserInputAutoResolution;
     const windows = yield* WindowRuntime;
+    const releasePresentation = Effect.fn("CodexRendererProjectionRuntime.releasePresentation")(
+      function* (clientId: string) {
+        const conversationIds = presentation.handleClientDisposed(clientId);
+        freshThreadLaunch.releaseRenderer(
+          clientId,
+          new Error("Fresh thread renderer became unavailable"),
+        );
+        yield* Effect.forEach(
+          conversationIds,
+          (conversationId) => userInputAutoResolution.reevaluatePresentation(conversationId),
+          { discard: true },
+        );
+      },
+    );
     yield* userInputAutoResolution.changes.pipe(
       Stream.runForEach((change) =>
         Effect.sync(() =>
@@ -49,19 +57,24 @@ export const live: Layer.Layer<
     yield* rendererClients.events.pipe(
       Stream.runForEach((event) =>
         event.kind === "connected"
-          ? coordinator.handleClientConnected(event.clientId)
-          : coordinator
-              .handleClientDisposed(event.clientId)
-              .pipe(
-                Effect.tap(() =>
-                  Effect.sync(() =>
-                    freshThreadLaunch.releaseRenderer(
-                      event.clientId,
-                      new Error("Fresh thread owner disconnected"),
-                    ),
-                  ),
-                ),
-              ),
+          ? Effect.sync(() => presentation.handleClientConnected(event.clientId))
+          : Effect.sync(() => codexRequestTraceCoordinator.dropWindow(event.webContentsId)).pipe(
+              Effect.andThen(releasePresentation(event.clientId)),
+            ),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+    );
+    yield* windows.events.pipe(
+      Stream.runForEach((event) =>
+        Effect.gen(function* () {
+          if (event.kind !== "renderer-changed") return;
+          const clientId = rendererClients.getClientIdForWebContentsId(event.window.webContentsId);
+          if (!clientId) return;
+          if (event.reason !== "navigation-committed") yield* releasePresentation(clientId);
+          if (event.window.rendererGeneration === null) return;
+          presentation.handleClientConnected(clientId);
+          presentation.setClientForegrounded(clientId, event.window.focused);
+        }),
       ),
       Effect.forkScoped({ startImmediately: true }),
     );
@@ -71,20 +84,15 @@ export const live: Layer.Layer<
     ): void => {
       safeBroadcastToWindows(windows.all(), channel, [payload]);
     };
-    const reportDeliveryFailure = (delivery: {
-      readonly unavailableClientIds: readonly string[];
-      readonly failedClientIds: readonly string[];
-    }): Effect.Effect<void> =>
-      coordinator.handleClientDeliveryFailure([
-        ...delivery.unavailableClientIds,
-        ...delivery.failedClientIds,
-      ]);
-
     yield* events.events.pipe(
       Stream.runForEach((event) =>
-        Effect.gen(function* () {
+        Effect.sync(() => {
+          if (event.kind === "queuedMessageStateChanged") {
+            rendererClients.broadcast("codex:event", { type: "queuedMessageStateChanged" });
+            return;
+          }
           if (event.kind === "codex") {
-            rendererClients.broadcast("codex:event", [event.value]);
+            rendererClients.broadcast("codex:event", event.value);
             if (event.value.type === "scheduledAutomationChanged") {
               broadcastWindows("codex:scheduled-automations:changed", event.value.event);
             }
@@ -94,53 +102,43 @@ export const live: Layer.Layer<
             return;
           }
           if (event.kind === "hostMessage") {
-            const message = event.value;
-            const targetClientIds =
-              message.type === "threadStreamStateChanged"
-                ? registry.getFollowerClientIds(message.conversationId)
-                : undefined;
-            if (message.type === "threadStreamStateChanged" && targetClientIds !== undefined) {
-              if (targetClientIds === null) return;
-              yield* reportDeliveryFailure(
-                sendRendererThreadStreamRelay(
-                  rendererClients,
-                  targetClientIds,
-                  message.sourceClientId,
-                  message,
-                ),
+            if (event.value.type === "nativeNotification") {
+              const physicalReceivedAtMs = event.value.receivedAtMs ?? Date.now();
+              const delivery = codexRequestTraceCoordinator.takeNotificationDelivery(
+                codexRequestConversationId(event.value.notification.params),
+                event.value.notification.method,
+                physicalReceivedAtMs,
               );
+              const { receivedAtMs: _receivedAtMs, trace: _trace, ...baseMessage } = event.value;
+              for (const clientId of rendererClients.getClientIds()) {
+                const webContentsId = rendererClients.getWebContentsIdForClientId(clientId);
+                const recipient =
+                  webContentsId === null ? undefined : delivery?.recipients.get(webContentsId);
+                if (!recipient) {
+                  rendererClients.sendToClient(clientId, "codex:host-message", baseMessage);
+                  continue;
+                }
+                runMainTraceSpan(
+                  {
+                    name: "electron.notification_delivery",
+                    op: "codex.app_server.notification_delivery",
+                    trace: recipient.link ? null : recipient.trace,
+                    links: recipient.link ? [recipient.trace] : undefined,
+                    root: recipient.link,
+                    startTimeMs: physicalReceivedAtMs,
+                    attributes: { "app_server.method": event.value.notification.method },
+                  },
+                  (activeTrace) =>
+                    rendererClients.sendToClient(clientId, "codex:host-message", {
+                      ...baseMessage,
+                      receivedAtMs: Date.now(),
+                      trace: activeTrace ?? recipient.trace,
+                    }),
+                );
+              }
               return;
             }
-            broadcastCodexHostMessageToRendererClients(
-              rendererClients,
-              (channel, args) => safeBroadcastToWindows(windows.all(), channel, args),
-              message,
-            );
-            return;
-          }
-          if (event.kind === "rendererOwnerHostMessage") {
-            sendRendererOwnerHostMessage(rendererClients, event.value);
-            return;
-          }
-          if (event.kind === "rendererThreadStreamRelay") {
-            yield* reportDeliveryFailure(
-              sendRendererThreadStreamRelay(
-                rendererClients,
-                event.value.targetClientIds,
-                event.value.sourceClientId,
-                event.value.message,
-              ),
-            );
-            return;
-          }
-          if (event.kind === "rendererThreadStreamControlRelay") {
-            yield* reportDeliveryFailure(
-              sendRendererThreadStreamControlRelay(
-                rendererClients,
-                event.value.targetClientIds,
-                event.value.message,
-              ),
-            );
+            rendererClients.broadcast("codex:host-message", event.value);
             return;
           }
           if (event.kind === "pendingWorktreesChanged") {

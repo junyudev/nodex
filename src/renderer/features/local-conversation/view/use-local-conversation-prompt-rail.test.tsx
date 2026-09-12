@@ -1,6 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
-import type { CodexConversationHistoryMutation } from "../../../../shared/codex-conversation-history-page";
 import type {
   CodexPromptRailIndex,
   CodexPromptRailIndexRequest,
@@ -29,51 +28,16 @@ const index = (count = 1_000): CodexPromptRailIndex => ({
   loadedAtMs: 1_000,
 });
 
-const revealMutation = (
-  turnId: string,
-  requestId: string,
-  expectedTopologyGeneration: number,
-): CodexConversationHistoryMutation => ({
-  origin: {
-    kind: "island",
-    threadId: "thread-a",
-    mutationId: requestId,
-    expectedConversationGeneration: 4,
-    expectedTopologyGeneration,
-  },
-  threadId: "thread-a",
-  conversationGeneration: 4,
-  topologyGeneration: expectedTopologyGeneration + 1,
-  baseHistoryMutationRevision: 2,
-  historyMutationRevision: 3,
-  upsertTurns: [],
-  upsertCanonicalTurns: [],
-  removeTurnIds: [],
-  turnItems: [],
-  rowSplices: [],
-  turnPagination: {
-    olderCursor: null,
-    backwardsCursor: null,
-    oldestLoadedTurnId: turnId,
-    isLoadingOlder: false,
-    hasLoadedOldest: false,
-    loadedTurnCount: 1,
-    itemsView: "summary",
-  },
-  turnItemsPaginationUpserts: {},
-  removeTurnItemsPaginationIds: [],
-});
-
 const reveal = (
   turnId: string,
-  requestId: string,
+  _requestId: string,
   expectedTopologyGeneration: number,
 ): CodexPromptRailReveal => ({
   threadId: "thread-a",
   hostId: "host-a",
   generation: 8,
   turnId,
-  topologyGeneration: expectedTopologyGeneration + 1,
+  topologyGeneration: expectedTopologyGeneration,
   previews: [
     {
       itemId: `${turnId}:prompt`,
@@ -82,7 +46,7 @@ const reveal = (
       isHeartbeat: false,
     },
   ],
-  mutation: revealMutation(turnId, requestId, expectedTopologyGeneration),
+  turnCursor: `cursor:${turnId}`,
 });
 
 describe("useLocalConversationPromptRail", () => {
@@ -125,10 +89,10 @@ describe("useLocalConversationPromptRail", () => {
     await waitFor(() => expect(hook.result.current.items).toHaveLength(1_000));
     expect(revealRequests).toHaveLength(0);
 
-    act(() => hook.result.current.previewItem(hook.result.current.items[499]!));
+    await act(async () => { hook.result.current.previewItem(hook.result.current.items[499]!); await Promise.resolve(); });
     await waitFor(() => expect(hook.result.current.items[499]?.label).toBe("Prompt for turn-500"));
     expect(revealRequests).toHaveLength(1);
-    expect(publishReveal).toHaveBeenCalledTimes(1);
+    expect(publishReveal).not.toHaveBeenCalled();
 
     let revealedTarget: HTMLElement | null = null;
     await act(async () => {
@@ -138,7 +102,7 @@ describe("useLocalConversationPromptRail", () => {
       );
     });
     expect(revealRequests).toHaveLength(2);
-    expect(publishReveal).toHaveBeenCalledTimes(2);
+    expect(publishReveal).toHaveBeenCalledTimes(1);
     expect(revealInstalledTurn).toHaveBeenCalledWith(
       expect.objectContaining({ turnId: "turn-500" }),
       "smooth",
@@ -150,7 +114,7 @@ describe("useLocalConversationPromptRail", () => {
       await hook.result.current.revealKnownTurn("turn-1001");
     });
     expect(revealRequests[2]?.target).toEqual({ kind: "knownTurn", turnId: "turn-1001" });
-    expect(publishReveal).toHaveBeenCalledTimes(3);
+    expect(publishReveal).toHaveBeenCalledTimes(2);
   });
 
   test("keeps resident navigation available when persisted prompt history is unavailable", async () => {
@@ -302,8 +266,8 @@ describe("useLocalConversationPromptRail", () => {
 
     await waitFor(() => expect(hook.result.current.items).toHaveLength(1));
     const shell = hook.result.current.items[0]!;
-    act(() => hook.result.current.previewItem(shell));
-    await waitFor(() => expect(publishReveal).toHaveBeenCalledTimes(1));
+    await act(async () => { hook.result.current.previewItem(shell); await Promise.resolve(); });
+    await waitFor(() => expect(hook.result.current.items[0]?.label).toBe("Prompt for turn-1"));
 
     const { promptRailShell: _promptRailShell, ...residentShell } = shell;
     const resident: ThreadUserMessageNavigationItem = {
@@ -313,7 +277,7 @@ describe("useLocalConversationPromptRail", () => {
     };
     hook.rerender({ residentItems: [resident] });
     await waitFor(() => expect(hook.result.current.items[0]?.id).toBe(resident.id));
-    // A tail-only pin may evict the hover target before it ever becomes visible.
+    // Resident history can disappear while its independently read preview stays cached.
     hook.rerender({ residentItems: [] });
     await waitFor(() => expect(hook.result.current.items[0]?.id).not.toBe(resident.id));
 
@@ -322,7 +286,7 @@ describe("useLocalConversationPromptRail", () => {
       target = await hook.result.current.revealItem(hook.result.current.items[0]!, "smooth");
     });
     expect(revealRequests).toHaveLength(2);
-    expect(publishReveal).toHaveBeenCalledTimes(2);
+    expect(publishReveal).toHaveBeenCalledTimes(1);
     expect(revealInstalledTurn).toHaveBeenLastCalledWith(
       expect.objectContaining({ turnId: "turn-1" }),
       "smooth",
@@ -331,7 +295,7 @@ describe("useLocalConversationPromptRail", () => {
     expect(target).toBe(realTarget);
   });
 
-  test("continues exact navigation across the topology installed by its mutation", async () => {
+  test("waits for match preparation before scrolling to the installed target", async () => {
     let revealSignal: AbortSignal | undefined;
     let finishPublication: (() => void) | undefined;
     const client: LocalConversationPromptRailClient = {
@@ -384,7 +348,7 @@ describe("useLocalConversationPromptRail", () => {
     await waitFor(() => expect(publishReveal).toHaveBeenCalledOnce());
 
     await act(async () => {
-      hook.rerender({ topologyGeneration: 13 });
+      hook.rerender({ topologyGeneration: 12 });
       await Promise.resolve();
     });
     expect(revealSignal?.aborted).toBe(false);
@@ -397,7 +361,7 @@ describe("useLocalConversationPromptRail", () => {
 
     expect(revealSignal?.aborted).toBe(false);
     expect(revealInstalledTurn).toHaveBeenCalledWith(
-      expect.objectContaining({ turnId: "turn-1", topologyGeneration: 13 }),
+      expect.objectContaining({ turnId: "turn-1", topologyGeneration: 12 }),
       "smooth",
       expect.any(AbortSignal),
     );
@@ -465,7 +429,7 @@ describe("useLocalConversationPromptRail", () => {
     expect(publishReveal).not.toHaveBeenCalled();
   });
 
-  test("publishes a committed reveal even when a late UI abort drops its preview", async () => {
+  test("retires a late preview after context replacement without preparing navigation", async () => {
     let pendingReveal:
       | {
           readonly request: CodexPromptRailRevealRequest;
@@ -500,7 +464,7 @@ describe("useLocalConversationPromptRail", () => {
     );
 
     await waitFor(() => expect(hook.result.current.items).toHaveLength(1));
-    act(() => hook.result.current.previewItem(hook.result.current.items[0]!));
+    await act(async () => { hook.result.current.previewItem(hook.result.current.items[0]!); await Promise.resolve(); });
     await waitFor(() => expect(pendingReveal).toBeDefined());
     const committedRequest = pendingReveal!.request;
     hook.rerender({ topologyGeneration: 2 });
@@ -520,7 +484,7 @@ describe("useLocalConversationPromptRail", () => {
       await Promise.resolve();
     });
 
-    await waitFor(() => expect(publishReveal).toHaveBeenCalledTimes(1));
+    expect(publishReveal).not.toHaveBeenCalled();
     expect(hook.result.current.items[0]?.label).toBe("Load prompt preview");
   });
 });

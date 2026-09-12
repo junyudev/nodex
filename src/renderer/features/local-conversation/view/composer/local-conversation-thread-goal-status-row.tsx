@@ -231,10 +231,12 @@ function ThreadGoalEditDialog({
 
 export function ThreadGoalStatusRow({
   goal,
+  hostId,
   actions,
   showRoundedTop = true,
 }: {
   goal: ThreadGoal | null;
+  hostId: string;
   actions: ThreadStageActions;
   showRoundedTop?: boolean;
 }) {
@@ -300,7 +302,7 @@ export function ThreadGoalStatusRow({
   const handleOpenEdit = async () => {
     setPendingAction("edit");
     try {
-      setEditInitialObjective(await readThreadGoalEditableObjective(goal.objective));
+      setEditInitialObjective(await readThreadGoalEditableObjective(hostId, goal.objective));
       setEditOpen(true);
     } catch {
       setEditInitialObjective(goal.objective);
@@ -316,7 +318,7 @@ export function ThreadGoalStatusRow({
     setPendingAction("edit");
     let materialized: Awaited<ReturnType<typeof materializeThreadGoalDraft>> | null = null;
     try {
-      materialized = await materializeThreadGoalDraft({
+      materialized = await materializeThreadGoalDraft(hostId, {
         objective,
         pastedTextAttachments: [],
         imageAttachments: [],
@@ -330,7 +332,7 @@ export function ThreadGoalStatusRow({
       materialized = null;
       setEditOpen(false);
     } catch {
-      await cleanupMaterializedThreadGoalDraft(materialized);
+      await cleanupMaterializedThreadGoalDraft(hostId, materialized);
       toast.danger(getThreadGoalMessage("composer.threadGoal.editSaveError"));
     } finally {
       setPendingAction(null);

@@ -40,8 +40,8 @@ function renderView(input?: {
   return render(
     <CodexHooksSettingsView
       entries={input?.entries ?? []}
-      hostId="default"
-      path={input?.path ?? "/settings/hooks-settings?hostId=default"}
+      hostId="local"
+      path={input?.path ?? "/settings/hooks-settings?hostId=local"}
       projectRoots={["/workspace/nodex"]}
       projectRootLabels={{ "/workspace/nodex": "Nodex" }}
       loading={false}
@@ -72,7 +72,7 @@ describe("Hooks settings", () => {
 
     fireEvent.click(getByText("Nodex"));
     expect(onPathChange).toHaveBeenCalledWith(
-      "/settings/hooks-settings?hostId=default&source=project&projectRoot=%2Fworkspace%2Fnodex",
+      "/settings/hooks-settings?hostId=local&source=project&projectRoot=%2Fworkspace%2Fnodex",
     );
   });
 
@@ -103,7 +103,7 @@ describe("Hooks settings", () => {
           errors: [],
         },
       ],
-      path: "/settings/hooks-settings?hostId=default&source=user",
+      path: "/settings/hooks-settings?hostId=local&source=user",
       onToggle,
       onTrust,
     });
@@ -147,7 +147,7 @@ describe("Hooks settings", () => {
     };
     const { getByText } = renderView({
       entries: [{ cwd: "/workspace/nodex", hooks: [mcpHook], warnings: [], errors: [] }],
-      path: "/settings/hooks-settings?hostId=default&source=user",
+      path: "/settings/hooks-settings?hostId=local&source=user",
     });
 
     fireEvent.click(getByText("Hook 1"));
@@ -166,7 +166,7 @@ describe("Hooks settings", () => {
           errors: [],
         },
       ],
-      path: "/settings/hooks-settings?hostId=default&source=user",
+      path: "/settings/hooks-settings?hostId=local&source=user",
     });
 
     expect(getByText("Interrupt")).toBeTruthy();

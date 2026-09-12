@@ -51,12 +51,12 @@ describe("hook feedback settings", () => {
   test("maps exact source categories and includes project root only for project hooks", () => {
     expect(
       buildHookFeedbackSettingsHref({
-        hostId: "default",
+        hostId: "local",
         cwd: "/workspace/nodex",
         sources: ["project"],
       }),
     ).toBe(
-      "/settings/hooks-settings?hostId=default&source=project&projectRoot=%2Fworkspace%2Fnodex",
+      "/settings/hooks-settings?hostId=local&source=project&projectRoot=%2Fworkspace%2Fnodex",
     );
     expect(
       buildHookFeedbackSettingsHref({
@@ -66,14 +66,14 @@ describe("hook feedback settings", () => {
       }),
     ).toBe("/settings/hooks-settings?hostId=remote-1&source=admin");
     expect(
-      buildHookFeedbackSettingsHref({ hostId: "default", cwd: null, sources: ["project"] }),
-    ).toBe("/settings/hooks-settings?hostId=default");
+      buildHookFeedbackSettingsHref({ hostId: "local", cwd: null, sources: ["project"] }),
+    ).toBe("/settings/hooks-settings?hostId=local");
     expect(
       buildHookFeedbackSettingsHref({
-        hostId: "default",
+        hostId: "local",
         cwd: "/workspace/nodex",
         sources: ["project", "user"],
       }),
-    ).toBe("/settings/hooks-settings?hostId=default");
+    ).toBe("/settings/hooks-settings?hostId=local");
   });
 });

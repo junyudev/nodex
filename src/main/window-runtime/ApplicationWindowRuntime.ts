@@ -17,7 +17,6 @@ import {
   parseBrowserWebviewInstanceId,
   registerPendingBrowserWebviewAttachment,
 } from "../browser/browser-webview-attachment-policy";
-import type { CodexRendererConversationCoordinator } from "../codex-application/CodexRendererConversationCoordinator";
 import type {
   RendererClientRegistration,
   RendererClientRuntimeService,
@@ -42,7 +41,12 @@ export interface ApplicationWindowRuntimeOptions {
     readonly currentStatus: Effect.Effect<AppUpdateStatus>;
   };
   readonly browser: BrowserGuestHost;
-  readonly rendererConversations: CodexRendererConversationCoordinator["Service"];
+  readonly rendererConversations: {
+    readonly setClientForegrounded: (
+      clientId: string | null | undefined,
+      foregrounded: boolean,
+    ) => Effect.Effect<void>;
+  };
   readonly desktopNotifications: DesktopNotificationRuntime["Service"];
   readonly mcpAppSandbox: McpAppSandboxRuntime["Service"];
   readonly platform: NodeJS.Platform;
@@ -320,7 +324,7 @@ export const live = (
         syncTitle: (window) => syncMacWindowTitle(options.platform, window),
         windows: options.windows,
       });
-      yield* Effect.addFinalizer(() =>
+      const prepareQuit = yield* Effect.cached(
         coordinator.prepareQuit.pipe(
           Effect.tap((report) =>
             report.destroyed > 0 || report.failed > 0
@@ -343,12 +347,13 @@ export const live = (
               })),
             ),
           ),
-          Effect.asVoid,
         ),
       );
+      yield* Effect.addFinalizer(() => prepareQuit.pipe(Effect.asVoid));
 
       return ApplicationWindowRuntime.of({
         ...coordinator,
+        prepareQuit,
         create,
         rendererLoaded: options.rendererLoaded,
         syncTitle: (window) => syncMacWindowTitle(options.platform, window),

@@ -679,6 +679,18 @@ export function buildCodexAppMetaThreadToolSpecs(options?: {
     },
     {
       type: "function",
+      name: "wait_threads",
+      description: "Wait for the first of up to eight tasks to complete or need attention. New input ends the wait early. Commentary does not wake the wait. Pass timeoutMs: 0 for an immediate snapshot. Use returned cursors to avoid repeating final text.",
+      inputSchema: {
+        type: "object", additionalProperties: false,
+        properties: {
+          targets: { type: "array", minItems: 1, maxItems: 8, items: { type: "object", additionalProperties: false, properties: { threadId: { type: "string", minLength: 1 }, hostId: { type: "string", minLength: 1 }, afterCursor: { type: "string", minLength: 1 } }, required: ["threadId"] } },
+          timeoutMs: { type: "integer", minimum: 0, maximum: 120000 },
+        }, required: ["targets"],
+      },
+    },
+    {
+      type: "function",
       name: "read_thread",
       description:
         "Read recent status and turn summaries for one Codex thread without opening it. Use page cursors from earlier responses to read older turns.",
@@ -686,6 +698,7 @@ export function buildCodexAppMetaThreadToolSpecs(options?: {
         type: "object",
         additionalProperties: false,
         properties: {
+          hostId: { type: "string", description: "Optional execution host of the task." },
           threadId: {
             type: "string",
             description: "Thread id to inspect.",

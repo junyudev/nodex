@@ -1,12 +1,18 @@
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { assert, it } from "@effect/vitest";
+import {
+  CodexExecutionHostAuthState,
+  live as executionHostAuthStateLive,
+} from "../codex-runtime/CodexExecutionHostAuthState";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import type { CodexEndpointEvent } from "../codex-runtime/CodexEventHub";
 import { CodexAccount, live as accountLive } from "./CodexAccount";
@@ -61,9 +67,16 @@ it.effect("owns account, login, rate-limit, and notification state behind one in
       restartHost: unsupported,
     });
     const scope = yield* Scope.make();
+    const authContext = yield* Layer.buildWithScope(executionHostAuthStateLive, scope);
+    const authState = Context.get(authContext, CodexExecutionHostAuthState);
     const context = yield* Layer.buildWithScope(
       accountLive({ pollInterval: "1 hour" }).pipe(
-        Layer.provide(Layer.succeed(CodexGateway, gateway)),
+        Layer.provide(
+          Layer.merge(
+            Layer.succeed(CodexGateway, gateway),
+            Layer.succeed(CodexExecutionHostAuthState, authState),
+          ),
+        ),
       ),
       scope,
     );
@@ -125,6 +138,79 @@ it.effect("owns account, login, rate-limit, and notification state behind one in
     assert.isTrue(yield* account.logout);
     assert.isNull((yield* SubscriptionRef.get(account.snapshot)).account);
 
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("keeps invalidated auth signed out when an older refresh completes", () =>
+  Effect.gen(function* () {
+    const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+    const readStarted = yield* Deferred.make<void>();
+    const releaseRead = yield* Deferred.make<void>();
+    const requestLocal = ((method: string) => {
+      if (method === "account/read") {
+        return Effect.gen(function* () {
+          yield* Deferred.succeed(readStarted, undefined);
+          yield* Deferred.await(releaseRead);
+          return {
+            account: { type: "chatgpt", email: "stale@example.com", planType: "plus" },
+            requiresOpenaiAuth: false,
+          };
+        });
+      }
+      if (method === "account/rateLimits/read") {
+        return Effect.succeed({
+          rateLimits: null,
+          rateLimitsByLimitId: null,
+          rateLimitResetCredits: null,
+        });
+      }
+      return Effect.die(new Error(`Unexpected request: ${method}`));
+    }) as CodexGateway["Service"]["requestLocal"];
+    const unsupported = () => Effect.die(new Error("Unsupported test operation"));
+    const gateway = CodexGateway.of({
+      localHostId: "local",
+      requestRawOnHost: () => unsupported(),
+      requestRawForThread: () => unsupported(),
+      events: Stream.fromPubSub(events),
+      requestLocal,
+      requestOnHost: (_hostId, method, params) => requestLocal(method, params),
+      requestForThread: (_threadId, method, params) => requestLocal(method, params),
+      notifyLocal: unsupported,
+      connection: () => unsupported(),
+      connectionChanges: () => Stream.empty,
+      awaitReady: () => Effect.void,
+      reconcileHost: unsupported,
+      removeHost: unsupported,
+      restartHost: unsupported,
+    });
+    const scope = yield* Scope.make();
+    const authContext = yield* Layer.buildWithScope(executionHostAuthStateLive, scope);
+    const authState = Context.get(authContext, CodexExecutionHostAuthState);
+    const context = yield* Layer.buildWithScope(
+      accountLive({ pollInterval: "1 hour" }).pipe(
+        Layer.provide(
+          Layer.merge(
+            Layer.succeed(CodexGateway, gateway),
+            Layer.succeed(CodexExecutionHostAuthState, authState),
+          ),
+        ),
+      ),
+      scope,
+    );
+    const account = Context.get(context, CodexAccount);
+    const refreshFiber = yield* account.refresh.pipe(Effect.forkChild);
+    yield* Deferred.await(readStarted);
+    yield* authState.markLoginRequired("local");
+    yield* Effect.yieldNow;
+    yield* Deferred.succeed(releaseRead, undefined);
+    const result = yield* Fiber.join(refreshFiber);
+
+    assert.isNull(result.account);
+    assert.isTrue(result.requiresOpenAiAuth);
+    const current = yield* SubscriptionRef.get(account.snapshot);
+    assert.isNull(current.account);
+    assert.isTrue(current.requiresOpenAiAuth);
     yield* Scope.close(scope, Exit.void);
   }),
 );

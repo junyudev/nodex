@@ -26,14 +26,14 @@ beforeEach(() => {
 
 describe("LocalConversation operation boundary", () => {
   test("dispatches queries, controls, and commands through their classified transports", async () => {
-    await runConversationOperation("codex:model:list");
+    await runConversationOperation("codex:account:read");
     await runConversationOperation("codex:subagents:selected:hydrate", {
       rootThreadId: "root-1",
       threadId: "thread-1",
     });
     await runConversationOperation("codex:thread:archive", "thread-1");
 
-    expect(commandMocks.invokeQuery).toHaveBeenCalledWith("codex:model:list");
+    expect(commandMocks.invokeQuery).toHaveBeenCalledWith("codex:account:read");
     expect(commandMocks.invokeControl).toHaveBeenCalledWith("codex:subagents:selected:hydrate", {
       rootThreadId: "root-1",
       threadId: "thread-1",

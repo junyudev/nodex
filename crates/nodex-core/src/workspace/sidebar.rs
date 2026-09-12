@@ -4,6 +4,7 @@ use nodex_core_contracts::BoundModuleContext;
 use nodex_core_contracts::workspace::{
     ProjectCatalogChangeKind, ProjectWorkspaceThreadMoveMetadataPatch,
     ProjectWorkspaceThreadMoveProjectAccessGrant, ProjectWorkspaceThreadPlacement,
+    ProjectWorkspaceThreadWorkspaceTransition,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -36,6 +37,7 @@ pub(super) fn move_thread(
     target_project_id: Option<&str>,
     placement: &ProjectWorkspaceThreadPlacement,
     metadata: &ProjectWorkspaceThreadMoveMetadataPatch,
+    workspace_transition: Option<&ProjectWorkspaceThreadWorkspaceTransition>,
     runtime_workspace_roots: Option<&[String]>,
     project_access_grant: Option<&ProjectWorkspaceThreadMoveProjectAccessGrant>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
@@ -120,6 +122,14 @@ pub(super) fn move_thread(
         session_ids,
         thread_ids,
         || {
+            if let Some(transition) = workspace_transition {
+                super::execution::prepare_workspace_transition_records(
+                    connection,
+                    thread_id,
+                    source_project_id,
+                    transition,
+                )?;
+            }
             if let Some((source_project_id, target_project_id, grant)) = project_access {
                 super::mutation::grant_project_sources_for_thread_move(
                     connection,
@@ -897,7 +907,8 @@ mod tests {
     use nodex_core_contracts::workspace::{
         ProjectWorkspaceIntent, ProjectWorkspaceThreadLane,
         ProjectWorkspaceThreadMoveMetadataPatch, ProjectWorkspaceThreadMoveProjectAccessGrant,
-        ProjectWorkspaceThreadPlacement,
+        ProjectWorkspaceThreadPlacement, ProjectWorkspaceThreadWorkspace,
+        ProjectWorkspaceThreadWorkspaceTransition,
     };
 
     use super::super::test_support::{
@@ -946,6 +957,7 @@ mod tests {
                             },
                             placement,
                             metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
+                            workspace_transition: None,
                             runtime_workspace_roots: None,
                             project_access_grant: None,
                         },
@@ -994,6 +1006,7 @@ mod tests {
                     thread_id: "thread:c".to_owned(),
                 },
                 metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
+                workspace_transition: None,
                 runtime_workspace_roots: None,
                 project_access_grant: None,
             },
@@ -1036,6 +1049,7 @@ mod tests {
                     thread_id: "thread:a".to_owned(),
                 },
                 metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
+                workspace_transition: None,
                 runtime_workspace_roots: None,
                 project_access_grant: None,
             },
@@ -1125,6 +1139,7 @@ mod tests {
                 },
                 placement: ProjectWorkspaceThreadPlacement::Default,
                 metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
+                workspace_transition: None,
                 runtime_workspace_roots: Some(vec![
                     "/workspace/project:target".to_owned(),
                     "/workspace/project:source".to_owned(),
@@ -1235,6 +1250,7 @@ mod tests {
                         },
                         placement: ProjectWorkspaceThreadPlacement::Default,
                         metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
+                        workspace_transition: None,
                         runtime_workspace_roots: None,
                         project_access_grant: Some(ProjectWorkspaceThreadMoveProjectAccessGrant {
                             expected_target_binding_revision: 99,
@@ -1269,5 +1285,127 @@ mod tests {
             .expect("unchanged stale move state");
         assert_eq!(thread_project_id, "project:source");
         assert_eq!(target_roots, ["/workspace/project:target".to_owned()]);
+    }
+
+    #[test]
+    fn workspace_transition_commit_preserves_newer_pending_revision() {
+        let workspace = seeded_workspace();
+        create_project(
+            &workspace.module,
+            "create-transition-source",
+            "project:source",
+        );
+        create_project(
+            &workspace.module,
+            "create-transition-target",
+            "project:target",
+        );
+        create_session_thread(
+            &workspace.module,
+            "transition-thread",
+            "session:transition-thread",
+            "thread:transition-thread",
+            Some("project:source"),
+            100,
+        );
+        let accepted = ProjectWorkspaceThreadWorkspace {
+            project_sources: vec!["/workspace/project:target".to_owned()],
+            cwd: "/workspace/project:target".to_owned(),
+            runtime_workspace_roots: vec!["/workspace/project:target".to_owned()],
+        };
+        apply(
+            &workspace.module,
+            "prepare-transition-r1",
+            ProjectWorkspaceIntent::MoveThread {
+                thread_id: "thread:transition-thread".to_owned(),
+                source: ProjectWorkspaceThreadLane::Project {
+                    project_id: "project:source".to_owned(),
+                },
+                target: ProjectWorkspaceThreadLane::Project {
+                    project_id: "project:target".to_owned(),
+                },
+                placement: ProjectWorkspaceThreadPlacement::Default,
+                metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
+                workspace_transition: Some(ProjectWorkspaceThreadWorkspaceTransition {
+                    revision: "workspace:r1".to_owned(),
+                    pending: Some(accepted.clone()),
+                }),
+                runtime_workspace_roots: None,
+                project_access_grant: None,
+            },
+        );
+        let newer = ProjectWorkspaceThreadWorkspace {
+            project_sources: vec!["/workspace/project:target".to_owned()],
+            cwd: "/workspace/project:target/newer".to_owned(),
+            runtime_workspace_roots: vec!["/workspace/project:target/newer".to_owned()],
+        };
+        apply(
+            &workspace.module,
+            "prepare-transition-r2",
+            ProjectWorkspaceIntent::MoveThread {
+                thread_id: "thread:transition-thread".to_owned(),
+                source: ProjectWorkspaceThreadLane::Project {
+                    project_id: "project:target".to_owned(),
+                },
+                target: ProjectWorkspaceThreadLane::Project {
+                    project_id: "project:target".to_owned(),
+                },
+                placement: ProjectWorkspaceThreadPlacement::Default,
+                metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
+                workspace_transition: Some(ProjectWorkspaceThreadWorkspaceTransition {
+                    revision: "workspace:r2".to_owned(),
+                    pending: Some(newer.clone()),
+                }),
+                runtime_workspace_roots: None,
+                project_access_grant: None,
+            },
+        );
+        apply(
+            &workspace.module,
+            "commit-stale-transition-r1",
+            ProjectWorkspaceIntent::CommitThreadWorkspaceTransition {
+                thread_id: "thread:transition-thread".to_owned(),
+                revision: "workspace:r1".to_owned(),
+                workspace: accepted.clone(),
+            },
+        );
+        let stale_commit = workspace
+            .kernel
+            .writer()
+            .call(|connection| {
+                super::super::execution::read_thread_workspace_state(
+                    connection,
+                    "thread:transition-thread",
+                )
+            })
+            .expect("workspace state after stale commit")
+            .expect("workspace state exists");
+        assert_eq!(stale_commit.revision, "workspace:r2");
+        assert_eq!(stale_commit.applied, Some(accepted));
+        assert_eq!(stale_commit.pending, Some(newer.clone()));
+
+        apply(
+            &workspace.module,
+            "commit-current-transition-r2",
+            ProjectWorkspaceIntent::CommitThreadWorkspaceTransition {
+                thread_id: "thread:transition-thread".to_owned(),
+                revision: "workspace:r2".to_owned(),
+                workspace: newer.clone(),
+            },
+        );
+        let current_commit = workspace
+            .kernel
+            .writer()
+            .call(|connection| {
+                super::super::execution::read_thread_workspace_state(
+                    connection,
+                    "thread:transition-thread",
+                )
+            })
+            .expect("workspace state after current commit")
+            .expect("workspace state exists");
+        assert_eq!(current_commit.revision, "workspace:r2");
+        assert_eq!(current_commit.applied, Some(newer));
+        assert_eq!(current_commit.pending, None);
     }
 }

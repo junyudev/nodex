@@ -4,16 +4,52 @@ import { createStartupShellMarkup } from "../../../config/startup-shell-html";
 import type { AppInitializationStep } from "../../shared/app-startup";
 import { startStartupController } from "./startup-controller";
 
+const mocks = vi.hoisted(() => ({
+  initializeCodexExecutionAssignments: vi.fn<() => Promise<boolean>>(),
+  initializeElectronRendererLocalCommitIngress: vi.fn(),
+  initializeRendererSentry: vi.fn<() => Promise<void>>(),
+  initializeRendererTelemetry: vi.fn<() => Promise<void>>(),
+  mountApplicationRenderer: vi.fn<() => Promise<void>>(),
+  registerAppCloseFlushHandler: vi.fn<() => () => void>(),
+}));
+
+vi.mock("../application-renderer", () => ({
+  mountApplicationRenderer: mocks.mountApplicationRenderer,
+}));
+
+vi.mock("../lib/app-close-flush", () => ({
+  registerAppCloseFlushHandler: mocks.registerAppCloseFlushHandler,
+}));
+
+vi.mock("../lib/electron-renderer-transport", () => ({
+  initializeElectronRendererLocalCommitIngress: mocks.initializeElectronRendererLocalCommitIngress,
+}));
+
+vi.mock("../lib/sentry-renderer", () => ({
+  initializeRendererSentry: mocks.initializeRendererSentry,
+}));
+
+vi.mock("../lib/statsig-telemetry", () => ({
+  initializeRendererTelemetry: mocks.initializeRendererTelemetry,
+}));
+
+vi.mock("../lib/codex-execution-assignments", () => ({
+  initializeCodexExecutionAssignments: mocks.initializeCodexExecutionAssignments,
+}));
+
 interface BridgeHarness {
   readonly rejectInitialization: (cause: unknown) => void;
+  readonly resolveInitialization: () => void;
   readonly restartApplication: ReturnType<typeof vi.fn>;
   readonly sendStep: (step: AppInitializationStep) => void;
 }
 
 function installBridge(): BridgeHarness {
   let initializationListener: ((step: AppInitializationStep) => void) | null = null;
+  let resolveInitialization = (): void => undefined;
   let rejectInitialization = (_cause: unknown): void => undefined;
-  const initialization = new Promise<void>((_resolve, reject) => {
+  const initialization = new Promise<void>((resolve, reject) => {
+    resolveInitialization = resolve;
     rejectInitialization = reject;
   });
   const restartApplication = vi.fn(() => Promise.resolve());
@@ -35,14 +71,29 @@ function installBridge(): BridgeHarness {
   });
   return {
     rejectInitialization,
+    resolveInitialization,
     restartApplication,
     sendStep: (step) => initializationListener?.(step),
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 describe("startup controller", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    mocks.initializeCodexExecutionAssignments.mockReset().mockResolvedValue(true);
+    mocks.initializeElectronRendererLocalCommitIngress.mockReset();
+    mocks.initializeRendererSentry.mockReset().mockResolvedValue(undefined);
+    mocks.initializeRendererTelemetry.mockReset().mockResolvedValue(undefined);
+    mocks.mountApplicationRenderer.mockReset().mockResolvedValue(undefined);
+    mocks.registerAppCloseFlushHandler.mockReset().mockReturnValue(() => undefined);
     document.body.innerHTML = `<div id="root">${createStartupShellMarkup()}</div>`;
   });
 
@@ -109,5 +160,23 @@ describe("startup controller", () => {
     expect(restart?.hidden).toBe(false);
     restart?.click();
     expect(bridge.restartApplication).toHaveBeenCalledOnce();
+  });
+
+  test("does not mount the application before execution assignments finish initializing", async () => {
+    const executionAssignments = deferred<boolean>();
+    mocks.initializeCodexExecutionAssignments.mockReturnValue(executionAssignments.promise);
+    const bridge = installBridge();
+    startStartupController();
+
+    bridge.resolveInitialization();
+    await vi.waitFor(() => {
+      expect(mocks.initializeCodexExecutionAssignments).toHaveBeenCalledOnce();
+    });
+    expect(mocks.mountApplicationRenderer).not.toHaveBeenCalled();
+
+    executionAssignments.resolve(true);
+    await vi.waitFor(() => {
+      expect(mocks.mountApplicationRenderer).toHaveBeenCalledOnce();
+    });
   });
 });

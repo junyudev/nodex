@@ -1,8 +1,8 @@
+import { produce, type Draft } from "immer";
+import { residentConversationTurnEntries, residentConversationTurns, conversationTurnDraft } from "./codex-turn-mutation";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
 import type {
   CodexCanonicalConversationState,
-  CodexCanonicalItem,
-  CodexCanonicalTurnState,
 } from "./codex-conversation-state";
 import { resolveCodexTurnReference } from "./codex-turn-reference";
 import type {
@@ -27,7 +27,9 @@ export type CodexFrameTextDeltaNotification = Extract<
 
 export type CodexReasoningSummaryPartAddedNotification = Extract<
   ServerNotification,
-  { method: "item/reasoning/summaryPartAdded" }
+  {
+    method: "item/reasoning/summaryPartAdded";
+  }
 >;
 
 export type CodexFrameTextDeltaDisposition =
@@ -64,9 +66,17 @@ export interface CodexFrameTextDeltaTurnReference {
 }
 
 export type CodexFrameTextDeltaTurnResolution =
-  | { readonly kind: "none" }
-  | { readonly kind: "latest"; readonly turnIndex: number }
-  | { readonly kind: "existing"; readonly turnIndex: number }
+  | {
+      readonly kind: "none";
+    }
+  | {
+      readonly kind: "latest";
+      readonly turnIndex: number;
+    }
+  | {
+      readonly kind: "existing";
+      readonly turnIndex: number;
+    }
   | {
       readonly kind: "reboundCompletedEmptyPlaceholder";
       readonly turnIndex: number;
@@ -281,37 +291,51 @@ export function reduceCodexFrameTextDeltaItems(
   return { items: nextItems, disposition: "applied", itemIndex };
 }
 
-function replaceCanonicalTurn(
-  state: CodexCanonicalConversationState,
-  turnIndex: number,
-  turn: CodexCanonicalTurnState,
-): CodexCanonicalConversationState {
-  if (state.turns[turnIndex] === turn) return state;
-  const turns = [...state.turns];
-  turns[turnIndex] = turn;
-  return { ...state, turns };
-}
-
-function rebindCanonicalPlaceholder(
-  state: CodexCanonicalConversationState,
-  turnIndex: number,
-  turnId: string,
-  now: () => number,
-): CodexCanonicalConversationState {
-  const turn = state.turns[turnIndex];
-  if (!turn) return state;
-  return replaceCanonicalTurn(state, turnIndex, {
-    ...turn,
-    protocol: {
-      ...turn.protocol,
-      id: turnId,
-      status: "inProgress",
-    },
-    sidecar: {
-      ...turn.sidecar,
-      turnStartedAtMs: turn.sidecar.turnStartedAtMs ?? now(),
-    },
-  });
+export function mutateCodexConversationFrameTextDeltas(
+  state: Draft<CodexCanonicalConversationState>,
+  updates: readonly CodexFrameTextDeltaUpdate[],
+  context: { readonly now: () => number },
+): readonly CodexFrameTextDeltaOutcome[] {
+  const outcomes: CodexFrameTextDeltaOutcome[] = [];
+  for (const update of updates) {
+    const entries = residentConversationTurnEntries(state);
+    if (state.id !== update.conversationId || entries.length === 0) {
+      outcomes.push({ update, disposition: state.id !== update.conversationId ? "foreignConversation" : "noTurns", turnResolution: "none", stateChanged: false });
+      continue;
+    }
+    const resolution = resolveCodexFrameTextDeltaTurn(residentConversationTurns(state).map((turn) => ({ turnId: turn.turnId, status: turn.status, hasError: turn.error !== null, itemCount: turn.items.length })), update.turnId);
+    if (resolution.kind === "none") {
+      outcomes.push({ update, disposition: "missingTurn", turnResolution: "none", stateChanged: false });
+      continue;
+    }
+    const entry = entries[resolution.turnIndex]!;
+    const turn = conversationTurnDraft(state, entry.address)!;
+    let changed = false;
+    if (resolution.kind === "reboundCompletedEmptyPlaceholder" && update.turnId) {
+      turn.turnId = update.turnId;
+      turn.status = "inProgress";
+      turn.turnStartedAtMs ??= context.now();
+      changed = true;
+    }
+    const result = reduceCodexFrameTextDeltaItems(turn.items, update);
+    const item = turn.items[result.itemIndex];
+    if (result.items !== turn.items && item) {
+      if (item.type === "agentMessage" || item.type === "plan") {
+        item.text = `${typeof item.text === "string" ? item.text : ""}${update.delta}`;
+      } else if (item.type === "reasoning") {
+        const target = update.target;
+        if (target.type === "reasoningSummary" || target.type === "reasoningContent") {
+          const parts = target.type === "reasoningSummary" ? item.summary : item.content;
+          const index = target.type === "reasoningSummary" ? target.summaryIndex : target.contentIndex;
+          while (parts.length <= index) parts.push("");
+          parts[index] = `${parts[index] ?? ""}${update.delta}`;
+        }
+      }
+      changed = true;
+    }
+    outcomes.push({ update, disposition: result.disposition, turnResolution: resolution.kind, stateChanged: changed });
+  }
+  return outcomes;
 }
 
 export function reduceCodexConversationFrameTextDeltas(
@@ -319,79 +343,7 @@ export function reduceCodexConversationFrameTextDeltas(
   updates: readonly CodexFrameTextDeltaUpdate[],
   context: { readonly now: () => number },
 ): CodexFrameTextDeltaBatchResult {
-  let state = initialState;
-  const outcomes: CodexFrameTextDeltaOutcome[] = [];
-
-  for (const update of updates) {
-    if (state.protocol.id !== update.conversationId) {
-      outcomes.push({
-        update,
-        disposition: "foreignConversation",
-        turnResolution: "none",
-        stateChanged: false,
-      });
-      continue;
-    }
-
-    if (state.turns.length === 0) {
-      outcomes.push({
-        update,
-        disposition: "noTurns",
-        turnResolution: "none",
-        stateChanged: false,
-      });
-      continue;
-    }
-
-    const resolution = resolveCodexFrameTextDeltaTurn(
-      state.turns.map((turn) => ({
-        turnId: turn.protocol.id,
-        status: turn.protocol.status,
-        hasError: turn.protocol.error !== null,
-        itemCount: turn.items.length,
-      })),
-      update.turnId,
-    );
-    if (resolution.kind === "none") {
-      outcomes.push({
-        update,
-        disposition: "missingTurn",
-        turnResolution: "none",
-        stateChanged: false,
-      });
-      continue;
-    }
-
-    const beforeUpdate = state;
-    if (resolution.kind === "reboundCompletedEmptyPlaceholder" && update.turnId) {
-      state = rebindCanonicalPlaceholder(state, resolution.turnIndex, update.turnId, context.now);
-    }
-
-    const turn = state.turns[resolution.turnIndex];
-    if (!turn) {
-      outcomes.push({
-        update,
-        disposition: "missingTurn",
-        turnResolution: "none",
-        stateChanged: state !== beforeUpdate,
-      });
-      continue;
-    }
-
-    const itemResult = reduceCodexFrameTextDeltaItems(turn.items, update);
-    if (itemResult.items !== turn.items) {
-      state = replaceCanonicalTurn(state, resolution.turnIndex, {
-        ...turn,
-        items: itemResult.items as readonly CodexCanonicalItem[],
-      });
-    }
-    outcomes.push({
-      update,
-      disposition: itemResult.disposition,
-      turnResolution: resolution.kind,
-      stateChanged: state !== beforeUpdate,
-    });
-  }
-
+  let outcomes: readonly CodexFrameTextDeltaOutcome[] = [];
+  const state = produce(initialState, (draft) => { outcomes = mutateCodexConversationFrameTextDeltas(draft, updates, context); });
   return { state, outcomes };
 }

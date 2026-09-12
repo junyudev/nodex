@@ -28,7 +28,7 @@ describe("Agent runtime macOS platform contract", () => {
     expect(() =>
       assertAgentRuntimeMacosArtifactModes([
         { artifactPath: "codex-package.json", executable: false },
-        { artifactPath: "bin/codex-app-server", executable: true },
+        { artifactPath: "bin/codex", executable: true },
         { artifactPath: "bin/codex-code-mode-host", executable: true },
         { artifactPath: "codex-path/rg", executable: false },
         { artifactPath: "codex-resources/zsh/bin/zsh", executable: true },
@@ -38,7 +38,7 @@ describe("Agent runtime macOS platform contract", () => {
     expect(() =>
       assertAgentRuntimeMacosArtifactModes([
         { artifactPath: "codex-package.json", executable: false },
-        { artifactPath: "bin/codex-app-server", executable: true },
+        { artifactPath: "bin/codex", executable: true },
         { artifactPath: "bin/codex-code-mode-host", executable: true },
         { artifactPath: "codex-path/rg", executable: true },
         { artifactPath: "codex-resources/zsh/bin/zsh", executable: true },
@@ -57,7 +57,7 @@ describe("Agent runtime macOS platform contract", () => {
       assertAgentRuntimeMacosPlatformContract({
         inspections: [
           {
-            artifactPath: "bin/codex-app-server",
+            artifactPath: "bin/codex",
             lipoOutput: "arm64",
             otoolOutput: buildVersion("15.0"),
           },
@@ -78,7 +78,7 @@ describe("Agent runtime macOS platform contract", () => {
       assertAgentRuntimeMacosPlatformContract({
         inspections: [
           {
-            artifactPath: "bin/codex-app-server",
+            artifactPath: "bin/codex",
             lipoOutput: "x86_64 arm64",
             otoolOutput: buildVersion("15.0"),
           },

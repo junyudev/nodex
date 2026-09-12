@@ -35,7 +35,6 @@ import type {
 import {
   requestLocalConversationResume,
   markLocalConversationAsRead,
-  setLocalConversationThreadViewActive,
   setLocalConversationThreadPresented,
   useComposerIntent,
   useConversationBackgroundTerminalRows,
@@ -62,12 +61,15 @@ import {
   useCodexPermissionState,
   useConversationParentThreadId,
   useLocalConversationAccount,
+  useLocalConversationConnection,
 } from "../local-conversation-store";
 import { LocalConversationFooter } from "./local-conversation-footer";
 import { EnsureLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
 import type { RightPanelComposerOverlayVisibility } from "./right-panel-composer-overlay";
 import { LocalConversationNewThreadHomeScreen } from "./local-conversation-new-thread-home-screen";
 import { LocalConversationStageScreen } from "./local-conversation-stage-screen";
+import { CodexAfterPaintMarker } from "../codex-turn-first-response-view";
+import { codexTurnFirstResponseTracker } from "../codex-turn-first-response";
 import { RemoteHostedPipHostLayoutReporter } from "./remote-hosted-pip-host-layout-reporter";
 import { ThreadStageHeader } from "./local-conversation-stage-header";
 import { LocalConversationThreadBody } from "./local-conversation-thread-body";
@@ -112,7 +114,24 @@ export type ConnectedThreadStageInput = Omit<
 
 let presentedConversationSurfaceSequence = 0;
 
-function usePresentedConversationIds(conversationIds: readonly string[]): void {
+function useRetainedConversation(
+  conversationId: string | null,
+  active: boolean,
+  foreground = false,
+  preferredHostId?: string | null,
+): void {
+  const manager = useCodexAppServerManagerForConversationId(conversationId, preferredHostId);
+  useEffect(() => {
+    if (!conversationId || !active) return;
+    const interest = manager.retainActiveConversation(conversationId, { foreground });
+    return () => interest[Symbol.dispose]();
+  }, [manager, conversationId, active, foreground]);
+}
+
+function usePresentedConversationIds(
+  conversationIds: readonly string[],
+  preferredHostId?: string | null,
+): void {
   const [surfaceId] = useState(
     () => `connected-thread-stage:${++presentedConversationSurfaceSequence}`,
   );
@@ -128,14 +147,20 @@ function usePresentedConversationIds(conversationIds: readonly string[]): void {
       .catch(() => undefined)
       .then(async () => {
         for (const conversationId of removed) {
-          await setLocalConversationThreadPresented(conversationId, surfaceId, false).catch(
-            () => undefined,
-          );
+          await setLocalConversationThreadPresented(
+            conversationId,
+            surfaceId,
+            false,
+            preferredHostId,
+          ).catch(() => undefined);
         }
         for (const conversationId of added) {
-          await setLocalConversationThreadPresented(conversationId, surfaceId, true).catch(
-            () => undefined,
-          );
+          await setLocalConversationThreadPresented(
+            conversationId,
+            surfaceId,
+            true,
+            preferredHostId,
+          ).catch(() => undefined);
         }
       });
   });
@@ -224,10 +249,11 @@ function ConnectedThreadStageHeader({
     if (!activeThreadId) return;
     await copyConversationMarkdown({
       conversationId: activeThreadId,
+      executionHostId: input.activeThreadSummary?.executionHostId ?? null,
       parentConversationId,
       title,
     });
-  }, [activeThreadId, parentConversationId, title]);
+  }, [activeThreadId, input.activeThreadSummary?.executionHostId, parentConversationId, title]);
 
   const headerActions = useMemo<ThreadStageActions>(
     () => ({
@@ -302,7 +328,11 @@ function ConnectedThreadStageBody({
     canonicalTurns,
     activeThreadId !== null && !input.isNewThreadTab,
   );
-  const hostId = useCodexAppServerManagerForConversationId(activeThreadId).getHostId();
+  const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
+  const hostId = useCodexAppServerManagerForConversationId(
+    activeThreadId,
+    preferredHostId,
+  ).getHostId();
   const conversationSnapshot = useConversation(activeThreadId);
   const requests = useConversationRequests(activeThreadId);
   const cwd = useConversationCwd(activeThreadId);
@@ -334,10 +364,10 @@ function ConnectedThreadStageBody({
       ...actions,
       onRetryThreadAttachment: async (threadId) => {
         onErrorMessage(null);
-        await requestLocalConversationResume(threadId).catch(() => null);
+        await requestLocalConversationResume(threadId, preferredHostId).catch(() => null);
       },
     }),
-    [actions, onErrorMessage],
+    [actions, onErrorMessage, preferredHostId],
   );
 
   const body = useMemo(
@@ -384,7 +414,6 @@ function ConnectedThreadStageBody({
       conversationEntityGeneration: conversationSnapshot?.conversationEntityGeneration,
       historyTopologyGeneration: conversationSnapshot?.historyTopologyGeneration,
       historyMutationRevision: conversationSnapshot?.historyMutationRevision,
-      historyItemWindowsByTurnId: conversationSnapshot?.historyItemWindowsByTurnId,
       turnItemsPaginationById: conversationSnapshot?.turnItemsPaginationById,
       requests,
       canonicalRequests: conversationSnapshot?.canonicalRequests ?? [],
@@ -413,7 +442,6 @@ function ConnectedThreadStageBody({
       conversationSnapshot?.conversationEntityGeneration,
       conversationSnapshot?.historyTopologyGeneration,
       conversationSnapshot?.historyMutationRevision,
-      conversationSnapshot?.historyItemWindowsByTurnId,
       conversationSnapshot?.turnItemsPaginationById,
       conversationSnapshot?.canonicalRequests,
       cwd,
@@ -487,7 +515,11 @@ export function ConnectedThreadStageFooter({
   rightPanelComposerLeadingContent?: ReactNode;
   worktreeRuntimeAvailable?: boolean;
 }) {
-  const hostId = useCodexAppServerManagerForConversationId(activeThreadId).getHostId();
+  const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
+  const hostId = useCodexAppServerManagerForConversationId(
+    activeThreadId,
+    preferredHostId,
+  ).getHostId();
   const turns = useConversationTurns(activeThreadId);
   const conversationSnapshot = useConversation(activeThreadId);
   const requests = useConversationRequests(activeThreadId);
@@ -520,8 +552,8 @@ export function ConnectedThreadStageFooter({
           hostId === DEFAULT_CODEX_HOST_ID
             ? (input.projectWorkspaceRoots ??
               (input.projectWorkspacePath ? [input.projectWorkspacePath] : []))
-            : (conversationSnapshot?.canonicalState?.sidecar.hydrationContext?.currentPermissions
-                .runtimeWorkspaceRoots ?? []),
+            : (conversationSnapshot?.canonicalState?.currentPermissions?.runtimeWorkspaceRoots ??
+              []),
         executionCwd: cwd ?? input.newThreadTarget?.runInEnvironmentPath ?? null,
         workspaceBrowserRoot: conversationSnapshot?.projectlessWorkspaceBrowserRoot ?? null,
         isWorktree:
@@ -537,8 +569,7 @@ export function ConnectedThreadStageFooter({
       input.newThreadTarget?.runInEnvironmentPath,
       input.newThreadTarget?.runInTarget,
       conversationSnapshot?.projectlessWorkspaceBrowserRoot,
-      conversationSnapshot?.canonicalState?.sidecar.hydrationContext?.currentPermissions
-        .runtimeWorkspaceRoots,
+      conversationSnapshot?.canonicalState?.currentPermissions?.runtimeWorkspaceRoots,
       summaryFields.managedWorktreePath,
     ],
   );
@@ -880,6 +911,8 @@ export function ConnectedThreadComposerDock({
 }: ConnectedThreadComposerDockProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeThreadId = resolveConnectedStageActiveThreadId(input);
+  const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
+  const connection = useLocalConversationConnection(activeThreadId);
   const firstSubmission = useSessionFirstSubmission({
     projectId: input.projectId,
     sessionId: input.sessionId ?? input.newThreadTarget?.sessionId ?? null,
@@ -915,7 +948,7 @@ export function ConnectedThreadComposerDock({
       (conversationId): conversationId is string => Boolean(conversationId),
     );
   }, [activeThreadId, routeActive, visible, visibleBackgroundRequestConversationId]);
-  usePresentedConversationIds(presentedConversationIds);
+  usePresentedConversationIds(presentedConversationIds, preferredHostId);
 
   const hasRuntimeWork = Boolean(
     (statusType ?? input.activeThreadSummary?.statusType) === "active" ||
@@ -926,30 +959,27 @@ export function ConnectedThreadComposerDock({
   );
   const lifecycleActive = routeActive || hasRuntimeWork;
 
-  useEffect(() => {
-    if (!activeThreadId || !lifecycleActive) return;
-    void setLocalConversationThreadViewActive(activeThreadId, true).catch(() => {});
-    return () => {
-      void setLocalConversationThreadViewActive(activeThreadId, false).catch(() => {});
-    };
-  }, [activeThreadId, lifecycleActive]);
+  useRetainedConversation(activeThreadId, lifecycleActive, false, preferredHostId);
 
   useEffect(() => {
     if (!input.activeThreadId || input.isNewThreadTab || archived) return;
+    if (connection.status !== "connected") return;
     if (firstSubmission) return;
     if (!lifecycleActive || attachmentState.status === "attaching") return;
     if (attachmentState.status === "failed") return;
     if (resumeState === "resumed" && (streamRole === "owner" || streamRole === "follower")) {
       return;
     }
-    void requestLocalConversationResume(input.activeThreadId).catch(() => {});
+    void requestLocalConversationResume(input.activeThreadId, preferredHostId).catch(() => {});
   }, [
     archived,
+    connection.status,
     attachmentState,
     firstSubmission,
     input.activeThreadId,
     input.isNewThreadTab,
     lifecycleActive,
+    preferredHostId,
     resumeState,
     streamRole,
   ]);
@@ -996,6 +1026,8 @@ export function ConnectedThreadStage({
 }: ConnectedThreadStageProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const activeThreadId = resolveConnectedStageActiveThreadId(input);
+  const preferredHostId = input.activeThreadSummary?.executionHostId ?? null;
+  const connection = useLocalConversationConnection(activeThreadId);
   const isSideChat = Boolean(input.sideChatContext);
   const isNewThreadRoute = input.isNewThreadTab && activeThreadId === null && !isSideChat;
   const resumeState = useConversationResumeState(activeThreadId);
@@ -1017,6 +1049,11 @@ export function ConnectedThreadStage({
   );
   const presentedTurns = firstSubmissionProjection.turns;
   const hasFirstSubmission = firstSubmissionProjection.submission !== null;
+  const firstSubmissionRouteId = firstSubmissionProjection.submission?.launchId ?? null;
+  const markFirstSubmissionPageVisible = useCallback(() => {
+    if (firstSubmissionRouteId === null) return;
+    codexTurnFirstResponseTracker.markNewThreadPageVisible(firstSubmissionRouteId);
+  }, [firstSubmissionRouteId]);
   const hasThreadStartProgress = Boolean(
     input.threadStartProgress &&
     resolveThreadStartProgressPresentation(input.threadStartProgress) === "panel",
@@ -1066,7 +1103,7 @@ export function ConnectedThreadStage({
     threadBodyVisible,
     visibleBackgroundRequestConversationId,
   ]);
-  usePresentedConversationIds(presentedConversationIds);
+  usePresentedConversationIds(presentedConversationIds, preferredHostId);
   const isActiveThreadArchived =
     input.activeThreadSummary?.archived === true || summaryFields.archived;
   const activeThreadProjectless = summaryFields.threadId
@@ -1100,9 +1137,9 @@ export function ConnectedThreadStage({
       if (!routeActive || !threadBodyVisible || !activeThreadId || !conversation?.hasUnreadTurn)
         return;
       if (requireWindowFocus && typeof document !== "undefined" && !document.hasFocus()) return;
-      void markLocalConversationAsRead(activeThreadId).catch(() => {});
+      void markLocalConversationAsRead(activeThreadId, preferredHostId).catch(() => {});
     },
-    [activeThreadId, conversation?.hasUnreadTurn, routeActive, threadBodyVisible],
+    [activeThreadId, conversation?.hasUnreadTurn, preferredHostId, routeActive, threadBodyVisible],
   );
   const markActiveConversationAsReadOnFocus = useEffectEvent(() => {
     markActiveConversationAsRead(true);
@@ -1149,15 +1186,12 @@ export function ConnectedThreadStage({
       turns,
     ],
   );
-  useEffect(() => {
-    if (!activeThreadId) return;
-    if (!threadLifecycleActive) return;
-
-    void setLocalConversationThreadViewActive(activeThreadId, true).catch(() => {});
-    return () => {
-      void setLocalConversationThreadViewActive(activeThreadId, false).catch(() => {});
-    };
-  }, [activeThreadId, threadLifecycleActive]);
+  useRetainedConversation(
+    activeThreadId,
+    threadLifecycleActive,
+    presentation === "primary" && routeActive && !isSideChat && !backgroundAgentDetail,
+    preferredHostId,
+  );
 
   useEffect(() => {
     void latestTurn?.status;
@@ -1181,6 +1215,7 @@ export function ConnectedThreadStage({
       return;
     }
     if (hasFirstSubmission) return;
+    if (connection.status !== "connected") return;
     if (isActiveThreadArchived) {
       return;
     }
@@ -1197,15 +1232,17 @@ export function ConnectedThreadStage({
       return;
     }
 
-    void requestLocalConversationResume(input.activeThreadId).catch(() => {});
+    void requestLocalConversationResume(input.activeThreadId, preferredHostId).catch(() => {});
   }, [
     isActiveThreadArchived,
+    connection.status,
     attachmentState,
     hasFirstSubmission,
     resumeState,
     streamRole,
     input.activeThreadId,
     input.isNewThreadTab,
+    preferredHostId,
     threadLifecycleActive,
     worktreeRuntimeAvailable,
   ]);
@@ -1281,6 +1318,12 @@ export function ConnectedThreadStage({
 
   return (
     <>
+      {firstSubmissionRouteId === null ? null : (
+        <CodexAfterPaintMarker
+          key={firstSubmissionRouteId}
+          onPaint={markFirstSubmissionPageVisible}
+        />
+      )}
       {ownsRemoteHostedPipHost ? (
         <RemoteHostedPipHostLayoutReporter isCodexHomeAvailable={summaryPanelMounted} />
       ) : null}

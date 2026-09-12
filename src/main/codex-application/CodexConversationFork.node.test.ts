@@ -1,3 +1,6 @@
+import { produce } from "immer";
+import { CodexMainConversationResume } from "./CodexMainConversationResume";
+import type { CodexCanonicalTurnHeader } from "../../shared/types";
 import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -15,12 +18,10 @@ import {
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
-import { CodexConversationProjection } from "./CodexConversationProjection";
+import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { make } from "./CodexConversationFork";
 import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
 import { CodexForkTitlePolicy } from "./CodexForkTitlePolicy";
-import { CodexOwnerNotificationDrainRuntime } from "./CodexOwnerNotificationDrainRuntime";
-import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
 import { CodexThreadCatalog } from "./CodexThreadCatalog";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
@@ -30,25 +31,37 @@ import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
 const sourceThreadId = "thread-source";
 const childThreadId = "thread-child";
-const ownerClientId = "renderer-owner";
 
 const canonical = (threadId: string): CodexCanonicalConversationState =>
   ({
     turns: [
       {
-        protocol: { id: "turn-a", status: "completed" },
+        ...({ turnId: "turn-a", status: "completed" } satisfies Pick<
+          CodexCanonicalTurnHeader,
+          "turnId" | "status"
+        >),
         items: [],
-        sidecar: { params: undefined, hookRuns: [] },
+        params: undefined,
+        hookRuns: [],
       },
     ],
-    protocol: { id: threadId },
+    ...{ id: threadId },
   }) as unknown as CodexCanonicalConversationState;
 
 const snapshot = (threadId: string): CodexConversationSnapshot =>
   ({
     threadId,
     threadName: "Source title",
-    turns: [{ threadId, turnId: "turn-a", status: "completed", itemIds: [] }],
+    turns: [
+      {
+        threadId,
+        ...({ turnId: "turn-a", status: "completed" } satisfies Pick<
+          CodexCanonicalTurnHeader,
+          "turnId" | "status"
+        >),
+        itemIds: [],
+      },
+    ],
     turnPagination: {
       olderCursor: null,
       backwardsCursor: null,
@@ -64,7 +77,11 @@ interface HarnessOptions {
   readonly appServerVersion?: string;
   readonly capabilityIsCurrent?: boolean;
   readonly gatewayFailure?: ReturnType<typeof codexRuntimeError>;
-  readonly responseTurns?: readonly { readonly id: string; readonly status: "completed" }[];
+  readonly localHostId?: string;
+  readonly responseTurns?: readonly {
+    readonly id: string;
+    readonly status: "completed";
+  }[];
   readonly sourceCanonicalLoaded?: boolean;
   readonly sourceHistoryMode?: "legacy" | "paginated";
   readonly currentExecutionHostId?: string;
@@ -78,7 +95,10 @@ const makeHarness = (options: HarnessOptions = {}) => {
     readonly params: unknown;
     readonly scheduling: unknown;
   }> = [];
-  const resolutions: Array<{ readonly threadId: string; readonly fidelity: string }> = [];
+  const resolutions: Array<{
+    readonly threadId: string;
+    readonly fidelity: string;
+  }> = [];
   const sourceCanonical = canonical(sourceThreadId);
   const sourceSnapshot = snapshot(sourceThreadId);
   const childSnapshot = snapshot(childThreadId);
@@ -133,7 +153,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
     },
   } as unknown as CoreModuleClients);
   const gateway = CodexGateway.of({
-    localHostId: "host-a",
+    localHostId: options.localHostId ?? "host-a",
     events: Stream.empty,
     requestOnHost: ((hostId: string, method: string, params: unknown, scheduling: unknown) =>
       Effect.gen(function* () {
@@ -163,7 +183,11 @@ const makeHarness = (options: HarnessOptions = {}) => {
       })) as CodexGateway["Service"]["requestOnHost"],
   } as unknown as CodexGateway["Service"]);
   const directory = CodexThreadDirectory.of({
+    prepareResume: () => Effect.die("unused"),
+    prepareHistoryHydration: () => Effect.die("unused"),
+    acceptRendererResume: () => Effect.die("unused"),
     materializeInCurrentLane: () => Effect.die("unused"),
+    refreshMetadataInCurrentLane: () => Effect.die("unused"),
     resolve: (input) =>
       Effect.sync(() => {
         resolutions.push({ threadId: input.threadId, fidelity: input.fidelity });
@@ -193,7 +217,6 @@ const makeHarness = (options: HarnessOptions = {}) => {
         order.push("directory:accept");
         assert.strictEqual(acceptedSource, sourceThreadId);
         assert.strictEqual(response.thread.id, childThreadId);
-        assert.deepEqual(response.thread.turns, []);
         return {
           fidelity: "metadata",
           historyMode: "paginated",
@@ -208,29 +231,11 @@ const makeHarness = (options: HarnessOptions = {}) => {
     acceptResumeResult: () => Effect.die("unused"),
     acceptSessionStart: () => Effect.die("unused"),
   });
-  const projection = CodexConversationProjection.of({
-    read: (threadId: string) => {
-      if (threadId === sourceThreadId) return Effect.die("source projection must not be read");
-      if (!projectedChild || !projectedChildSnapshot) {
-        return Effect.die("child projection was not hydrated");
-      }
-      return Effect.succeed({ canonical: projectedChild, snapshot: projectedChildSnapshot });
-    },
-    hydrate: (input: Parameters<CodexConversationProjection["Service"]["hydrate"]>[0]) =>
-      Effect.sync(() => {
-        order.push("projection:hydrate");
-        projectedChild = input.canonical;
-        projectedChildSnapshot = {
-          ...childSnapshot,
-          turnPagination: input.pagination,
-        };
-        return projectedChildSnapshot;
-      }),
-  } as never);
   const capabilitySnapshot = createCodexAppServerCapabilitySnapshot({
     hostId: "host-a",
     generation: 7,
     userAgent: `Codex Desktop/${options.appServerVersion ?? "0.147.0"}`,
+    nativeAppTools: (options.localHostId ?? "host-a") === "host-a",
   });
   const capability = make.pipe(
     Effect.provideService(CoreModules, core),
@@ -243,33 +248,31 @@ const makeHarness = (options: HarnessOptions = {}) => {
       }),
     ),
     Effect.provideService(CodexGateway, gateway),
-    Effect.provideService(CodexConversationProjection, projection),
+    Effect.provideService(
+      DesktopToolRuntime,
+      DesktopToolRuntime.of({
+        threadConfig: () =>
+          Effect.succeed({ "mcp_servers.node_repl": { command: "/runtime/node" } }),
+      } as unknown as DesktopToolRuntime["Service"]),
+    ),
+    Effect.provideService(
+      CodexMainConversationResume,
+      CodexMainConversationResume.of({
+        resume: () =>
+          Effect.sync(() => {
+            order.push("manager:resume");
+            projectedChild = canonical(childThreadId);
+            projectedChildSnapshot = childSnapshot;
+            return { status: "ready", snapshot: childSnapshot } as const;
+          }),
+      }),
+    ),
     Effect.provideService(
       CodexForkTitlePolicy,
       CodexForkTitlePolicy.of({
         derive: () =>
           Effect.succeed({ sourceTitle: "Source title", childTitle: "Source title (3)" }),
       }),
-    ),
-    Effect.provideService(
-      CodexOwnerNotificationDrainRuntime,
-      CodexOwnerNotificationDrainRuntime.of({
-        awaitCurrent: () => Effect.sync(() => order.push("owner:drain")).pipe(Effect.asVoid),
-      } as never),
-    ),
-    Effect.provideService(
-      CodexRendererConversationCoordinator,
-      CodexRendererConversationCoordinator.of({
-        adoptRendererOwner: (
-          input: Parameters<
-            CodexRendererConversationCoordinator["Service"]["adoptRendererOwner"]
-          >[0],
-        ) =>
-          Effect.sync(() => {
-            order.push("owner:adopt");
-            return { checkpoint: null, ownerClientId: input.ownerClientId, revision: 1 };
-          }),
-      } as never),
     ),
     Effect.provideService(
       CodexForkSidePanelTransfer,
@@ -297,6 +300,7 @@ const makeHarness = (options: HarnessOptions = {}) => {
       CodexThreadTitlePersistence.of({
         set: (input) =>
           Effect.sync(() => {
+            if (!projectedChild) throw new Error("Fork title cannot project before child resume");
             order.push(`title:set:${input.name}`);
             return true;
           }),
@@ -307,6 +311,18 @@ const makeHarness = (options: HarnessOptions = {}) => {
     Effect.provideService(
       ConversationEntityMap,
       ConversationEntityMap.of({
+        entity: () => ({
+          mutateCanonicalState: (
+            recipe: (draft: import("immer").Draft<CodexCanonicalConversationState>) => void,
+          ) => {
+            if (!projectedChild) throw new Error("Main conversation has not resumed");
+            projectedChild = produce(projectedChild, recipe);
+            return true;
+          },
+          readSnapshot: () => projectedChildSnapshot,
+        }),
+        registerThreadMetadata: () => {},
+        readThreadMetadata: () => null,
         runCommand: <A, E, R>(_threadId: string, operation: Effect.Effect<A, E, R>) =>
           Effect.sync(() => order.push("lane:open")).pipe(Effect.andThen(operation)),
       } as never),
@@ -323,7 +339,6 @@ it.effect("commits an exact persistent fork through canonical Session ownership"
       sourceThreadId,
       lastTurnId: "turn-a",
       threadSource: "user",
-      ownerClientId,
     });
 
     assert.strictEqual(result.threadId, childThreadId);
@@ -337,17 +352,12 @@ it.effect("commits an exact persistent fork through canonical Session ownership"
           threadId: sourceThreadId,
           lastTurnId: "turn-a",
           path: null,
-          model: "gpt-test",
-          serviceTier: null,
           cwd: "/workspace",
           runtimeWorkspaceRoots: ["/workspace", "/shared"],
           threadSource: "user",
           excludeTurns: true,
           config: {
-            model_reasoning_effort: "high",
-            "features.apply_patch_streaming_events": true,
-            "features.concurrent_reasoning_summaries": true,
-            "features.thread_tools": true,
+            "mcp_servers.node_repl": { command: "/runtime/node" },
             "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name),
           },
         },
@@ -371,15 +381,30 @@ it.effect("commits an exact persistent fork through canonical Session ownership"
     assert.deepEqual(result.conversation.turnPagination, snapshot(childThreadId).turnPagination);
     assert.deepEqual(order, [
       "lane:open",
-      "owner:drain",
       "gateway:fork",
       "directory:accept",
-      "projection:hydrate",
-      "title:set:Source title (3)",
       "session:ensure",
-      "owner:adopt",
+      "manager:resume",
+      "title:set:Source title (3)",
       "side-panel:stage",
     ]);
+  }),
+);
+
+it.effect("does not attach local desktop runtime config to a remote persistent fork", () =>
+  Effect.gen(function* () {
+    const { capability, requests } = makeHarness({ localHostId: "local" });
+    const forks = yield* capability;
+    const result = yield* forks.fork({
+      sourceThreadId,
+      lastTurnId: "turn-a",
+      threadSource: "user",
+    });
+
+    assert.strictEqual(result.threadId, childThreadId);
+    assert.lengthOf(requests, 1);
+    assert.strictEqual(requests[0]?.method, "thread/fork");
+    assert.notProperty(requests[0]?.params as Record<string, unknown>, "config");
   }),
 );
 
@@ -397,7 +422,11 @@ it.effect("forks through an unloaded stable Turn identity without reading source
 
     assert.strictEqual(result.threadId, childThreadId);
     assert.strictEqual(
-      (requests[0]?.params as { readonly lastTurnId?: string }).lastTurnId,
+      (
+        requests[0]?.params as {
+          readonly lastTurnId?: string;
+        }
+      ).lastTurnId,
       "turn-not-resident",
     );
     assert.deepEqual(
@@ -409,7 +438,7 @@ it.effect("forks through an unloaded stable Turn identity without reading source
   }),
 );
 
-it.effect("fails closed when a bounded fork returns noncompliant inline history", () =>
+it.effect("accepts returned inline history and resumes the child at the ordinary manager", () =>
   Effect.gen(function* () {
     const { capability, order, projectedChild, requests } = makeHarness({
       responseTurns: [{ id: "turn-inline", status: "completed" }],
@@ -423,13 +452,13 @@ it.effect("fails closed when a bounded fork returns noncompliant inline history"
       }),
     );
 
-    assert.isTrue(Exit.isFailure(result));
+    assert.isTrue(Exit.isSuccess(result));
     assert.deepEqual(
       requests.map((request) => request.method),
       ["thread/fork"],
     );
-    assert.isNull(projectedChild());
-    assert.deepEqual(order, ["lane:open", "owner:drain", "gateway:fork"]);
+    assert.ok(projectedChild());
+    assert.ok(order.includes("manager:resume"));
   }),
 );
 
@@ -450,14 +479,15 @@ it.effect("fails closed before dispatch when bounded fork capabilities are unava
     assert.strictEqual(exit._tag, "Failure");
     assert.deepEqual(requests, []);
     assert.deepEqual(resolutions, [{ threadId: sourceThreadId, fidelity: "metadata" }]);
-    assert.deepEqual(order, ["lane:open", "owner:drain"]);
+    assert.deepEqual(order, ["lane:open"]);
   }),
 );
 
-it.effect("fails closed for a legacy Thread even when its host supports paginated history", () =>
+it.effect("forks a legacy Thread on an older host using the native identity", () =>
   Effect.gen(function* () {
     const { capability, order, requests, resolutions } = makeHarness({
       sourceHistoryMode: "legacy",
+      appServerVersion: "0.143.0-alpha.32",
     });
     const forks = yield* capability;
     const exit = yield* Effect.exit(
@@ -468,10 +498,10 @@ it.effect("fails closed for a legacy Thread even when its host supports paginate
       }),
     );
 
-    assert.strictEqual(exit._tag, "Failure");
-    assert.deepEqual(requests, []);
+    assert.strictEqual(exit._tag, "Success");
+    assert.strictEqual(requests[0]?.method, "thread/fork");
     assert.deepEqual(resolutions, [{ threadId: sourceThreadId, fidelity: "metadata" }]);
-    assert.deepEqual(order, ["lane:open", "owner:drain"]);
+    assert.ok(order.includes("manager:resume"));
   }),
 );
 
@@ -485,7 +515,7 @@ it.effect("fences a stale app-server generation before the fork mutation", () =>
 
     assert.strictEqual(exit._tag, "Failure");
     assert.deepEqual(requests, []);
-    assert.deepEqual(order, ["lane:open", "owner:drain"]);
+    assert.deepEqual(order, ["lane:open"]);
   }),
 );
 
@@ -502,7 +532,7 @@ it.effect("fails closed when handoff changes the durable host before fork dispat
 
     assert.strictEqual(exit._tag, "Failure");
     assert.deepEqual(requests, []);
-    assert.deepEqual(order, ["lane:open", "owner:drain"]);
+    assert.deepEqual(order, ["lane:open"]);
   }),
 );
 
@@ -539,4 +569,34 @@ it.effect("rejects an explicitly blank stable Turn identity instead of widening 
     assert.strictEqual(exit._tag, "Failure");
     assert.deepEqual(requests, []);
   }),
+);
+
+it.effect(
+  "renderer fork admission returns raw response and accepts durable identity without a Main document",
+  () =>
+    Effect.gen(function* () {
+      const { capability, order, requests } = makeHarness();
+      const forks = yield* capability;
+      const prepared = yield* forks.prepareRenderer({
+        sourceThreadId,
+        lastTurnId: "turn-a",
+        threadSource: "user",
+      });
+      assert.strictEqual(requests.length, 0);
+      const response = yield* forks.executeRenderer(prepared.receiptId);
+      assert.strictEqual(response.thread.id, childThreadId);
+      assert.strictEqual(order.includes("manager:resume"), false);
+      const accepted = yield* forks.acceptRenderer(prepared.receiptId);
+      assert.strictEqual(accepted.threadId, childThreadId);
+      assert.strictEqual(order.includes("manager:resume"), false);
+      assert.strictEqual(
+        order.some((entry) => entry.startsWith("projection:")),
+        false,
+      );
+      const duplicate = yield* forks.executeRenderer(prepared.receiptId).pipe(Effect.exit);
+      assert.strictEqual(duplicate._tag, "Failure");
+      yield* forks.releaseRenderer(prepared.receiptId);
+      const late = yield* forks.acceptRenderer(prepared.receiptId).pipe(Effect.exit);
+      assert.strictEqual(late._tag, "Failure");
+    }),
 );

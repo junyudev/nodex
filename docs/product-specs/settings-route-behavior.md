@@ -49,8 +49,10 @@ for root preferences, automatic retention, grouped inventory, and safe removal.
 Browser subsections and detail pages remain children of Browser and do not
 become independent rail entries.
 
-General owns Permissions, general behavior, Composer, Files & links, and
-Notifications. Browser owns General, Autofill and passwords, Extensions,
+General owns Permissions, general behavior, Composer, Files & links, Notifications, and app-server
+request diagnostics. Request diagnostics are captured only while the General page is open and show
+bounded recent request timing, scheduling, transport, and failure data for local troubleshooting.
+Browser owns General, Autofill and passwords, Extensions,
 Downloads, Permissions, Site permissions, Developer mode, and its focused
 history/manager detail pages. Pages owns only the Block → Page task-shorthand
 import preference defined by

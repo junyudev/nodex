@@ -626,7 +626,6 @@ export function ThreadStageDevStoryPage({
                   serviceTier: null,
                   summary: null,
                   pause: null,
-                  payloadRef: null,
                 },
               ],
             },

@@ -6,6 +6,7 @@ export function projectSessionThreadLinkToSummary(
   return {
     threadId: thread.threadId,
     projectId: thread.projectId,
+    executionHostId: thread.executionHostId,
     source: thread.parentThreadId ? { parentThreadId: thread.parentThreadId } : null,
     threadName: thread.threadName ?? null,
     threadPreview: thread.threadPreview,

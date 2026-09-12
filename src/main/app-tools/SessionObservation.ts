@@ -5,6 +5,10 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { components } from "@nodex/core-protocol";
 import type { AcpConversationSnapshot } from "../../shared/acp-conversation";
+import {
+  hasPendingConversationTurnStart,
+  latestConversationTurn,
+} from "../../shared/codex-conversation-state/codex-turn-selectors";
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
 import { AgentBackendApplication } from "../agent-backend/AgentBackendApplication";
 import {
@@ -111,6 +115,7 @@ export interface SessionInspection {
 const disposition = (
   status: string,
   activeFlags: readonly string[],
+  executionInProgress = false,
 ): SessionInspection["disposition"] => {
   if (
     activeFlags.length > 0 ||
@@ -119,6 +124,7 @@ const disposition = (
     status === "systemError"
   )
     return "needs_attention";
+  if (executionInProgress) return "running";
   if (status === "active" || status === "running") return "running";
   if (status === "idle") return "complete";
   return "unavailable";
@@ -326,12 +332,27 @@ export const make = Effect.gen(function* () {
           cause: new Error("Session ownership changed during observation"),
         });
       const snapshot = retained?.snapshot;
+      const canonicalStatus = retained?.canonical?.threadRuntimeStatus;
       const status =
         thread?.backend_binding.kind === "acp"
           ? (acp?.snapshot.status ?? "notLoaded")
-          : (snapshot?.statusType ?? after.thread?.status.status_type ?? "idle");
-      const activeFlags = snapshot?.statusActiveFlags ?? after.thread?.status.active_flags ?? [];
-      const lastTurn = snapshot?.turns.at(-1);
+          : (canonicalStatus?.type ??
+            snapshot?.statusType ??
+            after.thread?.status.status_type ??
+            "idle");
+      const canonicalActiveFlags =
+        canonicalStatus?.type === "active" ? canonicalStatus.activeFlags : undefined;
+      const activeFlags =
+        canonicalActiveFlags ??
+        snapshot?.statusActiveFlags ??
+        after.thread?.status.active_flags ??
+        [];
+      const canonical = retained?.canonical;
+      const latestTurn = latestConversationTurn(canonical);
+      const executionInProgress =
+        thread?.backend_binding.kind === "codex" &&
+        (latestTurn?.status === "inProgress" || hasPendingConversationTurnStart(canonical));
+      const lastTurn = canonical ? latestTurn : snapshot?.turns.at(-1);
       const cursor =
         "nxs1." +
         createHash("sha256")
@@ -347,6 +368,11 @@ export const make = Effect.gen(function* () {
               activeFlags,
               turnId: lastTurn?.turnId,
               turnStatus: lastTurn?.status,
+              pendingTurnStarts: canonical?.unconfirmedTurnSubmissions?.map((submission) => [
+                submission.requestId,
+                submission.clientUserMessageId,
+                submission.stage,
+              ]),
               requestIds: snapshot?.requests.map((request) => request.requestId),
               acpRevision: acp?.snapshot.revision,
             }),
@@ -358,7 +384,7 @@ export const make = Effect.gen(function* () {
         backend: thread?.backend_binding.kind ?? null,
         status,
         activeFlags,
-        disposition: disposition(status, activeFlags),
+        disposition: disposition(status, activeFlags, executionInProgress),
         cursor,
       };
     }),

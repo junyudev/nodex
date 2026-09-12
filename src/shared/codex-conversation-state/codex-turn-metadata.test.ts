@@ -63,21 +63,24 @@ function buildState(): CodexCanonicalConversationState {
       ],
     },
     {
-      model: "gpt-test",
-      reasoningEffort: "high",
-      cwd: "/workspace",
-      approvalPolicy: "on-request",
-      approvalsReviewer: "user",
-      sandboxPolicy: {
-        type: "workspaceWrite",
-        writableRoots: ["/workspace"],
-        networkAccess: false,
-        excludeTmpdirEnvVar: false,
-        excludeSlashTmp: false,
+      hostId: "local",
+      ...{
+        model: "gpt-test",
+        reasoningEffort: "high",
+        cwd: "/workspace",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        sandboxPolicy: {
+          type: "workspaceWrite",
+          writableRoots: ["/workspace"],
+          networkAccess: false,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        },
+        activePermissionProfile: null,
+        runtimeWorkspaceRoots: ["/workspace"],
+        hasUnreadTurn: false,
       },
-      activePermissionProfile: null,
-      runtimeWorkspaceRoots: ["/workspace"],
-      hasUnreadTurn: false,
     },
   );
 }
@@ -122,10 +125,9 @@ describe("Codex 30751 turn metadata", () => {
       },
       11,
     );
-
-    expect(diffed.state.turns[0]?.sidecar.diff).toBe("diff --git a/file.ts b/file.ts");
-    expect(buffered.state.turns[0]?.sidecar.safetyBuffering?.showBufferingUi).toBe(true);
-    expect(buffered.state.turns[0]?.sidecar.safetyBuffering?.fasterModel).toBe("gpt-fast");
+    expect(diffed.state.turns[0]?.diff).toBe("diff --git a/file.ts b/file.ts");
+    expect(buffered.state.turns[0]?.safetyBuffering?.showBufferingUi).toBe(true);
+    expect(buffered.state.turns[0]?.safetyBuffering?.fasterModel).toBe("gpt-fast");
   });
 
   test("preserves a hook occurrence identity and suffixes repeated completed runs", () => {
@@ -155,9 +157,9 @@ describe("Codex 30751 turn metadata", () => {
     );
 
     expect(started.effects[0]?.type).toBe("markConversationStreaming");
-    expect(completed.state.turns[0]?.sidecar.hookRuns?.[0]?.id).toBe("hook-1");
-    expect(completed.state.turns[0]?.sidecar.hookRuns?.[0]?.run.status).toBe("completed");
-    expect(repeated.state.turns[0]?.sidecar.hookRuns?.[1]?.id).toBe("hook-1:1");
+    expect(completed.state.turns[0]?.hookRuns?.[0]?.id).toBe("hook-1");
+    expect(completed.state.turns[0]?.hookRuns?.[0]?.run.status).toBe("completed");
+    expect(repeated.state.turns[0]?.hookRuns?.[1]?.id).toBe("hook-1:1");
   });
 
   test("synthesizes a missing started turn and routes null hook turn ids to latest", () => {
@@ -179,9 +181,9 @@ describe("Codex 30751 turn metadata", () => {
       50,
     );
 
-    expect(synthesized.state.turns[0]?.protocol.id).toBe("turn-synthesized");
-    expect(synthesized.state.turns[0]?.sidecar.turnStartedAtMs).toBe(40);
-    expect(completed.state.turns[0]?.sidecar.hookRuns?.[0]?.run.completedAt).toBe(50n);
+    expect(synthesized.state.turns[0]?.turnId).toBe("turn-synthesized");
+    expect(synthesized.state.turns[0]?.turnStartedAtMs).toBe(40);
+    expect(completed.state.turns[0]?.hookRuns?.[0]?.run.completedAt).toBe(50n);
   });
 
   test("appends opaque plan, reroute, and error occurrences instead of upserting fixed IDs", () => {
@@ -297,7 +299,12 @@ describe("Codex 30751 turn metadata", () => {
     const review = warned.state.turns[0]?.items[0];
     const event =
       review?.type === "automaticApprovalReview"
-        ? (review.event as { status?: string; action?: { source?: string } })
+        ? (review.event as {
+            status?: string;
+            action?: {
+              source?: string;
+            };
+          })
         : null;
 
     expect(warned.state.turns[0]?.items.length).toBe(2);
@@ -305,7 +312,8 @@ describe("Codex 30751 turn metadata", () => {
     expect(review?.type === "automaticApprovalReview" ? review.startedAtMs : null).toBe(100);
     expect(event?.status).toBe("denied");
     expect(event?.action?.source).toBe("unified_exec");
-    expect(completed.effects[0]?.type).toBe("touchConversationUpdatedAt");
+    expect(started.state.updatedAt).toBe(100);
+    expect(completed.state.updatedAt).toBe(200);
     expect(warned.state.turns[0]?.items[1]?.type).toBe("autoReviewInterruptionWarning");
   });
 
@@ -342,7 +350,11 @@ describe("Codex 30751 turn metadata", () => {
     const review = completed.state.turns[0]?.items[0];
     const action =
       review?.type === "automaticApprovalReview"
-        ? (review.event as { action?: Record<string, unknown> }).action
+        ? (
+            review.event as {
+              action?: Record<string, unknown>;
+            }
+          ).action
         : null;
 
     expect(action).toEqual({

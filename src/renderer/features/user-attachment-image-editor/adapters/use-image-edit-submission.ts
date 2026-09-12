@@ -86,7 +86,7 @@ export function useImageEditSubmission(args: {
   projectId: string | null;
   threadId: string | null;
 }): ImageEditSubmissionController {
-  const control = useCodexAppServerControl(args.projectId);
+  const control = useCodexAppServerControl(args.projectId, args.threadId);
   const hasActiveTurn = useCodexConversationValue(
     args.threadId,
     (conversation) =>

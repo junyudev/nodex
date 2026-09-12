@@ -1,3 +1,11 @@
+import { produce, type Draft } from "immer";
+import { mutateCodexTurnExecution, type CodexPreparedTurnExecution } from "./codex-turn-execution";
+import {
+  residentConversationTurnEntries,
+  conversationTurnDraft,
+  appendConversationTurnDraft,
+  removeConversationTurnDraft,
+} from "./codex-turn-mutation";
 import type { Turn } from "@nodex/codex-app-server-protocol/v2/Turn";
 import {
   appendCodexCanonicalWorktreeInitItem,
@@ -8,8 +16,10 @@ import {
 } from "./codex-conversation-state";
 
 export interface CodexOptimisticTurnInput {
+  readonly execution?: CodexPreparedTurnExecution;
   readonly params: CodexCanonicalLiveTurnParams;
-  readonly currentCollaborationModel?: string;
+  readonly localMetadata?: unknown;
+  readonly mcpAppModelContextAttachments?: unknown;
   readonly startedAtMs?: number;
   readonly createId?: () => string;
 }
@@ -63,26 +73,14 @@ function isCodexModelUpgrade(previousModel: string, currentModel: string): boole
   );
 }
 
-function readCurrentCollaborationModel(
-  state: CodexCanonicalConversationState,
-  input: CodexOptimisticTurnInput,
-): string {
-  return (
-    input.currentCollaborationModel ??
-    state.sidecar.latestThreadSettings?.collaborationMode.settings.model ??
-    state.sidecar.hydrationContext?.latestThreadSettings?.collaborationMode?.settings.model ??
-    ""
-  );
-}
-
 function isMatchingOptimisticTurn(
   turn: CodexCanonicalTurnState,
   clientUserMessageId: string,
 ): boolean {
   return (
-    turn.protocol.id === null &&
-    turn.protocol.status === "inProgress" &&
-    turn.sidecar.params.clientUserMessageId === clientUserMessageId
+    turn.turnId === null &&
+    turn.status === "inProgress" &&
+    turn.params.clientUserMessageId === clientUserMessageId
   );
 }
 
@@ -99,7 +97,7 @@ function findMatchingOptimisticTurnIndex(
 
 function findBoundTurnIndex(turns: readonly CodexCanonicalTurnState[], turnId: string): number {
   for (let index = turns.length - 1; index >= 0; index -= 1) {
-    if (turns[index]?.protocol.id === turnId) return index;
+    if (turns[index]?.turnId === turnId) return index;
   }
   return -1;
 }
@@ -127,31 +125,26 @@ function mergeSplitOptimisticTurn(
   bound: CodexCanonicalTurnState,
   responseTurn: Turn,
 ): CodexCanonicalTurnState {
-  const status =
-    bound.protocol.status === "inProgress" ? responseTurn.status : bound.protocol.status;
+  const status = bound.status === "inProgress" ? responseTurn.status : bound.status;
   return {
-    protocol: {
-      ...bound.protocol,
-      status,
-    },
+    ...optimistic,
+    ...bound,
+    status,
     items: mergeCanonicalTurnItems(optimistic, bound),
-    sidecar: {
-      ...optimistic.sidecar,
-      ...bound.sidecar,
-      entityKey: optimistic.sidecar.entityKey ?? bound.sidecar.entityKey,
-      params: optimistic.sidecar.params,
-      turnStartedAtMs: optimistic.sidecar.turnStartedAtMs ?? bound.sidecar.turnStartedAtMs,
-    },
+    entityKey: optimistic.entityKey ?? bound.entityKey,
+    params: optimistic.params,
+    turnStartedAtMs: optimistic.turnStartedAtMs ?? bound.turnStartedAtMs,
   };
 }
 
 /** Exact `X1`/`gQ`: publish a nullable in-progress turn before dispatch. */
-export function appendCodexCanonicalOptimisticTurn(
-  state: CodexCanonicalConversationState,
+export function mutateCodexCanonicalOptimisticTurn(
+  state: Draft<CodexCanonicalConversationState>,
   input: CodexOptimisticTurnInput,
-): CodexCanonicalConversationState {
-  const previousModel = state.sidecar.previousTurnModel ?? null;
-  const currentModel = readCurrentCollaborationModel(state, input);
+): void {
+  const observedAtMs = input.startedAtMs ?? Date.now();
+  const previousModel = state.previousTurnModel ?? null;
+  const currentModel = state.latestCollaborationMode.settings.model;
   const items =
     previousModel && currentModel && !isCodexModelUpgrade(previousModel, currentModel)
       ? [
@@ -164,36 +157,46 @@ export function appendCodexCanonicalOptimisticTurn(
         ]
       : [];
   const turn: CodexCanonicalTurnState = {
-    protocol: {
-      id: null,
-      itemsView: "full",
-      status: "inProgress",
-      error: null,
-      durationMs: null,
-    },
+    turnId: null,
+    itemsView: "full",
+    status: "inProgress",
+    error: null,
+    durationMs: null,
     items,
-    sidecar: {
-      entityKey:
-        input.params.clientUserMessageId === null
-          ? undefined
-          : `turn-local:${input.params.clientUserMessageId}`,
-      params: input.params,
-      diff: null,
-      turnStartedAtMs: input.startedAtMs ?? Date.now(),
-      firstTurnWorkItemStartedAtMs: null,
-      finalAssistantStartedAtMs: null,
-      hookRuns: [],
-    },
+    entityKey:
+      input.params.clientUserMessageId === null
+        ? undefined
+        : `turn-local:${input.params.clientUserMessageId}`,
+    params: input.params,
+    ...(input.localMetadata === undefined ? {} : { localMetadata: input.localMetadata }),
+    ...(input.mcpAppModelContextAttachments === undefined
+      ? {}
+      : { mcpAppModelContextAttachments: input.mcpAppModelContextAttachments }),
+    diff: null,
+    turnStartedAtMs: observedAtMs,
+    firstTurnWorkItemStartedAtMs: null,
+    finalAssistantStartedAtMs: null,
+    hookRuns: [],
   };
 
-  return {
-    ...state,
-    turns: [...state.turns, turn],
-    sidecar: {
-      ...state.sidecar,
-      previousTurnModel: null,
-    },
-  };
+  appendConversationTurnDraft(
+    state,
+    turn,
+    input.createId ?? (() => globalThis.crypto.randomUUID()),
+  );
+  if (state.threadRuntimeStatus.type !== "active")
+    state.threadRuntimeStatus = { type: "active", activeFlags: [] };
+  state.updatedAt = observedAtMs;
+  state.recencyAt = observedAtMs;
+  state.previousTurnModel = null;
+  if (input.execution) mutateCodexTurnExecution(state, input.execution);
+}
+
+export function appendCodexCanonicalOptimisticTurn(
+  state: CodexCanonicalConversationState,
+  input: CodexOptimisticTurnInput,
+): CodexCanonicalConversationState {
+  return produce(state, (draft) => mutateCodexCanonicalOptimisticTurn(draft, input));
 }
 
 /**
@@ -211,110 +214,103 @@ export function appendCodexCanonicalOptimisticFirstTurn(
 }
 
 /** Bind the matching nullable turn, coalescing any server occurrence that won the race. */
+export function mutateCodexCanonicalOptimisticTurnBinding(
+  state: Draft<CodexCanonicalConversationState>,
+  clientUserMessageId: string,
+  turn: Turn,
+): void {
+  const entries = residentConversationTurnEntries(state);
+  const turns = entries.map(({ turn }) => turn);
+  const boundIndex = findBoundTurnIndex(turns, turn.id);
+  const optimisticIndex = findMatchingOptimisticTurnIndex(turns, clientUserMessageId);
+  if (boundIndex >= 0 && optimisticIndex >= 0) {
+    const merged = mergeSplitOptimisticTurn(turns[optimisticIndex]!, turns[boundIndex]!, turn);
+    const retained = entries[Math.min(boundIndex, optimisticIndex)]!;
+    const removed = entries[Math.max(boundIndex, optimisticIndex)]!;
+    Object.assign(conversationTurnDraft(state, retained.address)!, merged);
+    removeConversationTurnDraft(state, removed.address);
+    return;
+  }
+  const entry = entries[boundIndex >= 0 ? boundIndex : optimisticIndex];
+  if (!entry) return;
+  const target = conversationTurnDraft(state, entry.address)!;
+  const status = target.status === "inProgress" ? turn.status : target.status;
+  target.turnId = turn.id;
+  target.status = status;
+}
 export function bindCodexCanonicalOptimisticTurn(
   state: CodexCanonicalConversationState,
   clientUserMessageId: string,
   turn: Turn,
 ): CodexCanonicalConversationState {
-  const boundTurnIndex = findBoundTurnIndex(state.turns, turn.id);
-  const optimisticTurnIndex = findMatchingOptimisticTurnIndex(state.turns, clientUserMessageId);
-  if (boundTurnIndex >= 0 && optimisticTurnIndex >= 0) {
-    const bound = state.turns[boundTurnIndex];
-    const optimistic = state.turns[optimisticTurnIndex];
-    if (!bound || !optimistic) return state;
-
-    const merged = mergeSplitOptimisticTurn(optimistic, bound, turn);
-    const mergedIndex = Math.min(boundTurnIndex, optimisticTurnIndex);
-    const turns = state.turns.flatMap((candidate, index) => {
-      if (index === mergedIndex) return [merged];
-      if (index === boundTurnIndex || index === optimisticTurnIndex) return [];
-      return [candidate];
-    });
-    return { ...state, turns };
-  }
-
-  const turnIndex = boundTurnIndex >= 0 ? boundTurnIndex : optimisticTurnIndex;
-  if (turnIndex < 0) return state;
-
-  const current = state.turns[turnIndex];
-  if (!current) return state;
-  const status = current.protocol.status === "inProgress" ? turn.status : current.protocol.status;
-  if (current.protocol.id === turn.id && current.protocol.status === status) {
-    return state;
-  }
-  const turns = [...state.turns];
-  turns[turnIndex] = {
-    ...current,
-    protocol: {
-      ...current.protocol,
-      id: turn.id,
-      status,
-    },
-  };
-
-  return { ...state, turns };
+  return produce(state, (draft) =>
+    mutateCodexCanonicalOptimisticTurnBinding(draft, clientUserMessageId, turn),
+  );
 }
 
 /** Exact `X1` catch branch: keep the created thread and terminalize its placeholder. */
+export function mutateCodexCanonicalOptimisticTurnFailure(
+  state: Draft<CodexCanonicalConversationState>,
+  clientUserMessageId: string,
+  errorItemId = globalThis.crypto.randomUUID(),
+): void {
+  const entries = residentConversationTurnEntries(state);
+  const entry =
+    entries[
+      findMatchingOptimisticTurnIndex(
+        entries.map(({ turn }) => turn),
+        clientUserMessageId,
+      )
+    ];
+  if (!entry) return;
+  const turn = conversationTurnDraft(state, entry.address)!;
+  const message = "Error submitting message";
+  turn.items.push({
+    id: errorItemId,
+    type: "error",
+    message,
+    willRetry: false,
+    errorInfo: null,
+    additionalDetails: null,
+  });
+  turn.status = "failed";
+  turn.error = { message, codexErrorInfo: null, additionalDetails: null, misalignment: null };
+}
 export function failCodexCanonicalOptimisticTurn(
   state: CodexCanonicalConversationState,
   clientUserMessageId: string,
   errorItemId = globalThis.crypto.randomUUID(),
 ): CodexCanonicalConversationState {
-  const turnIndex = findMatchingOptimisticTurnIndex(state.turns, clientUserMessageId);
-  if (turnIndex < 0) return state;
-
-  const optimistic = state.turns[turnIndex];
-  if (!optimistic) return state;
-  const message = "Error submitting message";
-  const turns = [...state.turns];
-  turns[turnIndex] = {
-    ...optimistic,
-    items: [
-      ...optimistic.items,
-      {
-        type: "error",
-        id: errorItemId,
-        message,
-        willRetry: false,
-        errorInfo: null,
-        additionalDetails: null,
-      },
-    ],
-    protocol: {
-      ...optimistic.protocol,
-      status: "failed",
-      error: {
-        message,
-        codexErrorInfo: null,
-        additionalDetails: null,
-        misalignment: null,
-      },
-    },
-  };
-
-  return { ...state, turns };
+  return produce(state, (draft) =>
+    mutateCodexCanonicalOptimisticTurnFailure(draft, clientUserMessageId, errorItemId),
+  );
 }
 
 /** Resume failures remove their userless placeholder so Resume remains available. */
+export function mutateCodexCanonicalOptimisticTurnRemoval(
+  state: Draft<CodexCanonicalConversationState>,
+  clientUserMessageId: string,
+  options?: { readonly previousTurnModel: string | null },
+): void {
+  const entries = residentConversationTurnEntries(state);
+  const entry =
+    entries[
+      findMatchingOptimisticTurnIndex(
+        entries.map(({ turn }) => turn),
+        clientUserMessageId,
+      )
+    ];
+  if (!entry) return;
+  removeConversationTurnDraft(state, entry.address);
+  if (options && state.previousTurnModel === null)
+    state.previousTurnModel = options.previousTurnModel;
+}
 export function removeCodexCanonicalOptimisticTurn(
   state: CodexCanonicalConversationState,
   clientUserMessageId: string,
   options?: { readonly previousTurnModel: string | null },
 ): CodexCanonicalConversationState {
-  const turnIndex = findMatchingOptimisticTurnIndex(state.turns, clientUserMessageId);
-  if (turnIndex < 0) return state;
-
-  return {
-    ...state,
-    turns: state.turns.filter((_, index) => index !== turnIndex),
-    ...(options && state.sidecar.previousTurnModel === null
-      ? {
-          sidecar: {
-            ...state.sidecar,
-            previousTurnModel: options.previousTurnModel,
-          },
-        }
-      : {}),
-  };
+  return produce(state, (draft) =>
+    mutateCodexCanonicalOptimisticTurnRemoval(draft, clientUserMessageId, options),
+  );
 }

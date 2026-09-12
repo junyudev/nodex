@@ -101,7 +101,7 @@ describe("Codex thread notification handler", () => {
     const emit = (target: ReturnType<typeof setup>, status: "completed" | "failed") =>
       target.source.eventListener?.({
         type: "turn-completed",
-        hostId: "default",
+        hostId: "local",
         conversation: conversation(),
         turnId: status,
         status,
@@ -128,7 +128,7 @@ describe("Codex thread notification handler", () => {
     runtime.setPresented(true);
     runtime.source.eventListener?.({
       type: "turn-completed",
-      hostId: "default",
+      hostId: "local",
       conversation: conversation(),
       turnId: "turn-1",
       status: "interrupted",
@@ -150,7 +150,7 @@ describe("Codex thread notification handler", () => {
     runtime.setForegrounded(true);
     runtime.source.eventListener?.({
       type: "turn-completed",
-      hostId: "default",
+      hostId: "local",
       conversation: conversation(),
       turnId: "turn-2",
       status: "completed",
@@ -167,7 +167,7 @@ describe("Codex thread notification handler", () => {
     const child = conversation({ parentThreadId: "parent" });
     runtime.source.eventListener?.({
       type: "approval-requested",
-      hostId: "default",
+      hostId: "local",
       conversation: child,
       requestId: "child-approval",
       turnId: "turn-child",
@@ -176,7 +176,7 @@ describe("Codex thread notification handler", () => {
     });
     runtime.source.eventListener?.({
       type: "user-input-requested",
-      hostId: "default",
+      hostId: "local",
       conversation: child,
       requestId: "child-question",
       turnId: "turn-child",
@@ -207,7 +207,7 @@ describe("Codex thread notification handler", () => {
     runtime.setPresented(true);
     runtime.source.eventListener?.({
       type: "user-input-requested",
-      hostId: "default",
+      hostId: "local",
       conversation: conversation(),
       requestId: "q-1",
       turnId: "turn-1",
@@ -217,7 +217,7 @@ describe("Codex thread notification handler", () => {
 
     runtime.source.eventListener?.({
       type: "request-resolved",
-      hostId: "default",
+      hostId: "local",
       conversationId: "thread-1",
       requestId: "q-1",
     });
@@ -225,7 +225,7 @@ describe("Codex thread notification handler", () => {
       {
         occurrenceId: buildCodexRequestNotificationOccurrenceId(
           "approval",
-          "default",
+          "local",
           "thread-1",
           "q-1",
         ),
@@ -233,7 +233,7 @@ describe("Codex thread notification handler", () => {
       {
         occurrenceId: buildCodexRequestNotificationOccurrenceId(
           "question",
-          "default",
+          "local",
           "thread-1",
           "q-1",
         ),
@@ -247,7 +247,7 @@ describe("Codex thread notification handler", () => {
     const runtime = setup();
     runtime.source.eventListener?.({
       type: "user-input-requested",
-      hostId: "default",
+      hostId: "local",
       conversation: conversation({
         conversationId: "side-1",
         sideConversationParentNavigationPath: "project:p/session:s/thread:parent",
@@ -273,7 +273,7 @@ describe("Codex thread notification handler", () => {
     const runtime = setup();
     runtime.source.eventListener?.({
       type: "async-question-requested",
-      hostId: "default",
+      hostId: "local",
       conversation: conversation(),
       turnId: "turn",
       questionId: "question",
@@ -295,7 +295,7 @@ describe("Codex thread notification handler", () => {
     });
     runtime.source.eventListener?.({
       type: "async-question-resolved",
-      hostId: "default",
+      hostId: "local",
       conversationId: "thread-1",
       turnId: "turn",
       questionId: "question",

@@ -10,7 +10,7 @@ import { CodexConversations } from "../codex-application/CodexConversations";
 import { CodexConversationContext } from "../codex-application/CodexConversationContext";
 import type { NodexAgentAuthorizationPresentationTarget } from "../codex-application/NodexAgentAuthorizationRuntime";
 import { NodexAppToolAuthority } from "../app-tools/NodexAppToolAuthority";
-import { CodexRendererConversationRegistry } from "../codex-application/CodexRendererConversationRegistry";
+import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
 import { CoreModules } from "../core-runtime/CoreModules";
 import {
   NodexAgentDynamicTools,
@@ -34,7 +34,7 @@ export const live: Layer.Layer<
   | CodexConversationContext
   | CodexConversations
   | CodexTurnAuthority
-  | CodexRendererConversationRegistry
+  | CodexRendererPresentationRegistry
   | CoreModules
   | NodexAppToolAuthority
   | NodexAgentDynamicTools
@@ -44,7 +44,7 @@ export const live: Layer.Layer<
     const conversationContext = yield* CodexConversationContext;
     const conversations = yield* CodexConversations;
     const turnAuthority = yield* CodexTurnAuthority;
-    const renderer = yield* CodexRendererConversationRegistry;
+    const renderer = yield* CodexRendererPresentationRegistry;
     const core = yield* CoreModules;
     const appAuthority = yield* NodexAppToolAuthority;
     const tools = yield* NodexAgentDynamicTools;
@@ -75,10 +75,10 @@ export const live: Layer.Layer<
       params: DynamicToolCallParams,
       rootThreadId: string,
     ): NodexAgentAuthorizationPresentationTarget | null => {
-      const direct = renderer.resolvePresentationClient(params.threadId);
+      const direct = renderer.resolvePresentedSurfaceClient(params.threadId);
       if (direct) return { clientId: direct, threadId: params.threadId, turnId: params.turnId };
       if (rootThreadId === params.threadId) return null;
-      const clientId = renderer.resolvePresentationClient(rootThreadId);
+      const clientId = renderer.resolvePresentedSurfaceClient(rootThreadId);
       const turnId = conversations.latestTurnId(rootThreadId);
       return clientId && turnId ? { clientId, threadId: rootThreadId, turnId } : null;
     };

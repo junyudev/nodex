@@ -47,10 +47,6 @@ pub(crate) fn collect(
                          ) AND NOT EXISTS ( \
                            SELECT 1 FROM structural_retention_members reference WHERE reference.member_kind = 'asset' AND reference.member_id = blob.content_hash \
                          ) AND NOT EXISTS ( \
-                           SELECT 1 FROM codex_queued_follow_up_payload_manifests payload WHERE payload.payload_sha256 = blob.content_hash \
-                         ) AND NOT EXISTS ( \
-                           SELECT 1 FROM codex_queued_follow_up_payload_asset_refs reference WHERE reference.sha256 = blob.content_hash \
-                         ) AND NOT EXISTS ( \
                            SELECT 1 FROM codex_thread_asset_refs reference WHERE reference.blob_hash = blob.content_hash \
                          ) AND NOT EXISTS ( \
                            SELECT 1 FROM prepared_blob_receipts receipt \

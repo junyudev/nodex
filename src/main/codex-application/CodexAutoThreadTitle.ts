@@ -14,9 +14,11 @@ import type { CodexGeneratedThreadMetadata } from "../codex/thread-title-generat
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexStructuredThreadTitle } from "./CodexStructuredThreadTitle";
 import { CodexThreadDescriptionPersistence } from "./CodexThreadDescriptionPersistence";
+import { CodexThreadTitleAppTools } from "./CodexThreadTitleAppTools";
 import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
 
 export interface CodexAutoThreadTitleInput {
+  readonly hostId: string;
   readonly threadId: string;
   readonly prompt: string;
   readonly cwd: string | null;
@@ -49,12 +51,14 @@ export const make: Effect.Effect<
   | CodexAttachments
   | CodexStructuredThreadTitle
   | CodexThreadDescriptionPersistence
+  | CodexThreadTitleAppTools
   | CodexThreadTitlePersistence
   | Scope.Scope
 > = Effect.gen(function* () {
   const attachments = yield* CodexAttachments;
   const structuredTitle = yield* CodexStructuredThreadTitle;
   const descriptions = yield* CodexThreadDescriptionPersistence;
+  const appTools = yield* CodexThreadTitleAppTools;
   const titles = yield* CodexThreadTitlePersistence;
   const ownerScope = yield* Scope.Scope;
 
@@ -95,6 +99,12 @@ export const make: Effect.Effect<
         return;
       }
 
+      const readOnlyAppToolAllowlist = yield* appTools.discover({
+        hostId: input.hostId,
+        threadId: input.threadId,
+        prompt: generationPrompt,
+      });
+
       const restoreProvisionalTitle = titles.set({
         threadId: input.threadId,
         name: provisionalTitle,
@@ -102,23 +112,13 @@ export const make: Effect.Effect<
         expectedName: provisionalTitle,
       });
 
-      const generateMetadata = structuredTitle.generateMetadata
-        ? structuredTitle.generateMetadata({
-            prompt: generationPrompt,
-            cwd: input.cwd,
-            ...(input.serviceName?.trim() ? { serviceName: input.serviceName.trim() } : {}),
-          })
-        : structuredTitle
-            .generate({
-              prompt: generationPrompt,
-              cwd: input.cwd,
-              ...(input.serviceName?.trim() ? { serviceName: input.serviceName.trim() } : {}),
-            })
-            .pipe(
-              Effect.map((title): CodexGeneratedThreadMetadata | null =>
-                title === null ? null : { title, description: null },
-              ),
-            );
+      const generateMetadata = structuredTitle.generateMetadata({
+        hostId: input.hostId,
+        prompt: generationPrompt,
+        cwd: input.cwd,
+        readOnlyAppToolAllowlist,
+        ...(input.serviceName?.trim() ? { serviceName: input.serviceName.trim() } : {}),
+      });
 
       const persistDescription = (
         metadata: CodexGeneratedThreadMetadata,
@@ -156,6 +156,7 @@ export const make: Effect.Effect<
                     name: metadata.title,
                     normalization: "trim",
                     expectedName: provisionalTitle,
+                    generated: true,
                   })
                   .pipe(Effect.flatMap((committed) => persistDescription(metadata, committed)))
               : restoreProvisionalTitle,

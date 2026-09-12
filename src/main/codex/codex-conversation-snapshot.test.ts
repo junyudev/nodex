@@ -65,10 +65,10 @@ function buildThreadDetail(overrides?: Partial<CodexThreadDetail>): CodexThreadD
 describe("buildCodexConversationSnapshot", () => {
   test("carries the lossless canonical document without reconstructing it from view turns", () => {
     const canonicalState = {
-      protocol: { id: "thread_1" },
-      turns: [{ protocol: { id: "turn_1" }, items: [{ id: "hidden-1" }] }],
+      ...{ id: "thread_1" },
+      turns: [{ turnId: "turn_1", items: [{ id: "hidden-1" }] }],
       requests: [{ id: 7 }],
-      sidecar: { hasUnreadTurn: true },
+      hasUnreadTurn: true,
     } as unknown as CodexCanonicalConversationState;
     const snapshot = buildCodexConversationSnapshot({
       detail: buildThreadDetail(),

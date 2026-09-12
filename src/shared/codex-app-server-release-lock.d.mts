@@ -4,7 +4,7 @@ export type AgentRuntimeTargetKey = `${AgentRuntimeTargetPlatform}-${AgentRuntim
 
 export const CODEX_APP_SERVER_REQUIRED_ARTIFACTS: readonly [
   "codex-package.json",
-  "bin/codex-app-server",
+  "bin/codex",
   "bin/codex-code-mode-host",
   "codex-path/rg",
   "codex-resources/zsh/bin/zsh",
@@ -44,7 +44,7 @@ export interface CodexAppServerReleaseLock {
     layoutVersion: number;
     pathDir: string;
     resourcesDir: string;
-    variant: "codex-app-server";
+    variant: "codex";
     version: string;
   };
   protocolSchema: {
@@ -53,7 +53,7 @@ export interface CodexAppServerReleaseLock {
     tools: Record<AgentRuntimeTargetKey, CodexSchemaToolAsset>;
   };
   readonly requiredArtifacts: readonly string[];
-  runtimeFamily: "codex-app-server";
+  runtimeFamily: "codex";
   schemaVersion: 1;
   upstream: {
     checksumManifest: {

@@ -1,12 +1,10 @@
 import type { ModeKind, ReasoningSummary } from "@nodex/codex-app-server-protocol";
 import type { ThreadSettings } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexPromptInput } from "./types";
-import type { CodexCanonicalSteeringUserMessageItem } from "./codex-conversation-state/codex-conversation-state";
 import { normalizeCodexServiceTier } from "./codex-service-tier";
 
 export const CODEX_INTERRUPTED_STEER_REASON = "Interrupted before the steer was accepted." as const;
 export const CODEX_ENDED_STEER_REASON = "Run ended before the steer was accepted." as const;
-export const CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION = 2 as const;
 
 export type CodexQueuedFollowUpPause =
   | {
@@ -18,17 +16,7 @@ export type CodexQueuedFollowUpPause =
       readonly reason: string;
     };
 
-export interface CodexQueuedFollowUpPayloadRef {
-  readonly schemaVersion: typeof CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION;
-  readonly assetUri: string;
-  readonly sha256: string;
-  readonly byteLength: number;
-}
-
-/**
- * A captured Composer submission. Queue identity, app-server deduplication identity,
- * and the immutable payload manifest are deliberately separate concerns.
- */
+/** Composer presentation derived from the manager's captured queue messages. */
 export interface CodexQueuedFollowUp {
   readonly followUpId: string;
   readonly clientUserMessageId: string;
@@ -40,8 +28,6 @@ export interface CodexQueuedFollowUp {
   readonly serviceTier: ThreadSettings["serviceTier"];
   readonly summary: ReasoningSummary | null;
   readonly pause: CodexQueuedFollowUpPause | null;
-  /** Null only while Main is freezing a new submission before its Core commit. */
-  readonly payloadRef: CodexQueuedFollowUpPayloadRef | null;
 }
 
 export type CreateCodexQueuedFollowUpInput = Pick<
@@ -51,7 +37,7 @@ export type CreateCodexQueuedFollowUpInput = Pick<
   Partial<
     Pick<
       CodexQueuedFollowUp,
-      "promptInput" | "collaborationMode" | "serviceTier" | "summary" | "pause" | "payloadRef"
+      "promptInput" | "collaborationMode" | "serviceTier" | "summary" | "pause"
     >
   >;
 
@@ -69,14 +55,13 @@ export function createCodexQueuedFollowUp(
     serviceTier: normalizeCodexServiceTier(input.serviceTier),
     summary: input.summary ?? null,
     pause: input.pause ?? null,
-    payloadRef: input.payloadRef ?? null,
   };
 }
 
 export type CodexQueuedFollowUpProjectionStatus = "loading" | "ready" | "error";
 export type CodexQueuedFollowUpFreshStartResolution = "resume" | "clear";
 
-/** Immutable full projection authored by Main and published by the active renderer owner. */
+/** Immutable Composer view derived locally from queue documents and submission activity. */
 export interface CodexQueuedFollowUpProjection {
   readonly status: CodexQueuedFollowUpProjectionStatus;
   readonly ledgerRevision: number;
@@ -86,60 +71,6 @@ export interface CodexQueuedFollowUpProjection {
   readonly editingFollowUpId: string | null;
   readonly error: string | null;
 }
-
-export const CODEX_QUEUE_OWNER_UPDATE_METHOD = "codex-queue-owner-update" as const;
-
-/**
- * Main-authored transcript work applied atomically with one full queue projection.
- * These directives only update the visible owner document; Main retains canonical
- * steer and queue authority.
- */
-export type CodexQueueOwnerTranscriptDirective =
-  | { readonly kind: "none" }
-  | {
-      readonly kind: "stageSteer";
-      readonly item: CodexCanonicalSteeringUserMessageItem;
-      readonly observedAtMs: number;
-    }
-  | {
-      readonly kind: "retargetSteer";
-      readonly clientUserMessageId: string;
-      readonly targetTurnId: string;
-    }
-  | {
-      readonly kind: "rejectSteer";
-      readonly clientUserMessageId: string;
-    };
-
-/** Full, generation-fenced projection sent only to the active renderer owner. */
-export interface CodexQueueOwnerUpdateRequest {
-  readonly threadId: string;
-  readonly threadGeneration: number;
-  readonly ownerEpoch: number;
-  readonly projectionRevision: number;
-  readonly projection: CodexQueuedFollowUpProjection;
-  readonly transcript: CodexQueueOwnerTranscriptDirective;
-}
-
-export type CodexQueueOwnerUpdateRejectionReason =
-  | "not-owner"
-  | "thread-generation-mismatch"
-  | "owner-epoch-mismatch"
-  | "newer-projection-applied"
-  | "conversation-unavailable"
-  | "canonical-state-unavailable";
-
-export type CodexQueueOwnerUpdateResult =
-  | {
-      readonly kind: "applied" | "already-applied";
-      readonly projectionRevision: number;
-      readonly streamRevision: number;
-    }
-  | {
-      readonly kind: "rejected";
-      readonly reason: CodexQueueOwnerUpdateRejectionReason;
-      readonly currentProjectionRevision: number | null;
-    };
 
 export const EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION: CodexQueuedFollowUpProjection = {
   status: "ready",

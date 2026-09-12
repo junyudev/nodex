@@ -45,7 +45,7 @@ const latestInProgressTurnId = (
   const turns = conversations.current(threadId)?.readCanonicalState()?.turns ?? [];
   for (let index = turns.length - 1; index >= 0; index -= 1) {
     const turn = turns[index];
-    if (turn?.protocol.status === "inProgress" && turn.protocol.id) return turn.protocol.id;
+    if (turn?.status === "inProgress" && turn.turnId) return turn.turnId;
   }
   return null;
 };

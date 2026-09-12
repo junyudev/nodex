@@ -302,6 +302,7 @@ export interface ThreadStageActions {
     promptInput?: CodexPromptInput;
     threadGoalDraft?: CodexThreadGoalDraftInput;
     threadGoalMaterializedDraft?: CodexThreadGoalMaterializedDraft;
+    threadGoalMaterializedHostId?: string;
     runInTarget?: PageRunInTarget;
     runInEnvironmentPath?: string | null;
     worktreeStartingState?: import("../../../shared/codex-pending-worktree").CodexPendingWorktreeStartingState;
@@ -1078,12 +1079,6 @@ export interface ThreadBodySurfaceModel {
   conversationEntityGeneration?: number;
   historyTopologyGeneration?: number;
   historyMutationRevision?: number;
-  historyItemWindowsByTurnId?: Readonly<
-    Record<
-      string,
-      import("../../../shared/codex-conversation-history-page").CodexConversationHistoryItemWindowSnapshot
-    >
-  >;
   turnItemsPaginationById?: Readonly<
     Record<
       string,

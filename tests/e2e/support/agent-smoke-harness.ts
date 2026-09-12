@@ -1,4 +1,9 @@
 import { expect, type Locator, type Page } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import type {
+  ThreadReadResponse,
+  ThreadTurnsListResponse,
+} from "@nodex/codex-app-server-protocol/v2";
 import { formatCodexModelLabel } from "../../../src/renderer/lib/codex-thread-settings";
 
 import {
@@ -6,9 +11,12 @@ import {
   summarizeAgentSmokeTurnSnapshot,
 } from "../../../scripts/agent-smoke-turn-outcome";
 import type { CodexExecutionProfile } from "../../../src/shared/codex-execution-profile";
+import { parseModelOption } from "../../../src/shared/codex-composer-catalog";
+import type { CodexNativeRequestOutcome } from "../../../src/shared/codex-native-request-outcome";
 import type { CodexModelOption } from "../../../src/shared/types";
 import { createBoundedOperationId } from "../../../src/shared/operation-identity";
 import { createUuidV7 } from "../../../src/shared/uuid-v7";
+import { waitForDraftScene } from "./new-chat-draft";
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -37,6 +45,49 @@ export const invokeIpc = async (
       await window.api?.invoke(targetChannel, ...targetArguments),
     { targetChannel: channel, targetArguments: arguments_ },
   );
+
+/** Read the model catalog through the same native request transport used by the renderer. */
+export const readCodexModelCatalog = async (page: Page): Promise<CodexModelOption[]> => {
+  const models: CodexModelOption[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null = null;
+
+  for (let pageIndex = 0; pageIndex < 100; pageIndex += 1) {
+    const requestId = randomUUID();
+    const timeoutMs = 15_000;
+    const outcome = (await invokeIpc(page, "codex:app-server:request", {
+      hostId: "local",
+      request: {
+        id: requestId,
+        method: "model/list",
+        params: { cursor, limit: 100 },
+      },
+      caller: {
+        requestId,
+        timeoutMs,
+        expiresAtMs: Date.now() + timeoutMs,
+        retainResponse: false,
+      },
+      scheduling: { priority: "background", source: "models" },
+    })) as CodexNativeRequestOutcome<{
+      readonly data: readonly unknown[];
+      readonly nextCursor?: string | null;
+    }>;
+
+    if (outcome.type === "error") throw new Error(outcome.error.message);
+    models.push(
+      ...outcome.result.data
+        .map(parseModelOption)
+        .filter((model): model is CodexModelOption => model !== null),
+    );
+    cursor = outcome.result.nextCursor ?? null;
+    if (cursor === null) return models;
+    if (seen.has(cursor)) throw new Error(`Model catalog repeated cursor '${cursor}'`);
+    seen.add(cursor);
+  }
+
+  throw new Error("Model catalog exceeded 100 pages without completing");
+};
 
 export const collectRecords = (value: unknown): Record<string, unknown>[] => {
   const records: Record<string, unknown>[] = [];
@@ -96,6 +147,7 @@ export const createAgentSmokeDraft = async (
     })
     .toBe("ready");
   if (!projectSessionId) throw new Error("Agent smoke draft returned no Project Session id");
+  await waitForDraftScene(page, projectSessionId);
   return { projectId: project.id, projectSessionId };
 };
 
@@ -103,7 +155,7 @@ export const setAgentExecutionProfile = async (
   page: Page,
   input: { readonly preferredModelId?: string } = {},
 ): Promise<CodexExecutionProfile> => {
-  const models = (await invokeIpc(page, "codex:model:list")) as readonly CodexModelOption[];
+  const models = await readCodexModelCatalog(page);
   const model =
     models.find(
       (candidate) =>
@@ -372,4 +424,85 @@ export const waitForCompletedAgentTurn = async (
   throw new Error(
     `Timed out waiting for Agent turn completion. Latest state:\n${JSON.stringify(summarizeAgentSmokeTurnSnapshot(latestSnapshot, threadId), null, 2)}`,
   );
+};
+
+export interface NativeAgentThreadTail {
+  readonly threadId: string;
+  readonly status: ThreadReadResponse["thread"]["status"]["type"];
+  readonly turns: ThreadTurnsListResponse["data"];
+}
+
+/**
+ * Reads durable native history without requiring Main to own a resident conversation snapshot.
+ * Use this after renderer/app restart, where the selected renderer can be the canonical owner.
+ */
+export const readNativeAgentThreadTail = async (
+  page: Page,
+  threadId: string,
+): Promise<NativeAgentThreadTail> => {
+  const request = async <Result>(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<Result> => {
+    const requestId = randomUUID();
+    const timeoutMs = 5_000;
+    const outcome = (await invokeIpc(page, "codex:app-server:request", {
+      hostId: "local",
+      caller: {
+        requestId,
+        timeoutMs,
+        expiresAtMs: Date.now() + timeoutMs,
+        retainResponse: false,
+      },
+      request: { id: requestId, method, params },
+      scheduling: { priority: "background", source: "history" },
+    })) as CodexNativeRequestOutcome<Result>;
+    if (outcome.type === "error") throw new Error(outcome.error.message);
+    return outcome.result;
+  };
+
+  const [metadata, history] = await Promise.all([
+    request<ThreadReadResponse>("thread/read", { threadId, includeTurns: false }),
+    request<ThreadTurnsListResponse>("thread/turns/list", {
+      threadId,
+      limit: 20,
+      sortDirection: "desc",
+      itemsView: "full",
+    }),
+  ]);
+
+  return {
+    threadId: metadata.thread.id,
+    status: metadata.thread.status.type,
+    turns: history.data,
+  };
+};
+
+export const waitForNativeCompletedAgentTurn = async (
+  page: Page,
+  threadId: string,
+  timeout = 20_000,
+): Promise<NativeAgentThreadTail> => {
+  let latest: NativeAgentThreadTail | null = null;
+  await expect
+    .poll(
+      async () => {
+        latest = await readNativeAgentThreadTail(page, threadId);
+        const turn = latest.turns[0];
+        return {
+          threadId: latest.threadId,
+          threadStatus: latest.status,
+          turnStatus: turn?.status ?? null,
+        };
+      },
+      { timeout },
+    )
+    .toMatchObject({
+      threadId,
+      threadStatus: "idle",
+      turnStatus: "completed",
+    });
+
+  if (!latest) throw new Error(`Native Agent history never resolved for Thread ${threadId}`);
+  return latest;
 };

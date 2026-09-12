@@ -3,6 +3,7 @@ import type { TurnItemsView, UserInput } from "@nodex/codex-app-server-protocol/
 export const CODEX_HISTORY_GAP_ESTIMATED_HEIGHT_PX = 144;
 
 export interface CodexHistoryBoundaryHandle {
+  readonly source?: "ordinary" | "compact";
   readonly cursor: string;
   readonly oldestLoadedTurnId: string | null;
 }
@@ -30,28 +31,34 @@ export type CodexHistoryBoundary =
     };
 
 export interface CodexHistoryTurnItemsPagination {
+  readonly newestSnapshotItemId?: string;
+  readonly summaryItemIds?: readonly string[];
+  readonly reconnect?: {
+    readonly beforeItemId: string | null;
+    readonly stopItemId: string | null | undefined;
+    readonly olderCursorAfterReconnect?: string | null;
+  };
   readonly olderCursor: string | null;
   readonly isLoadingOlder: boolean;
   readonly hasLoadedOldest: boolean;
-  readonly oldestUserInput: readonly UserInput[] | null;
-  readonly openingUserMessageId: string | null;
+  readonly oldestUserInput?: readonly UserInput[] | null;
+  /** Absent is unknown; null means history proves that there is no opening user message. */
+  readonly openingUserMessageId?: string | null;
+  readonly openingUserMessageClientId?: string | null;
   readonly itemsView: TurnItemsView;
 }
 
+/** An installation entry; the canonical map stores the Turn itself. */
 export interface CodexHistoryEntity<TTurn> {
   readonly key: string;
   readonly turn: TTurn;
-  readonly itemCount: number;
-  readonly approximateBytes: number;
-  readonly itemsPagination: CodexHistoryTurnItemsPagination;
-  /** Live mutations always win a stale page; revision orders equal-authority writes. */
-  readonly authority: "history" | "live";
-  readonly revision: number;
 }
+
+export type CodexHistoryTurnMerge<TTurn> = (current: TTurn, incoming: TTurn) => TTurn;
 
 export interface CodexHistoryEntry {
   readonly key: string;
-  readonly entityKey: string;
+  readonly value: string;
 }
 
 export interface CodexHistoryIsland {
@@ -72,13 +79,13 @@ export interface CodexCanonicalHistoryTopology<TTurn> {
   readonly generation: number;
   readonly isComplete: boolean;
   readonly islands: readonly CodexHistoryIsland[];
-  readonly entitiesByKey: Readonly<Record<string, CodexHistoryEntity<TTurn>>>;
-  readonly residency: CodexHistoryResidency;
+  readonly entitiesByKey: Readonly<Record<string, TTurn>>;
 }
 
 export type CodexHistoryBoundaryEdge = "older" | "newer";
 
 export interface CodexHistoryBoundaryRef {
+  readonly handle: CodexHistoryBoundaryHandle;
   readonly generation: number;
   readonly islandId: string;
   readonly edge: CodexHistoryBoundaryEdge;
@@ -121,9 +128,12 @@ export type CodexHistoryTopologyResult<TTurn> =
 
 export interface CreateCodexHistoryIslandInput<TTurn> {
   readonly generation: number;
+  /** A fetched or invalidated history can remain incomplete without an available cursor. */
+  readonly isComplete?: boolean;
   readonly islandId: string;
   readonly entries: readonly CodexHistoryEntry[];
   readonly entities: readonly CodexHistoryEntity<TTurn>[];
+  readonly mergeTurns?: CodexHistoryTurnMerge<TTurn>;
   readonly olderBoundary: CodexHistoryBoundary;
   readonly newerBoundary: CodexHistoryBoundary;
 }
@@ -132,6 +142,7 @@ export interface MergeCodexHistoryBoundaryPageInput<TTurn> {
   readonly boundary: CodexHistoryBoundaryRef;
   readonly entries: readonly CodexHistoryEntry[];
   readonly entities: readonly CodexHistoryEntity<TTurn>[];
+  readonly mergeTurns?: CodexHistoryTurnMerge<TTurn>;
   readonly continuation: CodexHistoryBoundary;
 }
 
@@ -158,12 +169,13 @@ export function codexHistoryBoundaryProgressKey(handle: CodexHistoryBoundaryHand
 export function availableCodexHistoryBoundary(
   boundaryId: string,
   handle: CodexHistoryBoundaryHandle,
+  progressKey = codexHistoryBoundaryProgressKey(handle),
 ): CodexHistoryBoundary {
   return {
     status: "available",
     boundaryId,
     handle,
-    progressKey: codexHistoryBoundaryProgressKey(handle),
+    progressKey,
   };
 }
 
@@ -187,26 +199,21 @@ export function createCodexHistoryBoundaryRef(
     edge,
     boundaryId: boundary.boundaryId,
     progressKey: boundary.progressKey,
+    handle: boundary.handle,
   };
 }
 
-function chooseEntity<TTurn>(
-  current: CodexHistoryEntity<TTurn> | undefined,
-  incoming: CodexHistoryEntity<TTurn>,
-): CodexHistoryEntity<TTurn> {
-  if (!current) return incoming;
-  if (current.authority === "live" && incoming.authority === "history") return current;
-  if (incoming.authority === "live" && current.authority === "history") return incoming;
-  return incoming.revision > current.revision ? incoming : current;
-}
-
 function installEntities<TTurn>(
-  current: Readonly<Record<string, CodexHistoryEntity<TTurn>>>,
+  current: Readonly<Record<string, TTurn>>,
   incoming: readonly CodexHistoryEntity<TTurn>[],
-): Readonly<Record<string, CodexHistoryEntity<TTurn>>> {
+  mergeTurns?: CodexHistoryTurnMerge<TTurn>,
+): Readonly<Record<string, TTurn>> {
   if (incoming.length === 0) return current;
-  const next: Record<string, CodexHistoryEntity<TTurn>> = { ...current };
-  for (const entity of incoming) next[entity.key] = chooseEntity(next[entity.key], entity);
+  const next: Record<string, TTurn> = { ...current };
+  for (const {key, turn} of incoming) {
+    const resident = next[key];
+    next[key] = resident !== undefined && mergeTurns ? mergeTurns(resident, turn) : turn;
+  }
   return next;
 }
 
@@ -215,17 +222,17 @@ function dedupeEntries(entries: readonly CodexHistoryEntry[]): readonly CodexHis
   const seenEntities = new Set<string>();
   const next: CodexHistoryEntry[] = [];
   for (const entry of entries) {
-    if (seenEntries.has(entry.key) || seenEntities.has(entry.entityKey)) continue;
+    if (seenEntries.has(entry.key) || seenEntities.has(entry.value)) continue;
     seenEntries.add(entry.key);
-    seenEntities.add(entry.entityKey);
+    seenEntities.add(entry.value);
     next.push(entry);
   }
   return next;
 }
 
 function islandsOverlap(left: CodexHistoryIsland, right: CodexHistoryIsland): boolean {
-  const leftKeys = new Set(left.entries.map((entry) => entry.entityKey));
-  if (right.entries.some((entry) => leftKeys.has(entry.entityKey))) return true;
+  const leftKeys = new Set(left.entries.map((entry) => entry.value));
+  if (right.entries.some((entry) => leftKeys.has(entry.value))) return true;
   return left.newerBoundary.status === "exhausted" && right.olderBoundary.status === "exhausted";
 }
 
@@ -251,8 +258,8 @@ function coalesceIslands(
         positionsByEntityKey === undefined
           ? entries
           : entries.slice().sort((left, right) => {
-              const leftPosition = positionsByEntityKey[left.entityKey];
-              const rightPosition = positionsByEntityKey[right.entityKey];
+              const leftPosition = positionsByEntityKey[left.value];
+              const rightPosition = positionsByEntityKey[right.value];
               if (leftPosition === undefined || rightPosition === undefined) return 0;
               return leftPosition - rightPosition;
             }),
@@ -263,15 +270,15 @@ function coalesceIslands(
   return next;
 }
 
-function calculateResidency<TTurn>(
-  islands: readonly CodexHistoryIsland[],
-  entitiesByKey: Readonly<Record<string, CodexHistoryEntity<TTurn>>>,
+export function measureCodexHistoryResidency<TTurn extends {readonly items: readonly unknown[]}>(
+  topology: CodexCanonicalHistoryTopology<TTurn>,
 ): CodexHistoryResidency {
+  const { islands, entitiesByKey } = topology;
   let itemCount = 0;
   let approximateBytes = 0;
   for (const entity of Object.values(entitiesByKey)) {
-    itemCount += entity.itemCount;
-    approximateBytes += entity.approximateBytes;
+    itemCount += entity.items.length;
+    approximateBytes += new TextEncoder().encode(JSON.stringify(entity)).byteLength;
   }
   return {
     islandCount: islands.length,
@@ -281,32 +288,26 @@ function calculateResidency<TTurn>(
   };
 }
 
-function isTopologyComplete<TTurn>(
-  islands: readonly CodexHistoryIsland[],
-  entitiesByKey: Readonly<Record<string, CodexHistoryEntity<TTurn>>>,
-): boolean {
+function hasExhaustedHistoryBoundaries(islands: readonly CodexHistoryIsland[]): boolean {
   if (islands.length !== 1) return false;
   const island = islands[0];
   if (!island) return false;
   if (island.olderBoundary.status !== "exhausted") return false;
   if (island.newerBoundary.status !== "exhausted") return false;
-  return island.entries.every((entry) => {
-    const entity = entitiesByKey[entry.entityKey];
-    return entity?.itemsPagination.itemsView === "full" && entity.itemsPagination.hasLoadedOldest;
-  });
+  return true;
 }
 
 function finalizeTopology<TTurn>(input: {
   readonly generation: number;
+  readonly isComplete?: boolean;
   readonly islands: readonly CodexHistoryIsland[];
-  readonly entitiesByKey: Readonly<Record<string, CodexHistoryEntity<TTurn>>>;
+  readonly entitiesByKey: Readonly<Record<string, TTurn>>;
 }): CodexCanonicalHistoryTopology<TTurn> {
   return {
     generation: input.generation,
-    isComplete: isTopologyComplete(input.islands, input.entitiesByKey),
+    isComplete: input.isComplete ?? hasExhaustedHistoryBoundaries(input.islands),
     islands: input.islands,
     entitiesByKey: input.entitiesByKey,
-    residency: calculateResidency(input.islands, input.entitiesByKey),
   };
 }
 
@@ -322,8 +323,7 @@ function validateBoundary(
   if (boundary.status !== "available") return null;
   if (!isNonEmpty(boundary.handle.cursor))
     return topologyError("malformedTopology", "Available history cursor must be non-empty");
-  if (boundary.progressKey !== codexHistoryBoundaryProgressKey(boundary.handle))
-    return topologyError("malformedTopology", "History boundary progress key is not canonical");
+
   return null;
 }
 
@@ -340,8 +340,6 @@ export function validateCodexHistoryTopology<TTurn>(
     if (!isNonEmpty(island.id) || islandIds.has(island.id))
       return topologyError("malformedTopology", `Duplicate or empty history island ${island.id}`);
     islandIds.add(island.id);
-    if (island.entries.length === 0)
-      return topologyError("malformedTopology", `History island ${island.id} is empty`);
     const olderError = validateBoundary(island.olderBoundary, boundaryIds);
     if (olderError) return olderError;
     const newerError = validateBoundary(island.newerBoundary, boundaryIds);
@@ -349,32 +347,21 @@ export function validateCodexHistoryTopology<TTurn>(
     for (const entry of island.entries) {
       if (!isNonEmpty(entry.key) || entryKeys.has(entry.key))
         return topologyError("malformedTopology", `Duplicate or empty history entry ${entry.key}`);
-      if (!isNonEmpty(entry.entityKey) || entityKeys.has(entry.entityKey))
+      if (!isNonEmpty(entry.value) || entityKeys.has(entry.value))
         return topologyError(
           "malformedTopology",
-          `Duplicate or empty history entity reference ${entry.entityKey}`,
+          `Duplicate or empty history entity reference ${entry.value}`,
         );
-      if (!topology.entitiesByKey[entry.entityKey])
-        return topologyError("malformedTopology", `Missing history entity ${entry.entityKey}`);
+      if (!topology.entitiesByKey[entry.value])
+        return topologyError("malformedTopology", `Missing history entity ${entry.value}`);
       entryKeys.add(entry.key);
-      entityKeys.add(entry.entityKey);
+      entityKeys.add(entry.value);
     }
   }
   if (Object.keys(topology.entitiesByKey).some((key) => !entityKeys.has(key)))
     return topologyError("malformedTopology", "History topology contains an unreferenced entity");
-  const expected = finalizeTopology({
-    generation: topology.generation,
-    islands: topology.islands,
-    entitiesByKey: topology.entitiesByKey,
-  });
-  if (
-    topology.isComplete !== expected.isComplete ||
-    topology.residency.islandCount !== expected.residency.islandCount ||
-    topology.residency.turnCount !== expected.residency.turnCount ||
-    topology.residency.itemCount !== expected.residency.itemCount ||
-    topology.residency.approximateBytes !== expected.residency.approximateBytes
-  )
-    return topologyError("malformedTopology", "History completeness or residency is stale");
+  if (topology.isComplete && !hasExhaustedHistoryBoundaries(topology.islands))
+    return topologyError("malformedTopology", "History completeness has unresolved boundaries");
   return null;
 }
 
@@ -391,12 +378,12 @@ function validatePage<TTurn>(
   const entryKeys = new Set<string>();
   const entryEntityKeys = new Set<string>();
   for (const entry of entries) {
-    if (entryKeys.has(entry.key) || entryEntityKeys.has(entry.entityKey))
+    if (entryKeys.has(entry.key) || entryEntityKeys.has(entry.value))
       return topologyError("malformedPage", "A history page contains duplicate entries");
-    if (!entityKeys.has(entry.entityKey))
-      return topologyError("malformedPage", `History page is missing entity ${entry.entityKey}`);
+    if (!entityKeys.has(entry.value))
+      return topologyError("malformedPage", `History page is missing entity ${entry.value}`);
     entryKeys.add(entry.key);
-    entryEntityKeys.add(entry.entityKey);
+    entryEntityKeys.add(entry.value);
   }
   return null;
 }
@@ -410,11 +397,12 @@ export function createEmptyCodexHistoryTopology<TTurn>(
 export function createCodexHistoryIslandTopology<TTurn>(
   input: CreateCodexHistoryIslandInput<TTurn>,
 ): CodexHistoryTopologyResult<TTurn> {
-  const pageError = validatePage(input.entries, input.entities);
+  const pageError = validatePage(input.entries, input.entities, true);
   if (pageError) return { ok: false, error: pageError };
-  const entitiesByKey = installEntities({}, input.entities);
+  const entitiesByKey = installEntities({}, input.entities, input.mergeTurns);
   const topology = finalizeTopology({
     generation: input.generation,
+    isComplete: input.isComplete,
     islands: [
       {
         id: input.islandId,
@@ -429,6 +417,50 @@ export function createCodexHistoryIslandTopology<TTurn>(
   return topologyError ? { ok: false, error: topologyError } : { ok: true, topology };
 }
 
+/** Physical page admission is stricter than topology merging and is rechecked after I/O. */
+export function readCurrentCodexHistoryBoundary<TTurn>(
+  topology: CodexCanonicalHistoryTopology<TTurn>,
+  reference: CodexHistoryBoundaryRef,
+): Extract<CodexHistoryBoundary, { status: "available" }> | null {
+  if (reference.generation !== topology.generation) return null;
+  const island = topology.islands.find((candidate) => candidate.id === reference.islandId);
+  const boundary = reference.edge === "older" ? island?.olderBoundary : island?.newerBoundary;
+  if (
+    boundary?.status !== "available" ||
+    boundary.boundaryId !== reference.boundaryId ||
+    boundary.progressKey !== reference.progressKey ||
+    boundary.handle.cursor !== reference.handle.cursor ||
+    boundary.handle.source !== reference.handle.source
+  )
+    return null;
+  return boundary;
+}
+
+/** A merged island may retain a boundary after the original island ID disappears. */
+export function findCodexHistoryBoundaryIsland<TTurn>(
+  topology: CodexCanonicalHistoryTopology<TTurn>,
+  reference: CodexHistoryBoundaryRef,
+): CodexHistoryIsland | null {
+  if (reference.generation !== topology.generation) return null;
+  const matches = (island: CodexHistoryIsland): boolean => {
+    const boundary = reference.edge === "older" ? island.olderBoundary : island.newerBoundary;
+    return (
+      boundary.status === "available" &&
+      boundary.boundaryId === reference.boundaryId &&
+      boundary.progressKey === reference.progressKey
+    );
+  };
+  const named = topology.islands.find((island) => island.id === reference.islandId);
+  if (named) return matches(named) ? named : null;
+  let found: CodexHistoryIsland | null = null;
+  for (const island of topology.islands) {
+    if (!matches(island)) continue;
+    if (found) return null;
+    found = island;
+  }
+  return found;
+}
+
 export function mergeCodexHistoryBoundaryPage<TTurn>(
   topology: CodexCanonicalHistoryTopology<TTurn>,
   input: MergeCodexHistoryBoundaryPageInput<TTurn>,
@@ -440,13 +472,13 @@ export function mergeCodexHistoryBoundaryPage<TTurn>(
       ok: false,
       error: topologyError("staleGeneration", "History page belongs to a stale generation"),
     };
-  const islandIndex = topology.islands.findIndex((island) => island.id === input.boundary.islandId);
-  if (islandIndex < 0)
+  const island = findCodexHistoryBoundaryIsland(topology, input.boundary);
+  if (!island)
     return {
       ok: false,
-      error: topologyError("boundaryMissing", "History boundary island no longer exists"),
+      error: topologyError("boundaryMissing", "History boundary no longer exists"),
     };
-  const island = topology.islands[islandIndex]!;
+  const islandIndex = topology.islands.indexOf(island);
   const currentBoundary =
     input.boundary.edge === "older" ? island.olderBoundary : island.newerBoundary;
   if (currentBoundary.status !== "available")
@@ -470,30 +502,30 @@ export function mergeCodexHistoryBoundaryPage<TTurn>(
   if (pageError) return { ok: false, error: pageError };
   if (
     input.continuation.status === "available" &&
-    (input.continuation.handle.cursor === currentBoundary.handle.cursor ||
-      input.continuation.progressKey === currentBoundary.progressKey)
+    input.continuation.progressKey === currentBoundary.progressKey
   )
     return {
       ok: false,
       error: topologyError("cursorStalled", "History cursor did not advance"),
     };
 
+  const continuation = { ...input.continuation, boundaryId: input.boundary.boundaryId };
   const changedIsland: CodexHistoryIsland = {
     ...island,
     entries:
       input.boundary.edge === "older"
         ? dedupeEntries([...input.entries, ...island.entries])
         : dedupeEntries([...island.entries, ...input.entries]),
-    olderBoundary: input.boundary.edge === "older" ? input.continuation : island.olderBoundary,
-    newerBoundary: input.boundary.edge === "newer" ? input.continuation : island.newerBoundary,
+    olderBoundary: input.boundary.edge === "older" ? continuation : island.olderBoundary,
+    newerBoundary: input.boundary.edge === "newer" ? continuation : island.newerBoundary,
   };
   const islands = [...topology.islands];
   islands[islandIndex] = changedIsland;
   const coalesced = coalesceIslands(islands, island.id);
   const referencedKeys = new Set(
-    coalesced.flatMap((candidate) => candidate.entries.map((entry) => entry.entityKey)),
+    coalesced.flatMap((candidate) => candidate.entries.map((entry) => entry.value)),
   );
-  const installed = installEntities(topology.entitiesByKey, input.entities);
+  const installed = installEntities(topology.entitiesByKey, input.entities, input.mergeTurns);
   const entitiesByKey = Object.fromEntries(
     Object.entries(installed).filter(([key]) => referencedKeys.has(key)),
   );
@@ -506,7 +538,7 @@ export function mergeCodexHistoryBoundaryPage<TTurn>(
   return nextError ? { ok: false, error: nextError } : { ok: true, topology: next };
 }
 
-/** Replaces one resident entity without rebuilding its island or weakening live authority. */
+/** Replaces one resident Turn without rebuilding its island. */
 export function replaceCodexHistoryEntity<TTurn>(
   topology: CodexCanonicalHistoryTopology<TTurn>,
   input: ReplaceCodexHistoryEntityInput<TTurn>,
@@ -528,6 +560,7 @@ export function replaceCodexHistoryEntity<TTurn>(
   const next = finalizeTopology({
     generation: topology.generation,
     islands: topology.islands,
+    isComplete: topology.isComplete,
     entitiesByKey: installEntities(topology.entitiesByKey, [input.entity]),
   });
   const nextError = validateCodexHistoryTopology(next);
@@ -554,8 +587,8 @@ export function insertCodexHistoryIsland<TTurn>(
   if (pageError) return { ok: false, error: pageError };
   if (input.positionsByEntityKey) {
     const keys = [
-      ...topology.islands.flatMap((island) => island.entries.map((entry) => entry.entityKey)),
-      ...input.entries.map((entry) => entry.entityKey),
+      ...topology.islands.flatMap((island) => island.entries.map((entry) => entry.value)),
+      ...input.entries.map((entry) => entry.value),
     ];
     if (
       keys.some((key) => {
@@ -577,7 +610,7 @@ export function insertCodexHistoryIsland<TTurn>(
     newerBoundary: input.newerBoundary,
   });
   const coalesced = coalesceIslands(islands, input.islandId, input.positionsByEntityKey);
-  const entitiesByKey = installEntities(topology.entitiesByKey, input.entities);
+  const entitiesByKey = installEntities(topology.entitiesByKey, input.entities, input.mergeTurns);
   const next = finalizeTopology({
     generation: topology.generation,
     islands: coalesced,
@@ -653,7 +686,7 @@ export function flattenCodexHistoryTopology<TTurn>(
         kind: "content",
         key: `history-content:${entry.key}`,
         turnKey: entry.key,
-        entityKey: entry.entityKey,
+        entityKey: entry.value,
       });
     }
   }

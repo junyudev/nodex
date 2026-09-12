@@ -22,15 +22,19 @@ describe("codex pending worktree label", () => {
 
     expect(extractCodexUserRequestSection(prompt)).toBe("Build the exact pending lifecycle");
     expect(summarizeCodexPendingWorktreeLabel(prompt)).toBe("Build the exact pending lifecycle");
+    expect(summarizeCodexPendingWorktreeLabel("Context\n## My request:\n**Ship** [it](x)")).toBe(
+      "Ship it",
+    );
   });
 
-  test("collapses prompt whitespace and uses the exact empty fallback", () => {
+  test("projects Markdown and uses the exact empty fallback", () => {
     expect(summarizeCodexPendingWorktreeLabel("  Build\n\n  the   feature  ")).toBe(
       "Build the feature",
     );
     expect(summarizeCodexPendingWorktreeLabel(" \n\t ")).toBe(
       CODEX_PENDING_WORKTREE_FALLBACK_LABEL,
     );
+    expect(summarizeCodexPendingWorktreeLabel("---")).toBe(CODEX_PENDING_WORKTREE_FALLBACK_LABEL);
   });
 
   test("keeps an 80-character label and truncates longer labels to 79 plus ellipsis", () => {

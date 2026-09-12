@@ -36,9 +36,9 @@ test("reuses the native session across edits and fences old roots and late dispo
     return { update, stop };
   });
   const { result, rerender, unmount } = renderHook(useFileSearch, {
-    initialProps: { enabled: true, query: "a", scope: { hostId: "default", roots: ["/first"] } },
+    initialProps: { enabled: true, query: "a", scope: { hostId: "local", roots: ["/first"] } },
   });
-  rerender({ enabled: true, query: "abc", scope: { hostId: "default", roots: ["/first"] } });
+  rerender({ enabled: true, query: "abc", scope: { hostId: "local", roots: ["/first"] } });
   expect(createFileSearchSession).toHaveBeenCalledTimes(1);
   expect(update.mock.calls).toEqual([["a"], ["abc"]]);
   await act(async () => {
@@ -54,10 +54,10 @@ test("reuses the native session across edits and fences old roots and late dispo
     callbacks[0]!({ method: "fuzzyFileSearch/sessionCompleted", params: { sessionId: "session" } });
   });
   expect(result.current.loading).toBe(false);
-  rerender({ enabled: true, query: "abc", scope: { hostId: "default", roots: ["/second"] } });
+  rerender({ enabled: true, query: "abc", scope: { hostId: "local", roots: ["/second"] } });
   expect(stop).toHaveBeenCalledTimes(1);
   expect(createFileSearchSession).toHaveBeenLastCalledWith({
-    hostId: "default",
+    hostId: "local",
     roots: ["/second"],
     onEvent: expect.any(Function),
   });

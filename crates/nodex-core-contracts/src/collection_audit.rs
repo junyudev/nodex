@@ -33,7 +33,10 @@ enum ReadBudgetPolicy {
 
 fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
     match read {
-        ProjectWorkspaceRead::ProjectWindow { .. }
+        // Atomic queue updates operate on one complete application-owned message document.
+        ProjectWorkspaceRead::QueuedMessageState => ReadBudgetPolicy::LargeObject,
+        ProjectWorkspaceRead::ThreadReadState { .. }
+        | ProjectWorkspaceRead::ProjectWindow { .. }
         | ProjectWorkspaceRead::SessionWindow { .. }
         | ProjectWorkspaceRead::TaskWindow { .. }
         | ProjectWorkspaceRead::SidebarOverview { .. }
@@ -61,7 +64,6 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::Thread { .. }
         | ProjectWorkspaceRead::ThreadBackendSession { .. }
         | ProjectWorkspaceRead::SubagentOverviewItem { .. }
-        | ProjectWorkspaceRead::QueuedFollowUpLedger { .. }
         | ProjectWorkspaceRead::ExecutionContext { .. }
         | ProjectWorkspaceRead::TurnAuthority { .. }
         | ProjectWorkspaceRead::SidebarSectionPlacement { .. } => ReadBudgetPolicy::Identity,

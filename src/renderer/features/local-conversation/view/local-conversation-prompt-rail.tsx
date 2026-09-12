@@ -59,6 +59,7 @@ export interface LocalConversationPromptRailHandle {
 
 export interface LocalConversationPromptRailProps {
   readonly enabled: boolean;
+  readonly hostId?: string | null;
   readonly threadId: string | null;
   readonly topologyGeneration: number | null;
   readonly residentItems: ThreadUserMessageNavigationItem[];
@@ -82,6 +83,7 @@ export const LocalConversationPromptRail = forwardRef<
 >(function LocalConversationPromptRail(
   {
     enabled,
+    hostId,
     threadId,
     topologyGeneration,
     residentItems,
@@ -94,6 +96,7 @@ export const LocalConversationPromptRail = forwardRef<
 ) {
   const controller = useLocalConversationPromptRail({
     enabled,
+    hostId,
     threadId,
     topologyGeneration,
     residentItems,

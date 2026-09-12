@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import {
   createManagedWorktree,
   removeManagedWorktree,
@@ -23,6 +24,7 @@ import {
   exportCrossHostThreadHandoff,
   importCrossHostThreadHandoff,
 } from "./codex-cross-host-thread-handoff-git";
+import { isCodexNonGitRepositoryMessage, runCodexGitCommand } from "./codex-git-command";
 import type {
   CodexWorktreeWorkerCreateInput,
   CodexWorktreeWorkerCreateResult,
@@ -31,6 +33,155 @@ import type {
   CodexWorktreeWorkerOperationOptions,
   CodexWorktreeWorkerSuccess,
 } from "./codex-worktree-worker-protocol";
+
+const GIT_ROOT_TIMEOUT_MS = 60_000;
+const SAFE_FSMONITOR_CACHE_MS = 1_000;
+const safeFsmonitorCache = new Map<
+  string,
+  { readonly expiresAtMs: number; readonly value: "" | "true" }
+>();
+
+function shouldResolveSafeFsmonitor(hostId: string): boolean {
+  if (hostId !== "local") return process.platform === "linux";
+  return process.platform === "darwin" || process.platform === "win32";
+}
+
+function gitRootEnvironment(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    LC_MESSAGES: "C",
+    LANGUAGE: "C",
+    GIT_TERMINAL_PROMPT: "0",
+    GIT_OPTIONAL_LOCKS: "0",
+  };
+}
+
+async function readSafeFsmonitorOverride(
+  input: Extract<CodexWorktreeWorkerRequest, { readonly operation: "git-root" }>["input"],
+  signal: AbortSignal,
+  env: NodeJS.ProcessEnv,
+): Promise<"" | "true"> {
+  if (!shouldResolveSafeFsmonitor(input.hostId)) return "";
+  const cacheKey = JSON.stringify([
+    input.hostId,
+    input.cwd,
+    Object.entries(env)
+      .filter(([key]) => key !== "GIT_INDEX_FILE")
+      .sort(([left], [right]) => left.localeCompare(right)),
+  ]);
+  const now = performance.now();
+  const cached = safeFsmonitorCache.get(cacheKey);
+  if (cached && cached.expiresAtMs > now) return cached.value;
+  if (cached) safeFsmonitorCache.delete(cacheKey);
+
+  const expiresAtMs = now + SAFE_FSMONITOR_CACHE_MS;
+  let value: "" | "true" = "";
+  try {
+    const runProbe = (args: readonly string[], allowedExitCodes?: readonly number[]) =>
+      runCodexGitCommand(["-c", "safe.bareRepository=explicit", ...args], input.cwd, {
+        allowedExitCodes,
+        env,
+        signal,
+        timeoutMs: GIT_ROOT_TIMEOUT_MS,
+      });
+    const config = await runProbe(["config", "--null", "--get", "core.fsmonitor"], [0, 1]);
+    if (config.stdout.endsWith("\0")) {
+      const configuredValue = config.stdout.slice(0, -1);
+      if (configuredValue && !configuredValue.includes("\0")) {
+        const normalized = configuredValue.toLowerCase();
+        let enabled = ["true", "yes", "on"].includes(normalized);
+        if (!["true", "yes", "on", "false", "no", "off"].includes(normalized)) {
+          const parsed = await runProbe(
+            [
+              "config",
+              "--null",
+              "--type=bool",
+              "--fixed-value",
+              "--get",
+              "core.fsmonitor",
+              configuredValue,
+            ],
+            [0, 1],
+          );
+          enabled = parsed.stdout === "true\0";
+        }
+        if (enabled) {
+          const buildOptions = await runProbe(["version", "--build-options"]);
+          value = buildOptions.stdout
+            .split(/\r?\n/)
+            .some((line) => line.trim() === "feature: fsmonitor--daemon")
+            ? "true"
+            : "";
+        }
+      }
+    }
+  } catch {
+    value = "";
+  }
+
+  if (!signal.aborted && performance.now() < expiresAtMs) {
+    safeFsmonitorCache.set(cacheKey, { expiresAtMs, value });
+    const cleanup = setTimeout(
+      () => {
+        if (safeFsmonitorCache.get(cacheKey)?.expiresAtMs === expiresAtMs) {
+          safeFsmonitorCache.delete(cacheKey);
+        }
+      },
+      Math.max(0, expiresAtMs - performance.now()),
+    );
+    cleanup.unref();
+  }
+  return value;
+}
+
+async function resolveGitRoot(
+  input: Extract<CodexWorktreeWorkerRequest, { readonly operation: "git-root" }>["input"],
+  signal: AbortSignal,
+): Promise<{ readonly root: string | null }> {
+  const cwd = input.cwd.trim();
+  if (!cwd) return { root: null };
+  if (input.hostId === "local") {
+    try {
+      await stat(cwd);
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code === "ENOENT") return { root: null };
+      throw cause;
+    }
+  }
+  try {
+    const env = gitRootEnvironment();
+    const fsmonitorOverride = await readSafeFsmonitorOverride(input, signal, env);
+    const result = await runCodexGitCommand(
+      [
+        "-c",
+        "safe.bareRepository=explicit",
+        "-c",
+        `core.hooksPath=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
+        "-c",
+        `core.fsmonitor=${fsmonitorOverride}`,
+        "rev-parse",
+        "--show-toplevel",
+      ],
+      cwd,
+      {
+        allowedExitCodes: [0, 128],
+        env,
+        signal,
+        timeoutMs: GIT_ROOT_TIMEOUT_MS,
+      },
+    );
+    const root = result.stdout.trim();
+    if (root) return { root };
+    if (isCodexNonGitRepositoryMessage(result.stderr)) return { root: null };
+    throw new Error(`Failed to resolve git root: ${result.stderr.trim() || "Unknown error"}`);
+  } catch (cause) {
+    if (signal.aborted) throw cause;
+    if (isCodexNonGitRepositoryMessage(cause instanceof Error ? cause.message : String(cause))) {
+      return { root: null };
+    }
+    throw cause;
+  }
+}
 
 function canceled(signal: AbortSignal): never {
   void signal;
@@ -164,6 +315,11 @@ export async function executeCodexWorktreeWorkerOperation(
   },
 ): Promise<CodexWorktreeWorkerSuccess> {
   switch (request.operation) {
+    case "git-root":
+      return {
+        operation: "git-root",
+        value: await resolveGitRoot(request.input, options.signal),
+      };
     case "create":
       return {
         operation: "create",

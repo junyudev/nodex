@@ -7,13 +7,7 @@ import {
   type CodexAppServerCapabilitySnapshot,
 } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
-import {
-  CODEX_HISTORY_SEARCH_OCCURRENCE_CURSOR_MAX_LENGTH,
-  CODEX_HISTORY_SEARCH_OCCURRENCE_PAGE_MAX_BYTES,
-  CODEX_HISTORY_SEARCH_MAX_ITEM_PAGE_REQUESTS_PER_DIRECTION,
-  CODEX_HISTORY_SEARCH_TERM_MAX_BYTES,
-  make,
-} from "./CodexHistorySearchAdapter";
+import { make } from "./CodexHistorySearchAdapter";
 
 const occurrence: ThreadSearchOccurrence = {
   turnId: "turn-5",
@@ -59,8 +53,13 @@ const capabilitySnapshot = (
   generation,
   userAgent: "Codex Desktop/0.147.0",
   version: "0.147.0",
+  nativeAppTools: false,
   flags: {
+    turnApprovalsReviewer: false,
+
+    turnToolOutput: false,
     forkLastTurnId: true,
+    paginatedFork: true,
     paginatedHistory: true,
     searchOccurrences,
     ephemeralFork: true,
@@ -68,6 +67,7 @@ const capabilitySnapshot = (
     sideConversation: true,
     subagentAncestorFilter: false,
     threadRevert: false,
+    threadQueue: false,
   },
 });
 
@@ -142,171 +142,7 @@ it.effect("searches one literal 250-occurrence page and reports a capped result"
   }),
 );
 
-it.effect("rejects a persisted-search response above its exact requested limit", () =>
-  Effect.gen(function* () {
-    const gateway = CodexGateway.of({
-      requestForThread: () =>
-        Effect.succeed({
-          data: Array.from({ length: 251 }, () => occurrence),
-          nextCursor: "occurrences:next",
-        }) as never,
-    } as unknown as CodexGateway["Service"]);
-    const adapter = yield* provideAdapter(make(), gateway);
-
-    const failure = yield* adapter
-      .search({ threadId: "thread-a", searchTerm: "match" })
-      .pipe(Effect.flip);
-
-    assert.strictEqual(failure.reason, "page-size-exceeded");
-    assert.strictEqual(failure.operation, "search");
-  }),
-);
-
-it.effect("rejects an oversized query before it reaches the host", () =>
-  Effect.gen(function* () {
-    let requested = false;
-    const gateway = CodexGateway.of({
-      requestForThread: () => {
-        requested = true;
-        return Effect.die("oversized query must not be dispatched");
-      },
-    } as unknown as CodexGateway["Service"]);
-    const adapter = yield* provideAdapter(make(), gateway);
-
-    const failure = yield* adapter
-      .search({
-        threadId: "thread-a",
-        searchTerm: "x".repeat(CODEX_HISTORY_SEARCH_TERM_MAX_BYTES),
-      })
-      .pipe(Effect.flip);
-
-    assert.strictEqual(failure.reason, "invalid-search-term");
-    assert.isFalse(requested);
-  }),
-);
-
-it.effect("rejects a count-valid occurrence index above its byte budget", () =>
-  Effect.gen(function* () {
-    const snippet = "x".repeat(Math.ceil(CODEX_HISTORY_SEARCH_OCCURRENCE_PAGE_MAX_BYTES / 200));
-    const gateway = CodexGateway.of({
-      requestForThread: () =>
-        Effect.succeed({
-          data: Array.from({ length: 250 }, (_, index) => ({
-            ...occurrence,
-            itemId: `item-${index}`,
-            snippet,
-            snippetMatchRange: { start: 0, end: 1 },
-          })),
-          nextCursor: null,
-        }) as never,
-    } as unknown as CodexGateway["Service"]);
-    const adapter = yield* provideAdapter(make(), gateway);
-
-    const failure = yield* adapter
-      .search({ threadId: "thread-a", searchTerm: "match" })
-      .pipe(Effect.flip);
-
-    assert.strictEqual(failure.reason, "page-byte-limit");
-  }),
-);
-
-it.effect("rejects a forged giant occurrence cursor before hydration RPC", () =>
-  Effect.gen(function* () {
-    let requested = false;
-    const gateway = CodexGateway.of({
-      requestForThread: () => {
-        requested = true;
-        return Effect.die("forged cursor must not be dispatched");
-      },
-    } as unknown as CodexGateway["Service"]);
-    const adapter = yield* provideAdapter(make(), gateway);
-
-    const failure = yield* adapter
-      .hydrateOccurrence({
-        threadId: "thread-a",
-        hostId: "remote-a",
-        generation: 7,
-        occurrence: {
-          ...occurrence,
-          turnCursor: "x".repeat(CODEX_HISTORY_SEARCH_OCCURRENCE_CURSOR_MAX_LENGTH + 1),
-        },
-      })
-      .pipe(Effect.flip);
-
-    assert.strictEqual(failure.reason, "invalid-occurrence");
-    assert.isFalse(requested);
-  }),
-);
-
-it.effect("rejects a search Turn-radius response above its exact requested limit", () =>
-  Effect.gen(function* () {
-    const gateway = CodexGateway.of({
-      requestForThread: (_threadId: string, method: string) =>
-        Effect.succeed(
-          method === "thread/turns/list"
-            ? {
-                data: Array.from({ length: 6 }, (_, index) => completedTurn(`turn-${index}`)),
-                nextCursor: null,
-                backwardsCursor: null,
-              }
-            : { data: [], nextCursor: null, backwardsCursor: null },
-        ) as never,
-    } as unknown as CodexGateway["Service"]);
-    const adapter = yield* provideAdapter(make(), gateway);
-
-    const failure = yield* adapter
-      .hydrateOccurrence({
-        threadId: "thread-a",
-        hostId: "remote-a",
-        generation: 7,
-        occurrence,
-      })
-      .pipe(Effect.flip);
-
-    assert.strictEqual(failure.reason, "page-size-exceeded");
-    assert.strictEqual(failure.operation, "turns");
-  }),
-);
-
-it.effect("rejects a search item response above its exact requested limit", () =>
-  Effect.gen(function* () {
-    const gateway = CodexGateway.of({
-      requestForThread: (_threadId: string, method: string, params: unknown) => {
-        if (method === "thread/turns/list") {
-          return Effect.succeed({
-            data: [completedTurn(occurrence.turnId)],
-            nextCursor: null,
-            backwardsCursor: null,
-          }) as never;
-        }
-        const itemParams = params as { readonly turnId: string };
-        return Effect.succeed({
-          data: [
-            { turnId: itemParams.turnId, item: agentItem("first") },
-            { turnId: itemParams.turnId, item: agentItem("second") },
-          ],
-          nextCursor: null,
-          backwardsCursor: null,
-        }) as never;
-      },
-    } as unknown as CodexGateway["Service"]);
-    const adapter = yield* provideAdapter(make({ directionItemLimit: 1 }), gateway);
-
-    const failure = yield* adapter
-      .hydrateOccurrence({
-        threadId: "thread-a",
-        hostId: "remote-a",
-        generation: 7,
-        occurrence,
-      })
-      .pipe(Effect.flip);
-
-    assert.strictEqual(failure.reason, "page-size-exceeded");
-    assert.strictEqual(failure.operation, "items");
-  }),
-);
-
-it.effect("caps fresh-cursor inclusive duplicate chains in both hydration directions", () =>
+it.effect("follows advancing empty and inclusive pages beyond twenty requests", () =>
   Effect.gen(function* () {
     const itemRequestLimits: number[] = [];
     let cursorSequence = 0;
@@ -323,13 +159,16 @@ it.effect("caps fresh-cursor inclusive duplicate chains in both hydration direct
         itemRequestLimits.push(itemParams.limit);
         cursorSequence += 1;
         return Effect.succeed({
-          data: [
-            {
-              turnId: itemParams.turnId,
-              item: userItem(occurrence.itemId, "inclusive anchor"),
-            },
-          ],
-          nextCursor: `items:${cursorSequence}`,
+          data:
+            cursorSequence % 3 === 0
+              ? []
+              : [
+                  {
+                    turnId: itemParams.turnId,
+                    item: userItem(occurrence.itemId, "inclusive anchor"),
+                  },
+                ],
+          nextCursor: cursorSequence >= 54 ? null : `items:${cursorSequence}`,
           backwardsCursor: null,
         }) as never;
       },
@@ -343,50 +182,13 @@ it.effect("caps fresh-cursor inclusive duplicate chains in both hydration direct
       occurrence,
     });
 
-    assert.strictEqual(
-      itemRequestLimits.filter((limit) => limit === 100).length,
-      CODEX_HISTORY_SEARCH_MAX_ITEM_PAGE_REQUESTS_PER_DIRECTION * 2 - 2,
-    );
-    assert.strictEqual(itemRequestLimits.filter((limit) => limit === 1).length, 2);
+    assert.isAtLeast(itemRequestLimits.length, 54);
+    assert.isTrue(itemRequestLimits.every((limit) => limit === 100));
     assert.deepStrictEqual(
       hydration.turns[0]?.items.map((item) => item.id),
       [occurrence.itemId],
     );
     assert.strictEqual(hydration.selection.status, "found");
-  }),
-);
-
-it.effect("fails closed when an oversized search anchor has no retryable item cursor", () =>
-  Effect.gen(function* () {
-    const gateway = CodexGateway.of({
-      requestForThread: (_threadId: string, method: string, params: unknown) => {
-        if (method === "thread/turns/list") {
-          return Effect.succeed({
-            data: [completedTurn(occurrence.turnId)],
-            nextCursor: null,
-            backwardsCursor: null,
-          }) as never;
-        }
-        const turnId = (params as { readonly turnId: string }).turnId;
-        return Effect.succeed({
-          data: [{ turnId, item: agentItem("oversized", "x".repeat(256)) }],
-          nextCursor: "items:older",
-          backwardsCursor: null,
-        }) as never;
-      },
-    } as unknown as CodexGateway["Service"]);
-    const adapter = yield* provideAdapter(make({ directionByteLimit: 1 }), gateway);
-
-    const failure = yield* adapter
-      .hydrateOccurrence({
-        threadId: "thread-a",
-        hostId: "remote-a",
-        generation: 7,
-        occurrence,
-      })
-      .pipe(Effect.flip);
-
-    assert.strictEqual(failure.reason, "item-byte-limit");
   }),
 );
 
@@ -505,65 +307,10 @@ it.effect("pages the selected turn until the occurrence item is present", () =>
       olderCursor: null,
       isLoadingOlder: false,
       hasLoadedOldest: true,
-      oldestUserInput: null,
+      oldestUserInput: [],
       openingUserMessageId: null,
       itemsView: "full",
     });
-  }),
-);
-
-it.effect("returns a count-bounded outcome and fails closed without a byte retry cursor", () =>
-  Effect.gen(function* () {
-    const gateway = CodexGateway.of({
-      requestForThread: (_threadId: string, method: string, params: unknown) =>
-        Effect.sync(() => {
-          if (method === "thread/turns/list") {
-            return {
-              data: [completedTurn(occurrence.turnId)],
-              nextCursor: null,
-              backwardsCursor: null,
-            };
-          }
-          const itemParams = params as { readonly turnId: string; readonly cursor: string | null };
-          return {
-            data: [{ turnId: itemParams.turnId, item: agentItem("not-selected", "x".repeat(64)) }],
-            nextCursor: "items:older",
-            backwardsCursor: null,
-          };
-        }) as never,
-    } as unknown as CodexGateway["Service"]);
-
-    const countAdapter = yield* provideAdapter(
-      make({ directionItemLimit: 1, selectedItemLimit: 1 }),
-      gateway,
-    );
-    const countResult = yield* countAdapter.hydrateOccurrence({
-      threadId: "thread-a",
-      hostId: "remote-a",
-      generation: 7,
-      occurrence,
-    });
-    assert.deepStrictEqual(countResult.selection, {
-      status: "bounded-incomplete",
-      reason: "item-count-limit",
-      inspectedItemCount: 1,
-      inspectedBytes: countResult.selection.inspectedBytes,
-      nextCursor: "items:older",
-    });
-
-    const byteAdapter = yield* provideAdapter(
-      make({ directionByteLimit: 1, selectedByteLimit: 8 }),
-      gateway,
-    );
-    const byteFailure = yield* byteAdapter
-      .hydrateOccurrence({
-        threadId: "thread-a",
-        hostId: "remote-a",
-        generation: 7,
-        occurrence,
-      })
-      .pipe(Effect.flip);
-    assert.strictEqual(byteFailure.reason, "item-byte-limit");
   }),
 );
 
@@ -644,7 +391,7 @@ it.effect(
     }),
 );
 
-it.effect("fails closed when the bounded opening-user probe returns a foreign item", () =>
+it.effect("keeps a hydrated match when the optional opening-user probe fails", () =>
   Effect.gen(function* () {
     const gateway = CodexGateway.of({
       requestForThread: (_threadId: string, method: string, params: unknown) =>
@@ -689,8 +436,12 @@ it.effect("fails closed when the bounded opening-user probe returns a foreign it
       }),
     );
 
-    assert(Result.isFailure(hydration));
-    assert.strictEqual(hydration.failure.reason, "foreign-item");
+    assert(Result.isSuccess(hydration));
+    assert.strictEqual(hydration.success.selection.status, "found");
+    assert.strictEqual(
+      hydration.success.itemsPaginationByTurnId[occurrence.turnId]?.openingUserMessageId,
+      null,
+    );
   }),
 );
 
@@ -759,5 +510,50 @@ it.effect("fails closed on foreign items and stalled item cursors", () =>
     );
     assert(Result.isFailure(stalled));
     assert.strictEqual(stalled.failure.reason, "cursor-stalled");
+  }),
+);
+
+it.effect("finds a distant selected item beyond two thousand items and sixteen MiB", () =>
+  Effect.gen(function* () {
+    const requests: number[] = [];
+    const gateway = CodexGateway.of({
+      requestForThread: (_threadId: string, method: string, params: unknown) =>
+        Effect.sync(() => {
+          if (method === "thread/turns/list")
+            return {
+              data: [completedTurn(occurrence.turnId)],
+              nextCursor: null,
+              backwardsCursor: null,
+            };
+          const input = params as { cursor: string | null; limit: number; sortDirection: string };
+          if (input.sortDirection === "asc")
+            return { data: [], nextCursor: null, backwardsCursor: null };
+          const offset = Number(input.cursor ?? 0);
+          requests.push(input.limit);
+          const count = Math.min(input.limit, 2_101 - offset);
+          return {
+            data: Array.from({ length: count }, (_, index) => ({
+              turnId: occurrence.turnId,
+              item: agentItem(
+                offset + index === 2_100 ? occurrence.itemId : `item:${offset + index}`,
+                "x".repeat(8_192),
+              ),
+            })),
+            nextCursor: offset + count === 2_101 ? null : String(offset + count),
+            backwardsCursor: null,
+          };
+        }) as never,
+    } as unknown as CodexGateway["Service"]);
+    const adapter = yield* provideAdapter(make(), gateway);
+    const hydration = yield* adapter.hydrateOccurrence({
+      threadId: "thread-a",
+      hostId: "remote-a",
+      generation: 7,
+      occurrence,
+    });
+    assert.strictEqual(hydration.selection.item.id, occurrence.itemId);
+    assert.strictEqual(hydration.turns[0]?.items.length, 2_101);
+    assert.isAbove(hydration.selection.inspectedBytes, 16 * 1024 * 1024);
+    assert.isTrue(requests.every((limit) => limit === 100));
   }),
 );

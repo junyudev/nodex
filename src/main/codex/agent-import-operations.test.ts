@@ -99,6 +99,7 @@ describe("agent import config policy", () => {
             hostId: "local",
             generation: 7,
             userAgent: "codex-app-server/0.145.0-alpha.15",
+            nativeAppTools: true,
           });
           const response = {
             thread: {

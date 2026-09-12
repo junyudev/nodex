@@ -1,6 +1,7 @@
 import type { GeneratedImageDescriptor } from "../model/types";
 import type { CodexConversationSnapshot } from "@/lib/types";
 import { buildCodexTurnOccurrenceKey } from "../../../../shared/codex-turn-identity";
+import { projectCodexMarkdownLabel } from "../../../../shared/codex-markdown-text";
 import { resolveGeneratedImageOutputState } from "@/features/local-conversation/projection/generated-image-output";
 import { OPTIMISTIC_IMAGE_EDIT_PREFIX } from "../model/generated-image-collection";
 
@@ -78,7 +79,7 @@ export function projectGeneratedImageCanonicalGroups(
   conversation: CodexConversationSnapshot | null,
 ): readonly GeneratedImageLiveGroupInput[] {
   if (!conversation) return [];
-  const conversationTitle = conversation.threadName?.trim() || null;
+  const conversationTitle = projectCodexMarkdownLabel(conversation.threadName);
   let imageNumber = 0;
   return conversation.turns.flatMap((turn, turnIndex) => {
     const output = resolveGeneratedImageOutputState({

@@ -19,14 +19,17 @@ const canonical = (historyMode: Thread["historyMode"]) =>
       turns: [],
     } as unknown as Thread,
     {
-      model: "gpt-test",
-      reasoningEffort: "high",
-      cwd: "/workspace",
-      approvalPolicy: "on-request",
-      approvalsReviewer: "user",
-      sandboxPolicy: { type: "readOnly", networkAccess: false },
-      activePermissionProfile: null,
-      runtimeWorkspaceRoots: ["/workspace"],
+      hostId: "local",
+      ...{
+        model: "gpt-test",
+        reasoningEffort: "high",
+        cwd: "/workspace",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        sandboxPolicy: { type: "readOnly", networkAccess: false },
+        activePermissionProfile: null,
+        runtimeWorkspaceRoots: ["/workspace"],
+      },
     },
   );
 
@@ -38,6 +41,8 @@ const conversations = (historyMode: Thread["historyMode"] | null) => {
           readCanonicalState: () => canonical(historyMode),
         } as unknown as ConversationEntityState);
   return ConversationEntityMap.of({
+    registerThreadMetadata: () => {},
+    readThreadMetadata: () => null,
     current: () => entity,
   } as unknown as ConversationEntityMap["Service"]);
 };
@@ -168,6 +173,8 @@ it.effect("re-evaluates the concrete Thread history mode without a stale availab
       Effect.provideService(
         ConversationEntityMap,
         ConversationEntityMap.of({
+          registerThreadMetadata: () => {},
+          readThreadMetadata: () => null,
           current: () => entity,
         } as unknown as ConversationEntityMap["Service"]),
       ),

@@ -1,3 +1,4 @@
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import type { RequestId } from "@nodex/codex-app-server-protocol";
 import type {
   CodexConversationCapabilityFlags,
@@ -23,43 +24,41 @@ const sameRequestId = (left: RequestId, right: RequestId): boolean =>
 
 export const buildCodexCanonicalTurnSummary = (
   threadId: string,
-  turn: CodexCanonicalTurnState,
+  turn: Omit<CodexCanonicalTurnState, "items" | "params">,
   itemIds: readonly string[],
 ): CodexTurnSummary => ({
   threadId,
-  turnId: turn.protocol.id,
-  ...(turn.sidecar.entityKey === undefined ? {} : { entityKey: turn.sidecar.entityKey }),
-  status: turn.protocol.status,
-  ...(turn.protocol.error?.message === undefined
-    ? {}
-    : { errorMessage: turn.protocol.error.message }),
-  ...(turn.sidecar.diff === null ? {} : { diff: turn.sidecar.diff }),
+  turnId: turn.turnId,
+  ...(turn.entityKey === undefined ? {} : { entityKey: turn.entityKey }),
+  status: turn.status,
+  ...(turn.error?.message === undefined ? {} : { errorMessage: turn.error.message }),
+  ...(turn.diff === null ? {} : { diff: turn.diff }),
   itemIds: [...itemIds],
-  turnStartedAtMs: turn.sidecar.turnStartedAtMs,
-  ...(turn.sidecar.firstTurnWorkItemStartedAtMs === undefined
+  turnStartedAtMs: turn.turnStartedAtMs,
+  ...(turn.firstTurnWorkItemStartedAtMs === undefined
     ? {}
-    : { firstTurnWorkItemStartedAtMs: turn.sidecar.firstTurnWorkItemStartedAtMs }),
-  finalAssistantStartedAtMs: turn.sidecar.finalAssistantStartedAtMs,
-  startedAt: turn.sidecar.turnStartedAtMs,
-  completedAt: turn.sidecar.completedAtMs ?? null,
-  durationMs: turn.protocol.durationMs,
-  ...(turn.sidecar.commandExecutionStartedAtMsById === undefined
+    : { firstTurnWorkItemStartedAtMs: turn.firstTurnWorkItemStartedAtMs }),
+  finalAssistantStartedAtMs: turn.finalAssistantStartedAtMs,
+  startedAt: turn.turnStartedAtMs,
+  completedAt: turn.completedAtMs ?? null,
+  durationMs: turn.durationMs,
+  ...(turn.commandExecutionStartedAtMsById === undefined
     ? {}
-    : { commandExecutionStartedAtMsById: { ...turn.sidecar.commandExecutionStartedAtMsById } }),
-  ...(turn.sidecar.interruptedCommandExecutionItemIds === undefined
+    : { commandExecutionStartedAtMsById: { ...turn.commandExecutionStartedAtMsById } }),
+  ...(turn.interruptedCommandExecutionItemIds === undefined
     ? {}
     : {
-        interruptedCommandExecutionItemIds: [...turn.sidecar.interruptedCommandExecutionItemIds],
+        interruptedCommandExecutionItemIds: [...turn.interruptedCommandExecutionItemIds],
       }),
-  ...(turn.sidecar.hookRuns === undefined ? {} : { hookRuns: [...turn.sidecar.hookRuns] }),
-  ...(turn.sidecar.safetyBuffering === undefined
+  ...(turn.hookRuns === undefined ? {} : { hookRuns: [...turn.hookRuns] }),
+  ...(turn.safetyBuffering === undefined
     ? {}
     : {
         safetyBuffering: {
-          useCases: [...turn.sidecar.safetyBuffering.useCases],
-          reasons: [...turn.sidecar.safetyBuffering.reasons],
-          showBufferingUi: turn.sidecar.safetyBuffering.showBufferingUi,
-          fasterModel: turn.sidecar.safetyBuffering.fasterModel,
+          useCases: [...turn.safetyBuffering.useCases],
+          reasons: [...turn.safetyBuffering.reasons],
+          showBufferingUi: turn.safetyBuffering.showBufferingUi,
+          fasterModel: turn.safetyBuffering.fasterModel,
         },
       }),
 });
@@ -94,18 +93,14 @@ const projectTurn = (input: {
   readonly observedAtMs: number;
   readonly turnIndex: number;
 }): CodexConversationTurn | null => {
-  const afterTurn = input.after.turns[input.turnIndex];
+  const afterTurn = residentConversationTurns(input.after)[input.turnIndex];
   if (!afterTurn) return null;
   const existing = input.conversation.turns[input.turnIndex] ?? null;
   const currentTranscript = existing?.items ?? [];
   const projection = applyCodexLifecycleProjectionDiff({
     threadId: input.conversation.threadId,
-    turnKey: buildCodexTurnOccurrenceKey(
-      afterTurn.protocol.id,
-      input.turnIndex,
-      afterTurn.sidecar.entityKey,
-    ),
-    beforeTurn: input.before.turns[input.turnIndex] ?? null,
+    turnKey: buildCodexTurnOccurrenceKey(afterTurn.turnId, input.turnIndex, afterTurn.entityKey),
+    beforeTurn: residentConversationTurns(input.before)[input.turnIndex] ?? null,
     afterTurn,
     currentViews: currentTranscript.map(projectTranscriptEntryToItemView),
     currentTranscript,
@@ -155,7 +150,7 @@ export const projectCodexConversationServerRequestLifecycle = (input: {
     ...input.conversation,
     canonicalState: input.lifecycle.state,
     canonicalRequests: [...input.lifecycle.state.requests],
-    hasUnreadTurn: input.lifecycle.state.sidecar.hasUnreadTurn,
+    hasUnreadTurn: input.lifecycle.state.hasUnreadTurn,
     requests,
     turns,
     capabilityFlags: projectCapabilityFlags(input.conversation, requests),

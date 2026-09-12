@@ -564,6 +564,12 @@ it.effect("turns the first ready-state before-quit into the same scoped shutdown
     const applicationLayer = mainApplicationTestLayer({
       acquire: Deferred.succeed(started, undefined).pipe(Effect.asVoid),
       handleBootstrapEvent: () => Effect.void,
+      prepareShutdown: Effect.gen(function* () {
+        events.push("flush");
+        yield* Effect.yieldNow;
+        assert.deepEqual(events, ["flush"]);
+        events.push("persisted");
+      }),
       release: Effect.sync(() => events.push("release")),
     });
     const fiber = yield* program({
@@ -580,7 +586,7 @@ it.effect("turns the first ready-state before-quit into the same scoped shutdown
     assert.isTrue(decision?.preventDefault);
     if (decision) yield* decision.task;
     yield* Fiber.join(fiber);
-    assert.deepEqual(events, ["release", "quit"]);
+    assert.deepEqual(events, ["flush", "persisted", "release", "quit"]);
     assert.deepEqual(yield* shutdown.awaitRequest, { _tag: "UserQuit" });
     yield* Scope.close(foundationScope, Exit.void);
   }),

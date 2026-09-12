@@ -80,6 +80,7 @@ interface ServerTomlConfig {
   telemetry_auto_capture_enabled?: boolean;
   command_keybindings?: Record<string, unknown>;
   codex_thread_detail_level?: CodexThreadDetailLevel;
+  codex_default_mode_request_user_input_enabled?: boolean;
   git_branch_prefix?: string;
   git_commit_instructions?: string;
   git_pr_instructions?: string;
@@ -121,6 +122,7 @@ const DIAGNOSTICS_REPLAYS_ON_ERROR_SAMPLE_RATE_DEFAULT = 1;
 const TELEMETRY_ENVIRONMENT_DEFAULT = "production";
 const TELEMETRY_AUTO_CAPTURE_ENABLED_DEFAULT = false;
 const CODEX_THREAD_DETAIL_LEVEL_DEFAULT: CodexThreadDetailLevel = "STEPS_COMMANDS";
+const CODEX_DEFAULT_MODE_REQUEST_USER_INPUT_ENABLED_DEFAULT = true;
 const CODEX_GIT_BRANCH_PREFIX_DEFAULT = "codex/";
 const WORKTREE_AUTO_DELETE_LIMIT_DEFAULT = 15;
 const EXECUTION_HOST_LIMIT = 32;
@@ -746,6 +748,10 @@ export function getCodexDeveloperInstructionSettings(
     detailLevel: isCodexThreadDetailLevel(profileServerToml.codex_thread_detail_level)
       ? profileServerToml.codex_thread_detail_level
       : CODEX_THREAD_DETAIL_LEVEL_DEFAULT,
+    defaultModeRequestUserInput:
+      typeof profileServerToml.codex_default_mode_request_user_input_enabled === "boolean"
+        ? profileServerToml.codex_default_mode_request_user_input_enabled
+        : CODEX_DEFAULT_MODE_REQUEST_USER_INPUT_ENABLED_DEFAULT,
   };
 }
 
@@ -753,12 +759,21 @@ export function updateCodexDeveloperInstructionSettings(
   input: UpdateCodexDeveloperInstructionSettingsInput,
   source: ApplicationSettingsDocumentSource,
 ): CodexDeveloperInstructionSettings {
-  if (!isCodexThreadDetailLevel(input.detailLevel)) {
+  if (input.detailLevel !== undefined && !isCodexThreadDetailLevel(input.detailLevel)) {
     throw new Error("detailLevel must be one of STEPS_PROSE, STEPS_COMMANDS, or STEPS_EXECUTION");
   }
+  if (
+    input.defaultModeRequestUserInput !== undefined &&
+    typeof input.defaultModeRequestUserInput !== "boolean"
+  ) {
+    throw new Error("defaultModeRequestUserInput must be a boolean");
+  }
+  const current = getCodexDeveloperInstructionSettings(source);
   writeProfileServerTomlConfig(source, {
     ...loadProfileServerTomlConfig(source),
-    codex_thread_detail_level: input.detailLevel,
+    codex_thread_detail_level: input.detailLevel ?? current.detailLevel,
+    codex_default_mode_request_user_input_enabled:
+      input.defaultModeRequestUserInput ?? current.defaultModeRequestUserInput,
   });
   return getCodexDeveloperInstructionSettings(source);
 }

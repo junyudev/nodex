@@ -1,4 +1,4 @@
-export const AGENT_RUNTIME_LAYOUT_VERSION: 4;
+export const AGENT_RUNTIME_LAYOUT_VERSION: 5;
 export const AGENT_RUNTIME_METADATA_FILENAME: "agent-runtime.json";
 
 export interface AgentRuntimeArtifact {
@@ -14,7 +14,7 @@ export interface CodexAppServerPackageManifest {
   readonly pathDir: string;
   readonly resourcesDir: string;
   readonly target: string;
-  readonly variant: "codex-app-server";
+  readonly variant: "codex";
   readonly version: string;
 }
 
@@ -22,7 +22,7 @@ export interface BundledAgentRuntimeMetadata {
   readonly appServerRuntimeVersion: string;
   readonly artifacts: readonly AgentRuntimeArtifact[];
   readonly entrypoint: string;
-  readonly layoutVersion: 4;
+  readonly layoutVersion: 5;
   readonly packageManifest: CodexAppServerPackageManifest;
   readonly protocolSchemaFingerprint: string;
   readonly releaseAsset: {
@@ -33,7 +33,7 @@ export interface BundledAgentRuntimeMetadata {
     readonly repository: "openai/codex";
     readonly tag: string;
   };
-  readonly runtimeFamily: "codex-app-server";
+  readonly runtimeFamily: "codex";
   readonly searchPaths: readonly string[];
   readonly sourceRevision: {
     readonly commit: string;

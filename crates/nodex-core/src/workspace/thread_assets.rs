@@ -135,7 +135,6 @@ pub(super) fn retain(
                 view_ids: Vec::new(),
                 document_heads: Vec::new(),
                 committed_at: now.clone(),
-                queued_follow_up_ledger: None,
             })
         },
     )
@@ -189,11 +188,6 @@ impl super::ProjectWorkspaceModule {
                  WHERE blob.content_hash = ?3 AND (
                    EXISTS(SELECT 1 FROM codex_thread_asset_refs reference
                      WHERE reference.thread_id = ?1 AND reference.library_id = ?2 AND reference.blob_hash = ?3)
-                   OR EXISTS(SELECT 1 FROM codex_queued_follow_up_entries entry
-                     WHERE entry.thread_id = ?1 AND entry.payload_sha256 = ?3)
-                   OR EXISTS(SELECT 1 FROM codex_queued_follow_up_entries entry
-                     JOIN codex_queued_follow_up_payload_asset_refs reference ON reference.payload_sha256 = entry.payload_sha256
-                     WHERE entry.thread_id = ?1 AND reference.sha256 = ?3)
                  )",
                 params![thread_id,context.library_id.0,content_hash], |row| Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?)),
             ).optional()?.ok_or_else(|| error(StoreErrorCode::NotFound,"Thread attachment is unavailable"))?;

@@ -129,17 +129,20 @@ export function startStartupController(): StartupController {
           .readRuntimeCapabilities(api)
           .catch(() => FAIL_CLOSED_RUNTIME_CAPABILITIES),
       ]);
-      const [application, closeFlush, transport, sentry, telemetry] = await Promise.all([
-        import("../application-renderer"),
-        import("../lib/app-close-flush"),
-        import("../lib/electron-renderer-transport"),
-        import("../lib/sentry-renderer"),
-        import("../lib/statsig-telemetry"),
-      ]);
+      const [application, closeFlush, transport, sentry, telemetry, executionAssignments] =
+        await Promise.all([
+          import("../application-renderer"),
+          import("../lib/app-close-flush"),
+          import("../lib/electron-renderer-transport"),
+          import("../lib/sentry-renderer"),
+          import("../lib/statsig-telemetry"),
+          import("../lib/codex-execution-assignments"),
+        ]);
       if (disposed) return;
       transport.initializeElectronRendererLocalCommitIngress(api);
       await sentry.initializeRendererSentry();
       void telemetry.initializeRendererTelemetry();
+      await executionAssignments.initializeCodexExecutionAssignments();
       // Install the full close coordinator before retiring the bootstrap ack.
       const releaseCloseFlushHandoff = closeFlush.registerAppCloseFlushHandler(() => undefined);
       await application.mountApplicationRenderer({

@@ -1,25 +1,32 @@
-import type {
-  SortDirection,
-  ThreadItem,
-  Turn,
-  TurnsPage,
-} from "@nodex/codex-app-server-protocol/v2";
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
+import type { SortDirection, ThreadItem, Turn } from "@nodex/codex-app-server-protocol/v2";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import type * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
+import { encodeCodexNativeRequestFailure } from "../../shared/codex-native-request-outcome";
+import type { CodexCanonicalConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
 import type { CodexHistoryTurnItemsPagination } from "../../shared/codex-conversation-state/codex-history-topology";
 import type { CodexAppServerCapabilitySnapshot } from "../codex-runtime/CodexAppServerCapabilities";
-import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
+import {
+  CodexGateway,
+  codexGatewayGenerationFence,
+  type CodexGatewayRequestOptions,
+} from "../codex-runtime/CodexGateway";
 
 export const CODEX_HISTORY_TURN_PAGE_SIZE = 5;
 export const CODEX_HISTORY_ITEM_PAGE_SIZE = 100;
-export const CODEX_HISTORY_INITIAL_MAX_ITEM_PAGE_REQUESTS = 20;
 export const CODEX_HISTORY_INITIAL_ITEM_BUDGET = 500;
 export const CODEX_HISTORY_INITIAL_BYTE_BUDGET = 8 * 1024 * 1024;
 export const CODEX_HISTORY_ITEM_BYTE_BUDGET = 8 * 1024 * 1024;
 export type CodexHistoryPagePurpose = "export" | "initial" | "older" | "search" | "tool";
+export type CodexHistoryRequestOptions = Pick<
+  CodexGatewayRequestOptions,
+  "priority" | "source" | "timeoutMs"
+>;
 
 export interface CodexHydratedHistoryTurnPage {
   readonly turns: readonly Turn[];
@@ -42,16 +49,30 @@ export interface CodexHydratedHistoryItemSegment {
   readonly newerCursor: string | null;
 }
 
+type OpeningMessageMetadata = Pick<
+  CodexHistoryTurnItemsPagination,
+  "oldestUserInput" | "openingUserMessageId" | "openingUserMessageClientId"
+>;
+
+export interface CodexResidentHistory {
+  readonly canonicalState: CodexCanonicalConversationState | null;
+  readonly turnItemsPaginationById: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
+}
+
 export interface CodexHistoryTurnPageInput {
   readonly capability: CodexAppServerCapabilitySnapshot;
   readonly threadId: string;
   readonly cursor: string | null;
   readonly initialItemsCursor: string | null;
+  /** Read after the Turn response so opening metadata reflects current residency. */
+  readonly readResidentHistory?: () => CodexResidentHistory | undefined;
   readonly limit?: number;
   readonly sortDirection?: SortDirection;
   readonly itemBudget?: number;
+  readonly turnItemLimit?: number;
   readonly byteBudget?: number;
   readonly purpose?: CodexHistoryPagePurpose;
+  readonly requestOptions?: CodexHistoryRequestOptions;
 }
 
 export interface CodexHistoryItemPageInput {
@@ -62,6 +83,7 @@ export interface CodexHistoryItemPageInput {
   readonly limit?: number;
   readonly sortDirection?: SortDirection;
   readonly purpose?: CodexHistoryPagePurpose;
+  readonly requestOptions?: CodexHistoryRequestOptions;
   readonly byteBudget?: number;
 }
 
@@ -83,9 +105,7 @@ export class CodexHistoryPageAdapterError extends Schema.TaggedError<CodexHistor
       "request-failed",
       "cursor-stalled",
       "foreign-item",
-      "page-size-exceeded",
       "item-byte-limit",
-      "incomplete-resume-page",
     ]),
     cause: Schema.Defect(),
   },
@@ -152,58 +172,13 @@ export const estimateCodexHistoryProjectedItemPageBytes = (
   items: readonly ThreadItem[],
   limit = Number.MAX_SAFE_INTEGER,
 ): number => {
-  const metadataBytes = items.length * 1_024;
+  const metadataBytes = items.length * 1024;
   if (!Number.isSafeInteger(metadataBytes) || metadataBytes > limit) return limit + 1;
   const perProjectionLimit = Math.floor((limit - metadataBytes) / 3);
   const singleProjectionBytes = cappedValueBytes(items, perProjectionLimit);
   if (singleProjectionBytes > perProjectionLimit) return limit + 1;
   return singleProjectionBytes * 3 + metadataBytes;
 };
-
-/** Admit the bounded inline resume page when independent history RPCs are unproven. */
-export const acceptCodexResumeInitialTurnsPage = Effect.fn("acceptCodexResumeInitialTurnsPage")(
-  function* (threadId: string, page: TurnsPage) {
-    if (page.data.length > CODEX_HISTORY_TURN_PAGE_SIZE) {
-      return yield* error({
-        operation: "turns",
-        threadId,
-        reason: "page-size-exceeded",
-        cause: new Error("Resume history exceeded the requested Turn limit"),
-      });
-    }
-    let remainingItems = CODEX_HISTORY_INITIAL_ITEM_BUDGET;
-    for (const turn of page.data) {
-      if (turn.itemsView !== "full") {
-        return yield* error({
-          operation: "turns",
-          threadId,
-          turnId: turn.id,
-          reason: "incomplete-resume-page",
-          cause: new Error("Resume history must include full items without optional history RPCs"),
-        });
-      }
-      remainingItems -= turn.items.length;
-      if (remainingItems < 0) {
-        return yield* error({
-          operation: "items",
-          threadId,
-          turnId: turn.id,
-          reason: "page-size-exceeded",
-          cause: new Error("Resume history exceeded the resident item budget"),
-        });
-      }
-    }
-    if (page.data.length === 0 && page.nextCursor !== null) {
-      return yield* error({
-        operation: "turns",
-        threadId,
-        reason: "incomplete-resume-page",
-        cause: new Error("Resume history returned an empty page with unloaded Turns"),
-      });
-    }
-    return page.data.slice().reverse();
-  },
-);
 
 const schedulingForPurpose = (purpose: CodexHistoryPagePurpose) =>
   purpose === "export"
@@ -227,6 +202,7 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
       readonly sortDirection: SortDirection;
       readonly operation: CodexHistoryPageAdapterError["operation"];
       readonly purpose: CodexHistoryPagePurpose;
+      readonly requestOptions?: CodexHistoryRequestOptions;
     }) {
       const response = yield* gateway
         .requestForThread(
@@ -241,6 +217,7 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
           },
           {
             ...schedulingForPurpose(input.purpose),
+            ...input.requestOptions,
             ...codexGatewayGenerationFence(input.capability),
           },
         )
@@ -262,17 +239,6 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
           turnId: input.turnId,
           reason: "cursor-stalled",
           cause: new Error(`Item cursor did not advance for turn '${input.turnId}'`),
-        });
-      }
-      if (response.data.length > input.limit) {
-        return yield* error({
-          operation: input.operation,
-          threadId: input.threadId,
-          turnId: input.turnId,
-          reason: "page-size-exceeded",
-          cause: new Error(
-            `Item page for turn '${input.turnId}' returned ${response.data.length} entries for limit ${input.limit}`,
-          ),
         });
       }
       const items: ThreadItem[] = [];
@@ -303,8 +269,12 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
       threadId: string,
       turn: GatewayHistoryTurn,
       purpose: CodexHistoryPagePurpose,
+      requestOptions?: CodexHistoryRequestOptions,
     ) {
-      const empty = { oldestUserInput: null, openingUserMessageId: null } as const;
+      const empty: Pick<
+        CodexHistoryTurnItemsPagination,
+        "oldestUserInput" | "openingUserMessageId" | "openingUserMessageClientId"
+      > = {};
       const opening = yield* loadItemsPage({
         capability,
         threadId,
@@ -314,6 +284,7 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
         sortDirection: "asc",
         operation: "opening-user",
         purpose,
+        requestOptions,
       }).pipe(Effect.catch(() => Effect.succeed(null)));
       if (!opening) return empty;
       const first = opening.items.find((item) => item.type !== "contextCompaction");
@@ -321,17 +292,80 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
         return {
           oldestUserInput: [...first.content],
           openingUserMessageId: first.id,
+          openingUserMessageClientId: first.clientId,
         };
       if (first || (opening.nextCursor === null && turn.status !== "inProgress")) {
-        return { oldestUserInput: [], openingUserMessageId: null };
+        return {
+          oldestUserInput: [],
+          openingUserMessageId: null,
+          openingUserMessageClientId: null,
+        };
       }
       return empty;
     });
 
+    const loadDurableTurnItems = Effect.fn("CodexHistoryPageAdapter.loadDurableTurnItems")(
+      function* (
+        input: CodexHistoryTurnPageInput,
+        turnId: string,
+        requestOptions: CodexHistoryRequestOptions,
+      ) {
+        const items: ThreadItem[] = [];
+        const seenCursors = new Set<string>();
+        let cursor: string | null = null;
+        let limit = 500;
+        for (;;) {
+          const result: Result.Result<CodexHydratedHistoryItemPage, CodexHistoryPageAdapterError> =
+            yield* loadItemsPage({
+              capability: input.capability,
+              threadId: input.threadId,
+              turnId,
+              cursor,
+              limit,
+              sortDirection: "asc",
+              operation: "items",
+              purpose: input.purpose ?? "initial",
+              requestOptions,
+            }).pipe(Effect.result);
+          if (result._tag === "Failure") {
+            const failure = result.failure;
+            if (
+              failure.reason !== "request-failed" ||
+              limit <= 1 ||
+              !encodeCodexNativeRequestFailure(failure).message.includes(
+                "decoded message length too large",
+              )
+            )
+              return yield* Effect.fail(failure);
+            limit = Math.floor(limit / 2);
+            continue;
+          }
+          const page: CodexHydratedHistoryItemPage = result.success;
+          items.push(...page.items);
+          if (page.nextCursor === null) return items;
+          if (seenCursors.has(page.nextCursor))
+            return yield* error({
+              operation: "items",
+              threadId: input.threadId,
+              turnId,
+              reason: "cursor-stalled",
+              cause: new Error(`Repeated item cursor for turn '${turnId}'`),
+            });
+          seenCursors.add(page.nextCursor);
+          cursor = page.nextCursor;
+        }
+      },
+    );
+
     const loadTurnPage = Effect.fn("CodexHistoryPageAdapter.loadTurnPage")(function* (
       input: CodexHistoryTurnPageInput,
     ) {
-      const limit = Math.max(1, Math.min(input.limit ?? CODEX_HISTORY_TURN_PAGE_SIZE, 5));
+      const durable = input.capability.hostId === "durable";
+      const requestOptions = durable
+        ? { timeoutMs: 30_000, ...input.requestOptions }
+        : input.requestOptions;
+      const limit = Math.max(1, input.limit ?? CODEX_HISTORY_TURN_PAGE_SIZE);
+      const turnItemLimit = input.turnItemLimit ?? Number.POSITIVE_INFINITY;
       const defaultItemBudget = Math.min(limit, CODEX_HISTORY_TURN_PAGE_SIZE) * 100;
       const itemBudgetLimit = Math.max(
         0,
@@ -354,6 +388,7 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
           },
           {
             ...schedulingForPurpose(purpose),
+            ...requestOptions,
             ...codexGatewayGenerationFence(input.capability),
           },
         )
@@ -375,36 +410,71 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
           cause: new Error(`Turn cursor did not advance for '${input.threadId}'`),
         });
       }
-      if (response.data.length > limit) {
-        return yield* error({
-          operation: "turns",
-          threadId: input.threadId,
-          reason: "page-size-exceeded",
-          cause: new Error(
-            `Turn page for '${input.threadId}' returned ${response.data.length} entries for limit ${limit}`,
-          ),
+      if (durable) {
+        const turns = new Array<Turn>(response.data.length);
+        // Each worker retains its stride, so a slow Turn cannot reassign another worker's tail.
+        const worker = Effect.fn("CodexHistoryPageAdapter.hydrateDurableWorker")(function* (
+          start: number,
+        ) {
+          for (let index = start; index < response.data.length; index += 5) {
+            const turn = response.data[index]!;
+            const items = yield* loadDurableTurnItems(input, turn.id, requestOptions!);
+            turns[index] = normalizeTurn(turn, items, "full");
+          }
         });
+        yield* Effect.forEach(
+          Array.from({ length: Math.min(response.data.length, 5) }, (_, index) => index),
+          worker,
+          { concurrency: "unbounded", discard: true },
+        );
+        return {
+          turns: sortDirection === "desc" ? turns.reverse() : turns,
+          nextCursor: response.nextCursor ?? null,
+          backwardsCursor: response.backwardsCursor ?? null,
+          itemsPaginationByTurnId: {},
+          itemSegmentsByTurnId: {},
+          loadedItemCount: turns.reduce((count, turn) => count + turn.items.length, 0),
+        } satisfies CodexHydratedHistoryTurnPage;
       }
-
+      const resident = input.readResidentHistory?.();
       let remainingBudget = itemBudgetLimit;
       let remainingBytes = byteBudgetLimit;
       let loadedItemCount = 0;
-      let itemPageRequestCount = 0;
       const hydrated: Turn[] = [];
       const itemsPaginationByTurnId: Record<string, CodexHistoryTurnItemsPagination> = {};
       const itemSegmentsByTurnId: Record<string, readonly CodexHydratedHistoryItemSegment[]> = {};
+      const openingProbes: Array<{
+        turnId: string;
+        fiber: Fiber.Fiber<OpeningMessageMetadata>;
+      }> = [];
+      const probeOpening = Effect.fn("CodexHistoryPageAdapter.probeOpening")(function* (
+        turn: GatewayHistoryTurn,
+      ) {
+        const read = loadOpeningUser(
+          input.capability,
+          input.threadId,
+          turn,
+          purpose,
+          input.requestOptions,
+        );
+        // Explicit excerpt budgets must account for an opening before admitting another page.
+        if (input.byteBudget !== undefined) return yield* read;
+        const fiber = yield* read.pipe(Effect.forkScoped({ startImmediately: true }));
+        openingProbes.push({ turnId: turn.id, fiber });
+        return {} as OpeningMessageMetadata;
+      });
       for (const turn of response.data) {
         let cursor = input.initialItemsCursor;
         let requested = false;
         let items: readonly ThreadItem[] = [];
         const itemSegments: CodexHydratedHistoryItemSegment[] = [];
         const seenCursors = new Set<string | null>();
-        while ((!requested || cursor !== null) && remainingBudget > 0 && remainingBytes > 0) {
-          if (itemPageRequestCount >= CODEX_HISTORY_INITIAL_MAX_ITEM_PAGE_REQUESTS) {
-            remainingBudget = 0;
-            remainingBytes = 0;
-            break;
-          }
+        while (
+          (!requested || cursor !== null) &&
+          remainingBudget > 0 &&
+          remainingBytes > 0 &&
+          items.length < turnItemLimit
+        ) {
           if (seenCursors.has(cursor)) {
             return yield* error({
               operation: "items",
@@ -416,8 +486,11 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
           }
           seenCursors.add(cursor);
           requested = true;
-          itemPageRequestCount += 1;
-          const itemRequestLimit = Math.min(CODEX_HISTORY_ITEM_PAGE_SIZE, remainingBudget);
+          const itemRequestLimit = Math.min(
+            CODEX_HISTORY_ITEM_PAGE_SIZE,
+            remainingBudget,
+            turnItemLimit - items.length,
+          );
           const itemPage = yield* loadItemsPage({
             capability: input.capability,
             threadId: input.threadId,
@@ -427,6 +500,7 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
             sortDirection: "desc",
             operation: "items",
             purpose,
+            requestOptions: input.requestOptions,
           });
           const unique = dedupeItems(itemPage.items).filter(
             (item) => !items.some((current) => current.id === item.id),
@@ -444,9 +518,8 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
                 ),
               });
             }
-            // A server cursor identifies the whole page. Keeping a partial page would silently
-            // skip items. An arbitrarily large item must not become a permanent resident-budget
-            // exception, so leave the cursor at the page boundary and expose an inert partial Turn.
+            // Explicit excerpt consumers stop at a physical page boundary; never split a page
+            // behind its server cursor. Ordinary interactive reads have no byte budget.
             cursor = [...seenCursors].at(-1) ?? null;
             remainingBudget = 0;
             remainingBytes = 0;
@@ -465,37 +538,75 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
           remainingBudget -= unique.length;
           remainingBytes = Math.max(0, remainingBytes - uniqueBytes);
           cursor = itemPage.nextCursor ?? null;
-          if (itemPage.items.length === 0 && cursor !== null) {
-            return yield* error({
-              operation: "items",
-              threadId: input.threadId,
-              turnId: turn.id,
-              reason: "cursor-stalled",
-              cause: new Error(`Item page made no progress for turn '${turn.id}'`),
-            });
-          }
         }
         const hasLoadedOldest = requested && cursor === null;
-        const openingCandidate =
-          hasLoadedOldest || remainingBytes === 0
-            ? { oldestUserInput: null, openingUserMessageId: null }
-            : yield* loadOpeningUser(input.capability, input.threadId, turn, purpose);
+        const residentTurn = residentConversationTurns(resident?.canonicalState).find(
+          (candidate) => candidate.turnId === turn.id,
+        );
+        const residentPagination = resident?.turnItemsPaginationById[turn.id];
+        const residentInput =
+          residentPagination?.oldestUserInput ??
+          (residentTurn &&
+          residentPagination?.hasLoadedOldest !== false &&
+          residentTurn.params.input.length > 0
+            ? residentTurn.params.input
+            : undefined);
+        let openingCandidate: Pick<
+          CodexHistoryTurnItemsPagination,
+          "oldestUserInput" | "openingUserMessageId" | "openingUserMessageClientId"
+        > = hasLoadedOldest
+          ? {}
+          : {
+              openingUserMessageId: residentPagination?.openingUserMessageId,
+              ...(residentInput == null
+                ? {}
+                : {
+                    oldestUserInput: residentInput,
+                    openingUserMessageClientId:
+                      residentPagination?.oldestUserInput == null
+                        ? residentTurn?.params.clientUserMessageId
+                        : residentPagination.openingUserMessageClientId,
+                  }),
+            };
+        if (
+          !hasLoadedOldest &&
+          residentPagination?.openingUserMessageId === undefined &&
+          items.length > 0 &&
+          remainingBytes > 0
+        ) {
+          openingCandidate = {
+            ...openingCandidate,
+            ...(yield* probeOpening(turn)),
+          };
+        }
         const openingBytes = cappedValueBytes(openingCandidate.oldestUserInput, remainingBytes);
         const opening =
-          openingCandidate.oldestUserInput !== null && openingBytes > remainingBytes
-            ? { oldestUserInput: null, openingUserMessageId: null }
+          openingCandidate.oldestUserInput != null && openingBytes > remainingBytes
+            ? {
+                oldestUserInput: undefined,
+                openingUserMessageId: undefined,
+                openingUserMessageClientId: undefined,
+              }
             : openingCandidate;
-        if (opening.oldestUserInput !== null) remainingBytes -= openingBytes;
+        if (opening.oldestUserInput != null) remainingBytes -= openingBytes;
         itemsPaginationByTurnId[turn.id] = {
+          newestSnapshotItemId: items.at(-1)?.id,
           olderCursor: cursor,
           isLoadingOlder: false,
           hasLoadedOldest,
           oldestUserInput: opening.oldestUserInput,
           openingUserMessageId: opening.openingUserMessageId,
+          openingUserMessageClientId: opening.openingUserMessageClientId,
           itemsView: hasLoadedOldest ? "full" : "summary",
         };
         itemSegmentsByTurnId[turn.id] = itemSegments;
         hydrated.push(normalizeTurn(turn, items, hasLoadedOldest ? "full" : "summary"));
+      }
+
+      for (const { turnId, fiber } of openingProbes) {
+        const opening = yield* Fiber.join(fiber);
+        const pagination = itemsPaginationByTurnId[turnId];
+        if (pagination) itemsPaginationByTurnId[turnId] = { ...pagination, ...opening };
       }
 
       return {
@@ -506,7 +617,7 @@ export const make: Effect.Effect<CodexHistoryPageAdapter["Service"], never, Code
         itemSegmentsByTurnId,
         loadedItemCount,
       } satisfies CodexHydratedHistoryTurnPage;
-    });
+    }, Effect.scoped);
 
     const loadTurnItemsPage = Effect.fn("CodexHistoryPageAdapter.loadTurnItemsPage")(function* (
       input: CodexHistoryItemPageInput,

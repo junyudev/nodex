@@ -4,7 +4,6 @@ use nodex_core_contracts::workspace::{
     ProjectWorkspaceReadValue, ProjectWorkspaceSessionSummary,
 };
 use rusqlite::{Connection, OptionalExtension, params};
-use std::path::Path;
 
 use crate::domain::project_appearance::project_appearance_from_storage;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
@@ -53,10 +52,21 @@ pub(super) fn read(
     context: &nodex_core_contracts::BoundModuleContext,
     library_id: &str,
     commit_head: i64,
-    assets_root: &Path,
     request: ProjectWorkspaceRead,
 ) -> Result<ProjectWorkspaceReadValue, StoreError> {
     match request {
+        ProjectWorkspaceRead::ThreadReadState {
+            identity_key,
+            window,
+        } => Ok(ProjectWorkspaceReadValue::ThreadReadState {
+            entries: super::thread_read_state::read_window(
+                connection,
+                library_id,
+                commit_head,
+                &identity_key,
+                &window,
+            )?,
+        }),
         ProjectWorkspaceRead::BuiltinSidebarOrder { lane, window } => {
             let (order_revision, items) = super::sidebar_builtin::read_order(
                 connection,
@@ -291,15 +301,9 @@ pub(super) fn read(
                 )?,
             })
         }
-        ProjectWorkspaceRead::QueuedFollowUpLedger { thread_id } => {
-            validate_id("thread_id", &thread_id)?;
-            Ok(ProjectWorkspaceReadValue::QueuedFollowUpLedger {
-                ledger: super::queued_follow_up::read_ledger(
-                    connection,
-                    library_id,
-                    &thread_id,
-                    assets_root,
-                )?,
+        ProjectWorkspaceRead::QueuedMessageState => {
+            Ok(ProjectWorkspaceReadValue::QueuedMessageState {
+                state: super::queued_message_state::read(connection)?,
             })
         }
         ProjectWorkspaceRead::ChildThreadWindow {
@@ -373,6 +377,9 @@ pub(super) fn read(
             };
             Ok(ProjectWorkspaceReadValue::ExecutionContext {
                 context: Box::new(ProjectWorkspaceExecutionContext {
+                    workspace_state: super::execution::read_thread_workspace_state(
+                        connection, &thread_id,
+                    )?,
                     thread,
                     project,
                     permission_mode,

@@ -38,6 +38,7 @@ import { NfmLinkToolbar } from "./nfm-link-toolbar";
 import { NfmLinkToolbarController } from "./nfm-link-toolbar-controller";
 import { toast } from "@/components/ui/toast";
 import { createUuidV7 } from "../../../../shared/uuid-v7";
+import { resolveCodexElectronDisplayThreadTitle } from "../../../../shared/codex-thread-title";
 import { applyLibraryModule } from "@/lib/api";
 import { resolveNfmLinkAction } from "@/lib/nfm-link-actions";
 import {
@@ -895,9 +896,11 @@ function NfmEditorInstance({
           ? "Start a new thread and rebind section"
           : "Start a new thread";
       const threadLabel = canReuseThread
-        ? existingThread?.threadName?.trim() ||
-          existingThread?.threadPreview?.trim() ||
-          sendPlan.section.threadId
+        ? resolveCodexElectronDisplayThreadTitle({
+            threadName: existingThread?.threadName,
+            threadPreview: existingThread?.threadPreview,
+            fallback: sendPlan.section.threadId,
+          })
         : sendPlan.section.threadId.length > 0
           ? "Linked thread is unavailable"
           : "No existing thread";

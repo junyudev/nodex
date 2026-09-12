@@ -18,17 +18,24 @@ import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
 import { transparentThreadCreationRuntime } from "./ThreadCreationRuntime.test-support";
 import {
   CODEX_STRUCTURED_THREAD_TITLE_NOTIFICATION_QUEUE_CAPACITY,
+  CodexStructuredThreadTitleError,
   make,
   type CodexStructuredThreadTitleOptions,
 } from "./CodexStructuredThreadTitle";
 
 type ThreadStartResponse = ClientRequestResponsesByMethod["thread/start"];
+type ThreadForkResponse = ClientRequestResponsesByMethod["thread/fork"];
 type TurnStartResponse = ClientRequestResponsesByMethod["turn/start"];
 
 const threadStarted = (threadId: string): ThreadStartResponse =>
   ({
     thread: { id: threadId, historyMode: "paginated", turns: [] },
   }) as unknown as ThreadStartResponse;
+
+const threadForked = (threadId: string): ThreadForkResponse =>
+  ({
+    thread: { id: threadId, historyMode: "paginated", turns: [] },
+  }) as unknown as ThreadForkResponse;
 
 const turnStarted = (turnId: string): TurnStartResponse =>
   ({ turn: { id: turnId } }) as TurnStartResponse;
@@ -51,13 +58,15 @@ const makeOptions = (
 ) => {
   const lifecycle: string[] = [];
   const options: CodexStructuredThreadTitleOptions = {
-    hostId: "local",
-    generation: Effect.succeed(1),
+    generation: () => Effect.succeed(1),
     events: Stream.fromPubSub(events),
     startThread: () => Effect.succeed(threadStarted("thread-title")),
+    forkThread: () => Effect.succeed(threadForked("thread-title-fork")),
     startTurn: () => Effect.succeed(turnStarted("turn-title")),
-    interruptTurn: (_threadId, turnId) => Effect.sync(() => lifecycle.push(`interrupt:${turnId}`)),
-    unsubscribeThread: (threadId) => Effect.sync(() => lifecycle.push(`unsubscribe:${threadId}`)),
+    interruptTurn: (_hostId, _threadId, turnId) =>
+      Effect.sync(() => lifecycle.push(`interrupt:${turnId}`)),
+    unsubscribeThread: (_hostId, threadId) =>
+      Effect.sync(() => lifecycle.push(`unsubscribe:${threadId}`)),
     ...overrides,
   };
   return { lifecycle, options };
@@ -105,7 +114,7 @@ it.effect("rejects and releases a title helper start that returns inline history
     const runtime = yield* makeRuntime(options, lifecycle);
 
     const failure = yield* runtime
-      .generate({ prompt: "Metadata only", cwd: null })
+      .generate({ hostId: "local", prompt: "Metadata only", cwd: null })
       .pipe(Effect.flip);
 
     assert.strictEqual(failure.reason, "request-failed");
@@ -120,12 +129,12 @@ it.effect("buffers an exact-host title completion that arrives before turn/start
     const threadStartRequests: ClientRequestParamsByMethod["thread/start"][] = [];
     const turnStartRequests: ClientRequestParamsByMethod["turn/start"][] = [];
     const { lifecycle, options } = makeOptions(events, {
-      startThread: (params) =>
+      startThread: (_hostId, params) =>
         Effect.sync(() => {
           threadStartRequests.push(params);
           return threadStarted("thread-title-1");
         }),
-      startTurn: (params) => {
+      startTurn: (_hostId, params) => {
         turnStartRequests.push(params);
         return PubSub.publish(
           events,
@@ -135,7 +144,7 @@ it.effect("buffers an exact-host title completion that arrives before turn/start
               threadId: "thread-title-1",
               turnId: "turn-title-1",
               itemId: "message-1",
-              delta: '{"title":"Wrong host"}',
+              delta: '{"title":"Wrong host","description":"wrong"}',
             },
             "ssh",
           ),
@@ -147,7 +156,8 @@ it.effect("buffers an exact-host title completion that arrives before turn/start
                 threadId: "thread-title-1",
                 turnId: "turn-title-1",
                 itemId: "message-1",
-                delta: '{"title":"Refactor inbox list layout"}',
+                delta:
+                  '{"title":"Refactor inbox list layout","description":"Inbox layout refactor"}',
               }),
             ),
           ),
@@ -168,18 +178,29 @@ it.effect("buffers an exact-host title completion that arrives before turn/start
 
     assert.strictEqual(
       yield* runtime.generate({
+        hostId: "local",
         prompt: "Refactor inbox list layout",
         cwd: "/tmp/codex",
         serviceName: "source-service",
       }),
       "Refactor inbox list layout",
     );
+    assert.strictEqual(threadStartRequests[0]?.model, "gpt-5.6-luna");
+    assert.strictEqual(threadStartRequests[0]?.modelProvider, null);
+    assert.strictEqual(threadStartRequests[0]?.allowProviderModelFallback, true);
     assert.strictEqual(threadStartRequests[0]?.ephemeral, true);
-    assert.strictEqual(threadStartRequests[0]?.threadSource, "system");
-    assert.deepEqual(threadStartRequests[0]?.dynamicTools, []);
-    assert.deepEqual(threadStartRequests[0]?.config?.["mcp_servers.nodex_app.enabled_tools"], []);
+    assert.strictEqual(threadStartRequests[0]?.threadSource, "thread_title");
+    assert.strictEqual(threadStartRequests[0]?.dynamicTools, null);
+    assert.strictEqual(threadStartRequests[0]?.config?.["model_reasoning_effort"], "low");
+    assert.strictEqual(threadStartRequests[0]?.config?.["features.enable_fanout"], false);
+    assert.strictEqual(threadStartRequests[0]?.config?.["features.apps"], false);
+    assert.deepEqual(threadStartRequests[0]?.config?.["mcp_servers.codex_app"], {
+      enabled: false,
+      command: "",
+    });
     assert.strictEqual(threadStartRequests[0]?.serviceName, "source-service");
     assert.strictEqual(turnStartRequests[0]?.threadId, "thread-title-1");
+    assert.strictEqual(turnStartRequests[0]?.turnTrigger, "thread_title");
     assert.strictEqual(turnStartRequests[0]?.permissions, ":read-only");
     assert.deepEqual(lifecycle, [
       "register:thread-title-1",
@@ -216,7 +237,7 @@ it.effect("filters foreign-thread payloads before title inbox byte admission", (
                 threadId: "thread-title",
                 turnId: "turn-title",
                 itemId: "message-1",
-                delta: '{"title":"Bounded title"}',
+                delta: '{"title":"Bounded title","description":"Bounded title test"}',
               }),
             ),
           ),
@@ -235,7 +256,7 @@ it.effect("filters foreign-thread payloads before title inbox byte admission", (
     const runtime = yield* makeRuntime(options, lifecycle);
 
     assert.strictEqual(
-      yield* runtime.generate({ prompt: "Bounded title", cwd: null }),
+      yield* runtime.generate({ hostId: "local", prompt: "Bounded title", cwd: null }),
       "Bounded title",
     );
     assert.notInclude(lifecycle, "interrupt:turn-title");
@@ -259,7 +280,7 @@ it.effect("fails and interrupts when a title notification exceeds byte admission
     });
     const runtime = yield* makeRuntime(options, lifecycle);
     const error = yield* runtime
-      .generate({ prompt: "Bounded notification", cwd: null })
+      .generate({ hostId: "local", prompt: "Bounded notification", cwd: null })
       .pipe(Effect.flip);
 
     assert.strictEqual(error.reason, "notification-overflow");
@@ -293,7 +314,9 @@ it.effect("fails and interrupts when the pre-response title inbox reaches its co
         ).pipe(Effect.as(turnStarted("turn-count-overflow"))),
     });
     const runtime = yield* makeRuntime(options, lifecycle);
-    const error = yield* runtime.generate({ prompt: "Bounded count", cwd: null }).pipe(Effect.flip);
+    const error = yield* runtime
+      .generate({ hostId: "local", prompt: "Bounded count", cwd: null })
+      .pipe(Effect.flip);
 
     assert.strictEqual(error.reason, "notification-overflow");
     assert.deepEqual(lifecycle, [
@@ -327,7 +350,7 @@ it.effect("fails and interrupts when accumulated title output exceeds 16 KiB", (
     });
     const runtime = yield* makeRuntime(options, lifecycle);
     const error = yield* runtime
-      .generate({ prompt: "Bounded output", cwd: null })
+      .generate({ hostId: "local", prompt: "Bounded output", cwd: null })
       .pipe(Effect.flip);
 
     assert.strictEqual(error.reason, "output-overflow");
@@ -364,7 +387,7 @@ it.effect("uses the completed agent message instead of partial deltas", () =>
                 item: {
                   id: "message-1",
                   type: "agentMessage",
-                  text: '{"title":"title: \\"Fix flaky.\\""}',
+                  text: '{"title":"title: \\"Fix flaky.\\"","description":"Fix flaky test"}',
                 },
               }),
             ),
@@ -382,7 +405,10 @@ it.effect("uses the completed agent message instead of partial deltas", () =>
         ),
     });
     const runtime = yield* makeRuntime(options, lifecycle);
-    assert.strictEqual(yield* runtime.generate({ prompt: "Fix flaky", cwd: null }), "Fix flaky");
+    assert.strictEqual(
+      yield* runtime.generate({ hostId: "local", prompt: "Fix flaky", cwd: null }),
+      "Fix flaky",
+    );
   }),
 );
 
@@ -414,7 +440,7 @@ it.effect("reports terminal failure and best-effort interrupts and unsubscribes"
     });
     const runtime = yield* makeRuntime(options, lifecycle);
     const error = yield* runtime
-      .generate({ prompt: "Fix title flow", cwd: null })
+      .generate({ hostId: "local", prompt: "Fix title flow", cwd: null })
       .pipe(Effect.flip);
     assert.strictEqual(error.reason, "turn-failed");
     assert.include(error.message, "model unavailable");
@@ -438,7 +464,7 @@ it.effect("uses the Effect clock for the sole operation deadline", () =>
     });
     const runtime = yield* makeRuntime(options, lifecycle);
     const timedOut = yield* Effect.forkChild(
-      runtime.generate({ prompt: "Timeout", cwd: null }).pipe(Effect.flip),
+      runtime.generate({ hostId: "local", prompt: "Timeout", cwd: null }).pipe(Effect.flip),
     );
     yield* Deferred.await(started);
     yield* TestClock.adjust("1999 millis");
@@ -466,7 +492,7 @@ it.effect("releases the helper Thread when the Main Scope closes", () =>
       Effect.provideService(Scope.Scope, scope),
     );
     const closed = yield* Effect.forkChild(
-      runtime.generate({ prompt: "Closing", cwd: null }).pipe(Effect.flip),
+      runtime.generate({ hostId: "local", prompt: "Closing", cwd: null }).pipe(Effect.flip),
     );
     yield* Deferred.await(started);
     yield* Scope.close(scope, Exit.void);
@@ -477,5 +503,127 @@ it.effect("releases the helper Thread when the Main Scope closes", () =>
       "unsubscribe:thread-title",
       "release:thread-title",
     ]);
+  }),
+);
+
+it.effect("reconsiders a generated title in an exclude-turns fork of the source Thread", () =>
+  Effect.gen(function* () {
+    const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+    const forkRequests: ClientRequestParamsByMethod["thread/fork"][] = [];
+    const turnRequests: ClientRequestParamsByMethod["turn/start"][] = [];
+    let freshStarted = false;
+    const { lifecycle, options } = makeOptions(events, {
+      startThread: () => {
+        return Effect.sync(() => {
+          freshStarted = true;
+          return threadStarted("unexpected-fresh-thread");
+        });
+      },
+      forkThread: (_hostId, params) =>
+        Effect.sync(() => {
+          forkRequests.push(params);
+          return threadForked("thread-title-reconsideration");
+        }),
+      startTurn: (_hostId, params) => {
+        turnRequests.push(params);
+        return PubSub.publish(
+          events,
+          notification("item/agentMessage/delta", {
+            threadId: "thread-title-reconsideration",
+            turnId: "turn-title-reconsideration",
+            itemId: "message-reconsideration",
+            delta: '{"title":"Replacement purpose","description":"Replacement purpose summary"}',
+          }),
+        ).pipe(
+          Effect.andThen(
+            PubSub.publish(
+              events,
+              notification("turn/completed", {
+                threadId: "thread-title-reconsideration",
+                turn: { id: "turn-title-reconsideration", status: "completed" },
+              }),
+            ),
+          ),
+          Effect.as(turnStarted("turn-title-reconsideration")),
+        );
+      },
+    });
+    const runtime = yield* makeRuntime(options, lifecycle);
+
+    assert.deepEqual(
+      yield* runtime.reconsiderTitle({
+        hostId: "local",
+        sourceThreadId: "source-thread",
+        currentTitle: "Old generated purpose",
+        cwd: "/repo",
+        serviceName: "chatgpt",
+      }),
+      {
+        title: "Replacement purpose",
+        description: "Replacement purpose summary",
+      },
+    );
+    assert.isFalse(freshStarted);
+    assert.strictEqual(forkRequests[0]?.threadId, "source-thread");
+    assert.strictEqual(forkRequests[0]?.path, null);
+    assert.strictEqual(forkRequests[0]?.model, "gpt-5.6-luna");
+    assert.strictEqual(forkRequests[0]?.modelProvider, null);
+    assert.strictEqual(forkRequests[0]?.serviceTier, null);
+    assert.strictEqual(forkRequests[0]?.cwd, "/repo");
+    assert.strictEqual(forkRequests[0]?.approvalPolicy, "never");
+    assert.strictEqual(forkRequests[0]?.permissions, ":read-only");
+    assert.deepEqual(forkRequests[0]?.runtimeWorkspaceRoots, []);
+    assert.strictEqual(forkRequests[0]?.ephemeral, true);
+    assert.strictEqual(forkRequests[0]?.excludeTurns, true);
+    assert.strictEqual(forkRequests[0]?.threadSource, "thread_title_reconsideration");
+    assert.strictEqual(turnRequests[0]?.turnTrigger, "thread_title_reconsideration");
+    assert.deepEqual(lifecycle, [
+      "register:thread-title-reconsideration",
+      "unsubscribe:thread-title-reconsideration",
+      "release:thread-title-reconsideration",
+    ]);
+  }),
+);
+
+it.effect("does not create a fresh helper when the reconsideration source fork fails", () =>
+  Effect.gen(function* () {
+    const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+    let freshStarts = 0;
+    let turnStarts = 0;
+    const { lifecycle, options } = makeOptions(events, {
+      forkThread: () =>
+        Effect.fail(
+          new CodexStructuredThreadTitleError({
+            reason: "request-failed",
+            message: "fork unavailable",
+          }),
+        ),
+      startThread: () => {
+        return Effect.sync(() => {
+          freshStarts += 1;
+          return threadStarted("unexpected-fresh-thread");
+        });
+      },
+      startTurn: () => {
+        return Effect.sync(() => {
+          turnStarts += 1;
+          return turnStarted("unexpected-turn");
+        });
+      },
+    });
+    const runtime = yield* makeRuntime(options, lifecycle);
+
+    assert.strictEqual(
+      yield* runtime.reconsiderTitle({
+        hostId: "local",
+        sourceThreadId: "source-thread",
+        currentTitle: "Old generated purpose",
+        cwd: null,
+      }),
+      null,
+    );
+    assert.strictEqual(freshStarts, 0);
+    assert.strictEqual(turnStarts, 0);
+    assert.deepEqual(lifecycle, []);
   }),
 );

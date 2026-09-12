@@ -183,82 +183,36 @@ describe("CodexCommandOutputQueue", () => {
     expect(flushed.join(",")).toBe("34567");
   });
 
-  test("cuts a batch before a new key can exceed the manager-global key budget", () => {
-    const scheduler = new ManualCommandOutputScheduler();
-    const flushes: string[][] = [];
-    const queue = new CodexCommandOutputQueue<SequencedOutput>({
-      scheduler,
-      maxBufferedKeys: 2,
-      onFlush: (updates) => flushes.push(updates.map((update) => update.itemId)),
-    });
-
-    expect(queue.enqueue(output("a", { itemId: "item-a" }))).toEqual({
-      forcedFlush: false,
-      deliveredInline: false,
-    });
-    queue.enqueue(output("b", { itemId: "item-b" }));
-    expect(queue.enqueue(output("c", { itemId: "item-c" }))).toEqual({
-      forcedFlush: true,
-      deliveredInline: false,
-    });
-
-    expect(flushes).toEqual([["item-a", "item-b"]]);
-    expect(scheduler.timeoutCount).toBe(1);
-    scheduler.runNextTimeout();
-    expect(flushes).toEqual([["item-a", "item-b"], ["item-c"]]);
-  });
-
-  test("cuts a coalesced batch before sequence metadata can exceed the update budget", () => {
+  test("retains every command key until the scheduled batch even above aggregate byte and key thresholds", () => {
     const scheduler = new ManualCommandOutputScheduler();
     const flushes: SequencedOutput[][] = [];
     const queue = new CodexCommandOutputQueue<SequencedOutput>({
       scheduler,
-      maxBufferedUpdates: 2,
-      mergeUpdate: (existing, incoming, mergedDelta) => ({
-        ...incoming,
-        delta: mergedDelta,
-        sequences: [...(existing?.sequences ?? []), incoming.sequence],
-      }),
       onFlush: (updates) => flushes.push([...updates]),
     });
-
-    queue.enqueue(output("a", { sequence: 1 }));
-    queue.enqueue(output("b", { sequence: 2 }));
-    const result = queue.enqueue(output("c", { sequence: 3 }));
-
-    expect(result.forcedFlush).toBe(true);
-    expect(flushes[0]?.[0]?.delta).toBe("ab");
-    expect(flushes[0]?.[0]?.sequences).toEqual([1, 2]);
+    const updates = Array.from({ length: 1500 }, (_, index) =>
+      output("汉".repeat(3000), { itemId: `item-${index}` }),
+    );
+    for (const update of updates) queue.enqueue(update);
+    expect(flushes).toEqual([]);
+    expect(scheduler.timeoutCount).toBe(1);
     scheduler.runNextTimeout();
-    expect(flushes[1]?.[0]?.delta).toBe("c");
-    expect(flushes[1]?.[0]?.sequences).toEqual([3]);
+    expect(flushes).toEqual([updates]);
   });
 
-  test("accounts UTF-8 bytes and never retains an individually over-budget update", () => {
+  test("coalesces repeated notifications without an early update-count flush", () => {
     const scheduler = new ManualCommandOutputScheduler();
-    const flushes: string[][] = [];
+    const flushes: SequencedOutput[][] = [];
     const queue = new CodexCommandOutputQueue<SequencedOutput>({
       scheduler,
-      maxBufferedUtf8Bytes: 4,
-      onFlush: (updates) => flushes.push(updates.map((update) => update.delta)),
+      maxBufferedChars: 5,
+      onFlush: (updates) => flushes.push([...updates]),
     });
-
-    queue.enqueue(output("é"));
-    expect(queue.enqueue(output("é"))).toEqual({
-      forcedFlush: false,
-      deliveredInline: false,
-    });
-    expect(queue.enqueue(output("x"))).toEqual({
-      forcedFlush: true,
-      deliveredInline: false,
-    });
-    expect(flushes).toEqual([["éé"]]);
-
-    const inline = queue.enqueue(
-      output("😀😀", { conversationId: "conversation-b", itemId: "item-b" }),
-    );
-    expect(inline).toEqual({ forcedFlush: true, deliveredInline: true });
-    expect(flushes).toEqual([["éé"], ["x"], ["😀😀"]]);
+    for (let sequence = 1; sequence <= 20000; sequence += 1)
+      queue.enqueue(output("x", { sequence }));
+    expect(flushes).toEqual([]);
+    scheduler.runNextTimeout();
+    expect(flushes).toEqual([[output("xxxxx", { sequence: 20000 })]]);
   });
 
   test("treats an empty delta as queued work", () => {

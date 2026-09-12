@@ -1,4 +1,3 @@
-import { resolveRendererHostId } from "./renderer-host-identity";
 import type { FileSearchStartInput } from "../../shared/file-search";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -26,8 +25,7 @@ export const makeFileSearchSession = (
   Effect.gen(function* () {
     const gateway = yield* CodexGateway;
     const scope = yield* Scope.Scope;
-    const { hostId: rendererHostId, ...params } = input;
-    const hostId = resolveRendererHostId(rendererHostId, gateway.localHostId);
+    const { hostId, ...params } = input;
     const lane = yield* Semaphore.make(1);
     let generation: number | null = null;
     let attemptedGeneration: number | null = null;

@@ -15,40 +15,20 @@ export interface LocalConversationHistoryGapLayout {
   readonly endPx: number;
 }
 
-export interface LocalConversationHistoryGapLoadControllerState {
-  readonly lastRequestedViewportRevision: number | null;
-}
-
-export interface SelectLocalConversationHistoryGapBoundaryInput {
-  readonly viewportRevision: number;
+export interface HistoryViewport {
   readonly viewportStartPx: number;
   readonly viewportEndPx: number;
   readonly gaps: readonly LocalConversationHistoryGapLayout[];
-  readonly activeProgressKeys: ReadonlySet<string>;
 }
 
-export interface LocalConversationHistoryGapBoundarySelection {
-  readonly boundary: CodexHistoryBoundaryRef | null;
-  readonly state: LocalConversationHistoryGapLoadControllerState;
-}
+type HistoryBoundaryLoader = (boundary: CodexHistoryBoundaryRef) => Promise<unknown>;
 
 export interface LocalConversationHistoryGapRequestCoordinator {
-  readonly activeProgressKeys: () => ReadonlySet<string>;
+  readonly allowNextFetch: () => void;
   readonly observeViewport: (
-    input: Omit<SelectLocalConversationHistoryGapBoundaryInput, "activeProgressKeys">,
-    request: (boundary: CodexHistoryBoundaryRef) => Promise<unknown>,
-  ) => CodexHistoryBoundaryRef | null;
-}
-
-interface BoundaryCandidate {
-  readonly boundary: CodexHistoryBoundaryRef;
-  readonly distanceFromViewportCenterPx: number;
-  readonly gapIndex: number;
-  readonly edgeOrder: number;
-}
-
-export function createLocalConversationHistoryGapLoadControllerState(): LocalConversationHistoryGapLoadControllerState {
-  return { lastRequestedViewportRevision: null };
+    input: HistoryViewport | null,
+    request?: HistoryBoundaryLoader,
+  ) => Promise<void>;
 }
 
 /** Failed or stale cursors stay stopped until the owning boundary changes or the view reopens. */
@@ -80,33 +60,61 @@ export function createLocalConversationHistoryRequestGate() {
   };
 }
 
-/** Owns request lifetime around the pure viewport selector. */
-export function createLocalConversationHistoryGapRequestCoordinator(): LocalConversationHistoryGapRequestCoordinator {
-  let state = createLocalConversationHistoryGapLoadControllerState();
-  const gate = createLocalConversationHistoryRequestGate();
+/** Serializes loads against the latest viewport without permanently suppressing failed pages. */
+export function createLocalConversationHistoryGapRequestCoordinator({
+  requireUserScroll = false,
+}: { readonly requireUserScroll?: boolean } = {}): LocalConversationHistoryGapRequestCoordinator {
+  let viewport: HistoryViewport | null = null;
+  let request: HistoryBoundaryLoader | undefined;
+  let version = 0;
+  let allowed = !requireUserScroll;
+  let pending: Promise<void> | null = null;
+  const run = async () => {
+    let applied: CodexHistoryBoundaryRef | null = null;
+    while (true) {
+      if (viewport === null || !allowed || !request) return;
+      const observedVersion = version;
+      const boundary = selectLocalConversationHistoryGapBoundary(viewport);
+      if (!boundary || sameHistoryBoundary(boundary, applied)) return;
+      allowed = !requireUserScroll;
+      try {
+        if ((await request(boundary)) === "applied") applied = boundary;
+      } catch {
+        // A later viewport observation can retry a transient page failure.
+      }
+      if (observedVersion === version) return;
+    }
+  };
   return {
-    activeProgressKeys: gate.unavailableKeys,
-    observeViewport: (input, request) => {
-      gate.retain(
-        new Set(
-          input.gaps.flatMap(({ row }) =>
-            [row.olderBoundary, row.newerBoundary].flatMap((boundary) =>
-              boundary ? [boundary.progressKey] : [],
-            ),
-          ),
-        ),
-      );
-      const selection = selectLocalConversationHistoryGapBoundary(state, {
-        ...input,
-        activeProgressKeys: gate.unavailableKeys(),
-      });
-      state = selection.state;
-      const boundary = selection.boundary;
-      if (!boundary) return null;
-      gate.request(boundary.progressKey, () => request(boundary));
-      return boundary;
+    allowNextFetch: () => {
+      allowed = true;
+    },
+    observeViewport: (input, load) => {
+      viewport = input;
+      if (load) request = load;
+      version += 1;
+      pending ??= Promise.resolve()
+        .then(run)
+        .finally(() => {
+          pending = null;
+        });
+      return pending;
     },
   };
+}
+
+function sameHistoryBoundary(
+  left: CodexHistoryBoundaryRef,
+  right: CodexHistoryBoundaryRef | null,
+): boolean {
+  return (
+    right !== null &&
+    left.generation === right.generation &&
+    left.islandId === right.islandId &&
+    left.edge === right.edge &&
+    left.boundaryId === right.boundaryId &&
+    left.progressKey === right.progressKey
+  );
 }
 
 /**
@@ -156,88 +164,32 @@ function distanceFromViewportPx(
   return 0;
 }
 
-function collectBoundaryCandidate(
-  candidates: BoundaryCandidate[],
-  boundary: CodexHistoryBoundaryRef | null,
-  boundaryPositionPx: number,
-  viewportCenterPx: number,
-  gapIndex: number,
-  edgeOrder: number,
-  activeProgressKeys: ReadonlySet<string>,
-): void {
-  if (!boundary || activeProgressKeys.has(boundary.progressKey)) return;
-  candidates.push({
-    boundary,
-    distanceFromViewportCenterPx: Math.abs(boundaryPositionPx - viewportCenterPx),
-    gapIndex,
-    edgeOrder,
-  });
-}
-
-/**
- * Selects one loadable boundary for a viewport revision. Gap edges are treated as
- * the boundary positions, so an internal gap naturally loads from the island
- * closest to the viewport rather than preferring a fixed chronological direction.
- */
+/** Selects the closest edge of a nearby gap; equal distances preserve gap and edge order. */
 export function selectLocalConversationHistoryGapBoundary(
-  state: LocalConversationHistoryGapLoadControllerState,
-  input: SelectLocalConversationHistoryGapBoundaryInput,
-): LocalConversationHistoryGapBoundarySelection {
-  if (!Number.isSafeInteger(input.viewportRevision) || input.viewportRevision < 0) {
-    return { boundary: null, state };
-  }
-  if (
-    state.lastRequestedViewportRevision !== null &&
-    input.viewportRevision <= state.lastRequestedViewportRevision
-  ) {
-    return { boundary: null, state };
-  }
-  if (!isFiniteRange(input.viewportStartPx, input.viewportEndPx)) {
-    return { boundary: null, state };
-  }
-
-  const viewportCenterPx = (input.viewportStartPx + input.viewportEndPx) / 2;
-  const candidates: BoundaryCandidate[] = [];
-  for (const [gapIndex, gap] of input.gaps.entries()) {
+  input: HistoryViewport,
+): CodexHistoryBoundaryRef | null {
+  if (!isFiniteRange(input.viewportStartPx, input.viewportEndPx)) return null;
+  const center = (input.viewportStartPx + input.viewportEndPx) / 2;
+  let selected: CodexHistoryBoundaryRef | null = null;
+  let distance = Infinity;
+  for (const gap of input.gaps) {
     if (!isFiniteRange(gap.startPx, gap.endPx)) continue;
     if (
       distanceFromViewportPx(gap.startPx, gap.endPx, input.viewportStartPx, input.viewportEndPx) >
       CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX
-    ) {
+    )
       continue;
+    for (const [boundary, position] of [
+      [gap.row.olderBoundary, gap.startPx],
+      [gap.row.newerBoundary, gap.endPx],
+    ] as const) {
+      const nextDistance = Math.abs(position - center);
+      if (!boundary || nextDistance >= distance) continue;
+      selected = boundary;
+      distance = nextDistance;
     }
-    collectBoundaryCandidate(
-      candidates,
-      gap.row.olderBoundary,
-      gap.startPx,
-      viewportCenterPx,
-      gapIndex,
-      0,
-      input.activeProgressKeys,
-    );
-    collectBoundaryCandidate(
-      candidates,
-      gap.row.newerBoundary,
-      gap.endPx,
-      viewportCenterPx,
-      gapIndex,
-      1,
-      input.activeProgressKeys,
-    );
   }
-
-  const selected = candidates.toSorted(
-    (left, right) =>
-      left.distanceFromViewportCenterPx - right.distanceFromViewportCenterPx ||
-      left.gapIndex - right.gapIndex ||
-      left.edgeOrder - right.edgeOrder,
-  )[0];
-  if (!selected) return { boundary: null, state };
-
-  return {
-    boundary: selected.boundary,
-    state: { lastRequestedViewportRevision: input.viewportRevision },
-  };
+  return selected;
 }
 
 /** An unloaded history region is intentionally silent and visually inert. */

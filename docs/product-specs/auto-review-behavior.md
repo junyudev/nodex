@@ -33,7 +33,7 @@ This spec does not cover:
   - `config/read`
   - `configRequirements/read`
 - The resolved permission state is exposed to renderer as one canonical `CodexPermissionState`.
-- New thread start, turn start, queued follow-ups, and thread resume all inherit their effective permission fields from that resolved state.
+- New thread start, turn start, and queued follow-ups resolve their effective permission fields from that state. Thread resume retains conversation permission provenance separately from a caller's explicit selection and server-default intent, as specified in [Bounded History and Search](codex-thread-transcript-behavior.md#bounded-history-and-search).
 
 ## Internal Presets
 

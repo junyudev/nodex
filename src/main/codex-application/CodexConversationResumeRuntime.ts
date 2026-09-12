@@ -1,3 +1,11 @@
+import type { CanonicalResumeOverrides } from "../../shared/codex-conversation-state/codex-resume-permissions";
+import type { Thread } from "@nodex/codex-app-server-protocol/v2/Thread";
+import type { ConversationResumePreparationOptions } from "../../shared/codex-conversation-state/codex-resume-request";
+import { isDeepStrictEqual } from "node:util";
+import { CodexMainConversationResume } from "./CodexMainConversationResume";
+import type { CodexRendererResumePreparation } from "../../shared/codex-renderer-resume";
+import type { ThreadResumeResponse } from "@nodex/codex-app-server-protocol/v2/ThreadResumeResponse";
+import type { CodexThreadSummary } from "../../shared/types";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
@@ -5,23 +13,10 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FiberMap from "effect/FiberMap";
 import * as Option from "effect/Option";
-import * as RcMap from "effect/RcMap";
 import * as Semaphore from "effect/Semaphore";
 import type * as Scope from "effect/Scope";
-import type {
-  CodexConversationResumeState,
-  CodexConversationSnapshot,
-  CodexRendererConversationResumeResult,
-  CodexThreadStreamCheckpoint,
-} from "../../shared/types";
-import { CodexApplicationProtocol } from "./CodexApplicationProtocol";
+import type { CodexConversationSnapshot } from "../../shared/types";
 import { CodexConversationRelationships } from "./CodexConversationRelationships";
-import { CodexFreshThreadLaunchRuntime } from "./CodexFreshThreadLaunchRuntime";
-import { CodexOwnerNotificationDrainRuntime } from "./CodexOwnerNotificationDrainRuntime";
-import { CodexPostResumeGoalRuntime } from "./CodexPostResumeGoalRuntime";
-import { CodexQueuedFollowUps } from "./CodexQueuedFollowUps";
-import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
-import { CodexRendererConversationRegistry } from "./CodexRendererConversationRegistry";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
@@ -41,33 +36,38 @@ export class CodexConversationResumeError extends Data.TaggedError("CodexConvers
   readonly cause: unknown;
 }> {}
 
-export interface CodexConversationResumeRendererState {
-  readonly acceptedConversation: CodexConversationSnapshot | null;
-  readonly checkpoint: CodexThreadStreamCheckpoint | null;
-  readonly freshLaunchOwnerClientId: string | null;
-  readonly ownerClientId: string | null;
-  readonly resumeState: CodexConversationResumeState | null;
-  readonly revision: number;
-  readonly serializedConversation: CodexConversationSnapshot | null;
-  readonly threadGeneration: number | null;
-}
-
 export class CodexConversationResumeRuntime extends Context.Service<
   CodexConversationResumeRuntime,
   {
+    readonly prepareRendererResume: (
+      threadId: string,
+      senderId: number,
+      metadata?: Thread | null,
+      overrides?: CanonicalResumeOverrides,
+      options?: ConversationResumePreparationOptions,
+    ) => Effect.Effect<CodexRendererResumePreparation, CodexConversationResumeError>;
+    readonly observeRendererResume: (input: {
+      senderId: number;
+      requestId: string;
+      hostId: string;
+      params: unknown;
+      response: ThreadResumeResponse;
+    }) => Effect.Effect<void, CodexConversationResumeError>;
+    readonly retryRendererResume: (
+      receiptId: string,
+      senderId: number,
+    ) => Effect.Effect<string, CodexConversationResumeError>;
+    readonly acceptRendererResume: (
+      receiptId: string,
+      senderId: number,
+    ) => Effect.Effect<CodexThreadSummary, CodexConversationResumeError>;
+    readonly releaseRendererResume: (receiptId: string, senderId: number) => void;
     readonly resume: (
       input: CodexConversationResumeInput,
     ) => Effect.Effect<CodexConversationSnapshot | null, CodexConversationResumeError>;
     readonly snapshot: (
       threadId: string,
     ) => Effect.Effect<CodexConversationSnapshot | null, CodexConversationResumeError>;
-    readonly resumeForRenderer: (
-      threadId: string,
-      ownerClientId: string,
-    ) => Effect.Effect<CodexRendererConversationResumeResult | null, CodexConversationResumeError>;
-    readonly releaseBuffer: (
-      threadId: string,
-    ) => Effect.Effect<boolean, CodexConversationResumeError>;
     readonly clear: (threadId: string) => void;
   }
 >()("nodex/main/codex-application/CodexConversationResumeRuntime") {}
@@ -93,39 +93,135 @@ const sameDemand = (
 const invalidIdentity = (kind: "renderer client" | "Thread"): CodexConversationResumeError =>
   new CodexConversationResumeError({ cause: new Error(`${kind} identity is required`) });
 
-const unavailableReplica = (
-  threadId: string,
-  role: "follower" | "owner" | "generation",
-): CodexConversationResumeError =>
-  new CodexConversationResumeError({
-    cause: new Error(`Accepted ${role} replica is unavailable for '${threadId}'`),
-  });
-
 export const make: Effect.Effect<
   CodexConversationResumeRuntime["Service"],
   never,
-  | CodexApplicationProtocol
   | CodexConversationRelationships
-  | CodexFreshThreadLaunchRuntime
-  | CodexOwnerNotificationDrainRuntime
-  | CodexPostResumeGoalRuntime
-  | CodexQueuedFollowUps
-  | CodexRendererConversationCoordinator
-  | CodexRendererConversationRegistry
+  | CodexMainConversationResume
   | CodexThreadDirectory
   | ConversationEntityMap
   | Scope.Scope
 > = Effect.gen(function* () {
-  const protocol = yield* CodexApplicationProtocol;
   const relationships = yield* CodexConversationRelationships;
-  const freshThreadLaunch = yield* CodexFreshThreadLaunchRuntime;
-  const ownerNotificationDrain = yield* CodexOwnerNotificationDrainRuntime;
-  const postResumeGoals = yield* CodexPostResumeGoalRuntime;
-  const queuedFollowUps = yield* CodexQueuedFollowUps;
-  const rendererCoordinator = yield* CodexRendererConversationCoordinator;
-  const rendererRegistry = yield* CodexRendererConversationRegistry;
+  const mainResume = yield* CodexMainConversationResume;
   const threadDirectory = yield* CodexThreadDirectory;
   const conversations = yield* ConversationEntityMap;
+  const preparations = new Map<
+    string,
+    {
+      senderId: number;
+      preparation: CodexRendererResumePreparation;
+      capability: Effect.Success<
+        ReturnType<CodexThreadDirectory["Service"]["prepareResume"]>
+      >["capability"];
+      response?: ThreadResumeResponse;
+      accepting?: boolean;
+      accepted?: CodexThreadSummary;
+    }
+  >();
+  const prepareRendererResume = (
+    threadId: string,
+    senderId: number,
+    metadata?: Thread | null,
+    overrides?: CanonicalResumeOverrides,
+    options?: ConversationResumePreparationOptions,
+  ) =>
+    Effect.gen(function* () {
+      const prepared = yield* threadDirectory
+        .prepareResume(threadId, metadata, overrides, options)
+        .pipe(Effect.mapError((cause) => new CodexConversationResumeError({ cause })));
+      const receiptId = crypto.randomUUID();
+      const preparation: CodexRendererResumePreparation = {
+        receiptId,
+        nativeRequestId: `thread/resume:${crypto.randomUUID()}`,
+        hostId: prepared.capability.hostId,
+        generation: prepared.capability.generation,
+        supportsPaginatedHistory: prepared.capability.flags.paginatedHistory,
+        params: prepared.params,
+        requestedCwd: prepared.requestedCwd,
+        summary: prepared.summary,
+      };
+      preparations.set(receiptId, { senderId, preparation, capability: prepared.capability });
+      return preparation;
+    });
+  const retryRendererResume = Effect.fn("CodexConversationResumeRuntime.retryRendererResume")(
+    function* (receiptId: string, senderId: number) {
+      const pending = preparations.get(receiptId);
+      if (!pending || pending.senderId !== senderId || pending.accepting || pending.accepted)
+        return yield* new CodexConversationResumeError({
+          cause: new Error("Resume preparation is not available for another attempt"),
+        });
+      pending.preparation = {
+        ...pending.preparation,
+        nativeRequestId: `thread/resume:${crypto.randomUUID()}`,
+      };
+      delete pending.response;
+      return pending.preparation.nativeRequestId;
+    },
+  );
+  const observeRendererResume = (input: {
+    senderId: number;
+    requestId: string;
+    hostId: string;
+    params: unknown;
+    response: ThreadResumeResponse;
+  }) =>
+    Effect.gen(function* () {
+      const pending = [...preparations.values()].find(
+        (entry) => entry.preparation.nativeRequestId === input.requestId,
+      );
+      if (!pending) return;
+      if (
+        pending.senderId !== input.senderId ||
+        pending.preparation.hostId !== input.hostId ||
+        !isDeepStrictEqual(pending.preparation.params, input.params) ||
+        pending.preparation.params.threadId !== input.response.thread.id
+      )
+        return yield* new CodexConversationResumeError({
+          cause: new Error("Prepared resume identity does not match native response"),
+        });
+      pending.response = input.response;
+    });
+  const acceptRendererResume = (receiptId: string, senderId: number) =>
+    admission.withPermits(1)(
+      Effect.gen(function* () {
+        const pending = preparations.get(receiptId);
+        if (!pending || pending.senderId !== senderId || !pending.response)
+          return yield* new CodexConversationResumeError({
+            cause: new Error("No observed native resume for this receipt"),
+          });
+        if (pending.accepted) return pending.accepted;
+        const response = pending.response;
+        return yield* Effect.acquireUseRelease(
+          Effect.sync(() => {
+            pending.accepting = true;
+          }),
+          () =>
+            threadDirectory
+              .acceptRendererResume({
+                threadId: pending.preparation.params.threadId,
+                requestedCwd: pending.preparation.requestedCwd,
+                response,
+                capability: pending.capability,
+              })
+              .pipe(
+                Effect.tap((summary) =>
+                  Effect.sync(() => {
+                    pending.accepted = summary;
+                  }),
+                ),
+                Effect.mapError((cause) => new CodexConversationResumeError({ cause })),
+              ),
+          () =>
+            Effect.sync(() => {
+              pending.accepting = false;
+            }),
+        );
+      }),
+    );
+  const releaseRendererResume = (receiptId: string, senderId: number) => {
+    if (preparations.get(receiptId)?.senderId === senderId) preparations.delete(receiptId);
+  };
 
   const refreshRelationships = (threadId: string): Effect.Effect<void> =>
     relationships.refresh(threadId).pipe(
@@ -143,96 +239,17 @@ export const make: Effect.Effect<
   >();
   const runResume = yield* FiberMap.runtime(resumes)();
   const admission = yield* Semaphore.make(1);
-  const rendererLanes = yield* RcMap.make({
-    lookup: (_threadId: string) => Semaphore.make(1),
-  });
   const active = new Map<string, ActiveResume>();
-
-  const releasePhysical = Effect.fn("CodexConversationResumeRuntime.releaseBuffer")(function* (
-    threadId: string,
-  ) {
-    yield* protocol.releaseResume(threadId);
-    yield* ownerNotificationDrain
-      .awaitCurrent(threadId)
-      .pipe(Effect.mapError((cause) => new CodexConversationResumeError({ cause })));
-    rendererCoordinator.reconcileOwnership(threadId);
-    const revision = conversations.current(threadId)?.read().revision ?? 0;
-    postResumeGoals.release(threadId, revision);
-    return true;
-  });
 
   const runPhysical = Effect.fn("CodexConversationResumeRuntime.runPhysical")(function* (
     demand: CodexConversationResumeDemand,
   ) {
     const threadId = demand.threadId.trim();
     if (!threadId) return yield* invalidIdentity("Thread");
-    const aggregate = conversations.entity(threadId);
-    const hydrateQueue = queuedFollowUps
-      .read(threadId, { projectionTarget: "replica" })
+    const result = yield* mainResume
+      .resume(threadId)
       .pipe(Effect.mapError((cause) => new CodexConversationResumeError({ cause })));
-    const current = aggregate.readSnapshot();
-    if (current && (aggregate.readResumeState() !== "needs_resume" || aggregate.isStreaming())) {
-      const hadBuffer = protocol.hasResume(threadId);
-      if (demand.replayBufferedNotifications && hadBuffer) {
-        yield* releasePhysical(threadId);
-        const revision = aggregate.read().revision;
-        if (!postResumeGoals.release(threadId, revision)) {
-          postResumeGoals.request(threadId, revision);
-        }
-      }
-      yield* hydrateQueue;
-      return aggregate.readSnapshot();
-    }
-
-    const durable = yield* threadDirectory
-      .resolve({ threadId, fidelity: "durable" })
-      .pipe(Effect.mapError((cause) => new CodexConversationResumeError({ cause })));
-    if (durable?.durable.archived) {
-      const archived = yield* threadDirectory
-        .resolve({ threadId, fidelity: "tail" })
-        .pipe(Effect.mapError((cause) => new CodexConversationResumeError({ cause })));
-      const archivedAggregate = conversations.current(threadId);
-      archivedAggregate?.setResumeState("needs_resume");
-      yield* hydrateQueue;
-      rendererCoordinator.reconcileOwnership(threadId);
-      return archivedAggregate?.readSnapshot() ?? archived?.snapshot ?? null;
-    }
-
-    const ownsBuffer = protocol.beginResume(threadId);
-    if (ownsBuffer) aggregate.setResumeState("resuming");
-    const result = yield* threadDirectory.resolve({ threadId, fidelity: "live" }).pipe(
-      Effect.mapError((cause) => new CodexConversationResumeError({ cause })),
-      Effect.result,
-    );
-    if (result._tag === "Failure") {
-      yield* protocol.discardResume(threadId, result.failure);
-      postResumeGoals.clear(threadId);
-      aggregate.setResumeState("needs_resume");
-      aggregate.setStreamRole(null);
-      aggregate.setStreaming(false);
-      rendererCoordinator.reconcileOwnership(threadId);
-      return yield* Effect.fail(result.failure);
-    }
-
-    const snapshot = result.success?.snapshot ?? aggregate.readSnapshot();
-    if (!snapshot) {
-      if (demand.replayBufferedNotifications) yield* releasePhysical(threadId);
-      aggregate.setResumeState("needs_resume");
-      rendererCoordinator.reconcileOwnership(threadId);
-      return null;
-    }
-    aggregate.setResumeState("resumed");
-    yield* hydrateQueue;
-    if (demand.replayBufferedNotifications) {
-      yield* releasePhysical(threadId);
-      const revision = aggregate.read().revision;
-      if (!postResumeGoals.release(threadId, revision)) {
-        postResumeGoals.request(threadId, revision);
-      }
-    } else {
-      postResumeGoals.defer(threadId);
-    }
-    return aggregate.readSnapshot() ?? snapshot;
+    return result.status === "ready" ? result.snapshot : null;
   });
 
   const acquire = (demand: CodexConversationResumeDemand) =>
@@ -335,161 +352,28 @@ export const make: Effect.Effect<
     );
   };
 
-  const runRendererSerial = <A>(
-    threadId: string,
-    operation: Effect.Effect<A, CodexConversationResumeError>,
-  ): Effect.Effect<A, CodexConversationResumeError> =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const lane = yield* RcMap.get(rendererLanes, threadId);
-        return yield* lane.withPermit(operation);
-      }),
-    );
-
-  const followerResult = (
-    threadId: string,
-    ownerClientId: string,
-    state: CodexConversationResumeRendererState,
-  ): Effect.Effect<CodexRendererConversationResumeResult | null, CodexConversationResumeError> => {
-    if (!state.acceptedConversation) return Effect.succeed(null);
-    if (!state.checkpoint) return Effect.fail(unavailableReplica(threadId, "follower"));
-    if (state.threadGeneration === null) {
-      return Effect.fail(unavailableReplica(threadId, "generation"));
-    }
-    return Effect.succeed({
-      role: "follower",
-      conversation: state.acceptedConversation,
-      threadGeneration: state.threadGeneration,
-      revision: state.revision,
-      ownerClientId,
-      checkpoint: state.checkpoint,
-    });
-  };
-
-  const resumeForRenderer = (
-    rawThreadId: string,
-    rawOwnerClientId: string,
-  ): Effect.Effect<CodexRendererConversationResumeResult | null, CodexConversationResumeError> => {
-    const threadId = rawThreadId.trim();
-    const ownerClientId = rawOwnerClientId.trim();
-    if (!threadId) return Effect.fail(invalidIdentity("Thread"));
-    if (!ownerClientId) return Effect.fail(invalidIdentity("renderer client"));
-
-    return runRendererSerial(
-      threadId,
-      Effect.gen(function* () {
-        const readRendererState = (): Effect.Effect<
-          CodexConversationResumeRendererState,
-          CodexConversationResumeError
-        > =>
-          snapshot(threadId).pipe(
-            Effect.map((serializedConversation) => {
-              const state = rendererCoordinator.readRendererState(threadId);
-              return {
-                ...state,
-                freshLaunchOwnerClientId:
-                  freshThreadLaunch.reservation(threadId)?.rendererClientId ?? null,
-                serializedConversation,
-              };
-            }),
-          );
-        const before = yield* readRendererState();
-        if (before.freshLaunchOwnerClientId && !before.ownerClientId) {
-          if (before.freshLaunchOwnerClientId === ownerClientId) return null;
-          return yield* followerResult(threadId, before.freshLaunchOwnerClientId, before);
-        }
-        if (before.ownerClientId && before.ownerClientId !== ownerClientId) {
-          return yield* followerResult(threadId, before.ownerClientId, before);
-        }
-        if (rendererRegistry.isClientDisposed(ownerClientId)) {
-          return yield* Effect.fail(
-            new CodexConversationResumeError({
-              cause: new Error(`Renderer client '${ownerClientId}' is unavailable`),
-            }),
-          );
-        }
-
-        const conversation =
-          before.ownerClientId === ownerClientId && before.resumeState !== "needs_resume"
-            ? (before.acceptedConversation ?? before.serializedConversation)
-            : null;
-        const resumed =
-          conversation ??
-          (yield* resume({
-            threadId,
-            syncDormantConversationSnapshots: false,
-            replayBufferedNotifications: false,
-          }));
-        if (!resumed || resumed.resumeState !== "resumed") return null;
-
-        const afterResume = yield* readRendererState();
-        if (afterResume.ownerClientId && afterResume.ownerClientId !== ownerClientId) {
-          return yield* followerResult(threadId, afterResume.ownerClientId, afterResume);
-        }
-        if (rendererRegistry.isClientDisposed(ownerClientId)) {
-          return yield* Effect.fail(
-            new CodexConversationResumeError({
-              cause: new Error(
-                `Renderer client '${ownerClientId}' became unavailable during resume`,
-              ),
-            }),
-          );
-        }
-
-        const adoption = yield* rendererCoordinator.adoptRendererOwner({
-          conversationId: threadId,
-          ownerClientId,
-        });
-        if (adoption.ownerClientId !== ownerClientId) {
-          return yield* Effect.fail(
-            new CodexConversationResumeError({
-              cause: new Error(
-                `Renderer client '${ownerClientId}' could not adopt conversation '${threadId}'`,
-              ),
-            }),
-          );
-        }
-        if (!adoption.checkpoint) {
-          return yield* Effect.fail(unavailableReplica(threadId, "owner"));
-        }
-        if (adoption.threadGeneration === null) {
-          return yield* Effect.fail(unavailableReplica(threadId, "generation"));
-        }
-        return {
-          role: "owner",
-          conversation: resumed,
-          threadGeneration: adoption.threadGeneration,
-          revision: adoption.revision,
-          checkpoint: adoption.checkpoint,
-        };
-      }),
-    );
-  };
-
-  const releaseBuffer = (
-    rawThreadId: string,
-  ): Effect.Effect<boolean, CodexConversationResumeError> => {
-    const threadId = rawThreadId.trim();
-    if (!threadId) return Effect.fail(invalidIdentity("Thread"));
-    return runRendererSerial(threadId, releasePhysical(threadId));
-  };
-
   const clear = (threadId: string): void => {
     active.delete(threadId);
+    for (const [receiptId, pending] of preparations)
+      if (pending.preparation.params.threadId === threadId) preparations.delete(receiptId);
     runResume(threadId, Effect.succeed(null));
   };
 
   yield* Effect.addFinalizer(() =>
     Effect.sync(() => {
       active.clear();
+      preparations.clear();
     }),
   );
 
   return CodexConversationResumeRuntime.of({
+    prepareRendererResume,
+    retryRendererResume,
+    observeRendererResume,
+    acceptRendererResume,
+    releaseRendererResume,
     resume,
     snapshot,
-    resumeForRenderer,
-    releaseBuffer,
     clear,
   });
 });

@@ -24,7 +24,7 @@ import {
 import { CodexRpcError } from "../src/main/codex-runtime/CodexRpcError";
 import type { CodexRuntimeError } from "../src/main/codex-runtime/CodexRuntimeError";
 import * as CodexSessionTransport from "../src/main/platform/node/CodexSessionTransport";
-import { standaloneCodexAppServerArgs } from "../src/shared/codex-app-server-launch";
+import { codexCliAppServerArgs } from "../src/shared/codex-app-server-launch";
 
 export interface CodexProbeSessionOptions {
   readonly additionalSearchPaths?: readonly string[];
@@ -146,7 +146,7 @@ const acquireProbeClient = (
         hostId: "probe",
         generation: 1,
         command: options.binaryPath,
-        args: [...(options.args ?? standaloneCodexAppServerArgs())],
+        args: [...(options.args ?? codexCliAppServerArgs())],
         env: withSearchPath(options.env, options.additionalSearchPaths ?? []),
         forceTermination: "2 seconds",
         initializeParams: {

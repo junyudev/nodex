@@ -4,6 +4,7 @@ import { ActivitySpinnerIcon, PlayIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { formatElapsedSince } from "@/lib/elapsed-time";
 import { cn } from "@/lib/utils";
+import { resolveCodexElectronDisplayThreadTitle } from "../../../../shared/codex-thread-title";
 import type { ThreadSectionLinkedThreadState } from "./thread-section-runtime";
 
 function normalizeString(value: unknown): string {
@@ -96,7 +97,11 @@ export function ThreadSectionRow({
   const [draftLabel, setDraftLabel] = useState(() => normalizeString(label));
   const inputRef = useRef<HTMLInputElement>(null);
   const [now, setNow] = useState(() => Date.now());
-  const threadName = thread?.threadName?.trim() || thread?.threadPreview?.trim() || threadId;
+  const threadName = resolveCodexElectronDisplayThreadTitle({
+    threadName: thread?.threadName,
+    threadPreview: thread?.threadPreview,
+    fallback: threadId,
+  });
   const labelPlaceholder = useMemo(() => deriveFallbackLabel(blockId), [blockId]);
   const stateLabel = resolveThreadStateLabel(thread);
   const timeLabel = formatRelativeTime(thread?.updatedAt ?? 0, now);

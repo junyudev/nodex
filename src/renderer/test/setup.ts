@@ -153,6 +153,9 @@ function createDefaultRendererApi(): NonNullable<Window["api"]> {
           values: { ...persistedAtomValues },
         };
       }
+      if (channel === "codex:app-server:request") {
+        return { type: "result", result: undefined };
+      }
       if (channel !== "persisted-atom:update") return undefined;
 
       const mutation = args[0] as {

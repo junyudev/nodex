@@ -1,5 +1,6 @@
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import type { CodexCanonicalItem } from "./codex-conversation-state/codex-conversation-state";
+import { projectCodexMarkdownToPlainText } from "./codex-markdown-text";
 
 /** A display identity is stable even when one tool call asks several questions. */
 export interface CodexAsyncQuestion {
@@ -133,5 +134,7 @@ export function collectCodexAsyncQuestionAnswers(
 export function formatCodexAsyncQuestionReplies(
   replies: readonly CodexAsyncQuestionReply[],
 ): string {
-  return replies.map((reply) => `**${reply.question}**\n${reply.answer}`).join("\n\n");
+  return replies
+    .map((reply) => `**${projectCodexMarkdownToPlainText(reply.question)}**\n${reply.answer}`)
+    .join("\n\n");
 }

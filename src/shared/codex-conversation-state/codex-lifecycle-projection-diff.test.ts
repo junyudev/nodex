@@ -42,25 +42,21 @@ function buildTurnParams(): CodexCanonicalTurnParams {
 
 function buildTurn(
   items: readonly CodexCanonicalItem[],
-  status: CodexCanonicalTurnState["protocol"]["status"] = "inProgress",
+  status: CodexCanonicalTurnState["status"] = "inProgress",
 ): CodexCanonicalTurnState {
   return {
-    protocol: {
-      id: TURN_ID,
-      itemsView: "full",
-      status,
-      error: null,
-      durationMs: null,
-    },
+    turnId: TURN_ID,
+    itemsView: "full",
+    status,
+    error: null,
+    durationMs: null,
     items,
-    sidecar: {
-      params: buildTurnParams(),
-      diff: null,
-      turnStartedAtMs: 1_000,
-      completedAtMs: null,
-      firstTurnWorkItemStartedAtMs: 1_100,
-      finalAssistantStartedAtMs: null,
-    },
+    params: buildTurnParams(),
+    diff: null,
+    turnStartedAtMs: 1000,
+    completedAtMs: null,
+    firstTurnWorkItemStartedAtMs: 1100,
+    finalAssistantStartedAtMs: null,
   };
 }
 
@@ -68,7 +64,12 @@ function buildCommand(
   id: string,
   status: "inProgress" | "completed" = "inProgress",
   output: string | null = null,
-): Extract<ThreadItem, { type: "commandExecution" }> {
+): Extract<
+  ThreadItem,
+  {
+    type: "commandExecution";
+  }
+> {
   return {
     type: "commandExecution",
     id,
@@ -85,8 +86,7 @@ function buildCommand(
     durationMs: status === "completed" ? 50 : null,
   };
 }
-
-function project(item: CodexCanonicalItem, observedAtMs = 2_000): CodexItemView {
+function project(item: CodexCanonicalItem, observedAtMs = 2000): CodexItemView {
   const projected = projectCodexCanonicalTurnItemViews({
     threadId: THREAD_ID,
     turnId: TURN_ID,
@@ -114,39 +114,44 @@ function overlay(id: string): CodexItemView {
     status: "inProgress",
     markdownText: "Reviewing command",
     rawItem: { id, type: "automaticApprovalReview" },
-    createdAt: 1_500,
-    updatedAt: 1_500,
+    createdAt: 1500,
+    updatedAt: 1500,
   };
 }
 
 describe("scoped canonical lifecycle projection diff", () => {
   test("rebuilds a complete turn from params before raw items and suppresses the server echo", () => {
-    const content: Extract<ThreadItem, { type: "userMessage" }>["content"] = [
-      { type: "text", text: "Inspect the exact projection", text_elements: [] },
-    ];
+    const content: Extract<
+      ThreadItem,
+      {
+        type: "userMessage";
+      }
+    >["content"] = [{ type: "text", text: "Inspect the exact projection", text_elements: [] }];
     const serverEcho = {
       type: "userMessage",
       id: "server-user-echo",
       content,
       clientId: "client-user-input",
-    } satisfies Extract<ThreadItem, { type: "userMessage" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "userMessage";
+      }
+    >;
     const command = buildCommand("command-after-input");
     const existingCommand = {
       ...project(command),
       approvalRequestId: "approval-command",
-      createdAt: 1_250,
+      createdAt: 1250,
     } satisfies CodexItemView;
     const reviewOverlay = overlay("review-overlay");
     const baseTurn = buildTurn([serverEcho, command]);
     const afterTurn = {
       ...baseTurn,
-      sidecar: {
-        ...baseTurn.sidecar,
-        params: {
-          ...baseTurn.sidecar.params,
-          clientUserMessageId: "client-user-input",
-          input: content,
-        },
+      params: {
+        ...baseTurn.params,
+        clientUserMessageId: "client-user-input",
+        input: content,
       },
     } satisfies CodexCanonicalTurnState;
 
@@ -160,7 +165,7 @@ describe("scoped canonical lifecycle projection diff", () => {
         transcript(reviewOverlay, 1),
         transcript(existingCommand, 2),
       ],
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(result.views.map((view) => view.itemId)).toEqual([
@@ -170,7 +175,7 @@ describe("scoped canonical lifecycle projection diff", () => {
     ]);
     expect(result.views[0]?.markdownText).toBe("Inspect the exact projection");
     expect(result.views[2]?.approvalRequestId).toBe("approval-command");
-    expect(result.views[2]?.createdAt).toBe(1_250);
+    expect(result.views[2]?.createdAt).toBe(1250);
     expect(result.transcript.map((entry) => entry.sequence)).toEqual([0, 1, 2]);
     expect(result.itemIds).toEqual(["server-user-echo", "command-after-input"]);
   });
@@ -185,17 +190,12 @@ describe("scoped canonical lifecycle projection diff", () => {
           setup: null,
         },
       ]),
-      protocol: {
-        ...buildTurn([]).protocol,
-        id: null,
-      },
-      sidecar: {
-        ...buildTurn([]).sidecar,
-        params: {
-          ...buildTurnParams(),
-          clientUserMessageId: "client-local",
-          input: [{ type: "text", text: "Implement locally", text_elements: [] }],
-        },
+
+      turnId: null,
+      params: {
+        ...buildTurnParams(),
+        clientUserMessageId: "client-local",
+        input: [{ type: "text", text: "Implement locally", text_elements: [] }],
       },
     } satisfies CodexCanonicalTurnState;
 
@@ -206,7 +206,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn,
       currentViews: [],
       currentTranscript: [],
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(result.views.map((view) => [view.itemId, view.turnId])).toStrictEqual([
@@ -220,25 +220,30 @@ describe("scoped canonical lifecycle projection diff", () => {
   });
 
   test("rebinds the optimistic params row by client id without duplicating it", () => {
-    const content: Extract<ThreadItem, { type: "userMessage" }>["content"] = [
-      { type: "text", text: "Keep optimistic identity", text_elements: [] },
-    ];
+    const content: Extract<
+      ThreadItem,
+      {
+        type: "userMessage";
+      }
+    >["content"] = [{ type: "text", text: "Keep optimistic identity", text_elements: [] }];
     const serverEcho = {
       type: "userMessage",
       id: "server-user-echo",
       content,
       clientId: "client-optimistic",
-    } satisfies Extract<ThreadItem, { type: "userMessage" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "userMessage";
+      }
+    >;
     const baseTurn = buildTurn([serverEcho]);
     const afterTurn = {
       ...baseTurn,
-      sidecar: {
-        ...baseTurn.sidecar,
-        params: {
-          ...baseTurn.sidecar.params,
-          clientUserMessageId: "client-optimistic",
-          input: content,
-        },
+      params: {
+        ...baseTurn.params,
+        clientUserMessageId: "client-optimistic",
+        input: content,
       },
     } satisfies CodexCanonicalTurnState;
     const optimisticView = {
@@ -257,8 +262,8 @@ describe("scoped canonical lifecycle projection diff", () => {
         clientUserMessageId: "client-optimistic",
         content,
       },
-      createdAt: 1_234,
-      updatedAt: 1_234,
+      createdAt: 1234,
+      updatedAt: 1234,
     } satisfies CodexItemView;
     const optimisticTranscript = {
       ...transcript(optimisticView, 0),
@@ -271,30 +276,30 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn,
       currentViews: [optimisticView],
       currentTranscript: [optimisticTranscript],
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(result.views.map((view) => view.itemId)).toEqual([`${TURN_ID}:input`]);
     expect(result.views[0]?.turnId).toBe(TURN_ID);
-    expect(result.views[0]?.createdAt).toBe(1_234);
+    expect(result.views[0]?.createdAt).toBe(1234);
     expect(result.transcript[0]?.source).toBe("bootstrap");
     expect(result.transcript[0]?.sequence).toBe(0);
   });
 
   test("suppresses a matching user-message echo that arrives after optimistic rebind", () => {
-    const content: Extract<ThreadItem, { type: "userMessage" }>["content"] = [
-      { type: "text", text: "Edited prompt", text_elements: [] },
-    ];
+    const content: Extract<
+      ThreadItem,
+      {
+        type: "userMessage";
+      }
+    >["content"] = [{ type: "text", text: "Edited prompt", text_elements: [] }];
     const baseTurn = buildTurn([]);
     const reboundTurn = {
       ...baseTurn,
-      sidecar: {
-        ...baseTurn.sidecar,
-        params: {
-          ...baseTurn.sidecar.params,
-          clientUserMessageId: "client-edited-prompt",
-          input: content,
-        },
+      params: {
+        ...baseTurn.params,
+        clientUserMessageId: "client-edited-prompt",
+        input: content,
       },
     } satisfies CodexCanonicalTurnState;
     const optimistic = applyCodexLifecycleProjectionDiff({
@@ -303,19 +308,19 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: reboundTurn,
       currentViews: [],
       currentTranscript: [],
-      observedAtMs: 2_000,
+      observedAtMs: 2000,
     });
-    const updatedContent: Extract<ThreadItem, { type: "userMessage" }>["content"] = [
-      { type: "text", text: "Updated edited prompt", text_elements: [] },
-    ];
+    const updatedContent: Extract<
+      ThreadItem,
+      {
+        type: "userMessage";
+      }
+    >["content"] = [{ type: "text", text: "Updated edited prompt", text_elements: [] }];
     const afterParamsChange = {
       ...reboundTurn,
-      sidecar: {
-        ...reboundTurn.sidecar,
-        params: {
-          ...reboundTurn.sidecar.params,
-          input: updatedContent,
-        },
+      params: {
+        ...reboundTurn.params,
+        input: updatedContent,
       },
     } satisfies CodexCanonicalTurnState;
     const paramsChanged = applyCodexLifecycleProjectionDiff({
@@ -324,7 +329,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: afterParamsChange,
       currentViews: optimistic.views,
       currentTranscript: optimistic.transcript,
-      observedAtMs: 2_500,
+      observedAtMs: 2500,
     });
     expect(paramsChanged.views.map((view) => view.markdownText)).toEqual(["Updated edited prompt"]);
 
@@ -333,7 +338,12 @@ describe("scoped canonical lifecycle projection diff", () => {
       id: "server-user-echo",
       clientId: "client-edited-prompt",
       content,
-    } satisfies Extract<ThreadItem, { type: "userMessage" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "userMessage";
+      }
+    >;
     const afterEcho = {
       ...reboundTurn,
       items: [serverEcho],
@@ -345,7 +355,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: afterEcho,
       currentViews: optimistic.views,
       currentTranscript: optimistic.transcript,
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
       lifecycleStatus: "inProgress",
     });
 
@@ -367,7 +377,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: afterActivity,
       currentViews: result.views,
       currentTranscript: result.transcript,
-      observedAtMs: 4_000,
+      observedAtMs: 4000,
       lifecycleStatus: "inProgress",
     });
 
@@ -393,15 +403,15 @@ describe("scoped canonical lifecycle projection diff", () => {
     const startedB = buildCommand("command-b");
     const completedA = buildCommand("command-a", "completed", "final-a\n");
     const streamedB = {
-      ...project(startedB, 1_200),
+      ...project(startedB, 1200),
       aggregatedOutput: "streamed-b\n",
       rawItem: { ...startedB, aggregatedOutput: "streamed-b\n" },
     } satisfies CodexItemView;
     const review = overlay("review-overlay");
     const currentA = {
-      ...project(startedA, 1_100),
+      ...project(startedA, 1100),
       approvalRequestId: "approval-a",
-      createdAt: 1_100,
+      createdAt: 1100,
     } satisfies CodexItemView;
     const currentTranscript = [
       transcript(currentA, 0),
@@ -415,7 +425,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: buildTurn([completedA, startedB]),
       currentViews: [currentA, streamedB, review],
       currentTranscript,
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(result.changedRawOwnerIds).toEqual(["command-a"]);
@@ -427,7 +437,7 @@ describe("scoped canonical lifecycle projection diff", () => {
     ]);
     expect(result.views[0]?.aggregatedOutput).toBe("final-a\n");
     expect(result.views[0]?.approvalRequestId).toBe("approval-a");
-    expect(result.views[0]?.createdAt).toBe(1_100);
+    expect(result.views[0]?.createdAt).toBe(1100);
     expect(result.views[1]).toBe(streamedB);
     expect(result.views[1]?.aggregatedOutput).toBe("streamed-b\n");
     expect(result.views[2]).toBe(review);
@@ -439,9 +449,9 @@ describe("scoped canonical lifecycle projection diff", () => {
     const started = buildCommand("command-output");
     const withOutput = { ...started, aggregatedOutput: "streamed output\n" };
     const current = {
-      ...project(started, 1_200),
-      createdAt: 1_100,
-      updatedAt: 1_250,
+      ...project(started, 1200),
+      createdAt: 1100,
+      updatedAt: 1250,
     } satisfies CodexItemView;
 
     const result = applyCodexLifecycleProjectionDiff({
@@ -450,44 +460,43 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: buildTurn([withOutput]),
       currentViews: [current],
       currentTranscript: [transcript(current, 0)],
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
       preserveExistingUpdatedAt: true,
     });
 
     expect(result.views[0]?.aggregatedOutput).toBe("streamed output\n");
-    expect(result.views[0]?.createdAt).toBe(1_100);
-    expect(result.views[0]?.updatedAt).toBe(1_250);
+    expect(result.views[0]?.createdAt).toBe(1100);
+    expect(result.views[0]?.updatedAt).toBe(1250);
   });
 
-  test("reprojects statusless items when only the lifecycle sidecar changes", () => {
+  test("reprojects statusless items when only the lifecycle metadata changes", () => {
     const reasoning = {
       type: "reasoning",
       id: "reasoning-only-status",
       summary: ["Checking the patch stream."],
       content: [],
-    } satisfies Extract<ThreadItem, { type: "reasoning" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "reasoning";
+      }
+    >;
     const base = buildTurn([reasoning]);
     const beforeTurn = {
       ...base,
-      sidecar: {
-        ...base.sidecar,
-        lifecycleStatusByItemId: { [reasoning.id]: "inProgress" as const },
-      },
+      lifecycleStatusByItemId: { [reasoning.id]: "inProgress" as const },
     } satisfies CodexCanonicalTurnState;
     const afterTurn = {
       ...beforeTurn,
-      sidecar: {
-        ...beforeTurn.sidecar,
-        lifecycleStatusByItemId: { [reasoning.id]: "completed" as const },
-      },
+      lifecycleStatusByItemId: { [reasoning.id]: "completed" as const },
     } satisfies CodexCanonicalTurnState;
     const currentViews = projectCodexCanonicalTurnItemViews({
       threadId: THREAD_ID,
       turnId: TURN_ID,
       items: beforeTurn.items,
-      observedAtMs: 2_000,
-      turnStatus: beforeTurn.protocol.status,
-      lifecycleStatusByItemId: beforeTurn.sidecar.lifecycleStatusByItemId,
+      observedAtMs: 2000,
+      turnStatus: beforeTurn.status,
+      lifecycleStatusByItemId: beforeTurn.lifecycleStatusByItemId,
       isBackgroundSubagentsEnabled: true,
     });
 
@@ -497,7 +506,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn,
       currentViews,
       currentTranscript: currentViews.map(transcript),
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(result.changedRawOwnerIds).toEqual([]);
@@ -514,14 +523,19 @@ describe("scoped canonical lifecycle projection diff", () => {
       phase: null,
       memoryCitation: null,
       delivery: null,
-    } satisfies Extract<ThreadItem, { type: "agentMessage" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "agentMessage";
+      }
+    >;
     const streamed = { ...started, text: "partial" };
     const current = {
-      ...project(started, 1_200),
+      ...project(started, 1200),
       type: "message",
       status: "inProgress",
-      createdAt: 1_100,
-      updatedAt: 1_250,
+      createdAt: 1100,
+      updatedAt: 1250,
     } satisfies CodexItemView;
 
     const result = applyCodexLifecycleProjectionDiff({
@@ -530,14 +544,14 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: buildTurn([streamed]),
       currentViews: [current],
       currentTranscript: [transcript(current, 0)],
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
       preserveExistingUpdatedAt: true,
     });
 
     expect(result.views[0]?.markdownText).toBe("partial");
     expect(result.views[0]?.status).toBe("inProgress");
-    expect(result.views[0]?.createdAt).toBe(1_100);
-    expect(result.views[0]?.updatedAt).toBe(1_250);
+    expect(result.views[0]?.createdAt).toBe(1100);
+    expect(result.views[0]?.updatedAt).toBe(1250);
   });
 
   test("retains hidden raw identities and exact raw order while removing their former visible row", () => {
@@ -548,7 +562,12 @@ describe("scoped canonical lifecycle projection diff", () => {
       type: "enteredReviewMode",
       id: "target",
       review: "Review target",
-    } satisfies Extract<ThreadItem, { type: "enteredReviewMode" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "enteredReviewMode";
+      }
+    >;
     const currentViews = [project(before), project(visibleTarget), project(after)];
 
     const result = applyCodexLifecycleProjectionDiff({
@@ -557,7 +576,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: buildTurn([before, hiddenTarget, after]),
       currentViews,
       currentTranscript: currentViews.map(transcript),
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(result.changedRawOwnerIds).toEqual(["target"]);
@@ -588,7 +607,12 @@ describe("scoped canonical lifecycle projection diff", () => {
       phase: null,
       memoryCitation: null,
       delivery: null,
-    } satisfies Extract<ThreadItem, { type: "agentMessage" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "agentMessage";
+      }
+    >;
     const streamedAssistant = {
       ...project(assistant),
       markdownText: "streamed assistant text",
@@ -602,7 +626,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: buildTurn([startedCompaction, assistant]),
       currentViews: [currentPending, streamedAssistant],
       currentTranscript: [transcript(currentPending, 0), transcript(streamedAssistant, 1)],
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(result.changedRawOwnerIds).toEqual([
@@ -630,7 +654,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: buildTurn([firstCompleted, secondStarted]),
       currentViews: [current],
       currentTranscript: [transcript(current, 0)],
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(
@@ -659,7 +683,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: buildTurn([second, first]),
       currentViews,
       currentTranscript: currentViews.map(transcript),
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(result.changedRawOwnerIds).toEqual(["first", "second"]);
@@ -687,7 +711,12 @@ describe("scoped canonical lifecycle projection diff", () => {
       result: null,
       error: null,
       durationMs: null,
-    } satisfies Extract<ThreadItem, { type: "mcpToolCall" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "mcpToolCall";
+      }
+    >;
     const compaction = {
       type: "contextCompaction",
       id: "running-compaction",
@@ -699,7 +728,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       id: "running-review",
       targetItemId: command.id,
       action: { type: "applyPatch", cwd: "/workspace/project", files: [] },
-      startedAtMs: 1_200,
+      startedAtMs: 1200,
       completedAtMs: null,
       event: null,
       status: "inProgress",
@@ -715,13 +744,18 @@ describe("scoped canonical lifecycle projection diff", () => {
       phase: "final_answer",
       memoryCitation: null,
       delivery: null,
-    } satisfies Extract<ThreadItem, { type: "agentMessage" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "agentMessage";
+      }
+    >;
     const items = [command, mcp, compaction, review, assistant] as const;
     const currentViews = projectCodexCanonicalTurnItemViews({
       threadId: THREAD_ID,
       turnId: TURN_ID,
       items,
-      observedAtMs: 2_000,
+      observedAtMs: 2000,
       turnStatus: "inProgress",
       isBackgroundSubagentsEnabled: true,
     });
@@ -732,7 +766,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: buildTurn(items, "interrupted"),
       currentViews,
       currentTranscript: currentViews.map(transcript),
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
     const byId = new Map(result.views.map((view) => [view.itemId, view]));
 
@@ -761,7 +795,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: buildTurn([completedA, commandB]),
       currentViews: [currentA, review, currentB],
       currentTranscript: [transcript(currentA, 0), transcript(review, 1), transcript(currentB, 2)],
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(result.views.map((view) => view.itemId)).toEqual([
@@ -775,25 +809,25 @@ describe("scoped canonical lifecycle projection diff", () => {
   test("rebuilds params identity while rebinding unchanged rows and overlays", () => {
     const command = buildCommand("command-a");
     const review = overlay("review-overlay");
-    const content: Extract<ThreadItem, { type: "userMessage" }>["content"] = [
-      { type: "text", text: "Bind this occurrence", text_elements: [] },
-    ];
+    const content: Extract<
+      ThreadItem,
+      {
+        type: "userMessage";
+      }
+    >["content"] = [{ type: "text", text: "Bind this occurrence", text_elements: [] }];
     const base = buildTurn([command]);
     const before = {
       ...base,
-      protocol: { ...base.protocol, id: null },
-      sidecar: {
-        ...base.sidecar,
-        params: {
-          ...base.sidecar.params,
-          clientUserMessageId: "client-rebind",
-          input: content,
-        },
+      turnId: null,
+      params: {
+        ...base.params,
+        clientUserMessageId: "client-rebind",
+        input: content,
       },
     } satisfies CodexCanonicalTurnState;
     const after = {
       ...before,
-      protocol: { ...before.protocol, id: TURN_ID },
+      turnId: TURN_ID,
     } satisfies CodexCanonicalTurnState;
     const optimistic = applyCodexLifecycleProjectionDiff({
       threadId: THREAD_ID,
@@ -802,7 +836,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: before,
       currentViews: [],
       currentTranscript: [],
-      observedAtMs: 2_000,
+      observedAtMs: 2000,
     });
     const currentReview = { ...review, turnId: null };
     const currentViews = [...optimistic.views, currentReview];
@@ -817,7 +851,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: after,
       currentViews,
       currentTranscript,
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(result.views.map((view) => view.itemId)).toStrictEqual([
@@ -839,7 +873,12 @@ describe("scoped canonical lifecycle projection diff", () => {
       type: "hookPrompt",
       id: "hook-feedback",
       fragments: [{ text: "Please adjust", hookRunId: "hook-run" }],
-    } satisfies Extract<ThreadItem, { type: "hookPrompt" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "hookPrompt";
+      }
+    >;
     const generatedImage = {
       type: "imageGeneration",
       id: "generated-image",
@@ -856,7 +895,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: buildTurn([hookPrompt, generatedImage]),
       currentViews: [],
       currentTranscript: [],
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(result.views.map((view) => view.itemId)).toEqual(["hook-feedback", "generated-image"]);
@@ -869,22 +908,37 @@ describe("scoped canonical lifecycle projection diff", () => {
       type: "imageView",
       id: "image-1",
       path: "/tmp/1.png",
-    } satisfies Extract<ThreadItem, { type: "imageView" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "imageView";
+      }
+    >;
     const second = {
       type: "imageView",
       id: "image-2",
       path: "/tmp/2.png",
-    } satisfies Extract<ThreadItem, { type: "imageView" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "imageView";
+      }
+    >;
     const hidden = {
       type: "sleep",
       id: "sleep-between-images",
       durationMs: 1,
-    } satisfies Extract<ThreadItem, { type: "sleep" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "sleep";
+      }
+    >;
     const currentViews = projectCodexCanonicalTurnItemViews({
       threadId: THREAD_ID,
       turnId: TURN_ID,
       items: [first, second],
-      observedAtMs: 2_000,
+      observedAtMs: 2000,
       turnStatus: "inProgress",
     });
 
@@ -894,7 +948,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: buildTurn([first, hidden, second]),
       currentViews,
       currentTranscript: currentViews.map(transcript),
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(result.changedRawOwnerIds).toEqual(["sleep-between-images"]);
@@ -910,7 +964,12 @@ describe("scoped canonical lifecycle projection diff", () => {
       query: "projection dependency",
       action: null,
       results: null,
-    } satisfies Extract<ThreadItem, { type: "webSearch" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "webSearch";
+      }
+    >;
     const command = buildCommand("new-last-work");
     const currentWeb = project(webSearch);
 
@@ -920,7 +979,7 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: buildTurn([webSearch, command]),
       currentViews: [currentWeb],
       currentTranscript: [transcript(currentWeb, 0)],
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
 
     expect(result.changedRawOwnerIds).toEqual(["new-last-work"]);
@@ -935,23 +994,33 @@ describe("scoped canonical lifecycle projection diff", () => {
         { type: "unknown", command: "first" },
         { type: "unknown", command: "second" },
       ],
-    } satisfies Extract<ThreadItem, { type: "commandExecution" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "commandExecution";
+      }
+    >;
     const completed = {
       ...started,
       status: "completed",
       aggregatedOutput: "done\n",
       exitCode: 0,
       durationMs: 5,
-    } satisfies Extract<ThreadItem, { type: "commandExecution" }>;
+    } satisfies Extract<
+      ThreadItem,
+      {
+        type: "commandExecution";
+      }
+    >;
     const currentViews = projectCodexCanonicalTurnItemViews({
       threadId: THREAD_ID,
       turnId: TURN_ID,
       items: [started],
-      observedAtMs: 1_000,
+      observedAtMs: 1000,
       turnStatus: "inProgress",
     }).map((view, index) => ({
       ...view,
-      createdAt: 1_100 + index,
+      createdAt: 1100 + index,
     }));
 
     const result = applyCodexLifecycleProjectionDiff({
@@ -960,10 +1029,9 @@ describe("scoped canonical lifecycle projection diff", () => {
       afterTurn: buildTurn([completed]),
       currentViews,
       currentTranscript: currentViews.map(transcript),
-      observedAtMs: 3_000,
+      observedAtMs: 3000,
     });
-
-    expect(result.views.map((view) => view.createdAt)).toEqual([1_100, 1_101]);
+    expect(result.views.map((view) => view.createdAt)).toEqual([1100, 1101]);
     expect(result.views.map((view) => view.itemId)).toEqual(["split-command:0", "split-command:1"]);
   });
 });
@@ -972,30 +1040,27 @@ test("hook-only updates preserve transcript identities for both incremental and 
   const before = buildTurn([buildCommand("command")]);
   const after: CodexCanonicalTurnState = {
     ...before,
-    sidecar: {
-      ...before.sidecar,
-      hookRuns: [
-        {
+    hookRuns: [
+      {
+        id: "hook",
+        run: {
           id: "hook",
-          run: {
-            id: "hook",
-            eventName: "sessionStart",
-            source: "user",
-            handlerType: "command",
-            executionMode: "sync",
-            scope: "turn",
-            sourcePath: "",
-            displayOrder: 0n,
-            status: "completed",
-            statusMessage: "Context loaded",
-            startedAt: 1n,
-            completedAt: 2n,
-            durationMs: 1n,
-            entries: [{ kind: "context", text: "Injected context" }],
-          },
+          eventName: "sessionStart",
+          source: "user",
+          handlerType: "command",
+          executionMode: "sync",
+          scope: "turn",
+          sourcePath: "",
+          displayOrder: 0n,
+          status: "completed",
+          statusMessage: "Context loaded",
+          startedAt: 1n,
+          completedAt: 2n,
+          durationMs: 1n,
+          entries: [{ kind: "context", text: "Injected context" }],
         },
-      ],
-    },
+      },
+    ],
   };
   const baseline = applyCodexLifecycleProjectionDiff({
     threadId: THREAD_ID,
@@ -1024,40 +1089,34 @@ test("a blocked prompt hook refreshes the existing user delivery state without a
   const initial = buildTurn([]);
   const before: CodexCanonicalTurnState = {
     ...initial,
-    sidecar: {
-      ...initial.sidecar,
-      params: {
-        ...initial.sidecar.params,
-        input: [{ type: "text", text: "Run the task", text_elements: [] }],
-      },
+    params: {
+      ...initial.params,
+      input: [{ type: "text", text: "Run the task", text_elements: [] }],
     },
   };
   const after: CodexCanonicalTurnState = {
     ...before,
-    sidecar: {
-      ...before.sidecar,
-      hookRuns: [
-        {
+    hookRuns: [
+      {
+        id: "blocked",
+        run: {
           id: "blocked",
-          run: {
-            id: "blocked",
-            eventName: "userPromptSubmit",
-            source: "project",
-            handlerType: "command",
-            executionMode: "sync",
-            scope: "turn",
-            sourcePath: "",
-            displayOrder: 0n,
-            status: "blocked",
-            statusMessage: null,
-            startedAt: 1n,
-            completedAt: 2n,
-            durationMs: 1n,
-            entries: [],
-          },
+          eventName: "userPromptSubmit",
+          source: "project",
+          handlerType: "command",
+          executionMode: "sync",
+          scope: "turn",
+          sourcePath: "",
+          displayOrder: 0n,
+          status: "blocked",
+          statusMessage: null,
+          startedAt: 1n,
+          completedAt: 2n,
+          durationMs: 1n,
+          entries: [],
         },
-      ],
-    },
+      },
+    ],
   };
   const baseline = applyCodexLifecycleProjectionDiff({
     threadId: THREAD_ID,

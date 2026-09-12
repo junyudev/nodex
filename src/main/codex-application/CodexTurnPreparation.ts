@@ -1,32 +1,38 @@
+import { isReviewDiffCommentAttachment } from "../../shared/codex-canonical-item-projector";
+import type { ConversationFollowerTurnStart } from "../../shared/codex-thread-follower-request";
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
+import { latestAssignedConversationTurn } from "../../shared/codex-conversation-state/codex-turn-selectors";
+import { resolveConversationTurnPermissions } from "../../shared/codex-conversation-state/codex-turn-permissions";
+import type { CodexPreparedTurnExecution } from "../../shared/codex-conversation-state/codex-turn-execution";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { MainConfig } from "../app/MainConfig";
 import { buildNodexCliBootstrap } from "../platform/node/NodexCliBootstrap";
 import { randomUUID } from "node:crypto";
 import * as path from "node:path";
-import type { TurnStartParams, TurnSteerParams } from "@nodex/codex-app-server-protocol/v2";
+import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2";
+import type { CanonicalOwnerSteerInput } from "../../shared/codex-conversation-state/codex-owner-steer";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { parseAssetSource } from "../../shared/assets";
-import { dedupeCodexLiveFileAttachments } from "../../shared/codex-live-file-attachments";
+import {
+  dedupeCodexLiveFileAttachments,
+  isCodexLiveFileAttachment,
+} from "../../shared/codex-live-file-attachments";
 import { prepareCodexPrompt } from "../../shared/codex-prompt-preparation";
 import {
   decodeCodexAsyncQuestionReplies,
   expandCodexAsyncQuestions,
 } from "../../shared/codex-async-user-input";
-import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
 import {
   parseCodexReasoningSummary,
   resolveCodexReasoningSummary,
 } from "../../shared/codex-reasoning-summary-policy";
-import { buildCodexSteeringCompareKey } from "../../shared/codex-conversation-state/codex-steering-compare";
 import type {
   CodexCanonicalWorktreeInitItem,
   CodexCanonicalLiveTurnParams,
-  CodexCanonicalHydratedPermissionContext,
   CodexCollaborationModeKind,
-  CodexConversationThreadSettings,
   CodexLiveFileAttachment,
   CodexPreparedPrompt,
   CodexPromptInput,
@@ -37,10 +43,10 @@ import type {
   CodexServiceTier,
   CodexSteerTurnInput,
 } from "../../shared/types";
-import type { CodexCanonicalSteeringUserMessageItem } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { CodexInputAssets } from "./CodexInputAssets";
-import { CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
+import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
+import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
 import { isNodexAgentTurnReadOnly } from "../codex/nodex-agent-access";
 import { buildTurnPermissionOverrides } from "../codex/codex-permission-resolver";
@@ -51,12 +57,50 @@ import {
 import { CodexAttachments } from "./CodexAttachments";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { CodexConversationContext } from "./CodexConversationContext";
-import { CodexPermissions, resolveCanonicalPermissionContext } from "./CodexPermissions";
+import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
+import { CodexPermissions } from "./CodexPermissions";
 import { CodexPreferences } from "./CodexPreferences";
+import { parseCodexPersonality } from "./CodexPersonality";
 import { CodexThreadSettingsRuntime } from "./CodexThreadSettingsRuntime";
 import type { CodexTurnPresentationClaim } from "./CodexTurnPresentation";
+import {
+  resolveCodexPreparedWorkspaceKind,
+  resolveExistingCodexProjectlessWorkspace,
+  prepareCodexTurnWorkspace,
+  prepareCodexTurnWorkspaceCommit,
+  shouldMaterializeCodexProjectlessWorkspace,
+  type CodexTurnWorkspaceCommit,
+} from "./CodexTurnWorkspace";
+import type { CodexConversationWorkspace } from "./CodexConversationContext";
 
-export interface CodexTurnStartPlan {
+/** Preserve explicit null effort and full collaboration settings across owner transfer. */
+export function resolveNativeTurnExecutionSettings(
+  request: TurnStartParams,
+  inherited: {
+    model: string | null;
+    effort: CodexReasoningEffort | null;
+    collaborationMode: TurnStartParams["collaborationMode"];
+  },
+): {
+  model: string | null;
+  effort: CodexReasoningEffort | null;
+  collaborationMode: NonNullable<TurnStartParams["collaborationMode"]> | null;
+} {
+  const explicitCollaboration = request.collaborationMode != null;
+  return {
+    model: explicitCollaboration ? null : (request.model ?? inherited.model)?.trim() || null,
+    effort: explicitCollaboration
+      ? null
+      : request.effort === undefined
+        ? inherited.effort
+        : request.effort,
+    collaborationMode: request.collaborationMode ?? inherited.collaborationMode ?? null,
+  };
+}
+
+export interface CodexTurnStartPlan extends CodexPreparedTurnExecution {
+  readonly localMetadata?: unknown;
+  readonly mcpAppModelContextAttachments?: unknown;
   readonly presentationClaim?: CodexTurnPresentationClaim;
   readonly threadId: string;
   readonly projectId: string | null;
@@ -65,39 +109,19 @@ export interface CodexTurnStartPlan {
     CodexLiveFileAttachment,
     CodexReviewDiffCommentAttachment
   > | null;
-  readonly currentCollaborationModel: string;
-  readonly settings: CodexConversationThreadSettings;
-  readonly permissionContext: CodexCanonicalHydratedPermissionContext | null;
   readonly clientUserMessageId: string;
   readonly rendererOwnsState: boolean;
   readonly verifiedBuiltinFullAccess: boolean;
   readonly executionReadOnly: boolean;
   readonly promptText: string;
   readonly serviceName?: string | null;
+  readonly pendingWorkspace: CodexConversationWorkspace | null;
+  readonly workspaceCommit: CodexTurnWorkspaceCommit;
   readonly autoTitlePastedTextAttachments: readonly CodexPromptTextAttachmentInput[];
   readonly isFirstTurn: boolean;
   readonly skipAutoTitleGeneration: boolean;
   readonly startedAtMs: number;
   readonly worktreeInit?: CodexCanonicalWorktreeInitItem;
-}
-
-export interface CodexTurnSteerPlan {
-  readonly threadId: string;
-  readonly expectedTurnId: string;
-  readonly steerId: string;
-  readonly request: TurnSteerParams;
-  readonly item: CodexCanonicalSteeringUserMessageItem;
-  /** Question replies may correct the active Turn identity but cannot start new work. */
-  readonly fallbackStart: {
-    readonly prompt: string;
-    readonly overrides: {
-      readonly collaborationMode?: CodexCollaborationModeKind;
-      readonly serviceTier?: CodexServiceTier;
-      readonly summary?: TurnStartParams["summary"];
-      readonly promptInput?: CodexPromptInput;
-      readonly clientUserMessageId?: string;
-    };
-  } | null;
 }
 
 export class CodexTurnPreparationError extends Schema.TaggedError<CodexTurnPreparationError>()(
@@ -110,6 +134,9 @@ export class CodexTurnPreparationError extends Schema.TaggedError<CodexTurnPrepa
 ) {}
 
 export interface CodexTurnStartPreparationInput {
+  /** Original peer request; inherited settings are resolved only at the executing owner. */
+  readonly originalRequest?: TurnStartParams;
+  readonly originalContext?: ConversationFollowerTurnStart["context"];
   readonly threadId: string;
   readonly prompt: string;
   readonly overrides?: {
@@ -136,19 +163,24 @@ export interface CodexTurnStartPreparationInput {
 
 export interface CodexTurnSteerPreparationInput {
   readonly command: CodexSteerTurnInput;
-  readonly steerId: string;
   readonly recoveryRow: CodexQueuedFollowUp;
 }
 
 export class CodexTurnPreparation extends Context.Service<
   CodexTurnPreparation,
   {
+    readonly prepareCaptured: (
+      threadId: string,
+      submissionId: string,
+      prompt: string,
+      promptInput: CodexPromptInput,
+    ) => Effect.Effect<CodexPreparedPrompt, CodexTurnPreparationError>;
     readonly start: (
       input: CodexTurnStartPreparationInput,
     ) => Effect.Effect<CodexTurnStartPlan, CodexTurnPreparationError>;
     readonly steer: (
       input: CodexTurnSteerPreparationInput,
-    ) => Effect.Effect<CodexTurnSteerPlan, CodexTurnPreparationError>;
+    ) => Effect.Effect<CanonicalOwnerSteerInput, CodexTurnPreparationError>;
   }
 >()("nodex/main/codex-application/CodexTurnPreparation") {}
 
@@ -193,19 +225,15 @@ const collaborationMode = (input: {
   };
 };
 
-/**
- * Preserves the wire distinction between an explicit Standard reset (`null`)
- * and an absent override, while canonicalizing app-server Standard aliases.
- */
+/** Native values remain unchanged; only an absent override inherits a retained tier. */
 export function projectCodexTurnServiceTier(
   overrides: CodexTurnStartPreparationInput["overrides"],
   inheritedServiceTier: unknown,
 ): Pick<TurnStartParams, "serviceTier"> {
   if (overrides?.serviceTier !== undefined) {
-    return { serviceTier: normalizeCodexServiceTier(overrides.serviceTier) };
+    return { serviceTier: overrides.serviceTier };
   }
-  const inherited = normalizeCodexServiceTier(inheritedServiceTier);
-  return inherited === null ? {} : { serviceTier: inherited };
+  return { serviceTier: typeof inheritedServiceTier === "string" ? inheritedServiceTier : null };
 }
 
 export const make: Effect.Effect<
@@ -217,12 +245,14 @@ export const make: Effect.Effect<
   | CodexAttachments
   | CodexConversationContext
   | CodexConversationProjection
+  | CodexExecutionAssignments
   | CodexPermissions
   | CodexPreferences
   | CodexThreadSettingsRuntime
   | TemporaryAssets
   | CodexInputAssets
   | CodexThreadHostResolver
+  | CodexGateway
 > = Effect.gen(function* () {
   const config = yield* MainConfig;
   const coreAuthority = yield* CoreAuthority;
@@ -230,12 +260,14 @@ export const make: Effect.Effect<
   const attachments = yield* CodexAttachments;
   const conversationContext = yield* CodexConversationContext;
   const projection = yield* CodexConversationProjection;
+  const executionAssignments = yield* CodexExecutionAssignments;
   const permissions = yield* CodexPermissions;
   const preferences = yield* CodexPreferences;
   const threadSettings = yield* CodexThreadSettingsRuntime;
   const assets = yield* TemporaryAssets;
   const inputAssets = yield* CodexInputAssets;
   const hosts = yield* CodexThreadHostResolver;
+  const gateway = yield* CodexGateway;
 
   const preparePrompt = Effect.fn("CodexTurnPreparation.preparePrompt")(function* (
     prompt: string,
@@ -279,17 +311,89 @@ export const make: Effect.Effect<
       );
       const liveContext = yield* conversationContext.read(input.threadId);
       const projectId = liveContext.projectId;
-      const cwd = liveContext.cwd;
-      const workspaceRoots = [...liveContext.writableRoots];
+      const state = yield* projection.read(input.threadId);
+      const executionHostId = yield* hosts.resolve(input.threadId);
+      const environment = liveContext.environments?.[0];
+      const preparedWorkspace = prepareCodexTurnWorkspace({
+        conversationCwd: liveContext.conversationCwd ?? liveContext.cwd,
+        requestCwd: input.originalRequest?.cwd,
+        environment,
+        currentPermissionRoots: state.canonical.currentPermissions?.runtimeWorkspaceRoots,
+        state: liveContext.workspaceState ?? null,
+      });
+      const currentWorkspaceKind =
+        state.canonical.workspaceKind ?? (projectId === null ? "projectless" : "project");
+      const shouldMaterializeProjectless =
+        executionHostId === CODEX_APP_LOCAL_HOST_ID &&
+        shouldMaterializeCodexProjectlessWorkspace({
+          environmentCwd: environment?.cwd ?? null,
+          hasPendingWorkspace: preparedWorkspace.pendingWorkspace !== null,
+          state: liveContext.workspaceState ?? null,
+          stateProjectId: projectId,
+          isProjectlessConversation: projectId === null,
+          workspaceKind: currentWorkspaceKind,
+        });
+      let projectlessWorkspace = shouldMaterializeProjectless
+        ? resolveExistingCodexProjectlessWorkspace({
+            cwd: state.canonical.cwd ?? liveContext.conversationCwd ?? liveContext.cwd,
+            retainedWritableRoots: liveContext.writableRoots,
+            workspaceKind: currentWorkspaceKind,
+            workspaceBrowserRoot:
+              state.canonical.workspaceBrowserRoot ??
+              state.snapshot?.projectlessWorkspaceBrowserRoot ??
+              null,
+          })
+        : null;
+      if (shouldMaterializeProjectless && projectlessWorkspace === null) {
+        const created = yield* Effect.tryPromise(() =>
+          createCodexProjectlessWorkspace({
+            createSplitDirectories: true,
+            prompt: prepared.promptText,
+          }),
+        );
+        projectlessWorkspace = {
+          cwd: created.cwd,
+          workspaceRoot: created.workspaceRoot,
+        };
+      }
+      const workspaceKind = resolveCodexPreparedWorkspaceKind({
+        currentWorkspaceKind,
+        hasPendingWorkspace: preparedWorkspace.pendingWorkspace !== null,
+        hasProjectlessWorkspace: projectlessWorkspace !== null,
+        state: liveContext.workspaceState ?? null,
+        stateProjectId: projectId,
+      });
+      const workspaceBrowserRoot =
+        workspaceKind === "projectless"
+          ? (projectlessWorkspace?.workspaceRoot ??
+            state.canonical.workspaceBrowserRoot ??
+            state.snapshot?.projectlessWorkspaceBrowserRoot ??
+            null)
+          : null;
+      const cwd =
+        environment?.cwd ??
+        preparedWorkspace.pendingWorkspace?.cwd ??
+        projectlessWorkspace?.cwd ??
+        preparedWorkspace.cwd;
+      const workspaceRoots = projectlessWorkspace
+        ? [...new Set([...liveContext.writableRoots, projectlessWorkspace.workspaceRoot])]
+        : [...liveContext.writableRoots];
+      const permissionContextRoots =
+        preparedWorkspace.pendingWorkspace?.runtimeWorkspaceRoots ?? workspaceRoots;
       const preparedAgentConfig = yield* agentConfig.prepare({
         target: { kind: "existing-thread", threadId: input.threadId },
         configs: prepared.agentConfigs,
-        permissionContext: { projectId, workspaceRoots },
+        permissionContext: { projectId, workspaceRoots: permissionContextRoots },
       });
-      const state = yield* projection.read(input.threadId);
-      const settings = state.canonical.sidecar.latestThreadSettings;
-      const hydration = state.canonical.sidecar.hydrationContext;
+      const settings = state.canonical.latestThreadSettings;
+      const hydration = state.canonical.hydrationContext;
       const hydratedSettings = hydration?.latestThreadSettings ?? null;
+      const originalRequest = input.originalRequest;
+      const inheritThreadSettings = input.originalContext?.inheritThreadSettings !== false;
+      const nextSettings = inheritThreadSettings ? (settings ?? hydratedSettings) : null;
+      const inheritedParams = inheritThreadSettings
+        ? latestAssignedConversationTurn(state.canonical)?.params
+        : null;
       const requestedPermissionMode =
         preparedAgentConfig.permissionMode ?? input.overrides?.permissionMode;
       const permission =
@@ -308,96 +412,275 @@ export const make: Effect.Effect<
         permissionState: permission.state,
         workspaceRoots,
       });
-      const fallbackCollaboration =
-        settings?.collaborationMode ?? hydratedSettings?.collaborationMode ?? null;
-      const model =
-        normalizeText(preparedAgentConfig.executionProfile?.modelId) ??
-        normalizeText(input.overrides?.model) ??
-        normalizeText(settings?.model) ??
-        normalizeText(hydratedSettings?.model) ??
-        normalizeText(fallbackCollaboration?.settings.model);
+      const fallbackCollaboration = inheritThreadSettings
+        ? (nextSettings?.collaborationMode ?? state.canonical.latestCollaborationMode)
+        : null;
+      const model = normalizeText(
+        preparedAgentConfig.executionProfile?.modelId ??
+          input.overrides?.model ??
+          nextSettings?.model ??
+          (inheritThreadSettings ? state.canonical.latestModel : null),
+      );
+      const inheritedEffort =
+        nextSettings?.effort === undefined
+          ? inheritThreadSettings
+            ? state.canonical.latestReasoningEffort
+            : null
+          : nextSettings.effort;
       const effort =
-        preparedAgentConfig.executionProfile?.reasoningEffort ??
-        input.overrides?.reasoningEffort ??
-        settings?.effort ??
-        hydratedSettings?.effort ??
-        fallbackCollaboration?.settings.reasoning_effort ??
-        null;
+        preparedAgentConfig.executionProfile?.reasoningEffort !== undefined
+          ? preparedAgentConfig.executionProfile.reasoningEffort
+          : input.overrides?.reasoningEffort !== undefined
+            ? input.overrides.reasoningEffort
+            : inheritedEffort;
       const mode =
-        preparedAgentConfig.collaborationMode ??
-        input.overrides?.collaborationMode ??
-        fallbackCollaboration?.mode ??
-        null;
-      const selectedCollaborationMode = collaborationMode({ mode, model, effort });
+        preparedAgentConfig.collaborationMode ?? input.overrides?.collaborationMode ?? null;
+      // A resolved Project mode is only a fallback. Caller permission fields and
+      // explicit default intent must survive the receiving owner's materialization.
+      const explicitPermissions =
+        requestedPermissionMode === undefined
+          ? {}
+          : requestedPermissionMode === "custom"
+            ? {
+                approvalPolicy: permission.state.approvalPolicy,
+                approvalsReviewer: permission.state.approvalsReviewer,
+                sandboxPolicy: permission.state.sandbox,
+              }
+            : turnPermissions;
+      const resolvedPermissions = yield* Effect.try({
+        try: () =>
+          resolveConversationTurnPermissions({
+            state: state.canonical,
+            request: {
+              ...explicitPermissions,
+              ...originalRequest,
+              ...(environment?.runtimeWorkspaceRoots == null
+                ? {}
+                : { runtimeWorkspaceRoots: environment.runtimeWorkspaceRoots }),
+            },
+            context: input.originalContext,
+            cwd,
+            writableRoots: workspaceRoots,
+            workspaceKind,
+            workspaceBrowserRoot,
+            workspaceTransition: preparedWorkspace.permissionTransition,
+          }),
+        catch: (cause) =>
+          new CodexTurnPreparationError({ operation: "start", threadId: input.threadId, cause }),
+      });
+      const canonicalPermissions = resolvedPermissions.permissions;
+      const workspaceCommit = prepareCodexTurnWorkspaceCommit({
+        state: liveContext.workspaceState ?? null,
+        pendingWorkspace: preparedWorkspace.pendingWorkspace,
+        pendingRevision: preparedWorkspace.pendingRevision,
+        roots: resolvedPermissions.workspaceCommitRoots,
+        retainedWritableRoots: workspaceRoots,
+        cwd,
+        conversationCwd: liveContext.conversationCwd ?? liveContext.cwd,
+      });
+      const preparedEnvironments = liveContext.environments?.map((candidate, index) =>
+        index === 0 && resolvedPermissions.params.runtimeWorkspaceRoots != null
+          ? {
+              ...candidate,
+              runtimeWorkspaceRoots: [...resolvedPermissions.params.runtimeWorkspaceRoots],
+            }
+          : candidate,
+      );
+      const hasSelectedEnvironment = (preparedEnvironments?.length ?? 0) > 0;
+      const verifiedBuiltinFullAccess =
+        permission.verifiedBuiltinFullAccess &&
+        canonicalPermissions.sandboxPolicy.type === "dangerFullAccess" &&
+        (canonicalPermissions.activePermissionProfile?.id === ":danger-full-access" ||
+          (requestedPermissionMode === "full-access" &&
+            canonicalPermissions.activePermissionProfile === null &&
+            !resolvedPermissions.params.useAppServerPermissionDefault));
+      const sourceAttachments = input.originalContext?.attachments;
+      const sourceComments = input.originalContext?.commentAttachments;
+      if (
+        sourceAttachments !== undefined &&
+        (!Array.isArray(sourceAttachments) || !sourceAttachments.every(isCodexLiveFileAttachment))
+      )
+        return yield* Effect.fail(
+          new CodexTurnPreparationError({
+            operation: "start",
+            threadId: input.threadId,
+            cause: new Error("Invalid turn attachment context"),
+          }),
+        );
+      if (
+        sourceComments !== undefined &&
+        (!Array.isArray(sourceComments) || !sourceComments.every(isReviewDiffCommentAttachment))
+      )
+        return yield* Effect.fail(
+          new CodexTurnPreparationError({
+            operation: "start",
+            threadId: input.threadId,
+            cause: new Error("Invalid turn comment context"),
+          }),
+        );
+      const nativeSettings = resolveNativeTurnExecutionSettings(
+        originalRequest ?? { threadId: input.threadId, input: [] },
+        {
+          model,
+          effort,
+          collaborationMode: mode
+            ? collaborationMode({ mode, model, effort })
+            : fallbackCollaboration,
+        },
+      );
+      const selectedCollaborationMode = nativeSettings.collaborationMode;
       const explicitSummary =
         input.overrides && Object.hasOwn(input.overrides, "summary")
           ? parseCodexReasoningSummary(input.overrides.summary)
           : undefined;
       const summary = resolveCodexReasoningSummary({
-        configuredSummary: settings?.summary ?? hydratedSettings?.summary,
-        explicitSummary,
+        inheritedSummary: inheritedParams?.summary,
+        configuredSummary: nextSettings?.summary,
+        explicitSummary:
+          originalRequest?.summary !== undefined ? originalRequest.summary : explicitSummary,
       });
+      const selectedPersonality =
+        originalRequest?.personality !== undefined
+          ? originalRequest.personality
+          : nextSettings?.personality !== undefined
+            ? nextSettings.personality
+            : (inheritedParams?.personality ?? undefined);
+      const remoteDefaultPersonality =
+        selectedPersonality === undefined
+          ? ((yield* executionAssignments.readThreadSettings({
+              model,
+              includeDeveloperInstructions: false,
+            }))?.defaultPersonality ?? preferences.current())
+          : preferences.current();
+      const personality =
+        selectedPersonality !== undefined
+          ? selectedPersonality
+          : yield* gateway
+              .requestForThread(
+                input.threadId,
+                "config/read",
+                { cwd, includeLayers: false },
+                { priority: "critical" },
+              )
+              .pipe(
+                Effect.map(
+                  (response) =>
+                    parseCodexPersonality(response.config.personality) ??
+                    parseCodexPersonality(response.config.model_personality),
+                ),
+                Effect.catch(() => Effect.succeed(null)),
+                Effect.map((configured) => configured ?? remoteDefaultPersonality),
+              );
+      const inheritedTier =
+        nextSettings?.serviceTier === undefined
+          ? inheritedParams?.serviceTier
+          : nextSettings.serviceTier;
       const serviceTierRequest = preparedAgentConfig.executionProfile
         ? projectCodexTurnServiceTier(
             { serviceTier: preparedAgentConfig.executionProfile.serviceTier },
-            settings?.serviceTier ?? hydratedSettings?.serviceTier,
+            inheritedTier,
           )
         : projectCodexTurnServiceTier(
-            input.overrides,
-            settings?.serviceTier ?? hydratedSettings?.serviceTier,
+            originalRequest?.serviceTier !== undefined
+              ? { serviceTier: originalRequest.serviceTier }
+              : input.overrides,
+            inheritedTier,
           );
-      const serviceTier = serviceTierRequest.serviceTier ?? null;
+      const requestedServiceTier = serviceTierRequest.serviceTier;
+      const serviceTier =
+        requestedServiceTier == null
+          ? null
+          : yield* gateway
+              .requestForThread(input.threadId, "configRequirements/read", undefined, {
+                priority: "critical",
+                timeoutMs: 30_000,
+              })
+              .pipe(
+                Effect.map((response) =>
+                  response.requirements?.featureRequirements?.fast_mode === false
+                    ? null
+                    : requestedServiceTier,
+                ),
+                Effect.catch((error) =>
+                  Effect.logWarning(
+                    "Failed to load config requirements for service tier",
+                    error,
+                  ).pipe(Effect.as(null)),
+                ),
+              );
       const clientUserMessageId = input.overrides?.clientUserMessageId ?? randomUUID();
       prepared = yield* inputAssets.retainPrepared(
         input.threadId,
         clientUserMessageId,
         prepared,
-        (yield* hosts.resolve(input.threadId)) === CODEX_APP_LOCAL_HOST_ID,
+        executionHostId === CODEX_APP_LOCAL_HOST_ID,
       );
       const cliBootstrap = yield* buildNodexCliBootstrap(config, coreAuthority.identity, {
         threadId: input.threadId,
-        hostId: yield* hosts.resolve(input.threadId),
+        hostId: executionHostId,
         projectId,
-        verifiedBuiltinFullAccess: permission.verifiedBuiltinFullAccess,
-        sandboxPolicy: turnPermissions.sandboxPolicy,
+        verifiedBuiltinFullAccess,
+        sandboxPolicy: canonicalPermissions.sandboxPolicy,
         planMode: (selectedCollaborationMode ?? fallbackCollaboration)?.mode === "plan",
       });
-      const additionalContext = { ...prepared.additionalContext, "nodex-cli": cliBootstrap };
+      const additionalContext = {
+        ...prepared.additionalContext,
+        ...originalRequest?.additionalContext,
+        "nodex-cli": cliBootstrap,
+      };
+      const responsesapiClientMetadata = input.overrides?.responsesapiClientMetadata
+        ? {
+            ...originalRequest?.responsesapiClientMetadata,
+            ...input.overrides.responsesapiClientMetadata,
+          }
+        : originalRequest?.responsesapiClientMetadata;
       const request: TurnStartParams = {
         threadId: input.threadId,
         clientUserMessageId,
-        ...(cwd ? { cwd } : {}),
+        ...(hasSelectedEnvironment ? { cwd: null } : cwd ? { cwd } : {}),
         additionalContext,
-        ...turnPermissions,
-        ...(model ? { model } : {}),
-        ...serviceTierRequest,
-        ...(effort ? { effort } : {}),
+        ...resolvedPermissions.request,
+        environments: preparedEnvironments,
+        runtimeWorkspaceRoots: hasSelectedEnvironment
+          ? null
+          : resolvedPermissions.request.runtimeWorkspaceRoots,
+        model: nativeSettings.model,
+        effort: nativeSettings.effort,
+        serviceTier,
         summary,
-        ...(selectedCollaborationMode ? { collaborationMode: selectedCollaborationMode } : {}),
-        ...(input.overrides?.responsesapiClientMetadata
-          ? { responsesapiClientMetadata: input.overrides.responsesapiClientMetadata }
+        personality,
+        collaborationMode: selectedCollaborationMode,
+        multiAgentMode: "explicitRequestOnly",
+        outputSchema: originalRequest?.outputSchema ?? null,
+        responsesapiClientMetadata: {
+          ...responsesapiClientMetadata,
+          workspace_kind: workspaceKind,
+        },
+        ...(originalRequest
+          ? {
+              ...(originalRequest.turnTrigger === undefined
+                ? {}
+                : { turnTrigger: originalRequest.turnTrigger }),
+              ...(originalRequest.toolOutput === undefined
+                ? {}
+                : { toolOutput: originalRequest.toolOutput }),
+              ...(originalRequest.cyberAccessProgram === undefined
+                ? {}
+                : { cyberAccessProgram: originalRequest.cyberAccessProgram }),
+            }
           : {}),
         input: prepared.inputItems,
       };
-      const canonicalPermissions = hydration?.currentPermissions
-        ? resolveCanonicalPermissionContext(
-            permission.state,
-            workspaceRoots,
-            hydration.currentPermissions,
-          )
-        : null;
       const canonicalRequired = canonicalPermissions
         ? ({
             cwd,
-            approvalPolicy: turnPermissions.approvalPolicy ?? canonicalPermissions.approvalPolicy,
-            approvalsReviewer:
-              turnPermissions.approvalsReviewer ?? canonicalPermissions.approvalsReviewer,
-            model: selectedCollaborationMode ? null : (model ?? null),
-            effort: selectedCollaborationMode ? null : (effort ?? null),
+            approvalPolicy: resolvedPermissions.params.approvalPolicy,
+            approvalsReviewer: resolvedPermissions.params.approvalsReviewer,
+            model: nativeSettings.model,
+            effort: nativeSettings.effort,
             summary,
-            personality:
-              settings?.personality ?? hydratedSettings?.personality ?? preferences.current(),
-            outputSchema: null,
+            personality,
+            outputSchema: originalRequest?.outputSchema ?? null,
             collaborationMode: selectedCollaborationMode,
           } satisfies Required<
             Pick<
@@ -414,32 +697,33 @@ export const make: Effect.Effect<
             >
           >)
         : null;
-      const canonicalParams: CodexTurnStartPlan["canonicalParams"] =
-        hydration && canonicalPermissions && canonicalRequired
-          ? {
-              threadId: input.threadId,
-              clientUserMessageId,
-              input: prepared.inputItems,
-              additionalContext,
-              ...(input.overrides?.responsesapiClientMetadata
-                ? { responsesapiClientMetadata: input.overrides.responsesapiClientMetadata }
-                : {}),
-              ...canonicalRequired,
-              sandboxPolicy: turnPermissions.sandboxPolicy ?? canonicalPermissions.sandboxPolicy,
-              permissions: canonicalPermissions.activePermissionProfile?.id ?? null,
-              runtimeWorkspaceRoots: canonicalPermissions.activePermissionProfile
-                ? [...workspaceRoots]
-                : null,
-              useAppServerPermissionDefault: permission.state.effectivePreset === "custom",
-              serviceTier,
-              multiAgentMode: hydratedSettings?.multiAgentMode ?? "explicitRequestOnly",
-              attachments: dedupeCodexLiveFileAttachments([
-                ...prepared.fileAttachments,
-                ...prepared.addedFiles,
-              ]),
-              commentAttachments: [...prepared.commentAttachments],
-            }
-          : null;
+      const canonicalParams: CodexTurnStartPlan["canonicalParams"] = canonicalRequired
+        ? {
+            threadId: input.threadId,
+            clientUserMessageId,
+            input: prepared.inputItems,
+            additionalContext,
+            ...(responsesapiClientMetadata !== undefined ? { responsesapiClientMetadata } : {}),
+            ...(originalRequest
+              ? {
+                  turnTrigger: originalRequest.turnTrigger,
+                  toolOutput: originalRequest.toolOutput,
+                  cyberAccessProgram: originalRequest.cyberAccessProgram,
+                }
+              : {}),
+            ...canonicalRequired,
+            sandboxPolicy: resolvedPermissions.params.sandboxPolicy,
+            permissions: resolvedPermissions.params.permissions,
+            runtimeWorkspaceRoots: resolvedPermissions.params.runtimeWorkspaceRoots,
+            useAppServerPermissionDefault: resolvedPermissions.params.useAppServerPermissionDefault,
+            serviceTier,
+            multiAgentMode: "explicitRequestOnly",
+            attachments:
+              sourceAttachments ??
+              dedupeCodexLiveFileAttachments([...prepared.fileAttachments, ...prepared.addedFiles]),
+            commentAttachments: sourceComments ?? [...prepared.commentAttachments],
+          }
+        : null;
       const effectiveCollaborationMode = selectedCollaborationMode ??
         fallbackCollaboration ?? {
           mode: "default" as const,
@@ -449,19 +733,6 @@ export const make: Effect.Effect<
             developer_instructions: null,
           },
         };
-      const effectiveSettings: CodexConversationThreadSettings = {
-        model: model ?? "",
-        modelProvider:
-          normalizeText(settings?.modelProvider) ??
-          normalizeText(state.canonical.protocol.modelProvider) ??
-          null,
-        serviceTier,
-        reasoningEffort: effort,
-        summary,
-        collaborationMode: effectiveCollaborationMode,
-        personality:
-          settings?.personality ?? hydratedSettings?.personality ?? preferences.current(),
-      };
       const startedAtMs = yield* Clock.currentTimeMillis;
       return {
         ...(input.overrides?.presentationClaim
@@ -471,32 +742,40 @@ export const make: Effect.Effect<
         projectId,
         request,
         canonicalParams,
-        currentCollaborationModel:
-          normalizeText(effectiveCollaborationMode.settings.model) ??
-          model ??
-          normalizeText(fallbackCollaboration?.settings.model) ??
-          "",
-        settings: effectiveSettings,
-        permissionContext: canonicalPermissions,
+        localMetadata: input.originalContext?.localTurnMetadata,
+        mcpAppModelContextAttachments: input.originalContext?.mcpAppModelContextAttachments,
+        model: nativeSettings.model,
+        reasoningEffort: nativeSettings.effort,
+        shouldUpdateReasoningEffort:
+          originalRequest?.effort !== undefined ||
+          input.overrides?.reasoningEffort !== undefined ||
+          preparedAgentConfig.executionProfile?.reasoningEffort !== undefined ||
+          nextSettings !== null,
+        collaborationMode: selectedCollaborationMode,
+        permissions: canonicalPermissions,
+        previousPermissions: state.canonical.currentPermissions,
+        environments: preparedEnvironments,
+        environmentSelectionEvidence: liveContext.environmentSelectionEvidence,
+        workspaceKind,
+        projectlessWorkspace,
         clientUserMessageId,
         rendererOwnsState: input.rendererOwnsState,
-        verifiedBuiltinFullAccess: permission.verifiedBuiltinFullAccess,
+        verifiedBuiltinFullAccess,
         executionReadOnly: isNodexAgentTurnReadOnly({
           planMode: effectiveCollaborationMode.mode === "plan",
-          sandboxPolicy:
-            turnPermissions.sandboxPolicy ??
-            canonicalPermissions?.sandboxPolicy ??
-            permission.state.sandbox,
+          sandboxPolicy: canonicalPermissions.sandboxPolicy,
         }),
         promptText: prepared.promptText,
         serviceName: state.snapshot?.serviceName ?? null,
+        pendingWorkspace: preparedWorkspace.pendingWorkspace,
+        workspaceCommit,
         autoTitlePastedTextAttachments: [
           ...(input.overrides?.autoTitlePastedTextAttachments ?? prepared.pastedTextAttachments),
         ],
         // Metadata-only resumes intentionally have no resident turns. Their non-empty preview is
         // the durable signal that this is a follow-up, not a fresh first-turn title callback.
         isFirstTurn:
-          state.canonical.turns.length === 0 &&
+          residentConversationTurns(state.canonical).length === 0 &&
           (state.snapshot?.threadPreview.trim().length ?? 0) === 0,
         skipAutoTitleGeneration: input.overrides?.skipAutoTitleGeneration === true,
         startedAtMs,
@@ -520,7 +799,6 @@ export const make: Effect.Effect<
   const steer: CodexTurnPreparation["Service"]["steer"] = (input) =>
     Effect.gen(function* () {
       const threadId = input.command.threadId;
-      const state = yield* projection.read(threadId);
       let prepared: CodexPreparedPrompt = yield* preparePrompt(
         input.command.prompt,
         input.command.promptInput,
@@ -541,19 +819,18 @@ export const make: Effect.Effect<
       ) {
         return yield* fail(new Error("Turn steer recovery identity is invalid"));
       }
-      const activeTurn = input.command.expectedTurnId
-        ? state.canonical.turns.find((turn) => turn.protocol.id === input.command.expectedTurnId)
-        : state.canonical.turns.findLast((turn) => turn.protocol.status === "inProgress");
-      const expectedTurnId = input.command.expectedTurnId ?? activeTurn?.protocol.id ?? null;
-      if (!expectedTurnId) return yield* fail(new Error("No active Turn is available to steer"));
       const questionReplies = decodeCodexAsyncQuestionReplies(input.command.prompt);
       if (questionReplies) {
+        const state = yield* projection.read(threadId);
+        const activeTurn = residentConversationTurns(state.canonical).find(
+          (turn) => turn.turnId === input.command.expectedTurnId,
+        );
         const questionIds = new Set(
           activeTurn?.items.flatMap(expandCodexAsyncQuestions).map((question) => question.id),
         );
         if (
           !input.command.expectedTurnId ||
-          activeTurn?.protocol.status !== "inProgress" ||
+          activeTurn?.status !== "inProgress" ||
           questionReplies.some((reply) => !questionIds.has(reply.questionItemId))
         )
           return yield* fail(new Error("The question's Turn is no longer available to answer"));
@@ -564,21 +841,15 @@ export const make: Effect.Effect<
         prepared,
         (yield* hosts.resolve(threadId)) === CODEX_APP_LOCAL_HOST_ID,
       );
-      const request: TurnSteerParams = {
-        threadId,
-        expectedTurnId,
+      // The executing owner selects the active Turn after routing and waits for its native ID.
+      return {
+        conversationId: threadId,
         clientUserMessageId: input.recoveryRow.clientUserMessageId,
         input: prepared.inputItems,
         ...(prepared.additionalContext ? { additionalContext: prepared.additionalContext } : {}),
-      };
-      const item: CodexCanonicalSteeringUserMessageItem = {
-        type: "steeringUserMessage",
-        id: input.steerId,
-        targetTurnId: expectedTurnId,
-        targetTurnStartedAtMs: activeTurn?.sidecar.turnStartedAtMs ?? null,
-        status: "pending",
-        clientUserMessageId: input.recoveryRow.clientUserMessageId,
-        input: prepared.inputItems,
+        ...(input.command.serviceTier !== undefined
+          ? { serviceTier: input.command.serviceTier }
+          : {}),
         attachments: dedupeCodexLiveFileAttachments([
           ...prepared.fileAttachments,
           ...prepared.addedFiles,
@@ -587,32 +858,7 @@ export const make: Effect.Effect<
           queueRow: input.recoveryRow,
           context: { commentAttachments: [...prepared.commentAttachments] },
         },
-        compareKey: buildCodexSteeringCompareKey(prepared.inputItems, prepared.commentAttachments),
-      };
-      return {
-        threadId,
-        expectedTurnId,
-        steerId: input.steerId,
-        request,
-        item,
-        fallbackStart: questionReplies
-          ? null
-          : {
-              prompt: input.command.prompt,
-              overrides: {
-                clientUserMessageId: input.recoveryRow.clientUserMessageId,
-                ...(input.command.collaborationMode
-                  ? { collaborationMode: input.command.collaborationMode }
-                  : {}),
-                ...(Object.hasOwn(input.command, "serviceTier") &&
-                input.command.serviceTier !== undefined
-                  ? { serviceTier: normalizeCodexServiceTier(input.command.serviceTier) }
-                  : {}),
-                ...(input.command.summary !== undefined ? { summary: input.command.summary } : {}),
-                ...(input.command.promptInput ? { promptInput: input.command.promptInput } : {}),
-              },
-            },
-      } satisfies CodexTurnSteerPlan;
+      } satisfies CanonicalOwnerSteerInput;
     }).pipe(
       Effect.mapError((cause) =>
         cause instanceof CodexTurnPreparationError
@@ -628,5 +874,22 @@ export const make: Effect.Effect<
       }),
     );
 
-  return CodexTurnPreparation.of({ start, steer });
+  return CodexTurnPreparation.of({
+    start,
+    steer,
+    prepareCaptured: (threadId, submissionId, prompt, promptInput) =>
+      Effect.gen(function* () {
+        const prepared = yield* preparePrompt(prompt, promptInput);
+        return yield* inputAssets.retainPrepared(
+          threadId,
+          submissionId,
+          prepared,
+          (yield* hosts.resolve(threadId)) === CODEX_APP_LOCAL_HOST_ID,
+        );
+      }).pipe(
+        Effect.mapError(
+          (cause) => new CodexTurnPreparationError({ operation: "start", threadId, cause }),
+        ),
+      ),
+  });
 });

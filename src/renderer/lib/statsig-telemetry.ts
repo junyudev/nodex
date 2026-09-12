@@ -293,6 +293,10 @@ export function logTelemetryEvent(
   return true;
 }
 
+export function isRendererTelemetryActive(): boolean {
+  return activeClient !== null;
+}
+
 export function resetRendererTelemetryForTests(): void {
   resetActiveClient();
 }

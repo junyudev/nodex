@@ -1,10 +1,6 @@
 export const CODEX_FRAME_TEXT_DELTA_FALLBACK_INTERVAL_MS = 16;
 export const CODEX_FRAME_TEXT_DELTA_TARGET_CHARS_PER_FRAME = 24;
 export const CODEX_FRAME_TEXT_DELTA_MAX_DRAIN_FRAMES = 8;
-export const CODEX_FRAME_TEXT_DELTA_MAX_DRAIN_CALLBACKS = 1_024;
-export const CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_KEYS = 1_024;
-export const CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_CODE_UNITS_PER_KEY = 512 * 1_024;
-export const CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_CODE_UNITS = 4 * 1_024 * 1_024;
 
 export type CodexFrameTextDeltaTarget =
   | { readonly type: "agentMessage" | "plan" }
@@ -23,6 +19,7 @@ export interface CodexFrameTextDeltaScheduler {
   readonly canUseAnimationFrame: () => boolean;
   readonly scheduleAnimationFrame: (callback: () => void) => () => void;
   readonly scheduleTimeout: (callback: () => void, delayMs: number) => () => void;
+  readonly subscribeVisibilityChange?: (callback: () => void) => () => void;
 }
 
 export interface CodexFrameTextDeltaFlushContext {
@@ -36,22 +33,7 @@ export interface CodexFrameTextDeltaQueueOptions<TUpdate extends CodexFrameTextD
   readonly fallbackIntervalMs?: number;
   readonly targetCharsPerFrame?: number;
   readonly maxDrainFrames?: number;
-  readonly maxDrainCallbacks?: number;
-  readonly maxBufferedKeys?: number;
-  readonly maxBufferedCodeUnitsPerKey?: number;
-  readonly maxBufferedCodeUnits?: number;
 }
-
-export type CodexFrameTextDeltaEnqueueResult =
-  | { readonly accepted: true }
-  | {
-      readonly accepted: false;
-      readonly reason: "key-count" | "per-key-code-units" | "total-code-units";
-      readonly key: string;
-      readonly conversationId: string;
-      readonly bufferedCodeUnits: number;
-      readonly incomingCodeUnits: number;
-    };
 
 interface CodexBrowserWindowLike {
   readonly requestAnimationFrame?: (callback: () => void) => number;
@@ -60,6 +42,8 @@ interface CodexBrowserWindowLike {
 
 interface CodexDocumentLike {
   readonly visibilityState?: string;
+  readonly addEventListener?: (type: string, callback: () => void) => void;
+  readonly removeEventListener?: (type: string, callback: () => void) => void;
 }
 
 export function buildCodexFrameTextDeltaKey(update: CodexFrameTextDeltaUpdate): string {
@@ -107,6 +91,11 @@ export function createCodexFrameTextDeltaScheduler(): CodexFrameTextDeltaSchedul
         readBrowserWindow()?.cancelAnimationFrame?.(handle);
       };
     },
+    subscribeVisibilityChange: (callback) => {
+      const documentLike = readDocument();
+      documentLike?.addEventListener?.("visibilitychange", callback);
+      return () => documentLike?.removeEventListener?.("visibilitychange", callback);
+    },
     scheduleTimeout: (callback, delayMs) => {
       const handle = setTimeout(callback, delayMs);
       return () => clearTimeout(handle);
@@ -140,10 +129,7 @@ export class CodexFrameTextDeltaQueue<
   private readonly fallbackIntervalMs: number;
   private readonly targetCharsPerFrame: number;
   private readonly maxDrainFrames: number;
-  private readonly maxDrainCallbacks: number;
-  private readonly maxBufferedKeys: number;
-  private readonly maxBufferedCodeUnitsPerKey: number;
-  private readonly maxBufferedCodeUnits: number;
+  private stopWatchingVisibility: (() => void) | null = null;
   private cancelScheduledFlush: (() => void) | null = null;
   private drainFramesRemaining: number | null = null;
   private bufferedCodeUnits = 0;
@@ -156,46 +142,17 @@ export class CodexFrameTextDeltaQueue<
     this.targetCharsPerFrame =
       options.targetCharsPerFrame ?? CODEX_FRAME_TEXT_DELTA_TARGET_CHARS_PER_FRAME;
     this.maxDrainFrames = options.maxDrainFrames ?? CODEX_FRAME_TEXT_DELTA_MAX_DRAIN_FRAMES;
-    this.maxDrainCallbacks = Math.max(
-      0,
-      options.maxDrainCallbacks ?? CODEX_FRAME_TEXT_DELTA_MAX_DRAIN_CALLBACKS,
-    );
-    this.maxBufferedKeys = options.maxBufferedKeys ?? CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_KEYS;
-    this.maxBufferedCodeUnitsPerKey =
-      options.maxBufferedCodeUnitsPerKey ?? CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_CODE_UNITS_PER_KEY;
-    this.maxBufferedCodeUnits =
-      options.maxBufferedCodeUnits ?? CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_CODE_UNITS;
   }
 
-  enqueue(update: TUpdate): CodexFrameTextDeltaEnqueueResult {
+  enqueue(update: TUpdate): void {
     const key = buildCodexFrameTextDeltaKey(update);
     const existing = this.buffers.get(key);
-    const rejected = (
-      reason: Exclude<CodexFrameTextDeltaEnqueueResult, { accepted: true }>["reason"],
-    ): CodexFrameTextDeltaEnqueueResult => ({
-      accepted: false,
-      reason,
-      key,
-      conversationId: update.conversationId,
-      bufferedCodeUnits: this.bufferedCodeUnits,
-      incomingCodeUnits: update.delta.length,
-    });
-    if (!existing && this.buffers.size >= this.maxBufferedKeys) {
-      return rejected("key-count");
-    }
-    if ((existing?.delta.length ?? 0) + update.delta.length > this.maxBufferedCodeUnitsPerKey) {
-      return rejected("per-key-code-units");
-    }
-    if (this.bufferedCodeUnits + update.delta.length > this.maxBufferedCodeUnits) {
-      return rejected("total-code-units");
-    }
     this.buffers.set(key, {
       ...update,
       delta: `${existing?.delta ?? ""}${update.delta}`,
     });
     this.bufferedCodeUnits += update.delta.length;
     this.scheduleFlush();
-    return { accepted: true };
   }
 
   flushNow(
@@ -216,44 +173,12 @@ export class CodexFrameTextDeltaQueue<
     this.finishDrainCallbacks();
   }
 
-  /**
-   * Main-process terminal ordering boundary. It publishes one conversation without forcing
-   * unrelated conversations out of the manager-global frame batch.
-   */
-  flushConversationNow(
-    conversationId: string,
-    context: CodexFrameTextDeltaFlushContext = { terminalDrainCommit: true },
-  ): void {
-    const updates: TUpdate[] = [];
-    for (const [key, update] of this.buffers) {
-      if (update.conversationId !== conversationId) continue;
-      this.buffers.delete(key);
-      this.bufferedCodeUnits -= update.delta.length;
-      updates.push(update);
-    }
-
-    if (updates.length > 0) {
-      this.onFlush(updates, context);
-    }
-    if (this.buffers.size > 0) return;
-
-    this.cancelPendingFlush();
-    this.finishDrainCallbacks();
-  }
-
   drainBefore(callback: () => void, scope?: string): boolean {
     if (
       this.buffers.size === 0 ||
       !this.scheduler.canUseAnimationFrame() ||
       this.getBufferedDeltaLength() <= this.targetCharsPerFrame
     ) {
-      this.flushNow({ terminalDrainCommit: true });
-      return false;
-    }
-
-    if (this.drainCallbacks.length >= this.maxDrainCallbacks) {
-      // Pressure preserves ordering by synchronously committing the bounded text batch and all
-      // older terminal barriers. The caller can then apply the new terminal event immediately.
       this.flushNow({ terminalDrainCommit: true });
       return false;
     }
@@ -294,6 +219,8 @@ export class CodexFrameTextDeltaQueue<
   /** Manager-destruction only. Pending completion callbacks intentionally do not run. */
   dispose(): void {
     this.cancelPendingFlush();
+    this.stopWatchingVisibility?.();
+    this.stopWatchingVisibility = null;
     this.buffers.clear();
     this.bufferedCodeUnits = 0;
     this.drainCallbacks.length = 0;
@@ -308,7 +235,7 @@ export class CodexFrameTextDeltaQueue<
 
     const updates: TUpdate[] = [];
     for (const [key, update] of this.buffers.entries()) {
-      const delta = update.delta.slice(0, this.getFrameDeltaLength(update.delta.length));
+      const delta = update.delta.slice(0, this.getFrameDeltaLength(update));
       const remainingDelta = update.delta.slice(delta.length);
       this.bufferedCodeUnits -= delta.length;
       updates.push({
@@ -341,7 +268,9 @@ export class CodexFrameTextDeltaQueue<
     this.finishDrainCallbacks();
   }
 
-  private getFrameDeltaLength(deltaLength: number): number {
+  private getFrameDeltaLength(update: TUpdate): number {
+    const deltaLength = update.delta.length;
+    if (update.target.type === "reasoningSummary") return deltaLength;
     if (this.drainFramesRemaining === null) {
       return this.targetCharsPerFrame;
     }
@@ -354,6 +283,8 @@ export class CodexFrameTextDeltaQueue<
   }
 
   private finishDrainCallbacks(): void {
+    this.stopWatchingVisibility?.();
+    this.stopWatchingVisibility = null;
     this.drainFramesRemaining = null;
     if (this.drainCallbacks.length === 0) return;
 
@@ -367,6 +298,10 @@ export class CodexFrameTextDeltaQueue<
     if (this.cancelScheduledFlush !== null) return;
 
     if (this.scheduler.canUseAnimationFrame()) {
+      this.stopWatchingVisibility ??=
+        this.scheduler.subscribeVisibilityChange?.(() => {
+          if (!this.scheduler.canUseAnimationFrame()) this.flushNow();
+        }) ?? null;
       this.cancelScheduledFlush = this.scheduler.scheduleAnimationFrame(() => {
         this.cancelScheduledFlush = null;
         this.flushFrame();

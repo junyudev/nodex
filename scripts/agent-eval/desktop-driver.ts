@@ -4,6 +4,7 @@ import type { CodexModelOption } from "../../src/shared/types";
 import {
   invokeIpc,
   isRecord,
+  readCodexModelCatalog,
   requireRecord,
   selectCodexExecutionProfile,
   sendAgentPromptWithEvidence,
@@ -42,7 +43,7 @@ export interface DesktopAgentResult {
 }
 
 const preflightModel = async (page: Page): Promise<CodexModelOption> => {
-  const models = (await invokeIpc(page, "codex:model:list")) as readonly CodexModelOption[];
+  const models = await readCodexModelCatalog(page);
   const model = models.find(
     (candidate) =>
       !candidate.hidden && (candidate.id === "gpt-5.6-luna" || candidate.model === "gpt-5.6-luna"),

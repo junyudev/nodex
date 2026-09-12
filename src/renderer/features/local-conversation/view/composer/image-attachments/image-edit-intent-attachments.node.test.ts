@@ -23,7 +23,7 @@ function currentAttachment(
     src: "data:image/png;base64,b3JpZ2luYWw=",
     origin: "browser",
     materialization: {
-      hostId: "default",
+      hostId: "local",
       localPath: null,
       managedSource: "nodex://assets/original.png",
     },
@@ -50,7 +50,7 @@ describe("image edit intent attachments", () => {
 
     const attachments = buildComposerImageEditAttachments({
       currentAttachments: [original],
-      executionHostId: "default",
+      executionHostId: "local",
       generation: 2,
       intent: buildRemoveSubmissionIntent({
         entrypoint: "image_click",
@@ -87,13 +87,13 @@ describe("image edit intent attachments", () => {
     expect(
       buildComposerImageEditAttachments({
         currentAttachments: [],
-        executionHostId: "default",
+        executionHostId: "local",
         generation: 1,
         intent,
       })?.[0],
     ).toMatchObject({
       materialization: {
-        hostId: "default",
+        hostId: "local",
         localPath: null,
         managedSource: "nodex://assets/managed.png",
       },
@@ -126,13 +126,13 @@ describe("image edit intent attachments", () => {
     expect(
       buildComposerImageEditAttachments({
         currentAttachments: [],
-        executionHostId: "default",
+        executionHostId: "local",
         generation: 1,
         intent,
       })?.[0],
     ).toMatchObject({
       materialization: {
-        hostId: "default",
+        hostId: "local",
         localPath: "/tmp/original.png",
         managedSource: null,
       },

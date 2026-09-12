@@ -14,6 +14,7 @@ import type {
   TerminalRunActionRequest,
 } from "../../shared/types";
 import { makeCodexBackgroundProcessRecordId } from "../../shared/codex-background-processes";
+import { resolveCodexElectronDisplayThreadTitle } from "../../shared/codex-thread-title";
 import { buildCodexBackgroundProcessRow } from "../codex/background-process-rows";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -135,13 +136,19 @@ const projectConversation = (
   entry: CodexThreadDirectoryEntry,
 ): CodexBackgroundProcessConversationProjection => {
   const conversation: CodexConversationSnapshot | null = entry.snapshot;
+  const threadName = conversation?.threadName?.trim()
+    ? conversation.threadName
+    : entry.durable.threadName;
+  const threadPreview = conversation?.threadPreview?.trim()
+    ? conversation.threadPreview
+    : entry.durable.threadPreview;
   return {
     threadTitle:
-      conversation?.threadName?.trim() ||
-      conversation?.threadPreview?.trim() ||
-      entry.durable.threadName?.trim() ||
-      entry.durable.threadPreview.trim() ||
-      null,
+      resolveCodexElectronDisplayThreadTitle({
+        threadName,
+        threadPreview,
+        fallback: "",
+      }) || null,
     terminalItems:
       conversation?.turns.flatMap((turn) =>
         turn.items.flatMap((item) =>

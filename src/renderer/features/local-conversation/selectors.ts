@@ -1,3 +1,4 @@
+import type { CodexConversationRequestContext } from "../../../shared/codex-conversation-request-context";
 import type {
   CodexConversationResumeState,
   CodexConversationSnapshot,
@@ -323,8 +324,11 @@ export function selectVisibleConversationTurns(
   return conversation.turns;
 }
 
+export type VisibleConversationContext = CodexConversationRequestContext &
+  Pick<CodexConversationSnapshot, "resumeState">;
+
 export function selectVisibleConversationTurnEntries(input: {
-  conversation: CodexConversationSnapshot | null;
+  conversation: VisibleConversationContext | null;
   parentTurns?: readonly CodexConversationTurn[] | null;
 }): VisibleConversationTurnEntry[] {
   const conversation = input.conversation;

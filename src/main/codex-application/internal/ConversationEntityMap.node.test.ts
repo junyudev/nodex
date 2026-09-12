@@ -101,78 +101,6 @@ it.effect("marks every loaded generation non-live after connection loss", () =>
   }),
 );
 
-it.effect("fails closed when resume buffering exceeds its occurrence budget", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    const conversations = yield* build(scope);
-    const aggregate = conversations.entity("thread-a");
-    assert.isTrue(aggregate.beginResumeEventBuffer());
-    const occurrence = (token: number): CodexApplicationNotificationOccurrence => ({
-      kind: "notification",
-      protocol: "generated",
-      hostId: "local",
-      generation: 1,
-      occurrenceId: `local:1:${token}`,
-      occurrenceToken: token,
-      method: "turn/started",
-      params: { threadId: "thread-a" },
-    });
-    for (let token = 1; token <= 1_024; token += 1) {
-      assert.strictEqual(
-        aggregate.offerProtocolOccurrence({
-          occurrence: occurrence(token),
-          bypassResume: false,
-          startsThread: false,
-          deferThreadStart: null,
-        }),
-        "buffered",
-      );
-    }
-    assert.strictEqual(
-      aggregate.offerProtocolOccurrence({
-        occurrence: occurrence(1_025),
-        bypassResume: false,
-        startsThread: false,
-        deferThreadStart: null,
-      }),
-      "overflow",
-    );
-    assert.strictEqual(aggregate.takeResumeEventBuffer()?.length, 1_024);
-    yield* Scope.close(scope, Exit.void);
-  }),
-);
-
-it.effect("rejects a giant sparse deferred occurrence without serializing its logical holes", () =>
-  Effect.gen(function* () {
-    const scope = yield* Scope.make();
-    const conversations = yield* build(scope);
-    const aggregate = conversations.entity("thread-sparse-buffer");
-    assert.isTrue(aggregate.beginResumeEventBuffer());
-    const sparsePayload = new Array<unknown>(100_000_000);
-
-    assert.strictEqual(
-      aggregate.offerProtocolOccurrence({
-        occurrence: {
-          kind: "notification",
-          protocol: "generated",
-          hostId: "local",
-          generation: 1,
-          occurrenceId: "local:1:sparse",
-          occurrenceToken: 1,
-          method: "turn/diff/updated",
-          params: { threadId: "thread-sparse-buffer", diff: sparsePayload },
-        },
-        bypassResume: false,
-        startsThread: false,
-        deferThreadStart: null,
-      }),
-      "overflow",
-    );
-    assert.deepEqual(aggregate.takeResumeEventBuffer(), []);
-    yield* Scope.close(scope, Exit.void);
-  }),
-);
-
 it.effect("never mixes deferred Thread starts across host generations", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
@@ -192,7 +120,6 @@ it.effect("never mixes deferred Thread starts across host generations", () =>
     assert.strictEqual(
       aggregate.offerProtocolOccurrence({
         occurrence: occurrence(1),
-        bypassResume: false,
         startsThread: true,
         deferThreadStart: { hostId: "local", generation: 1 },
       }),
@@ -201,7 +128,6 @@ it.effect("never mixes deferred Thread starts across host generations", () =>
     assert.strictEqual(
       aggregate.offerProtocolOccurrence({
         occurrence: occurrence(2),
-        bypassResume: false,
         startsThread: true,
         deferThreadStart: { hostId: "local", generation: 2 },
       }),

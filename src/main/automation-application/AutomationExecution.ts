@@ -73,8 +73,9 @@ import { CodexApplicationEventHub } from "../codex-application/CodexApplicationE
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { CodexHeartbeatTurnCompletion } from "../codex-application/CodexHeartbeatTurnCompletion";
 import { CodexHistoryPageAdapter } from "../codex-application/CodexHistoryPageAdapter";
+import { CodexMainConversationManagers } from "../codex-application/CodexMainConversationManagers";
 import { CodexPermissions } from "../codex-application/CodexPermissions";
-import { CodexRendererConversationRegistry } from "../codex-application/CodexRendererConversationRegistry";
+import { CodexExecutionAssignments } from "../codex-application/CodexExecutionAssignments";
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
 import { ThreadCreationRuntime } from "../codex-application/ThreadCreationRuntime";
 import { CodexThreadTitlePersistence } from "../codex-application/CodexThreadTitlePersistence";
@@ -231,12 +232,13 @@ export const live = (
   | AutomationApplication
   | CodexApplicationEventHub
   | CodexAppServerCapabilities
+  | CodexExecutionAssignments
   | CodexGateway
   | CodexGitProbe
   | CodexHeartbeatTurnCompletion
   | CodexHistoryPageAdapter
+  | CodexMainConversationManagers
   | CodexPermissions
-  | CodexRendererConversationRegistry
   | CodexThreadDirectory
   | ThreadCreationRuntime
   | CodexThreadTitlePersistence
@@ -258,12 +260,13 @@ export const live = (
       const automation = yield* AutomationApplication;
       const events = yield* CodexApplicationEventHub;
       const capabilities = yield* CodexAppServerCapabilities;
+      const executionAssignments = yield* CodexExecutionAssignments;
       const gateway = yield* CodexGateway;
       const git = yield* CodexGitProbe;
       const heartbeatCompletion = yield* CodexHeartbeatTurnCompletion;
       const historyPages = yield* CodexHistoryPageAdapter;
+      const mainConversationManagers = yield* CodexMainConversationManagers;
       const permissions = yield* CodexPermissions;
-      const rendererConversations = yield* CodexRendererConversationRegistry;
       const directory = yield* CodexThreadDirectory;
       const threadStarts = yield* ThreadCreationRuntime;
       const titles = yield* CodexThreadTitlePersistence;
@@ -513,9 +516,11 @@ export const live = (
           return yield* deferHeartbeat(definition, context, "heartbeat_thread_missing");
         }
         const renderer = context.heartbeat?.rendererState ?? null;
+        const streamRole = mainConversationManagers.role(CODEX_APP_LOCAL_HOST_ID, targetThreadId);
+        const ownerClientId = streamRole?.role === "follower" ? streamRole.ownerClientId : null;
         const rendererBlock = !renderer
           ? "renderer_owner_lease_missing"
-          : rendererConversations.getOwnerClientId(targetThreadId) !== renderer.rendererClientId
+          : ownerClientId !== renderer.rendererClientId
             ? "renderer_owner_lease_stale"
             : renderer.isEligible
               ? null
@@ -577,7 +582,13 @@ export const live = (
               permissionState: yield* permissions.resolveAutomation([requestedCwd]),
               workspaceRoots: [requestedCwd],
             });
-        const browserConfig = yield* desktopTools.threadConfig;
+        const executionDefaults = yield* executionAssignments.readThreadDefaults(
+          target.hostGeneration.version,
+        );
+        if (!executionDefaults) {
+          return yield* fail("resume-heartbeat-thread", "execution-config-loading");
+        }
+        const browserConfig = yield* desktopTools.threadConfig(requestedCwd);
         const resume = projectCodexGatewayThreadResumeResponse(
           yield* fencedHostRequest("resume-heartbeat-thread", target.hostGeneration, () =>
             gateway.requestOnHost(
@@ -587,24 +598,19 @@ export const live = (
                 threadId: targetThreadId,
                 history: null,
                 path: target.rolloutPath,
-                model: target.entry.durable.executionProfile?.modelId ?? null,
-                serviceTier: target.entry.durable.executionProfile?.serviceTier ?? null,
+                model: null,
+                serviceTier: null,
                 cwd: requestedCwd,
                 approvalPolicy: null,
                 sandbox: null,
-                config: {
-                  ...(browserConfig ?? {}),
-                  ...buildCodexThreadConfig({
-                    nativeMcp: target.hostGeneration.hostId === gateway.localHostId,
-                    purpose: "automation",
-                  }),
-                  ...(target.entry.durable.executionProfile?.reasoningEffort
-                    ? {
-                        model_reasoning_effort:
-                          target.entry.durable.executionProfile.reasoningEffort,
-                      }
-                    : {}),
-                },
+                config: buildCodexThreadConfig({
+                  nativeAppTools: target.hostGeneration.nativeAppTools,
+                  purpose: "automation",
+                  overrides: {
+                    ...executionDefaults.config,
+                    ...(browserConfig ?? {}),
+                  },
+                }),
                 personality: null,
                 excludeTurns: true,
               },
@@ -620,6 +626,7 @@ export const live = (
         }
         const accepted = yield* directory.acceptResumeResult({
           response: resume,
+          requestedCwd,
           capability: target.hostGeneration,
           executionHostId: target.entry.durable.executionHostId,
           fallbackCwd: requestedCwd,
@@ -869,6 +876,10 @@ export const live = (
         readonly now: number;
       }) {
         const capability = yield* capabilities.forHost(gateway.localHostId);
+        const executionDefaults = yield* executionAssignments.readThreadDefaults(
+          capability.version,
+        );
+        if (!executionDefaults) return yield* fail("start-cron-run", "execution-config-loading");
         const pendingThreadId = `pending:${randomUUID()}`;
         if (
           yield* automation.runs.begin({
@@ -908,7 +919,7 @@ export const live = (
             buildCodexDesktopDeveloperInstructions({
               baseInstructions: CODEX_AUTOMATION_DEVELOPER_INSTRUCTIONS,
               isNonGitWorkspace: true,
-              threadToolsEnabled: true,
+              threadToolsEnabled: executionDefaults.defaultEnableFeatures.thread_tools === true,
               workspaceDependenciesEnabled: false,
             }),
             location.projectlessOutputDirectory
@@ -921,17 +932,21 @@ export const live = (
           ]
             .filter((line): line is string => line !== null)
             .join("\n\n");
-          const browserConfig = yield* desktopTools.threadConfig;
+          const browserConfig = yield* desktopTools.threadConfig(location.cwd);
           const params = {
             cwd: location.cwd,
             model: input.model,
-            config: {
-              ...(browserConfig ?? {}),
-              ...(executionProfile?.reasoningEffort
-                ? { model_reasoning_effort: executionProfile.reasoningEffort }
-                : {}),
-              ...buildCodexThreadConfig({ nativeMcp: true, purpose: "automation" }),
-            },
+            config: buildCodexThreadConfig({
+              nativeAppTools: capability.nativeAppTools,
+              purpose: "automation",
+              overrides: {
+                ...executionDefaults.config,
+                ...(browserConfig ?? {}),
+                ...(executionProfile?.reasoningEffort
+                  ? { model_reasoning_effort: executionProfile.reasoningEffort }
+                  : {}),
+              },
+            }),
             developerInstructions,
             personality: null,
             ephemeral: null,
@@ -1046,6 +1061,10 @@ export const live = (
             ),
           );
           yield* turns.startAutomation(threadId, input.prompt, {
+            freshNativeThread: {
+              hostId: capability.hostId,
+              generation: capability.generation,
+            },
             ...(input.model ? { model: input.model } : {}),
             ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
             serviceTier: executionProfile?.serviceTier ?? null,

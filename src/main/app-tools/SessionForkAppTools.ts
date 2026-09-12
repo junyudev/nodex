@@ -134,7 +134,7 @@ export const make = Effect.gen(function* () {
               : { forkState: "attached", threadId: fork.threadId }),
           }),
         ),
-        Effect.catch(() =>
+        Effect.catch((_cause) =>
           Effect.succeed(
             toolFailure(
               "session_fork_unconfirmed",

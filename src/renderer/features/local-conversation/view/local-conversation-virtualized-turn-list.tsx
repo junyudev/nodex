@@ -1453,6 +1453,13 @@ export function LocalConversationVirtualizedTurnList({
     createLocalConversationHistoryGapRequestCoordinator(),
   );
 
+  useEffect(() => {
+    const coordinator = historyGapRequestCoordinatorRef.current;
+    return () => {
+      void coordinator.observeViewport(null);
+    };
+  }, []);
+
   responseSpacerHeightPxRef.current = responseSpacerHeightPx;
   latestTurnFollowStateRef.current = latestTurnFollowState;
   latestTurnFollowContentHeightPxRef.current = latestTurnFollowContentHeightPx;
@@ -2024,24 +2031,21 @@ export function LocalConversationVirtualizedTurnList({
 
   const handleViewportChange = useCallback(
     (change: VirtualizedTurnViewportChange) => {
-      if (onLoadHistoryBoundary && change.gaps.length > 0) {
+      if (onLoadHistoryBoundary) {
+        void historyGapRequestCoordinatorRef.current.observeViewport(
+          {
+            viewportStartPx: change.viewportStartPx,
+            viewportEndPx: change.viewportEndPx,
+            gaps: change.gaps,
+          },
+          onLoadHistoryBoundary,
+        );
         const hasEligibleGap = change.gaps.some(
           (gap) =>
             gap.endPx >= change.viewportStartPx - CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX &&
             gap.startPx <= change.viewportEndPx + CODEX_HISTORY_GAP_LOAD_PROXIMITY_PX,
         );
-        if (hasEligibleGap) {
-          historyGapRequestCoordinatorRef.current.observeViewport(
-            {
-              viewportRevision: change.viewportRevision,
-              viewportStartPx: change.viewportStartPx,
-              viewportEndPx: change.viewportEndPx,
-              gaps: change.gaps,
-            },
-            onLoadHistoryBoundary,
-          );
-          return;
-        }
+        if (hasEligibleGap) return;
       }
       turnItemRequestGateRef.current.retain(
         new Set(
@@ -2089,7 +2093,6 @@ export function LocalConversationVirtualizedTurnList({
         );
         return;
       }
-      if (!onLoadHistoryBoundary || change.gaps.length === 0) return;
     },
     [historyTurnItemsRefs, onLoadHistoryBoundary, onLoadHistoryTurnItems],
   );

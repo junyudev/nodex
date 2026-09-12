@@ -27,10 +27,18 @@ import {
 
 const THREAD_ID = "thread_c06";
 const TURN_ID = "turn_c06";
-
-type FileChangeItem = Extract<ThreadItem, { type: "fileChange" }>;
-type McpToolCallItem = Extract<ThreadItem, { type: "mcpToolCall" }>;
-
+type FileChangeItem = Extract<
+  ThreadItem,
+  {
+    type: "fileChange";
+  }
+>;
+type McpToolCallItem = Extract<
+  ThreadItem,
+  {
+    type: "mcpToolCall";
+  }
+>;
 function buildTurnParams(): CodexCanonicalTurnParams {
   return {
     threadId: THREAD_ID,
@@ -100,17 +108,20 @@ function buildState(items: ThreadItem[] = []): CodexCanonicalConversationState {
   };
 
   return createCodexCanonicalConversationState(thread, {
-    turnParamsById: { [TURN_ID]: buildTurnParams() },
+    hostId: "local",
+    ...{
+      turnParamsById: { [TURN_ID]: buildTurnParams() },
+    },
   });
 }
 
 interface CanonicalTurnFixture {
   readonly turnId: string | null;
-  readonly status?: CodexCanonicalTurnState["protocol"]["status"];
+  readonly status?: CodexCanonicalTurnState["status"];
   readonly items?: readonly CodexCanonicalItem[];
   readonly turnStartedAtMs?: number | null;
   readonly firstWork?: number | null;
-  readonly hookRuns?: CodexCanonicalTurnState["sidecar"]["hookRuns"];
+  readonly hookRuns?: CodexCanonicalTurnState["hookRuns"];
 }
 
 function withCanonicalTurns(
@@ -124,19 +135,13 @@ function withCanonicalTurns(
     ...state,
     turns: fixtures.map((fixture) => ({
       ...template,
-      protocol: {
-        ...template.protocol,
-        id: fixture.turnId,
-        status: fixture.status ?? "inProgress",
-        error: null,
-      },
+      turnId: fixture.turnId,
+      status: fixture.status ?? "inProgress",
+      error: null,
       items: fixture.items ?? [],
-      sidecar: {
-        ...template.sidecar,
-        turnStartedAtMs: fixture.turnStartedAtMs ?? null,
-        ...("firstWork" in fixture ? { firstTurnWorkItemStartedAtMs: fixture.firstWork } : {}),
-        ...("hookRuns" in fixture ? { hookRuns: fixture.hookRuns } : {}),
-      },
+      turnStartedAtMs: fixture.turnStartedAtMs ?? null,
+      ...("firstWork" in fixture ? { firstTurnWorkItemStartedAtMs: fixture.firstWork } : {}),
+      ...("hookRuns" in fixture ? { hookRuns: fixture.hookRuns } : {}),
     })),
   };
 }
@@ -150,8 +155,8 @@ function rawTurn(
     status: "inProgress",
     hasError: false,
     itemCount: items.length,
-    turnStartedAtMs: 1_000,
-    firstTurnWorkItemStartedAtMs: 2_000,
+    turnStartedAtMs: 1000,
+    firstTurnWorkItemStartedAtMs: 2000,
     ...overrides,
     items,
   };
@@ -315,7 +320,7 @@ describe("Codex canonical file-change stream", () => {
       firstTurnWorkItemStartedAtMs: null,
     });
     const emptyChanges: FileUpdateChange[] = [];
-    const clockValues = [10_001, 10_002];
+    const clockValues = [10001, 10002];
     let clockCalls = 0;
     const patch = reduceCodexFileChangePatchRawTurns(
       [source],
@@ -342,8 +347,8 @@ describe("Codex canonical file-change stream", () => {
     expect(patch.resolutionKind).toBe("reboundInProgressPlaceholder");
     expect(patch.turn?.turnId).toBe("bound-turn");
     expect(patch.turn?.status).toBe("inProgress");
-    expect(patch.turn?.turnStartedAtMs).toBe(10_001);
-    expect(patch.turn?.firstTurnWorkItemStartedAtMs).toBe(10_002);
+    expect(patch.turn?.turnStartedAtMs).toBe(10001);
+    expect(patch.turn?.firstTurnWorkItemStartedAtMs).toBe(10002);
     expect(patch.itemMutation).toBe("appended");
     expect(patch.rawItem?.status).toBe("inProgress");
     expect(patch.rawItem?.changes === emptyChanges).toBe(true);
@@ -359,7 +364,7 @@ describe("Codex canonical file-change stream", () => {
       turnStartedAtMs: null,
       firstTurnWorkItemStartedAtMs: null,
     });
-    const patchClock = [20_001, 20_002];
+    const patchClock = [20001, 20002];
     const patch = reduceCodexFileChangePatchRawTurns(
       [source],
       patchUpdate([change("created.ts")], { turnId: "patch-turn" }),
@@ -378,7 +383,7 @@ describe("Codex canonical file-change stream", () => {
       {
         now: () => {
           progressClockCalls += 1;
-          return 30_001;
+          return 30001;
         },
       },
     );
@@ -386,12 +391,12 @@ describe("Codex canonical file-change stream", () => {
     expect(patch.resolutionKind).toBe("reboundCompletedEmptyPlaceholder");
     expect(patch.turn?.turnId).toBe("patch-turn");
     expect(patch.turn?.status).toBe("inProgress");
-    expect(patch.turn?.turnStartedAtMs).toBe(20_001);
-    expect(patch.turn?.firstTurnWorkItemStartedAtMs).toBe(20_002);
+    expect(patch.turn?.turnStartedAtMs).toBe(20001);
+    expect(patch.turn?.firstTurnWorkItemStartedAtMs).toBe(20002);
     expect(progress.resolutionKind).toBe("reboundCompletedEmptyPlaceholder");
     expect(progress.turn?.turnId).toBe("progress-turn");
     expect(progress.turn?.status).toBe("inProgress");
-    expect(progress.turn?.turnStartedAtMs).toBe(30_001);
+    expect(progress.turn?.turnStartedAtMs).toBe(30001);
     expect(progress.turn?.firstTurnWorkItemStartedAtMs).toBe(null);
     expect(progress.turn?.items === source.items).toBe(true);
     expect(progress.matchedItemIndex).toBe(-1);
@@ -414,12 +419,14 @@ describe("Codex canonical file-change stream", () => {
       ...fileChange("shared", [change("last.ts")], "declined"),
       extensionSentinel: { retained: true },
     } as FileChangeItem & {
-      readonly extensionSentinel: { readonly retained: true };
+      readonly extensionSentinel: {
+        readonly retained: true;
+      };
     };
     const source = rawTurn([first, wrongType, last], {
       status: "failed",
-      turnStartedAtMs: 40_001,
-      firstTurnWorkItemStartedAtMs: 40_002,
+      turnStartedAtMs: 40001,
+      firstTurnWorkItemStartedAtMs: 40002,
     });
     const incoming = [change("replacement.ts")];
     const result = reduceCodexFileChangePatchRawTurns(
@@ -441,8 +448,8 @@ describe("Codex canonical file-change stream", () => {
     expect(result.turn?.items[0] === first).toBe(true);
     expect(result.turn?.items[1] === wrongType).toBe(true);
     expect(result.turn?.status).toBe("failed");
-    expect(result.turn?.turnStartedAtMs).toBe(40_001);
-    expect(result.turn?.firstTurnWorkItemStartedAtMs).toBe(40_002);
+    expect(result.turn?.turnStartedAtMs).toBe(40001);
+    expect(result.turn?.firstTurnWorkItemStartedAtMs).toBe(40002);
     expect(last.changes[0]?.path).toBe("last.ts");
   });
 
@@ -554,7 +561,7 @@ describe("Codex canonical file-change stream", () => {
     expect(canonical.disposition).toBe("applied");
     expect(canonical.state).toBe(state);
     expect(canonical.stateChanged).toBe(false);
-    expect(canonical.state.turns[0]?.sidecar.firstTurnWorkItemStartedAtMs === undefined).toBe(true);
+    expect(canonical.state.turns[0]?.firstTurnWorkItemStartedAtMs === undefined).toBe(true);
   });
 
   test("repairs missing turn collections before ordinary MCP progress", () => {
@@ -603,7 +610,7 @@ describe("Codex canonical file-change stream", () => {
     expect(secondRaw.turn).toBe(repairedRaw);
     expect(firstCanonical.stateChanged).toBe(true);
     expect(firstCanonical.state === state).toBe(false);
-    expect(firstCanonical.state.turns[0]?.sidecar.hookRuns?.length ?? -1).toBe(0);
+    expect(firstCanonical.state.turns[0]?.hookRuns?.length ?? -1).toBe(0);
     expect(secondCanonical.stateChanged).toBe(false);
     expect(secondCanonical.state).toBe(firstCanonical.state);
   });
@@ -613,13 +620,15 @@ describe("Codex canonical file-change stream", () => {
     const file = {
       ...fileChange("patch-item", oldChanges, "failed"),
       extensionSentinel: "preserve-me",
-    } as FileChangeItem & { readonly extensionSentinel: string };
+    } as FileChangeItem & {
+      readonly extensionSentinel: string;
+    };
     const existing = withCanonicalTurns(buildState(), [
       {
         turnId: TURN_ID,
         items: [file],
-        turnStartedAtMs: 50_001,
-        firstWork: 50_002,
+        turnStartedAtMs: 50001,
+        firstWork: 50002,
       },
     ]);
     const incoming = [change("after.ts")];
@@ -651,12 +660,12 @@ describe("Codex canonical file-change stream", () => {
     expect(patchedItem.changes === incoming).toBe(true);
     expect(patchedItem.status).toBe("failed");
     expect(patchedItem.extensionSentinel).toBe("preserve-me");
-    expect(patched.state.protocol).toBe(existing.protocol);
-    expect(patched.state.protocol.updatedAt).toBe(2);
-    expect(patched.state.turns[0]?.sidecar.turnStartedAtMs).toBe(50_001);
-    expect(patched.state.turns[0]?.sidecar.firstTurnWorkItemStartedAtMs).toBe(50_002);
-    expect(patched.state.turns[0]?.sidecar.hookRuns?.length ?? -1).toBe(0);
-
+    expect(patched.state.threadRuntimeStatus).toBe(existing.threadRuntimeStatus);
+    expect(patched.state.updatedAt).toBe(existing.updatedAt);
+    expect(patched.state.updatedAt).toBe(2000);
+    expect(patched.state.turns[0]?.turnStartedAtMs).toBe(50001);
+    expect(patched.state.turns[0]?.firstTurnWorkItemStartedAtMs).toBe(50002);
+    expect(patched.state.turns[0]?.hookRuns?.length ?? -1).toBe(0);
     const placeholder = withCanonicalTurns(buildState(), [
       {
         turnId: null,
@@ -684,18 +693,18 @@ describe("Codex canonical file-change stream", () => {
       {
         now: () => {
           clockCalls += 1;
-          return 60_001;
+          return 60001;
         },
       },
     );
 
     expect(rebound === placeholder).toBe(false);
-    expect(rebound.turns[0]?.protocol.id).toBe("bound-progress-turn");
-    expect(rebound.turns[0]?.protocol.status).toBe("inProgress");
-    expect(rebound.turns[0]?.sidecar.turnStartedAtMs).toBe(60_001);
-    expect(rebound.turns[0]?.sidecar.firstTurnWorkItemStartedAtMs === undefined).toBe(true);
+    expect(rebound.turns[0]?.turnId).toBe("bound-progress-turn");
+    expect(rebound.turns[0]?.status).toBe("inProgress");
+    expect(rebound.turns[0]?.turnStartedAtMs).toBe(60001);
+    expect(rebound.turns[0]?.firstTurnWorkItemStartedAtMs === undefined).toBe(true);
     expect(rebound.turns[0]?.items === placeholder.turns[0]?.items).toBe(true);
-    expect(rebound.turns[0]?.sidecar.hookRuns?.length ?? -1).toBe(0);
+    expect(rebound.turns[0]?.hookRuns?.length ?? -1).toBe(0);
     expect(clockCalls).toBe(1);
   });
 

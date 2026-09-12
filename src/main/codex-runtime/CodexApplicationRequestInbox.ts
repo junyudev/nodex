@@ -7,6 +7,7 @@ import type {
   CodexAppServerRequest,
 } from "@nodex/effect-codex-app-server/client";
 import type { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
+import type { CodexAppServerW3cTraceContext } from "@nodex/effect-codex-app-server/protocol";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -40,6 +41,7 @@ export interface CodexApplicationNotificationOccurrence {
   readonly generation: number;
   readonly occurrenceId: string;
   readonly occurrenceToken: number;
+  readonly receivedAtMs?: number;
   readonly method: string;
   readonly params: unknown;
 }
@@ -56,6 +58,7 @@ export type CodexApplicationRequestOutcome =
 export interface CodexApplicationRequestSettlement {
   readonly occurrence: CodexApplicationRequestOccurrence;
   readonly outcome: CodexApplicationRequestOutcome;
+  readonly trace?: CodexAppServerW3cTraceContext | null;
 }
 
 export type CodexApplicationRequestInterpretation<A> =
@@ -131,6 +134,7 @@ export interface CodexApplicationRequestInboxService {
     readonly hostId: string;
     readonly generation: number;
     readonly protocol: CodexAppServerNotification["protocol"];
+    readonly receivedAtMs?: number;
     readonly method: string;
     readonly params: unknown;
   }) => Effect.Effect<void>;
@@ -145,11 +149,21 @@ export interface CodexApplicationRequestInboxService {
   readonly settle: (
     occurrence: CodexApplicationRequestOccurrence,
     outcome: CodexApplicationRequestOutcome,
+    trace?: CodexAppServerW3cTraceContext | null,
   ) => Effect.Effect<boolean>;
+  /** Resolves an exact physical occurrence before a renderer response adapter validates its method. */
+  readonly resolveOccurrence: (identity: {
+    readonly hostId: string;
+    readonly generation: number;
+    readonly occurrenceToken: number;
+    readonly requestId: RequestId;
+    readonly method: string;
+  }) => Effect.Effect<CodexApplicationRequestOccurrence | null>;
   /** Settles a pending occurrence retained by an application request capability. */
   readonly settleOccurrenceToken: (
     occurrenceToken: number,
     outcome: CodexApplicationRequestOutcome,
+    trace?: CodexAppServerW3cTraceContext | null,
   ) => Effect.Effect<boolean>;
   /** Fails only the exact physical generation that admitted the bad occurrence. */
   readonly failGeneration: (
@@ -242,9 +256,6 @@ const unavailable = (
 const isInterruptedOnly = (cause: Cause.Cause<unknown>): boolean =>
   cause.reasons.length > 0 && cause.reasons.every(Cause.isInterruptReason);
 
-const DEFAULT_OCCURRENCE_BYTE_CAPACITY = 16 * 1024 * 1024;
-const DEFAULT_SINGLE_OCCURRENCE_BYTE_CAPACITY = 2 * 1024 * 1024;
-
 const positiveInteger = (value: number | undefined, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.max(1, Math.floor(value))
@@ -263,11 +274,11 @@ export const makeWithCapacities = (
     const settlementCapacity = Math.max(1, Math.floor(capacities.settlements));
     const occurrenceByteCapacity = positiveInteger(
       capacities.occurrenceBytes,
-      DEFAULT_OCCURRENCE_BYTE_CAPACITY,
+      Number.MAX_SAFE_INTEGER,
     );
     const singleOccurrenceByteCapacity = Math.min(
       occurrenceByteCapacity,
-      positiveInteger(capacities.singleOccurrenceBytes, DEFAULT_SINGLE_OCCURRENCE_BYTE_CAPACITY),
+      positiveInteger(capacities.singleOccurrenceBytes, occurrenceByteCapacity),
     );
     const occurrences = yield* Queue.dropping<BufferedOccurrence>(occurrenceCapacity);
     const state = yield* SynchronizedRef.make<InboxState>({
@@ -279,8 +290,12 @@ export const makeWithCapacities = (
       generations: new Map(),
     });
 
+    // Native payload size is not an application admission policy. Explicit budgets are
+    // available for constrained embedding/tests; the production path preserves raw values.
+    const hasByteBudget =
+      capacities.occurrenceBytes !== undefined || capacities.singleOccurrenceBytes !== undefined;
     const occurrenceBytes = (occurrence: CodexApplicationProtocolOccurrence): number =>
-      cappedApproximateValueBytes(occurrence, singleOccurrenceByteCapacity);
+      hasByteBudget ? cappedApproximateValueBytes(occurrence, singleOccurrenceByteCapacity) : 0;
 
     const overflowForOccurrence = (
       occurrence: CodexApplicationProtocolOccurrence,
@@ -366,7 +381,7 @@ export const makeWithCapacities = (
       ).pipe(Effect.as({ ...current, generations }));
     };
 
-    const settle: CodexApplicationRequestInboxService["settle"] = (occurrence, outcome) =>
+    const settle: CodexApplicationRequestInboxService["settle"] = (occurrence, outcome, trace) =>
       SynchronizedRef.modifyEffect(
         state,
         (current): Effect.Effect<readonly [boolean, InboxState]> => {
@@ -386,7 +401,7 @@ export const makeWithCapacities = (
             occurrence.occurrenceToken,
             "pending",
           );
-          return Queue.offer(generation.settlements, { occurrence, outcome }).pipe(
+          return Queue.offer(generation.settlements, { occurrence, outcome, trace }).pipe(
             Effect.flatMap((accepted): Effect.Effect<readonly [boolean, InboxState]> => {
               if (accepted) {
                 return Effect.succeed([
@@ -419,6 +434,7 @@ export const makeWithCapacities = (
     const settleOccurrenceToken: CodexApplicationRequestInboxService["settleOccurrenceToken"] = (
       occurrenceToken,
       outcome,
+      trace,
     ) =>
       SynchronizedRef.modifyEffect(
         state,
@@ -433,7 +449,7 @@ export const makeWithCapacities = (
             nextGenerations.set(key, { ...generation, pending: nextPending });
             if (generation.failed) return Effect.succeed([false, current] as const);
             const released = releaseOccurrenceReference(current, occurrenceToken, "pending");
-            return Queue.offer(generation.settlements, { occurrence, outcome }).pipe(
+            return Queue.offer(generation.settlements, { occurrence, outcome, trace }).pipe(
               Effect.flatMap((accepted): Effect.Effect<readonly [boolean, InboxState]> => {
                 if (accepted) {
                   return Effect.succeed([
@@ -897,6 +913,24 @@ export const makeWithCapacities = (
       openGeneration,
       settle,
       settleOccurrenceToken,
+      resolveOccurrence: (identity) =>
+        SynchronizedRef.get(state).pipe(
+          Effect.map((current) => {
+            for (const generation of current.generations.values()) {
+              if (generation.failed) continue;
+              const occurrence = generation.pending.get(identity.occurrenceToken)?.occurrence;
+              if (
+                occurrence &&
+                occurrence.hostId === identity.hostId &&
+                occurrence.generation === identity.generation &&
+                occurrence.requestId === identity.requestId &&
+                occurrence.method === identity.method
+              )
+                return occurrence;
+            }
+            return null;
+          }),
+        ),
       failGeneration,
       interpret,
       interpretNotification,

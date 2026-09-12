@@ -5,7 +5,7 @@ import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import type { CodexSshExecutionHostConfig } from "../../shared/types";
 import type { CodexAppServerClientOptions } from "../platform/node/CodexProcessExecutionHost";
-import { codexCliAppServerArgs } from "../../shared/codex-app-server-launch";
+import { codexSshConnectionFromHostConfig } from "../../shared/codex-ssh-connection";
 import {
   describeCodexTransferFile,
   sanitizeCodexTransferToken,
@@ -249,10 +249,20 @@ export class CodexSshExecutionHostTransport implements CodexExecutionHostFileTra
   }
 
   appServerClientOptions(): CodexAppServerClientOptions {
-    const codexBinary = this.config.codexBinary ?? "codex";
+    const connection = codexSshConnectionFromHostConfig(this.config);
     return {
-      binaryPath: this.#sshBinary,
-      args: buildCodexSshArguments(this.config, [codexBinary, ...codexCliAppServerArgs()]),
+      ssh: {
+        connection: {
+          alias: connection.sshAlias ?? undefined,
+          host: connection.sshHost,
+          port: connection.sshPort,
+          identity: connection.identity ?? undefined,
+        },
+        binary: this.#sshBinary,
+        codexBinary: this.config.codexBinary ?? "codex",
+        codexHome: this.config.codexHome,
+        connectTimeoutSeconds: SSH_CONNECT_TIMEOUT_SECONDS,
+      },
       expectedCodexHome: undefined,
       initializeTimeoutMs: 30_000,
       requestTimeoutMs: 180_000,

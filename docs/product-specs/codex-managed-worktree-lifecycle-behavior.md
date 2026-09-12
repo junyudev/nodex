@@ -392,6 +392,12 @@ Local filesystem code never inspects or deletes a remote path. Remote capability
 is visible only for a registered, health-checked adapter with repository,
 worktree, execution, cancellation, and file-transfer support.
 
+Repository-root discovery used by execution preparation follows the same host
+boundary. Main asks the selected execution host's worker to resolve Git root
+state and treats recognized Git non-repository results as an ordinary null
+root. A remote workspace is never classified by running Git against Main's
+local path.
+
 SSH credentials and private keys remain with the operating system's SSH
 configuration and agent. They are not sent to the renderer, stored in Core, or
 included in lifecycle logs. Host-key verification is not weakened. Commands

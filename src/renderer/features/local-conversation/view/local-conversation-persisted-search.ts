@@ -210,3 +210,27 @@ export function resolveLocalConversationPersistedSearchTarget(input: {
     occurrenceIndex,
   };
 }
+
+/** Navigation waits for its actual projection, and cancellation does not depend on a frame firing. */
+export async function waitForLocalConversationPersistedSearchTarget(input: {
+  readonly readTarget: () => LocalConversationSearchTarget | null;
+  readonly waitForRender: () => Promise<void>;
+  readonly signal: AbortSignal;
+}): Promise<LocalConversationSearchTarget | null> {
+  if (input.signal.aborted) return null;
+  let onAbort = () => {};
+  const aborted = new Promise<void>((resolve) => {
+    onAbort = resolve;
+  });
+  input.signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    while (!input.signal.aborted) {
+      const target = input.readTarget();
+      if (target) return target;
+      await Promise.race([input.waitForRender(), aborted]);
+    }
+    return null;
+  } finally {
+    input.signal.removeEventListener("abort", onAbort);
+  }
+}

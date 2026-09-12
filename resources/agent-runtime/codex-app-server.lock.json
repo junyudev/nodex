@@ -2,22 +2,22 @@
   "appServerRuntimeVersion": "0.153.4",
   "builds": {
     "darwin-arm64": {
-      "archiveSha256": "90f0467fd03294896204e8856bf969a0691590e8bef78dc2563a264b186f3265",
-      "archiveSize": 92479769,
-      "assetName": "codex-app-server-package-aarch64-apple-darwin.tar.gz",
-      "entrypointSha256": "d663fc54d331d1e0e002110ef4b8e4022de4b5a57a53a90e80dd716ccd7110d9",
-      "runtimeMetadataSha256": "da3d3486b67e05c7ac5e9774660eb336d58e1c1e5ef150bb3baa1dccb9b0448b",
-      "targetTriple": "aarch64-apple-darwin",
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.153.4/codex-app-server-package-aarch64-apple-darwin.tar.gz"
+      "archiveSha256": "35438da1fbf7a6db7ddb3bcec84448fa6015ba188461472a97d9d1da7d9c4353",
+      "archiveSize": 111554884,
+      "assetName": "codex-package-aarch64-apple-darwin.tar.gz",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.153.4/codex-package-aarch64-apple-darwin.tar.gz",
+      "entrypointSha256": "b973d440acac501fd2594a43e7ca9ce41e0a65b9dfb28d0d7a7837c99e1261e3",
+      "runtimeMetadataSha256": "eaf908c360c6a65231e488998aeb285fca449743059a3a196413fd68b03a08ec",
+      "targetTriple": "aarch64-apple-darwin"
     },
     "darwin-x64": {
-      "archiveSha256": "ee286ca326a0df4a2b81dddb213d61e610d7b9c4f3173cc16f6023683a94ca82",
-      "archiveSize": 100332657,
-      "assetName": "codex-app-server-package-x86_64-apple-darwin.tar.gz",
-      "entrypointSha256": "6e168689ab2444ac262fc3325c63bd8d01eb52c65d76fae44202bdbeaccc9d4b",
-      "runtimeMetadataSha256": "b2df418f69bac0a8182e383edcbfd8fdf62d510676e8e63f306d2627da683437",
-      "targetTriple": "x86_64-apple-darwin",
-      "url": "https://github.com/openai/codex/releases/download/rust-v0.153.4/codex-app-server-package-x86_64-apple-darwin.tar.gz"
+      "archiveSha256": "3ee638d7155c856ef31f3f4a85cb2195de1939962d3924c935b24f0514564a3d",
+      "archiveSize": 121093282,
+      "assetName": "codex-package-x86_64-apple-darwin.tar.gz",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.153.4/codex-package-x86_64-apple-darwin.tar.gz",
+      "entrypointSha256": "88ecd2cbf8044832a49e7710394d9d328f7205fa5e8c8ebbdd015e002b4f6e21",
+      "runtimeMetadataSha256": "f6f55e4c0b538023adf6fcddb8bdb2f5661d042819ef6df800753638a05dbe28",
+      "targetTriple": "x86_64-apple-darwin"
     }
   },
   "notices": {
@@ -27,11 +27,11 @@
     "noticeSha256": "9d71575ecfd9a843fc1677b0efb08053c6ba9fd686a0de1a6f5382fd3c220915"
   },
   "packageManifest": {
-    "entrypoint": "bin/codex-app-server",
+    "entrypoint": "bin/codex",
     "layoutVersion": 1,
     "pathDir": "codex-path",
     "resourcesDir": "codex-resources",
-    "variant": "codex-app-server",
+    "variant": "codex",
     "version": "0.153.4"
   },
   "protocolSchema": {
@@ -42,28 +42,28 @@
         "archiveSha256": "8cf911ea676523bfb2121ec561848d2aba564890ad536db4d8a3353f2b9850b1",
         "archiveSize": 87323149,
         "assetName": "codex-aarch64-apple-darwin.tar.gz",
+        "url": "https://github.com/openai/codex/releases/download/rust-v0.153.4/codex-aarch64-apple-darwin.tar.gz",
         "entrypoint": "codex-aarch64-apple-darwin",
-        "targetTriple": "aarch64-apple-darwin",
-        "url": "https://github.com/openai/codex/releases/download/rust-v0.153.4/codex-aarch64-apple-darwin.tar.gz"
+        "targetTriple": "aarch64-apple-darwin"
       },
       "darwin-x64": {
         "archiveSha256": "d69200f0bf841b1d1a07f80b80cf742a2e4fc2bab91ae8a44b1042f8e8ca9fa4",
         "archiveSize": 95186318,
         "assetName": "codex-x86_64-apple-darwin.tar.gz",
+        "url": "https://github.com/openai/codex/releases/download/rust-v0.153.4/codex-x86_64-apple-darwin.tar.gz",
         "entrypoint": "codex-x86_64-apple-darwin",
-        "targetTriple": "x86_64-apple-darwin",
-        "url": "https://github.com/openai/codex/releases/download/rust-v0.153.4/codex-x86_64-apple-darwin.tar.gz"
+        "targetTriple": "x86_64-apple-darwin"
       }
     }
   },
   "requiredArtifacts": [
     "codex-package.json",
-    "bin/codex-app-server",
+    "bin/codex",
     "bin/codex-code-mode-host",
     "codex-path/rg",
     "codex-resources/zsh/bin/zsh"
   ],
-  "runtimeFamily": "codex-app-server",
+  "runtimeFamily": "codex",
   "schemaVersion": 1,
   "upstream": {
     "checksumManifest": {

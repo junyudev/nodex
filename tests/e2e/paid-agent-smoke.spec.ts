@@ -22,6 +22,7 @@ import {
   createAgentSmokeDraft,
   invokeIpc,
   isRecord,
+  readCodexModelCatalog,
   requireRecord,
   selectCodexExecutionProfile,
   sendAgentPromptWithEvidence,
@@ -46,7 +47,7 @@ const preflightExecutionProfile = async (
   model: CodexModelOption;
 }> => {
   const definition = PAID_AGENT_SMOKE_DEFINITIONS[caseId];
-  const models = (await invokeIpc(page, "codex:model:list")) as readonly CodexModelOption[];
+  const models = await readCodexModelCatalog(page);
   const model = models.find(
     (candidate) =>
       !candidate.hidden &&
@@ -80,7 +81,7 @@ const selectExecutionProfile = async (
   input: Awaited<ReturnType<typeof preflightExecutionProfile>>,
 ): Promise<CodexExecutionProfile> => {
   await selectCodexExecutionProfile(page, input.model, input.expected);
-  const refreshed = (await invokeIpc(page, "codex:model:list")) as readonly CodexModelOption[];
+  const refreshed = await readCodexModelCatalog(page);
   const refreshedModel = refreshed.find((model) => !model.hidden && model.id === input.model.id);
   if (
     !refreshedModel?.supportedReasoningEfforts.some(

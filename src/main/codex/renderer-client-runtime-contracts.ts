@@ -1,11 +1,7 @@
 import type * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import type * as Stream from "effect/Stream";
-import type {
-  CodexRendererClientResponseMessage,
-  CodexRendererThreadRole,
-} from "../../shared/types";
-import type { RendererDeliveryTransferAckEnvelope } from "../../shared/renderer-delivery-transport";
+import type { CodexRendererClientResponseMessage } from "../../shared/types";
 import type { SafeSendWebContentsLike } from "../ipc-safe-send";
 import type { BackendLogger } from "../logging/logger";
 
@@ -13,10 +9,10 @@ export const DEFAULT_RENDERER_CLIENT_REQUEST_TIMEOUT_MS = 5_000;
 export const DEFAULT_RENDERER_CLIENT_MAX_PENDING_REQUESTS = 256;
 export const DEFAULT_RENDERER_CLIENT_MAX_PENDING_REQUESTS_PER_TARGET = 64;
 export const RENDERER_CLIENT_REQUEST_CHANNEL = "codex:renderer-client:request";
-export const THREAD_ROLE_RENDERER_CLIENT_REQUEST_METHOD = "thread-role";
 
 export interface RendererClientWebContents extends SafeSendWebContentsLike {
   id: number;
+  isLoading?: () => boolean;
   once?: (event: "destroyed", listener: () => void) => unknown;
   off?: (event: "destroyed", listener: () => void) => unknown;
 }
@@ -64,11 +60,7 @@ export interface RendererClientRuntimeOptions {
   readonly maxPendingRequests?: number;
   readonly maxPendingRequestsPerTarget?: number;
   readonly logger?: Pick<BackendLogger, "debug" | "warn">;
-  readonly send?: (
-    target: RendererClientWebContents,
-    channel: string,
-    args: readonly unknown[],
-  ) => boolean;
+  readonly send?: (target: RendererClientWebContents, channel: string, payload: unknown) => boolean;
 }
 
 export const RendererClientFailureReason = Schema.Literals([
@@ -104,17 +96,19 @@ export interface RendererClientRuntimeService {
   readonly getClientIdForWebContentsId: (webContentsId: number) => string | null;
   readonly getWebContentsIdForClientId: (clientId: string) => number | null;
   readonly getClientCount: () => number;
+  readonly getClientIds: () => readonly string[];
   readonly getPendingRequestCount: () => number;
-  readonly sendToClient: (clientId: string, channel: string, args: readonly unknown[]) => boolean;
+  readonly sendToClient: (clientId: string, channel: string, payload: unknown) => boolean;
+  readonly sendCriticalToClient: (clientId: string, channel: string, payload: unknown) => boolean;
   readonly sendToClients: (
     clientIds: readonly string[],
     channel: string,
-    args: readonly unknown[],
+    payload: unknown,
     options?: { readonly excludeClientId?: string | null },
   ) => RendererClientDeliveryResult;
   readonly broadcast: (
     channel: string,
-    args: readonly unknown[],
+    payload: unknown,
     options?: RendererClientBroadcastOptions,
   ) => number;
   readonly request: <A = unknown>(
@@ -123,24 +117,15 @@ export interface RendererClientRuntimeService {
     params: unknown,
     options?: RendererClientRequestOptions,
   ) => Effect.Effect<A, RendererClientRuntimeError>;
-  readonly queryThreadRole: (
-    targetClientId: string,
-    conversationId: string,
-    options?: RendererClientRequestOptions,
-  ) => Effect.Effect<CodexRendererThreadRole, RendererClientRuntimeError>;
-  readonly requireThreadOwner: (
-    targetClientId: string,
-    conversationId: string,
-    options?: RendererClientRequestOptions,
-  ) => Effect.Effect<void, RendererClientRuntimeError>;
   readonly handleResponse: (
     webContents: RendererClientWebContents,
     response: CodexRendererClientResponseMessage,
   ) => Effect.Effect<boolean>;
   readonly handleDeliveryAcknowledgment: (
     webContents: RendererClientWebContents,
-    acknowledgment: RendererDeliveryTransferAckEnvelope,
-  ) => Effect.Effect<boolean>;
+    transferId: string,
+    sequence: number,
+  ) => Effect.Effect<void>;
   readonly disposeClient: (clientId: string, reason?: string) => Effect.Effect<void>;
   readonly events: Stream.Stream<RendererClientEvent>;
 }

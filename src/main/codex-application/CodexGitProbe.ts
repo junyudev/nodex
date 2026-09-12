@@ -1,7 +1,11 @@
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
-import { runCodexGitCommand, type CodexGitCommandResult } from "../codex/codex-git-command";
+import {
+  isCodexNonGitRepositoryMessage,
+  runCodexGitCommand,
+  type CodexGitCommandResult,
+} from "../codex/codex-git-command";
 
 const GIT_PROBE_TIMEOUT_MS = 8_000;
 const GIT_PROBE_MAX_OUTPUT_BYTES = 256 * 1_024;
@@ -20,6 +24,7 @@ type GitProbeCommand = (
 export interface CodexGitProbeOptions {
   readonly environment: NodeJS.ProcessEnv;
   readonly command?: GitProbeCommand;
+  readonly remoteIsNonGitWorkspace?: (hostId: string, cwd: string) => Effect.Effect<boolean>;
 }
 
 class CodexGitProbeCommandError extends Data.TaggedError("CodexGitProbeCommandError")<{
@@ -31,6 +36,7 @@ export class CodexGitProbe extends Context.Service<
   {
     readonly readPath: (cwd: string, args: readonly string[]) => Effect.Effect<string | null>;
     readonly isNonGitWorkspace: (cwd: string) => Effect.Effect<boolean>;
+    readonly isNonGitWorkspaceOnHost: (hostId: string, cwd: string) => Effect.Effect<boolean>;
   }
 >()("nodex/main/codex-application/CodexGitProbe") {}
 
@@ -62,11 +68,15 @@ export const make = (options: CodexGitProbeOptions): CodexGitProbe["Service"] =>
     if (!normalizedCwd) return Effect.succeed(false);
     return run(normalizedCwd, ["rev-parse", "--show-toplevel"]).pipe(
       Effect.as(false),
-      Effect.catch((error) =>
-        Effect.succeed(String(error.cause).toLowerCase().includes("not a git repository")),
-      ),
+      Effect.catch((error) => Effect.succeed(isCodexNonGitRepositoryMessage(String(error.cause)))),
     );
   };
 
-  return CodexGitProbe.of({ readPath, isNonGitWorkspace });
+  const isNonGitWorkspaceOnHost = (hostId: string, cwd: string): Effect.Effect<boolean> => {
+    if (hostId === "local") return isNonGitWorkspace(cwd);
+    if (!options.remoteIsNonGitWorkspace) return Effect.succeed(false);
+    return options.remoteIsNonGitWorkspace(hostId, cwd);
+  };
+
+  return CodexGitProbe.of({ readPath, isNonGitWorkspace, isNonGitWorkspaceOnHost });
 };

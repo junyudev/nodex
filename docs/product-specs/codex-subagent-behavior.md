@@ -1,7 +1,7 @@
 # Codex Subagent Behavior
 
 Status: Active
-Last Updated: 2026-09-02
+Last Updated: 2026-09-15
 
 ## Intent and ownership
 
@@ -50,6 +50,28 @@ one non-state listing and bounded metadata-only repair; any identity that still
 cannot be proven reachable keeps the universe incomplete. Background discovery
 is scoped to the root and shares the app-server request scheduler's
 collaboration-hydration lane.
+Concurrent overview callers share discovery for the same root universe. A caller
+that receives an older incomplete overview after another discovery finishes
+rereads current completion and continuation before admitting another page scan.
+An active root does not suspend discovery. Metadata reads use the existing
+execution-host connection without resuming the root or acquiring its document.
+
+Resident and fetched history establish a newly observed spawn only through a
+`spawnAgent` call or a `started` Subagent activity. Interaction, interruption,
+and completion activity may describe an existing child but do not by themselves
+require discovery or metadata reads for another Thread.
+
+Direct relationship rows read resident canonical history and live overlays without
+requiring a presentation snapshot. Canonical child metadata and pending requests
+remain available when no child transcript view is mounted. Command, file-change,
+and permission approval roles use the same visibility rules as a conversation
+view; an empty file change does not produce an actionable file approval.
+Durable parent, Project, and archive records remain authoritative. A live display
+name does not complete a missing durable metadata record. Relationship repair is
+scoped to the admitted parent generation: retiring it cancels pending repair and
+its listeners, and an old refresh cannot publish into a replacement generation.
+Relationship updates carry the parent's durable execution host so remote task
+managers receive their own child metadata and approval state.
 
 Spawn and status notifications may arrive before a child metadata read. A
 verified spawn therefore establishes the positive descendant fact first and
@@ -114,6 +136,12 @@ Opening a child is the only ordinary parent-surface action that may attach
 child history. Existing sparse resident history is reused. Otherwise Main asks
 the existing Thread history Module for one bounded selected tail and reports
 whether the result is resident sparse, newly attached sparse, or metadata-only.
+Residency and the history checkpoint come from the canonical conversation even
+when no presentation snapshot exists. A complete empty history is available;
+Turn skeletons with `itemsView=notLoaded` still require the bounded tail.
+Opening retains the admitted root, child, and execution-host generations through
+the overview authority lookup. Retirement, replacement, reconnect, or history
+release during that lookup cannot produce a ready result from the earlier state.
 Metadata-only results stay explicitly unavailable rather than masquerading as
 an empty completed transcript. A Main-side sparse result is not `ready` until
 the requesting renderer has installed the normal owner/follower role,
@@ -146,9 +174,9 @@ physical concurrency two, and share root-scoped scheduling. The command does
 not report successful convergence while discovery is incomplete or a child in
 that fallback set fails or remains unresolved.
 
-Automatic Goal continuation is also root-tree aware. An idle root can continue
-an active Goal only after discovery is complete and the unresolved Active
-count is zero. Explicit queued user work keeps its independent target contract.
+The native Agent runtime owns automatic Goal continuation. Subagent discovery
+and idle-root observations do not dispatch Goal updates or start empty Turns.
+Explicit queued user work keeps its independent target contract.
 
 Before archive, Main requires a complete descendant closure and Core records a
 deterministic lifecycle operation containing the expected root and descendants.

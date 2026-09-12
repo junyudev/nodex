@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -12,6 +13,8 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
+import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
+import { getCodexReceivedAtMs } from "@nodex/effect-codex-app-server/transport-values";
 import { toCodexThreadStartedMetadataNotification } from "../../shared/codex-thread-start-metadata";
 import type { CodexSessionTransport } from "../platform/node/CodexSessionTransport";
 import {
@@ -22,6 +25,11 @@ import { CodexAppServerSession, type CodexAppServerSessionService } from "./Code
 import { CodexEventHub, type CodexEndpointConnection } from "./CodexEventHub";
 import { CodexRequestScheduler } from "./CodexRequestScheduler";
 import {
+  CodexHostRequestMetrics,
+  makeCodexHostRequestMetrics,
+  type CodexHostRequestMetricsState,
+} from "./CodexHostRequestMetrics";
+import {
   classifyCodexClientError,
   codexRuntimeError,
   type CodexRuntimeError,
@@ -29,6 +37,10 @@ import {
 
 export interface CodexEndpointConfig {
   readonly hostId: string;
+  readonly hostKind?: string;
+  readonly transportKind?: "stdio" | "websocket";
+  /** Claims transport-owned server requests before application ingress. */
+  readonly internalServerRequestHandler?: CodexEndpointInternalServerRequestHandler;
   readonly sessionLayer: (
     generation: number,
   ) => Layer.Layer<CodexAppServerSession, CodexRuntimeError, CodexSessionTransport>;
@@ -36,6 +48,16 @@ export interface CodexEndpointConfig {
   readonly retryCap?: Duration.Input;
   readonly jitter?: boolean;
 }
+
+export interface CodexEndpointInternalServerRequest {
+  readonly id: string | number;
+  readonly method: string;
+  readonly params: unknown;
+}
+
+export type CodexEndpointInternalServerRequestHandler = (
+  request: CodexEndpointInternalServerRequest,
+) => Effect.Effect<unknown> | null;
 
 interface ActiveSession {
   readonly scope: Scope.Closeable;
@@ -80,10 +102,12 @@ export class CodexEndpoint extends Context.Service<
   CodexEndpoint,
   {
     readonly hostId: string;
+    readonly metrics: CodexHostRequestMetricsState;
     /** Unique to this Endpoint instance, including across unregister/register and Main restart. */
     readonly sourceEpoch: string;
     readonly state: SubscriptionRef.SubscriptionRef<CodexEndpointConnection>;
     readonly session: Effect.Effect<CodexAppServerSessionService, CodexRuntimeError>;
+    readonly admission: Effect.Effect<number, CodexRuntimeError>;
     /** Rotates the physical generation without replacing the stable host state cell. */
     readonly restart: Effect.Effect<void>;
     /** Publishes a new host config, then rotates the physical generation atomically. */
@@ -110,7 +134,15 @@ export const live = (
     CodexEndpoint,
     Effect.gen(function* () {
       const hostId = config.hostId.trim();
+      const hostMetrics = makeCodexHostRequestMetrics(
+        hostId,
+        config.hostKind ?? "local",
+        config.transportKind ?? "stdio",
+      );
       const sourceEpoch = randomUUID();
+      // Before the first session opens the transport is unknown. During reconnect,
+      // retain the last selected transport until the new physical handle is available.
+      let connectionSource: CodexEndpointConnection["source"];
       const configRef = yield* Ref.make<CodexEndpointConfig>({ ...config, hostId });
       const eventHub = yield* CodexEventHub;
       const requestInbox = yield* CodexApplicationRequestInbox;
@@ -119,16 +151,22 @@ export const live = (
         kind: "connecting",
         hostId,
         generation: 1,
+        source: connectionSource,
       });
       const generation = yield* Ref.make(0);
+      const admissionState = yield* SubscriptionRef.make<number | null>(null);
       const active = yield* Ref.make<Option.Option<ActiveSession>>(Option.none());
       const restartWake = yield* Queue.sliding<void>(1);
+      const endpointScope = yield* Effect.scope;
 
       const publishConnection = Effect.fn("CodexEndpoint.publishConnection")(function* (
         connection: CodexEndpointConnection,
       ) {
-        yield* SubscriptionRef.set(state, connection);
-        yield* eventHub.publish({ kind: "connection", value: connection });
+        if (connection.kind === "backing-off") hostMetrics.reconnectAttempt += 1;
+        if (connection.kind === "ready") hostMetrics.reconnectAttempt = 0;
+        const projected = { ...connection, source: connectionSource };
+        yield* SubscriptionRef.set(state, projected);
+        yield* eventHub.publish({ kind: "connection", value: projected });
       });
 
       const closeActive = Effect.fn("CodexEndpoint.closeActive")(function* () {
@@ -136,6 +174,81 @@ export const live = (
         if (Option.isNone(current)) return;
         yield* Scope.close(current.value.scope, Exit.void);
       });
+
+      const currentSession = SubscriptionRef.changes(state).pipe(
+        Stream.filter(
+          (connection) =>
+            connection.kind === "ready" ||
+            connection.kind === "failed" ||
+            connection.kind === "stopped",
+        ),
+        Stream.runHead,
+        Effect.scoped,
+        Effect.flatMap((connection) => {
+          if (Option.isNone(connection) || connection.value.kind === "stopped") {
+            return Effect.fail(
+              codexRuntimeError({
+                operation: "endpoint.session",
+                reason: "closing",
+                retryable: false,
+                hostId,
+              }),
+            );
+          }
+          if (connection.value.kind === "failed") return Effect.fail(connection.value.error);
+          const ready = connection.value;
+          return Ref.get(active).pipe(
+            Effect.flatMap(
+              Option.match({
+                onNone: () =>
+                  Effect.fail(
+                    codexRuntimeError({
+                      operation: "endpoint.session",
+                      reason: "session-lost",
+                      retryable: true,
+                      hostId,
+                      generation: ready.generation,
+                    }),
+                  ),
+                onSome: ({ session }) => Effect.succeed(session),
+              }),
+            ),
+          );
+        }),
+      );
+
+      const writeInternalFailureNow = (request: CodexEndpointInternalServerRequest) =>
+        Ref.get(active).pipe(
+          Effect.flatMap(
+            Option.match({
+              onNone: () => Effect.void,
+              onSome: ({ session }) =>
+                session.client.raw
+                  .respondError(
+                    request.id,
+                    CodexAppServerRequestError.internalError(
+                      "Internal server request handler failed",
+                    ),
+                  )
+                  .pipe(Effect.ignore),
+            }),
+          ),
+        );
+
+      const runInternalRequest = (
+        request: CodexEndpointInternalServerRequest,
+        operation: Effect.Effect<unknown>,
+      ) =>
+        operation.pipe(
+          Effect.flatMap((result) =>
+            currentSession.pipe(
+              Effect.flatMap((session) => session.client.raw.respond(request.id, result)),
+            ),
+          ),
+          Effect.catchCause(() => writeInternalFailureNow(request)),
+          Effect.forkIn(endpointScope, { startImmediately: true }),
+          Effect.asVoid,
+        );
 
       const acquireSession = Effect.fn("CodexEndpoint.acquireSession")(function* (
         currentGeneration: number,
@@ -146,11 +259,19 @@ export const live = (
             const attemptScope = yield* Scope.make();
             const acquired = yield* restore(
               Effect.gen(function* () {
+                yield* requestScheduler
+                  .openGeneration(hostId, currentGeneration)
+                  .pipe(Effect.provideService(Scope.Scope, attemptScope));
+                yield* SubscriptionRef.set(admissionState, currentGeneration);
+                yield* Effect.addFinalizer(() => SubscriptionRef.set(admissionState, null)).pipe(
+                  Effect.provideService(Scope.Scope, attemptScope),
+                );
                 const context = yield* Layer.buildWithScope(
                   currentConfig.sessionLayer(currentGeneration),
                   attemptScope,
-                );
+                ).pipe(Effect.provideService(CodexHostRequestMetrics, hostMetrics));
                 const session = Context.get(context, CodexAppServerSession);
+                connectionSource = { sourceEpoch, transportKind: session.transportKind };
                 const requestGeneration = yield* requestInbox
                   .openGeneration(hostId, currentGeneration)
                   .pipe(
@@ -171,9 +292,6 @@ export const live = (
                       }),
                     ),
                   );
-                yield* requestScheduler
-                  .openGeneration(hostId, currentGeneration)
-                  .pipe(Effect.provideService(Scope.Scope, attemptScope));
 
                 const classifyIngressError = (operation: string, cause: unknown) =>
                   classifyCodexClientError({
@@ -187,13 +305,22 @@ export const live = (
                 const writeSettlement = Effect.fn("CodexEndpoint.writeApplicationSettlement")(({
                   occurrence,
                   outcome,
+                  trace,
                 }: CodexApplicationRequestSettlement) => {
                   const write = (() => {
                     switch (outcome.kind) {
                       case "result":
-                        return session.client.raw.respond(occurrence.requestId, outcome.value);
+                        return session.client.raw.respond(
+                          occurrence.requestId,
+                          outcome.value,
+                          trace,
+                        );
                       case "error":
-                        return session.client.raw.respondError(occurrence.requestId, outcome.error);
+                        return session.client.raw.respondError(
+                          occurrence.requestId,
+                          outcome.error,
+                          trace,
+                        );
                       case "abandon":
                         return Effect.void;
                     }
@@ -213,16 +340,27 @@ export const live = (
                 });
 
                 const requestIngress = session.client.requests.pipe(
-                  Stream.runForEach((request) =>
-                    requestGeneration
+                  Stream.runForEach((request) => {
+                    const internal = currentConfig.internalServerRequestHandler?.({
+                      id: request.id,
+                      method: request.method,
+                      params: request.params,
+                    });
+                    if (internal) {
+                      return runInternalRequest(
+                        { id: request.id, method: request.method, params: request.params },
+                        internal,
+                      );
+                    }
+                    return requestGeneration
                       .admit({
                         requestId: request.id,
                         protocol: request.protocol,
                         method: request.method,
                         params: request.params,
                       })
-                      .pipe(Effect.asVoid),
-                  ),
+                      .pipe(Effect.asVoid);
+                  }),
                   Effect.mapError((cause) =>
                     cause._tag === "CodexApplicationRequestGenerationUnavailable"
                       ? codexRuntimeError({
@@ -238,27 +376,30 @@ export const live = (
                   ),
                 );
                 const notificationIngress = session.client.notifications.pipe(
-                  Stream.runForEach((notification) => {
-                    const sanitized = sanitizeCodexEndpointNotification(notification);
-                    return requestInbox
-                      .publishNotification({
+                  Stream.runForEach((notification) =>
+                    Effect.gen(function* () {
+                      const sanitized = sanitizeCodexEndpointNotification(notification);
+                      const fallbackReceivedAtMs = yield* Clock.currentTimeMillis;
+                      const receivedAtMs =
+                        typeof notification.params === "object" && notification.params !== null
+                          ? (getCodexReceivedAtMs(notification.params) ?? fallbackReceivedAtMs)
+                          : fallbackReceivedAtMs;
+                      yield* requestInbox.publishNotification({
                         hostId,
                         generation: currentGeneration,
-                        protocol: sanitized.protocol,
-                        method: sanitized.method,
-                        params: sanitized.params,
-                      })
-                      .pipe(
-                        Effect.andThen(
-                          eventHub.publish({
-                            kind: "notification",
-                            hostId,
-                            generation: currentGeneration,
-                            value: sanitized,
-                          }),
-                        ),
-                      );
-                  }),
+                        protocol: notification.protocol,
+                        receivedAtMs,
+                        method: notification.method,
+                        params: notification.params,
+                      });
+                      yield* eventHub.publish({
+                        kind: "notification",
+                        hostId,
+                        generation: currentGeneration,
+                        value: sanitized,
+                      });
+                    }),
+                  ),
                   Effect.mapError((cause) =>
                     classifyIngressError("endpoint.notification-ingress", cause),
                   ),
@@ -342,6 +483,7 @@ export const live = (
       const openAttempt = Effect.fn("CodexEndpoint.openAttempt")(function* (
         currentConfig: CodexEndpointConfig,
       ) {
+        hostMetrics.hostKind = currentConfig.hostKind ?? "local";
         const currentGeneration = yield* Ref.updateAndGet(generation, (value) => value + 1);
         yield* publishConnection({ kind: "connecting", hostId, generation: currentGeneration });
         return yield* acquireSession(currentGeneration, currentConfig);
@@ -401,46 +543,26 @@ export const live = (
       );
       yield* Effect.forkScoped(supervisor);
 
-      const session = SubscriptionRef.changes(state).pipe(
-        Stream.filter(
-          (connection) =>
-            connection.kind === "ready" ||
-            connection.kind === "failed" ||
-            connection.kind === "stopped",
-        ),
+      const admissionSignal = SubscriptionRef.changes(admissionState).pipe(
+        Stream.filter((value): value is number => value !== null),
         Stream.runHead,
         Effect.scoped,
-        Effect.flatMap((connection) => {
-          if (Option.isNone(connection) || connection.value.kind === "stopped") {
-            return Effect.fail(
-              codexRuntimeError({
-                operation: "endpoint.session",
-                reason: "closing",
-                retryable: false,
-                hostId,
-              }),
-            );
-          }
-          if (connection.value.kind === "failed") return Effect.fail(connection.value.error);
-          const ready = connection.value;
-          return Ref.get(active).pipe(
-            Effect.flatMap(
-              Option.match({
-                onNone: () =>
-                  Effect.fail(
-                    codexRuntimeError({
-                      operation: "endpoint.session",
-                      reason: "session-lost",
-                      retryable: true,
-                      hostId,
-                      generation: ready.generation,
-                    }),
-                  ),
-                onSome: ({ session }) => Effect.succeed(session),
-              }),
-            ),
-          );
-        }),
+        Effect.flatMap((value) =>
+          Option.isSome(value)
+            ? Effect.succeed(value.value)
+            : Effect.fail(
+                codexRuntimeError({
+                  operation: "endpoint.admission",
+                  reason: "closing",
+                  retryable: false,
+                  hostId,
+                }),
+              ),
+        ),
+      );
+      const admission = Effect.raceFirst(
+        admissionSignal,
+        currentSession.pipe(Effect.map((current) => current.generation)),
       );
       const restart = Queue.offer(restartWake, undefined).pipe(Effect.asVoid);
       const reconcile = (next: CodexEndpointConfig) => {
@@ -458,6 +580,15 @@ export const live = (
         }
         return Ref.set(configRef, { ...next, hostId }).pipe(Effect.andThen(restart));
       };
-      return CodexEndpoint.of({ hostId, sourceEpoch, state, session, restart, reconcile });
+      return CodexEndpoint.of({
+        hostId,
+        metrics: hostMetrics,
+        sourceEpoch,
+        state,
+        session: currentSession,
+        admission,
+        restart,
+        reconcile,
+      });
     }),
   );

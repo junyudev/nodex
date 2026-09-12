@@ -1,3 +1,4 @@
+import { conversationTurnsWithOverlay } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { createHash, randomUUID } from "node:crypto";
 import type { Thread, ThreadListParams, Turn } from "@nodex/codex-app-server-protocol/v2";
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
@@ -50,6 +51,27 @@ import {
   type CoreSubagentOverviewLike,
 } from "./CodexSubagentDirectoryProjection";
 import { parseThreadStatus } from "./CodexThreadCatalogProjection";
+
+/** Canonical residency is available even when no window has built a presentation. */
+const hasSelectedSubagentHistory = (entry: CodexThreadDirectoryEntry | null): boolean => {
+  const state = entry?.canonical;
+  if (state) {
+    const turns = conversationTurnsWithOverlay(state);
+    if (turns.length > 0) return turns.some((turn) => turn.itemsView !== "notLoaded");
+    return (
+      state.turnHistory?.history.isComplete ??
+      (state.resumeState === "resumed" && state.turnsPagination?.hasLoadedOldest !== false)
+    );
+  }
+  const snapshot = entry?.snapshot;
+  if (!snapshot) return false;
+  const pagination = snapshot.turnPagination;
+  if (pagination?.itemsView === "notLoaded") return false;
+  return (
+    snapshot.turns.length > 0 ||
+    (pagination !== undefined && (pagination.loadedTurnCount > 0 || pagination.hasLoadedOldest))
+  );
+};
 
 const DISCOVERY_PAGE_BYTES = 8 * 1024 * 1024;
 const TOPOLOGY_PASS_BYTES = 8 * 1024 * 1024;
@@ -391,7 +413,7 @@ const projectStartedSubagentThreadShell = (input: {
     agentRole: null,
     gitInfo: null,
     name: agentName,
-    modelProvider: input.parent.canonical?.protocol.modelProvider ?? "",
+    modelProvider: input.parent.canonical?.modelProvider ?? "",
     turns: [],
   };
 };
@@ -718,16 +740,6 @@ export const make: Effect.Effect<
   ) => Effect.Effect<void, CodexSubagentDirectoryError> = () => Effect.void;
   let schedulePendingStatusRepair: (context: RootContext) => void = () => undefined;
 
-  const hasLiveRootOwner = (context: RootContext): boolean => {
-    const conversation = conversations.read(context.universe.root_thread_id);
-    if (!conversation) return false;
-    if (context.root.durable.statusType === "active") return true;
-    return (
-      conversation.canonicalState?.turns.some((turn) => turn.protocol?.status === "inProgress") ===
-      true
-    );
-  };
-
   const observedSubagentThreadIds = (
     rootThreadId: string,
     knownParentThreadIds: Iterable<string> = [],
@@ -736,7 +748,7 @@ export const make: Effect.Effect<
     for (const parentThreadId of topologyParents(rootThreadId, knownParentThreadIds)) {
       const state = conversations.read(parentThreadId)?.canonicalState;
       if (!state) continue;
-      for (const turn of state.turns) {
+      for (const turn of conversationTurnsWithOverlay(state)) {
         for (const item of turn.items) {
           if (item.type === "collabAgentToolCall") {
             if (item.tool !== "spawnAgent") continue;
@@ -746,7 +758,7 @@ export const make: Effect.Effect<
             }
             continue;
           }
-          if (item.type !== "subAgentActivity") continue;
+          if (item.type !== "subAgentActivity" || item.kind !== "started") continue;
           const threadId = item.agentThreadId.trim();
           if (threadId && threadId !== rootThreadId) ids.add(threadId);
         }
@@ -767,7 +779,7 @@ export const make: Effect.Effect<
           }
           continue;
         }
-        if (item.type !== "subAgentActivity") continue;
+        if (item.type !== "subAgentActivity" || item.kind !== "started") continue;
         const threadId = item.agentThreadId.trim();
         if (threadId) ids.add(threadId);
       }
@@ -1165,7 +1177,6 @@ export const make: Effect.Effect<
       source: "collab_hydration",
       conversationId: context.universe.root_thread_id,
       widgetId: "subagent-overview:discovery",
-      coalesce: true,
       timeoutMs: DISCOVERY_PAGE_TIMEOUT_MS,
       ...codexGatewayGenerationFence(context.capability),
     });
@@ -1195,7 +1206,6 @@ export const make: Effect.Effect<
         source: "collab_hydration",
         conversationId: context.universe.root_thread_id,
         widgetId: "subagent-overview:legacy-discovery",
-        coalesce: true,
         timeoutMs: DISCOVERY_PAGE_TIMEOUT_MS,
         ...codexGatewayGenerationFence(context.capability),
       },
@@ -1380,7 +1390,6 @@ export const make: Effect.Effect<
           source: "collab_hydration",
           conversationId: context.universe.root_thread_id,
           widgetId: "subagent-overview:topology-repair",
-          coalesce: true,
           timeoutMs: DISCOVERY_PAGE_TIMEOUT_MS,
           ...codexGatewayGenerationFence(context.capability),
         },
@@ -1435,7 +1444,6 @@ export const make: Effect.Effect<
               source: "collab_hydration",
               conversationId: context.universe.root_thread_id,
               widgetId: "subagent-overview:topology-metadata",
-              coalesce: true,
               timeoutMs: DISCOVERY_PAGE_TIMEOUT_MS,
               ...codexGatewayGenerationFence(context.capability),
             },
@@ -1948,7 +1956,6 @@ export const make: Effect.Effect<
                 source: "collab_hydration",
                 conversationId: context.universe.root_thread_id,
                 widgetId: "subagent-overview:metadata-repair",
-                coalesce: true,
                 timeoutMs: DISCOVERY_PAGE_TIMEOUT_MS,
                 ...codexGatewayGenerationFence(context.capability),
               },
@@ -2245,17 +2252,16 @@ export const make: Effect.Effect<
     input: CodexSubagentOverviewReadInput,
   ): Effect.fn.Return<CodexSubagentOverviewWindow, CodexSubagentDirectoryError> {
     const context = yield* resolveRootContext(input.rootThreadId);
-    // The renderer-owned app-server is the sole writer while a Turn is active. A metadata read
-    // must not lazily start the host catalog endpoint, which would resume the same root and create
-    // a second owner. Live activity notifications keep this projection current until settlement.
-    const canDiscoverRemotely = !hasLiveRootOwner(context);
-    let overview = yield* readOverviewPage(context, {
-      activeAfter: null,
-      activeFirst: CODEX_SUBAGENT_OVERVIEW_INITIAL_ACTIVE_LIMIT,
-      doneAfter: null,
-      doneFirst: CODEX_SUBAGENT_OVERVIEW_INITIAL_DONE_LIMIT,
-    });
-    if (!overview.discovery_complete && canDiscoverRemotely) {
+    // Metadata discovery uses the current host Gateway and never acquires conversation ownership.
+    const readCurrentOverview = () =>
+      readOverviewPage(context, {
+        activeAfter: null,
+        activeFirst: CODEX_SUBAGENT_OVERVIEW_INITIAL_ACTIVE_LIMIT,
+        doneAfter: null,
+        doneFirst: CODEX_SUBAGENT_OVERVIEW_INITIAL_DONE_LIMIT,
+      });
+    let overview = yield* readCurrentOverview();
+    if (!overview.discovery_complete) {
       const key = discoveryKey(context);
       const foreground = FiberMap.getUnsafe(foregroundDiscoveries, key);
       if (foreground._tag === "Some") {
@@ -2263,20 +2269,20 @@ export const make: Effect.Effect<
       } else if (!FiberMap.hasUnsafe(discoveries, key)) {
         const fiber = runForegroundDiscovery(
           key,
-          discoverPages(
-            context,
-            overview.discovery_continuation ?? null,
-            input.mode === "expanded" ? DISCOVERY_MAX_PAGES_PER_PASS : 1,
-          ).pipe(Effect.asVoid),
+          Effect.gen(function* () {
+            // Another discovery may have finished while the caller's overview was in flight.
+            const current = yield* readCurrentOverview();
+            if (current.discovery_complete) return;
+            yield* discoverPages(
+              context,
+              current.discovery_continuation ?? null,
+              input.mode === "expanded" ? DISCOVERY_MAX_PAGES_PER_PASS : 1,
+            );
+          }),
         );
         yield* Fiber.join(fiber);
       }
-      overview = yield* readOverviewPage(context, {
-        activeAfter: null,
-        activeFirst: CODEX_SUBAGENT_OVERVIEW_INITIAL_ACTIVE_LIMIT,
-        doneAfter: null,
-        doneFirst: CODEX_SUBAGENT_OVERVIEW_INITIAL_DONE_LIMIT,
-      });
+      overview = yield* readCurrentOverview();
       if (!overview.discovery_complete && input.mode === "initial") {
         scheduleDiscoveryRepair(context);
       }
@@ -2296,7 +2302,7 @@ export const make: Effect.Effect<
         doneAfter: null,
         doneFirst: CODEX_SUBAGENT_OVERVIEW_INITIAL_DONE_LIMIT,
       });
-      if (!overview.discovery_complete && !hasLiveRootOwner(context)) {
+      if (!overview.discovery_complete) {
         scheduleDiscoveryRepair(context);
       }
       return projectCodexSubagentOverviewWindow(overview as unknown as CoreSubagentOverviewLike);
@@ -2469,7 +2475,6 @@ export const make: Effect.Effect<
             source: "collab_hydration",
             conversationId: context.universe.root_thread_id,
             widgetId: "subagent-overview:reconnect-skeleton",
-            coalesce: true,
             timeoutMs: DISCOVERY_PAGE_TIMEOUT_MS,
             ...codexGatewayGenerationFence(context.capability),
           },
@@ -2710,7 +2715,6 @@ export const make: Effect.Effect<
               source: "collab_hydration",
               conversationId: universe.root_thread_id,
               widgetId,
-              coalesce: true,
               timeoutMs: DISCOVERY_PAGE_TIMEOUT_MS,
               ...codexGatewayGenerationFence(capability),
             })
@@ -2900,7 +2904,6 @@ export const make: Effect.Effect<
                   source: "collab_hydration",
                   conversationId: universe.root_thread_id,
                   widgetId: `subagent-lifecycle:${initial.action}-postcondition`,
-                  coalesce: true,
                   timeoutMs: DISCOVERY_PAGE_TIMEOUT_MS,
                   ...codexGatewayGenerationFence(capability),
                 },
@@ -3095,7 +3098,6 @@ export const make: Effect.Effect<
           source: "collab_hydration",
           conversationId: context.universe.root_thread_id,
           widgetId: "subagent-lifecycle:interrupt-skeleton",
-          coalesce: true,
           timeoutMs: DISCOVERY_PAGE_TIMEOUT_MS,
           ...codexGatewayGenerationFence(context.capability),
         },
@@ -3721,6 +3723,8 @@ export const make: Effect.Effect<
         const normalizedInput = { rootThreadId, threadId };
         if (!rootThreadId || !threadId)
           return emptySelectedResult(normalizedInput, "Thread id is required");
+        const rootGeneration = conversations.read(rootThreadId)?.generation;
+        const childGeneration = conversations.read(threadId)?.generation;
         let accepted = yield* isDescendant(rootThreadId, threadId);
         if (!accepted) {
           yield* readOverview({ rootThreadId, mode: "expanded" });
@@ -3733,15 +3737,11 @@ export const make: Effect.Effect<
           );
         }
 
+        const rootContext = yield* resolveRootContext(rootThreadId);
         const resident = yield* threadDirectory
           .resolve({ threadId, fidelity: "durable" })
           .pipe(Effect.mapError((cause) => error("hydrate", rootThreadId, cause, threadId)));
-        const residentPagination = resident?.snapshot?.turnPagination;
-        const hasSparseResidentHistory =
-          (resident?.snapshot?.turns.length ?? 0) > 0 ||
-          (residentPagination !== undefined &&
-            residentPagination.itemsView !== "notLoaded" &&
-            (residentPagination.loadedTurnCount > 0 || residentPagination.hasLoadedOldest));
+        const hasSparseResidentHistory = hasSelectedSubagentHistory(resident);
         const selected = hasSparseResidentHistory
           ? resident
           : yield* threadDirectory
@@ -3750,33 +3750,45 @@ export const make: Effect.Effect<
         if (!selected)
           return emptySelectedResult(normalizedInput, "Selected Thread is unavailable");
 
-        remember(threadId, true);
-        const snapshot = selected.snapshot;
-        const attachedSparse =
-          snapshot?.turnPagination !== undefined &&
-          snapshot.turnPagination.itemsView !== "notLoaded" &&
-          (snapshot.turnPagination.loadedTurnCount > 0 || snapshot.turnPagination.hasLoadedOldest);
-        const fidelity = hasSparseResidentHistory
-          ? "residentSparse"
-          : attachedSparse
-            ? "attachedSparse"
-            : "metadata";
-        const overviewItem = yield* readOverviewItem(
-          yield* resolveRootContext(rootThreadId),
-          threadId,
-        );
+        const selectedGeneration = conversations.read(threadId)?.generation;
+        if (childGeneration !== undefined && selectedGeneration !== childGeneration)
+          return emptySelectedResult(normalizedInput, "Selected Thread changed while opening");
+        const overviewItem = yield* readOverviewItem(rootContext, threadId);
         if (!overviewItem.item)
           return emptySelectedResult(
             normalizedInput,
             "Selected Thread is outside the current Subagent projection",
           );
-        const checkpoint = snapshot
-          ? JSON.stringify([
-              snapshot.conversationEntityGeneration ?? 0,
-              snapshot.historyTopologyGeneration ?? 0,
-              snapshot.historyMutationRevision ?? 0,
-            ])
-          : null;
+        const hostCurrent = yield* capabilities.isCurrent(rootContext.capability);
+        const view = conversations.read(threadId);
+        if (
+          !hostCurrent ||
+          conversations.read(rootThreadId)?.generation !== rootGeneration ||
+          view?.generation !== selectedGeneration
+        )
+          return emptySelectedResult(normalizedInput, "Selected Thread changed while opening");
+
+        // Authority lookup can yield while the same entity releases its history.
+        const current = view
+          ? { ...selected, canonical: view.canonicalState, snapshot: view.snapshot }
+          : selected;
+        const attachedSparse = hasSelectedSubagentHistory(current);
+        const fidelity = !attachedSparse
+          ? "metadata"
+          : hasSparseResidentHistory
+            ? "residentSparse"
+            : "attachedSparse";
+        const snapshot = current.snapshot;
+        remember(threadId, true);
+        const checkpoint = view
+          ? JSON.stringify(view.historyCheckpoint)
+          : snapshot
+            ? JSON.stringify([
+                snapshot.conversationEntityGeneration ?? 0,
+                snapshot.historyTopologyGeneration ?? 0,
+                snapshot.historyMutationRevision ?? 0,
+              ])
+            : null;
         return {
           rootThreadId,
           threadId,

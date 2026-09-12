@@ -54,6 +54,38 @@ it.effect("preserves schema encode diagnostics", () =>
   }),
 );
 
+it.effect("encodes optional undefined object properties as absent JSON fields", () =>
+  Effect.gen(function* () {
+    const schema = Schema.Struct({
+      id: Schema.String,
+      optional: Schema.optionalKey(Schema.String),
+      nested: Schema.Struct({ optional: Schema.optionalKey(Schema.String) }),
+    });
+    const payload = {
+      id: "thread",
+      optional: undefined,
+      nested: { optional: undefined },
+    } as unknown as Schema.Schema.Type<typeof schema>;
+
+    assert.deepStrictEqual(yield* Shared.encodeOptionalPayload("thread/start", schema, payload), {
+      id: "thread",
+      nested: {},
+    });
+  }),
+);
+
+it.effect("does not coerce undefined array entries while preparing JSON object fields", () =>
+  Effect.gen(function* () {
+    const schema = Schema.Struct({ values: Schema.Array(Schema.String) });
+    const error = yield* Shared.encodeOptionalPayload("turn/start", schema, {
+      values: [undefined],
+    } as unknown as Schema.Schema.Type<typeof schema>).pipe(Effect.flip);
+
+    assert.equal(error.operation, "encode-payload");
+    assert.isTrue(Schema.isSchemaError(error.cause));
+  }),
+);
+
 it.effect("does not invent a cause when a method has no payload schema", () =>
   Effect.gen(function* () {
     const secret = "unexpected-payload-secret";
@@ -147,5 +179,28 @@ it.effect("retains the full notification payload decode cause chain", () =>
     assert.equal(error.operation, "decode-notification-payload");
     assert.instanceOf(error.cause, CodexError.CodexAppServerRequestError);
     assert.isTrue(Schema.isSchemaError(error.cause.cause));
+  }),
+);
+
+it.effect("validates known protocol fields without stripping extension fields", () =>
+  Effect.gen(function* () {
+    const schema = Schema.Struct({ thread: Schema.Struct({ id: Schema.String }) });
+    const payload = {
+      thread: { id: "thread", serverExtension: { value: 3 } },
+      topLevelExtension: true,
+    };
+    assert.deepStrictEqual(
+      yield* Shared.decodeOptionalPayload("thread/read", schema, payload),
+      payload,
+    );
+    assert.deepStrictEqual(
+      yield* Shared.encodeOptionalPayload("thread/read", schema, payload),
+      payload,
+    );
+    const failure = yield* Shared.decodeOptionalPayload("thread/read", schema, {
+      ...payload,
+      thread: { id: 3 },
+    }).pipe(Effect.flip);
+    assert.instanceOf(failure, CodexError.CodexAppServerRequestError);
   }),
 );

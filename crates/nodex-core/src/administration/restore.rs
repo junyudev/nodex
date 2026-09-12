@@ -807,20 +807,6 @@ fn validate_assets(
         ));
     }
 
-    let queue_evidence_mode = match missing_asset_policy {
-        MissingAssetPolicy::Reject => {
-            crate::workspace::queued_follow_up::QueuedAssetEvidenceMode::RequireFiles(assets_root)
-        }
-        MissingAssetPolicy::Preserve => {
-            crate::workspace::queued_follow_up::QueuedAssetEvidenceMode::AllowMissing(assets_root)
-        }
-    };
-    missing_assets.extend(
-        crate::workspace::queued_follow_up::validate_all_stored_ledgers(
-            connection,
-            queue_evidence_mode,
-        )?,
-    );
     Ok(missing_assets.len())
 }
 

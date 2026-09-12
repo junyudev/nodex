@@ -18,17 +18,17 @@ describe("Codex Hooks settings routes", () => {
 
     expect(
       buildCodexHooksSettingsPath({
-        hostId: "default",
+        hostId: "local",
         selection: { source: "plugin", pluginId: null },
       }),
-    ).toBe("/settings/hooks-settings?hostId=default&source=plugin&pluginId=__unknown__");
+    ).toBe("/settings/hooks-settings?hostId=local&source=plugin&pluginId=__unknown__");
 
     expect(
       buildCodexHooksSettingsPath({
-        hostId: "default",
+        hostId: "local",
         selection: { source: "plugin" },
       }),
-    ).toBe("/settings/hooks-settings?hostId=default&source=plugin");
+    ).toBe("/settings/hooks-settings?hostId=local&source=plugin");
   });
 
   test("parses only valid project roots and preserves aggregate versus unknown plugins", () => {
@@ -61,18 +61,18 @@ describe("Codex Hooks settings routes", () => {
       replaceCodexHooksSettingsSelection(
         "/settings/hooks-settings?tab=all&hostId=old&source=plugin&pluginId=old",
         {
-          hostId: "default",
+          hostId: "local",
           selection: { source: "project", projectRoot: "/workspace/nodex" },
         },
       ),
     ).toBe(
-      "/settings/hooks-settings?tab=all&hostId=default&source=project&projectRoot=%2Fworkspace%2Fnodex",
+      "/settings/hooks-settings?tab=all&hostId=local&source=project&projectRoot=%2Fworkspace%2Fnodex",
     );
 
     expect(
       replaceCodexHooksSettingsSelection(
-        "/settings/hooks-settings?tab=all&hostId=default&source=user",
-        { hostId: "default", selection: null },
+        "/settings/hooks-settings?tab=all&hostId=local&source=user",
+        { hostId: "local", selection: null },
       ),
     ).toBe("/settings/hooks-settings?tab=all");
   });

@@ -7,7 +7,7 @@ mod mutation;
 mod page_chat;
 mod project_activity_summary;
 mod project_window;
-pub(crate) mod queued_follow_up;
+mod queued_message_state;
 mod read;
 mod session_lifecycle;
 mod session_listing;
@@ -24,6 +24,7 @@ mod task_window;
 mod test_support;
 mod thread;
 mod thread_assets;
+mod thread_read_state;
 
 pub(crate) use execution::{turn_is_read_only, validate_persisted_turn_authority};
 pub use thread_assets::ThreadAssetBlob;
@@ -99,27 +100,9 @@ impl ProjectWorkspaceModule {
         let profile_id = self.profile_id.clone();
         let library_id = self.library_id.clone();
         let context = context.clone();
-        let _asset_lease = if matches!(
-            &request.read,
-            ProjectWorkspaceRead::QueuedFollowUpLedger { .. }
-        ) {
-            Some(
-                crate::infrastructure::managed_asset_snapshot::acquire_snapshot_lease()
-                    .map_err(core_error)?,
-            )
-        } else {
-            None
-        };
-        let assets_root = self
-            .assets_root
-            .clone()
-            .ok_or_else(|| unavailable("Project Workspace Module has no durable asset store"))?;
         readers
             .read_default(move |connection| {
                 let transaction = connection.unchecked_transaction()?;
-                if let ProjectWorkspaceRead::QueuedFollowUpLedger { thread_id } = &request.read {
-                    thread_assets::require_access(&transaction, &context, thread_id, false)?;
-                }
                 let identity = transaction
                     .query_row(
                         "SELECT 1 FROM libraries WHERE id = ?1 AND profile_id = ?2",
@@ -153,7 +136,6 @@ impl ProjectWorkspaceModule {
                         &context,
                         &library_id,
                         commit_seq,
-                        &assets_root,
                         request.read,
                     )?,
                 })
@@ -175,8 +157,7 @@ impl ProjectWorkspaceModule {
         };
         let should_collect_blobs = matches!(
             &request.intent,
-            ProjectWorkspaceIntent::CommitQueuedFollowUpLedger { .. }
-                | ProjectWorkspaceIntent::DeleteThread { .. }
+            ProjectWorkspaceIntent::DeleteThread { .. }
                 | ProjectWorkspaceIntent::ReconcileAppServerThreadSweep { .. }
         );
         let assets_root = self

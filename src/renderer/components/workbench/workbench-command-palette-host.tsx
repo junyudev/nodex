@@ -1,3 +1,4 @@
+import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
 import { composerContextOperations } from "@/features/local-conversation/composer-context-operations";
@@ -112,7 +113,8 @@ export function WorkbenchCommandPaletteHost({
   const commandContext: Omit<CommandPaletteShellCommandContext, "isMac" | "showMockCommands"> = {
     canReloadSkills: workspaceSearchContext !== null,
     canSearchFiles:
-      workspaceSearchContext?.hostId === "default" && workspaceSearchContext.roots.length > 0,
+      workspaceSearchContext?.hostId === DEFAULT_CODEX_HOST_ID &&
+      workspaceSearchContext.roots.length > 0,
     canGoBack: canNavigateBack,
     canGoForward: canNavigateForward,
     canStartNewChat: true,
@@ -171,6 +173,7 @@ export function WorkbenchCommandPaletteHost({
         return;
       void copyConversationMarkdown({
         conversationId: activeSession.thread.threadId,
+        executionHostId: activeSession.thread.executionHostId,
         parentConversationId: activeSession.thread.parentThreadId ?? null,
         title: activeSession.displayTitle,
       });
@@ -243,7 +246,9 @@ export function WorkbenchCommandPaletteHost({
       projects={projects}
       activeProjectId={activeProjectId}
       recentPageSessions={recentPageSessions}
-      fileSearchScope={workspaceSearchContext?.hostId === "default" ? workspaceSearchContext : null}
+      fileSearchScope={
+        workspaceSearchContext?.hostId === DEFAULT_CODEX_HOST_ID ? workspaceSearchContext : null
+      }
       onOpenFile={(file) => {
         void panelOpeners.openWorkspaceFileTab({
           path: file.fsPath,

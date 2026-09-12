@@ -12,7 +12,6 @@ import { createFakeCoreHandshake, FakeCoreClient } from "../core-client/testing/
 import type { CoreGenerationClient } from "../core-client/core-generation-client";
 import type { CoreClientPort } from "../core-client/types";
 import type { CodexPreparedPrompt } from "../../shared/types";
-import { createCodexQueuedFollowUp } from "../../shared/codex-queued-follow-up-state";
 import { makeCodexInputAssets } from "./CodexInputAssets";
 
 const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-queue-payload-"));
@@ -75,93 +74,26 @@ function fixture() {
   };
 }
 
-it.effect("freezes volatile prompt evidence and hydrates portable file attachments", () =>
-  Effect.gen(function* () {
-    const localFile = path.join(fixtureRoot, "notes.txt");
-    fs.writeFileSync(localFile, "durable queue notes");
-    const { store, stagingRootPath, blobs } = fixture();
-    const row = createCodexQueuedFollowUp({
-      followUpId: "follow-up-1",
-      clientUserMessageId: "client-1",
-      threadId: "thread-1",
-      prompt: "Inspect the evidence",
-      createdAtMs: 10,
-      promptInput: {
-        text: "Inspect the evidence",
+it.effect(
+  "retains captured queue attachments directly under their thread without a payload manifest",
+  () =>
+    Effect.gen(function* () {
+      const localFile = path.join(fixtureRoot, "notes.txt");
+      fs.writeFileSync(localFile, "captured notes");
+      const { store, blobs, retained } = fixture();
+      const captured = yield* store.retainCaptured("thread-1", "message-1", {
+        text: "Inspect",
         images: [{ source: "data:image/png;base64,cXVldWUtaW1hZ2U=" }],
-        fileAttachments: [{ label: "notes.txt", path: localFile, fsPath: localFile }],
-        agentConfigs: [
-          {
-            mode: "plan",
-            provider: "openai",
-            model: "gpt-5.6-sol",
-            reasoning: "high",
-            speed: "fast",
-            permission: "auto",
-          },
-        ],
-      },
-    });
-
-    const frozen = yield* store.freeze(row);
-    assert.isNotNull(frozen.payloadRef);
-    assert.strictEqual(frozen.promptInput.images?.[0]?.source, row.promptInput.images?.[0]?.source);
-    assert.isTrue(path.isAbsolute(frozen.promptInput.fileAttachments?.[0]?.fsPath ?? ""));
-    assert.strictEqual(blobs.size, 0, "freeze only stages local bytes");
-
-    const frozenAgain = yield* store.freeze(row);
-    assert.strictEqual(frozenAgain.payloadRef?.sha256, frozen.payloadRef?.sha256);
-
-    const receipts = yield* store.publish("thread-1", "queue-commit", [frozen]);
-    assert.strictEqual(receipts.length, 3, "manifest and both attachments are prepared together");
-    fs.writeFileSync(localFile, "changed after capture");
-    fs.rmSync(stagingRootPath, { recursive: true });
-    const hydrated = yield* store.hydrate({
-      followUpId: frozen.followUpId,
-      clientUserMessageId: frozen.clientUserMessageId,
-      threadId: frozen.threadId,
-      createdAtMs: frozen.createdAtMs,
-      pause: frozen.pause,
-      payloadRef: frozen.payloadRef!,
-    });
-    assert.strictEqual(hydrated.prompt, row.prompt);
-    assert.isTrue(path.isAbsolute(hydrated.promptInput.fileAttachments?.[0]?.fsPath ?? ""));
-    assert.strictEqual(
-      fs.readFileSync(hydrated.promptInput.fileAttachments?.[0]?.fsPath ?? "", "utf8"),
-      "durable queue notes",
-    );
-    assert.deepStrictEqual(hydrated.promptInput.agentConfigs, row.promptInput.agentConfigs);
-  }),
-);
-
-it.effect("rejects corrupted Core bytes even when a matching local cache exists", () =>
-  Effect.gen(function* () {
-    const { store, stagingRootPath, blobs } = fixture();
-    const frozen = yield* store.freeze(
-      createCodexQueuedFollowUp({
-        followUpId: "follow-up-corrupt",
-        clientUserMessageId: "client-corrupt",
-        threadId: "thread-1",
-        prompt: "Keep me intact",
-        createdAtMs: 20,
-      }),
-    );
-    yield* store.publish("thread-1", "queue-corrupt", [frozen]);
-    assert.isTrue(fs.existsSync(stagingRootPath));
-    blobs.set(frozen.payloadRef!.sha256, Buffer.from("{}"));
-
-    const exit = yield* Effect.exit(
-      store.hydrate({
-        followUpId: frozen.followUpId,
-        clientUserMessageId: frozen.clientUserMessageId,
-        threadId: frozen.threadId,
-        createdAtMs: frozen.createdAtMs,
-        pause: frozen.pause,
-        payloadRef: frozen.payloadRef!,
-      }),
-    );
-    assert.isTrue(Exit.isFailure(exit));
-  }),
+        fileAttachments: [{ label: "notes", path: localFile, fsPath: localFile }],
+      });
+      assert.strictEqual(captured.text, "Inspect");
+      assert.strictEqual(retained[0]?.intent.kind, "retain_thread_assets");
+      assert.strictEqual(blobs.size, 2);
+      assert.deepEqual([...blobs.values()].map((bytes) => bytes.toString("utf8")).sort(), [
+        "captured notes",
+        "queue-image",
+      ]);
+    }),
 );
 
 const emptyPrepared = (): CodexPreparedPrompt => ({

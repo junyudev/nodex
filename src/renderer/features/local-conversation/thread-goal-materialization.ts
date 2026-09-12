@@ -41,6 +41,7 @@ function normalizeMaterializedDraftResponse(response: unknown): CodexThreadGoalM
 }
 
 export async function materializeThreadGoalDraft(
+  hostId: string,
   draft: CodexThreadGoalDraftInput,
 ): Promise<CodexThreadGoalMaterializedDraft> {
   const trimmedObjective = draft.objective.trim();
@@ -60,17 +61,19 @@ export async function materializeThreadGoalDraft(
   }
 
   return normalizeMaterializedDraftResponse(
-    await invokePlainCommand(materializeThreadGoalDraftCommand, draft),
+    await invokePlainCommand(materializeThreadGoalDraftCommand, hostId, draft),
   );
 }
 
 export async function cleanupMaterializedThreadGoalDraft(
+  hostId: string,
   materialized: CodexThreadGoalMaterializedDraft | null,
 ): Promise<void> {
   if (!materialized?.attachmentDirectory) return;
   await runBestEffortThreadGoalCleanup(async () => {
     await invokeRendererControl(
       "codex:thread:goal:materialized-cleanup",
+      hostId,
       materialized.attachmentDirectory,
     );
   });
@@ -82,9 +85,13 @@ export async function runBestEffortThreadGoalCleanup(
   await cleanup().catch(() => undefined);
 }
 
-export async function readThreadGoalEditableObjective(objective: string): Promise<string> {
+export async function readThreadGoalEditableObjective(
+  hostId: string,
+  objective: string,
+): Promise<string> {
   const editableObjective = await invokeRendererQuery(
     "codex:thread:goal:editable-objective:read",
+    hostId,
     objective,
   );
   if (typeof editableObjective !== "string") {

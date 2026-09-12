@@ -6,7 +6,6 @@ import * as Fiber from "effect/Fiber";
 import * as RcMap from "effect/RcMap";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
-import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import { normalizeCodexManualThreadTitle } from "../../shared/codex-thread-title";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CoreModules } from "../core-runtime/CoreModules";
@@ -23,6 +22,8 @@ export interface CodexThreadTitlePersistenceInput {
 
 export interface CodexThreadTitleSetCommand extends CodexThreadTitlePersistenceInput {
   readonly normalization: "manual" | "trim";
+  /** Marks this title as owned by the automatic title generator. Defaults to manual ownership. */
+  readonly generated?: boolean;
   /** Applies only while the Core title still has this value; null means untitled. */
   readonly expectedName?: string | null;
   /** Applies only to a thread that has no committed title. */
@@ -138,7 +139,8 @@ export const make: Effect.Effect<
   });
 
   const project = Effect.fn("CodexThreadTitlePersistence.project")(function* (
-    input: CodexThreadTitlePersistenceInput,
+    input: CodexThreadTitlePersistenceInput & { readonly generated?: boolean },
+    hostId: string,
   ) {
     const observedAtMs = yield* Clock.currentTimeMillis;
     yield* projection.renameThread({ ...input, observedAtMs }).pipe(Effect.mapError(titleError));
@@ -146,7 +148,7 @@ export const make: Effect.Effect<
       kind: "hostMessage",
       value: {
         type: "threadTitleUpdated",
-        hostId: DEFAULT_CODEX_HOST_ID,
+        hostId,
         conversationId: input.threadId,
         title: input.name,
       },
@@ -223,7 +225,10 @@ export const make: Effect.Effect<
             : normalized.expectedName?.trim() || null;
         if (normalized.onlyIfUntitled && observedName !== null) return false;
         if (expectedName !== undefined && observedName !== expectedName) return false;
-        yield* project(normalized);
+        yield* project(
+          { ...normalized, generated: normalized.generated ?? false },
+          thread.execution_host_id,
+        );
         if (normalized.persist === false) return true;
         yield* setRemote(persisted).pipe(
           Effect.catch((error) => logFailure("app-server", persisted, error)),
@@ -255,7 +260,10 @@ export const make: Effect.Effect<
             : normalized.expectedName?.trim() || null;
         if (normalized.onlyIfUntitled && observedName !== null) return false;
         if (expectedName !== undefined && observedName !== expectedName) return false;
-        yield* project(normalized);
+        yield* project(
+          { ...normalized, generated: normalized.generated ?? false },
+          thread.execution_host_id,
+        );
         if (normalized.persist === false) return true;
         yield* setRemote(persisted);
         yield* persistWorkspace(persisted);
@@ -271,7 +279,7 @@ export const make: Effect.Effect<
         const thread = yield* requireCodexThread(threadId);
         if (!thread.thread_name) return;
         const input = { threadId, name: thread.thread_name };
-        yield* project(input);
+        yield* project(input, thread.execution_host_id);
         yield* setRemote(input).pipe(
           Effect.catch((error) => logFailure("app-server", input, error)),
         );

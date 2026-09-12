@@ -24,7 +24,7 @@ test("binds final runtime verification to the complete canonical metadata digest
   });
   const artifacts = [
     artifact("codex-package.json", false),
-    artifact("bin/codex-app-server", true),
+    artifact("bin/codex", true),
     artifact("bin/codex-code-mode-host", true),
     artifact("codex-path/rg", true),
     artifact("codex-resources/zsh/bin/zsh", true),
@@ -36,7 +36,7 @@ test("binds final runtime verification to the complete canonical metadata digest
     appServerRuntimeVersion: lock.appServerRuntimeVersion,
     artifacts,
     entrypoint: lock.packageManifest.entrypoint,
-    layoutVersion: 4,
+    layoutVersion: 5,
     packageManifest,
     protocolSchemaFingerprint: lock.protocolSchema.sha256,
     releaseAsset: {
@@ -47,7 +47,7 @@ test("binds final runtime verification to the complete canonical metadata digest
       repository: lock.upstream.repository,
       tag: lock.upstream.tag,
     },
-    runtimeFamily: "codex-app-server",
+    runtimeFamily: "codex",
     searchPaths: [lock.packageManifest.pathDir],
     sourceRevision: {
       commit: lock.upstream.commit,

@@ -23,8 +23,10 @@ import {
   waitForAgentThreadExecutionProfile,
   waitForCompletedAgentTurn,
   waitForFinalMarker,
+  waitForNativeCompletedAgentTurn,
 } from "./support/agent-smoke-harness";
 import { startBrowserHttpFixture } from "./support/browser-http-fixture";
+import { openNewChatDraft, waitForDraftScene } from "./support/new-chat-draft";
 
 const repositoryRoot = process.cwd();
 
@@ -85,7 +87,8 @@ for (const { rendererCpuRate, unversioned } of [
         exchanges: [
           {
             name: "first durable turn",
-            match: (request) => request.hasInputText(firstPrompt),
+            match: (request) =>
+              request.isThreadSource("user") && request.hasUserInputText(firstPrompt),
             respond: responses.stream([
               responses.created(`response_before_${token}`),
               responses.assistantMessage(`message_before_${token}`, firstReply, "final_answer"),
@@ -94,7 +97,8 @@ for (const { rendererCpuRate, unversioned } of [
           },
           {
             name: "follow-up retains the conversation across process restart",
-            match: (request) => request.hasInputText(nextPrompt),
+            match: (request) =>
+              request.isThreadSource("user") && request.hasUserInputText(nextPrompt),
             respond: (request) => {
               expect(request.hasInputText(firstPrompt)).toBe(true);
               expect(request.hasInputText(firstReply)).toBe(true);
@@ -112,6 +116,7 @@ for (const { rendererCpuRate, unversioned } of [
           label: `scripted-thread-restart-${rendererCpuRate}`,
           ...(unversioned ? {} : { cwd: repositoryRoot }),
           prepareAgentRuntime: false,
+          retention: process.env.NODEX_KEEP_SCENARIO_PROFILES === "1" ? "keep" : "dispose",
           environment: {
             ...modelServer.loopbackEnvironment(),
             NODEX_LOG_CONSOLE: "0",
@@ -123,7 +128,7 @@ for (const { rendererCpuRate, unversioned } of [
                   NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
                   NODEX_TEST_NATIVE_CODEX_EXECUTABLE: path.join(
                     repositoryRoot,
-                    ".generated/codex-runtime/agent-runtime/bin/codex-app-server",
+                    ".generated/codex-runtime/agent-runtime/bin/codex",
                   ),
                 }
               : {}),
@@ -151,16 +156,23 @@ for (const { rendererCpuRate, unversioned } of [
           const threadId = await sendAgentPrompt(page, draft.projectSessionId, firstPrompt);
           await waitForCompletedAgentTurn(page, threadId);
           await waitForFinalMarker(page, firstReply);
+          let coldDraftSessionId: string | null = null;
           if (rendererCpuRate > 1) {
-            await page.getByRole("button", { name: "New chat", exact: true }).first().click();
-            await expect(page.locator("[data-new-thread-home-main='true']")).toBeVisible();
+            const draftScene = await openNewChatDraft(page);
+            const owner = await draftScene.getAttribute("data-workbench-scene-owner");
+            coldDraftSessionId = owner?.startsWith("session:")
+              ? owner.slice("session:".length)
+              : null;
+            if (!coldDraftSessionId) throw new Error("Cold draft Scene returned no Session owner");
           }
 
           const previousPid = harness.application.process().pid;
           const reopened = await harness.restart();
           expect(harness.application.process().pid).not.toBe(previousPid);
           if (rendererCpuRate > 1) {
-            await expect(reopened.locator("[data-new-thread-home-main='true']")).toBeVisible();
+            if (!coldDraftSessionId)
+              throw new Error("Cold restart lost its draft Session identity");
+            await waitForDraftScene(reopened, coldDraftSessionId);
             const cdp = await reopened.context().newCDPSession(reopened);
             try {
               // Cold renderer scheduling must not turn successful history hydration into failure.
@@ -187,8 +199,8 @@ for (const { rendererCpuRate, unversioned } of [
           await waitForFinalMarker(reopened, nextReply, 30_000);
           const session = await invokeIpc(reopened, "project-sessions:get", draft.projectSessionId);
           expect(session).toMatchObject({ thread: { threadId } });
-          const snapshot = await waitForCompletedAgentTurn(reopened, threadId);
-          expect(isRecord(snapshot) ? snapshot.turns : null).toHaveLength(2);
+          const nativeHistory = await waitForNativeCompletedAgentTurn(reopened, threadId);
+          expect(nativeHistory.turns).toHaveLength(2);
         } finally {
           try {
             const screenshotPath = testInfo.outputPath("thread-restart.png");
@@ -225,7 +237,8 @@ test("runs a real shell tool through the scripted model boundary", async () => {
         exchanges: [
           {
             name: "model requests the exact file write",
-            match: (request) => request.hasInputText(promptMarker),
+            match: (request) =>
+              request.isThreadSource("user") && request.hasUserInputText(promptMarker),
             respond: (request) => {
               assertRequestModel(request, "gpt-5.5");
               const command = `printf %b ${JSON.stringify(fileContents)} > ${JSON.stringify(filePath)} && od -An -t x1 ${JSON.stringify(filePath)}`;
@@ -256,7 +269,7 @@ test("runs a real shell tool through the scripted model boundary", async () => {
           },
           {
             name: "model finishes after the real shell output",
-            match: (request) => request.hasToolCallOutput(callId),
+            match: (request) => request.isThreadSource("user") && request.hasToolCallOutput(callId),
             respond: responses.stream([
               responses.created(`response_file_final_${token}`),
               responses.assistantMessage(`message_file_${token}`, finalMarker, "final_answer"),
@@ -397,7 +410,8 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
         exchanges: [
           {
             name: "model discovers the deferred Browser tool",
-            match: (request) => request.hasInputText(promptMarker),
+            match: (request) =>
+              request.isThreadSource("user") && request.hasUserInputText(promptMarker),
             respond: async (request) => {
               assertRequestModel(request, "gpt-5.5");
               if (!request.hasToolType("tool_search")) {
@@ -418,7 +432,8 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
           },
           {
             name: "model opens the Browser fixture",
-            match: (request) => request.toolSearchOutput(searchCallId) !== null,
+            match: (request) =>
+              request.isThreadSource("user") && request.toolSearchOutput(searchCallId) !== null,
             respond: (request) => {
               const invocation =
                 request.toolInvocation("mcp__node_repl", "js") ??
@@ -442,7 +457,7 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
           },
           {
             name: "model finishes after Browser output",
-            match: (request) => request.hasToolCallOutput(callId),
+            match: (request) => request.isThreadSource("user") && request.hasToolCallOutput(callId),
             respond: async (request) => {
               const output = request.toolCallOutput(callId);
               if (!JSON.stringify(output).includes(pageMarker)) {
@@ -573,7 +588,8 @@ test("keeps a real collaboration subagent Active until completion, then converge
       exchanges: [
         {
           name: "root model spawns the child",
-          match: (request) => request.hasInputText(promptMarker),
+          match: (request) =>
+            request.isThreadSource("user") && request.hasUserInputText(promptMarker),
           respond: (request) => {
             assertRequestModel(request, "gpt-5.6-sol");
             if (!request.toolInvocation("collaboration", "spawn_agent")) {
@@ -626,7 +642,8 @@ test("keeps a real collaboration subagent Active until completion, then converge
         },
         {
           name: "child finishes after the real shell gate is released",
-          match: (request) => request.hasFunctionCallOutput(childGateCallId),
+          match: (request) =>
+            request.isThreadSource("subagent") && request.hasFunctionCallOutput(childGateCallId),
           respond: responses.stream([
             responses.created(`response_subagent_child_${token}`),
             responses.assistantMessage(
@@ -640,7 +657,9 @@ test("keeps a real collaboration subagent Active until completion, then converge
         {
           name: "root waits for the running child",
           match: (request) =>
-            request.hasFunctionCallOutput(spawnCallId) && !request.isSubagentRequest(),
+            request.isThreadSource("user") &&
+            request.hasFunctionCallOutput(spawnCallId) &&
+            !request.isSubagentRequest(),
           respond: () =>
             responses.stream([
               responses.created(`response_subagent_wait_${token}`),
@@ -655,7 +674,8 @@ test("keeps a real collaboration subagent Active until completion, then converge
         },
         {
           name: "root finishes after the child completion is delivered",
-          match: (request) => request.hasFunctionCallOutput(waitCallId),
+          match: (request) =>
+            request.isThreadSource("user") && request.hasFunctionCallOutput(waitCallId),
           respond: responses.stream([
             responses.created(`response_subagent_final_${token}`),
             responses.assistantMessage(

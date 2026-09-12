@@ -88,6 +88,30 @@ describe("resolveCodexElectronDisplayThreadTitle", () => {
     ).toBe(`${"x".repeat(59)}…`);
   });
 
+  test("projects explicit and delegated preview Markdown before display", () => {
+    expect(
+      resolveCodexElectronDisplayThreadTitle({
+        threadName: "**Generated** [title](https://example.com)",
+        threadPreview: "ignored",
+      }),
+    ).toBe("Generated title");
+    expect(
+      resolveCodexElectronDisplayThreadTitle({
+        threadPreview:
+          "<codex_delegation><source_thread_id>root</source_thread_id><input>Context ## My request: **Fix** [tests](https://example.com)</input></codex_delegation>",
+      }),
+    ).toBe("Fix tests");
+  });
+
+  test("suppresses malformed delegation previews", () => {
+    expect(
+      resolveCodexElectronDisplayThreadTitle({
+        threadPreview: "<codex_delegation>broken",
+        fallback: "New thread",
+      }),
+    ).toBe("New thread");
+  });
+
   test("uses fallback when no title source exists", () => {
     expect(
       resolveCodexElectronDisplayThreadTitle({
@@ -117,7 +141,7 @@ describe("resolveCodexForkSourceConversationTitle", () => {
   });
 
   test("preserves an explicit nonblank title that projects to empty text", () => {
-    expect(resolveCodexForkSourceConversationTitle({ explicitTitle: "---" })).toBe("");
+    expect(resolveCodexForkSourceConversationTitle({ explicitTitle: "---" })).toBe("---");
   });
 
   test("derives and truncates the first user request after its context marker", () => {
@@ -200,7 +224,7 @@ describe("resolveCodexForkSourceConversationTitle", () => {
           },
         ],
       }),
-    ).toBe("Fix <tests>");
+    ).toBe("Fix");
     expect(
       resolveCodexForkSourceConversationTitle({
         firstTurnInput: [{ type: "text", text: "/goal **Ship** it", text_elements: [] }],
@@ -219,7 +243,7 @@ describe("resolveCodexForkSourceConversationTitle", () => {
     ).toBe("Keep this");
   });
 
-  test("retains unrecognized appshot-like markup", () => {
+  test("retains unrecognized appshot contents while removing HTML from the title", () => {
     expect(
       resolveCodexForkSourceConversationTitle({
         firstTurnInput: [
@@ -230,7 +254,7 @@ describe("resolveCodexForkSourceConversationTitle", () => {
           },
         ],
       }),
-    ).toBe('<appshot app="Safari">ignored</appshot> Keep this');
+    ).toBe("ignored Keep this");
   });
 
   test("uses full turn text to trigger appshot stripping for the selected request", () => {

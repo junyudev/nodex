@@ -516,6 +516,7 @@ fn projectless_agent_authority_requires_persisted_full_access_and_exact_parent_l
             },
             placement: nodex_core_contracts::workspace::ProjectWorkspaceThreadPlacement::Default,
             metadata: Default::default(),
+            workspace_transition: None,
             runtime_workspace_roots: None,
             project_access_grant: None,
         },

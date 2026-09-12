@@ -456,13 +456,16 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
       recencyAt: observedAt,
     });
     if (input.thread.unread) {
-      unwrapCoreResult(
-        await this.#invoke("project-sessions:mark-unread", {
-          operationId: createBoundedOperationId("scenario.session.mark-unread"),
-          payload: { sessionId: session.id, unread: true },
-        }),
-        "Mark Session unread",
+      const accepted = await this.#invoke(
+        "codex:conversation-unread:set",
+        input.thread.threadId,
+        true,
       );
+      if (!accepted) {
+        throw new Error(
+          "Current Codex identity could not persist the scenario Thread unread state",
+        );
+      }
     }
     return { sessionId: session.id, threadId: input.thread.threadId };
   }

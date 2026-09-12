@@ -35,6 +35,68 @@ function createRequest() {
 }
 
 describe("worktree worker protocol", () => {
+  test("accepts git-root paths from POSIX and Windows execution hosts", () => {
+    const request = {
+      type: "request",
+      protocolVersion: CODEX_WORKTREE_WORKER_PROTOCOL_VERSION,
+      id: "git-root:1",
+      request: {
+        operation: "git-root",
+        input: {
+          requestId: "git-root:1",
+          hostId: "ssh:builder",
+          cwd: "/remote/workspace",
+        },
+      },
+    } as const;
+    expect(isCodexWorktreeWorkerHostMessage(request)).toBe(true);
+    expect(
+      isCodexWorktreeWorkerHostMessage({
+        ...request,
+        request: {
+          ...request.request,
+          input: { ...request.request.input, cwd: String.raw`C:\remote\workspace` },
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isCodexWorktreeWorkerHostMessage({
+        ...request,
+        request: { ...request.request, input: { ...request.request.input, cwd: "relative/path" } },
+      }),
+    ).toBe(false);
+
+    for (const root of [
+      "/remote/workspace",
+      String.raw`C:\remote\workspace`,
+      String.raw`\\builder\workspace`,
+      null,
+    ] as const) {
+      expect(
+        isCodexWorktreeWorkerThreadMessage({
+          type: "result",
+          id: "git-root:1",
+          operation: "git-root",
+          result: {
+            type: "ok",
+            success: { operation: "git-root", value: { root } },
+          },
+        }),
+      ).toBe(true);
+    }
+    expect(
+      isCodexWorktreeWorkerThreadMessage({
+        type: "result",
+        id: "git-root:1",
+        operation: "git-root",
+        result: {
+          type: "ok",
+          success: { operation: "git-root", value: { root: "relative/path" } },
+        },
+      }),
+    ).toBe(false);
+  });
+
   test("accepts a versioned create request with an exact operation discriminator", () => {
     expect(isCodexWorktreeWorkerHostMessage(createRequest())).toBe(true);
   });

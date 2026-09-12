@@ -65,6 +65,7 @@ import * as RendererIngressLive from "./RendererIngressLive";
 import * as WindowApplicationLive from "./WindowApplicationLive";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { TemporaryAssets } from "../local-store/TemporaryAssets";
+import * as CodexConversationPeerRuntime from "../platform/node/CodexConversationPeerRuntime";
 
 const runtimeError = (operation: string, cause: unknown) =>
   new MainApplicationError({ phase: "startup", operation, cause });
@@ -91,6 +92,7 @@ const applicationGraph = RendererIngressLive.live.pipe(
       ),
     ),
   ),
+  Layer.provide(CodexConversationPeerRuntime.live),
 );
 
 /** Fully acquired production desktop application graph. */
@@ -304,6 +306,7 @@ export const live: Layer.Layer<
               Effect.asVoid,
             );
           },
+          prepareShutdown: applicationWindows.prepareQuit.pipe(Effect.asVoid),
           readiness: "ready",
         });
         yield* Scope.addFinalizer(
@@ -377,6 +380,7 @@ const startupFailureLive = (
           window.focus();
         }),
         handleBootstrapEvent: () => Effect.void,
+        prepareShutdown: Effect.void,
         readiness: "startup-failed",
       });
     }),

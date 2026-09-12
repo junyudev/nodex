@@ -109,7 +109,16 @@ async function listWorktreeAllocations(worktreesRoot: string): Promise<string[]>
 }
 
 afterEach(async () => {
-  await Promise.all(tempRoots.splice(0).map((root) => rm(root, { force: true, recursive: true })));
+  await Promise.all(
+    tempRoots.splice(0).map((root) =>
+      rm(root, {
+        force: true,
+        maxRetries: 10,
+        recursive: true,
+        retryDelay: 100,
+      }),
+    ),
+  );
 });
 
 describe("createManagedWorktree starting state", () => {

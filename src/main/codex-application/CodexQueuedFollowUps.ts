@@ -1,62 +1,42 @@
 import { randomUUID } from "node:crypto";
-import type { CodexTurnPresentationTicket } from "../../shared/nodex-app-tools/turn-presentation";
-import { CodexTurnPresentation } from "./CodexTurnPresentation";
-import type { ProjectWorkspaceIntent } from "../core-client/types";
-import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
-import * as FiberMap from "effect/FiberMap";
-import * as Option from "effect/Option";
-import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
-import type * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
+import type { CodexTurnPresentationTicket } from "../../shared/nodex-app-tools/turn-presentation";
 import type {
   CodexCollaborationModeKind,
   CodexPromptInput,
+  CodexPermissionMode,
   CodexQueuedFollowUp,
   CodexQueuedFollowUpPause,
-  CodexQueuedFollowUpFreshStartResolution,
-  CodexQueuedFollowUpProjection,
-  CodexQueueOwnerTranscriptDirective,
-  CodexQueueOwnerUpdateResult,
   CodexServiceTier,
 } from "../../shared/types";
-import { createUuidV7 } from "../../shared/uuid-v7";
-import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
+import { CODEX_INTERRUPTED_STEER_REASON } from "../../shared/codex-queued-follow-up-state";
 import {
-  CODEX_INTERRUPTED_STEER_REASON,
-  CODEX_QUEUE_OWNER_UPDATE_METHOD,
-  CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION,
-} from "../../shared/codex-queued-follow-up-state";
+  QueuedMessageLocks,
+  type QueuedMessageLockIdentity,
+} from "../../shared/codex-queued-message-locks";
+import { QueuedMessageCoordinator } from "../../shared/codex-queued-message-coordinator";
+import {
+  parseCodexQueuedMessageState,
+  type CodexQueuedMessage,
+  type CodexQueuedMessageState,
+} from "../../shared/codex-queued-message";
+import type { CodexPermissionSelection } from "../../shared/codex-permission-selection";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createOperationId } from "../core-runtime/operation-identity";
-import type { CoreRuntimeError } from "../core-runtime/CoreRuntimeError";
-import { RendererClientRuntime } from "../host-runtime/RendererClientRuntime";
-import { MAIN_RELIABLE_COMMAND_CAPACITY } from "../runtime-limits";
-import { CodexConversationProjection } from "./CodexConversationProjection";
-import { CodexInputAssets, type CodexQueuedFollowUpDurableEntry } from "./CodexInputAssets";
-import { CodexRendererConversationRegistry } from "./CodexRendererConversationRegistry";
-import { CodexTurnCommands } from "./CodexTurnCommands";
+import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
+import { CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import {
-  clearCodexQueuedFollowUps,
-  completeCodexQueuedFollowUp,
-  enqueueCodexQueuedFollowUp,
-  failCodexQueuedFollowUp,
-  recoverEndedCodexQueuedFollowUps,
-  recoverInterruptedCodexQueuedFollowUps,
-  reorderCodexQueuedFollowUps,
-  replaceCodexQueuedFollowUp,
-  resumeInterruptedCodexQueuedFollowUps,
-  type CodexQueuedFollowUpLedgerState,
-} from "./internal/CodexQueuedFollowUpState";
+  CodexMainConversationManagers,
+  type MainConversationManager,
+} from "./CodexMainConversationManagers";
+import { CodexInputAssets } from "./CodexInputAssets";
+import { CodexTurnPresentation } from "./CodexTurnPresentation";
+import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
-
-type CoreQueuedFollowUpEntry = Extract<
-  ProjectWorkspaceIntent,
-  { readonly kind: "commit_queued_follow_up_ledger" }
->["entries"][number];
-
 type QueueOperation =
   | "read"
   | "enqueue"
@@ -68,7 +48,6 @@ type QueueOperation =
   | "terminal"
   | "send"
   | "project";
-
 export class CodexQueuedFollowUpsError extends Schema.TaggedError<CodexQueuedFollowUpsError>()(
   "CodexQueuedFollowUpsError",
   {
@@ -98,966 +77,286 @@ export interface CodexQueuedFollowUpEnqueueInput {
   readonly pause?: CodexQueuedFollowUpPause | null;
   readonly promptInput?: CodexPromptInput;
   readonly summary?: CodexQueuedFollowUp["summary"];
-}
-
-export interface CodexQueuedFollowUpReadOptions {
-  /**
-   * Resume hydration targets the recovery replica until the renderer has
-   * atomically adopted ownership. Ordinary reads may project through the
-   * current renderer owner.
-   */
-  readonly projectionTarget?: "owner" | "replica";
+  readonly permissionMode?: CodexPermissionMode;
+  readonly workspaceRoots?: readonly string[];
+  readonly permissionSelection?: CodexPermissionSelection;
+  readonly permissionProfileId?: string;
+  readonly usePermissionSelection?: boolean;
+  readonly shouldSendPermissionOverrides?: boolean;
 }
 
 export class CodexQueuedFollowUps extends Context.Service<
   CodexQueuedFollowUps,
   {
-    readonly read: (
-      threadId: string,
-      options?: CodexQueuedFollowUpReadOptions,
-    ) => Effect.Effect<CodexQueuedFollowUpProjection, CodexQueuedFollowUpsError>;
-    readonly list: (threadId: string) => readonly CodexQueuedFollowUp[];
-    readonly enqueue: (
-      input: CodexQueuedFollowUpEnqueueInput,
-    ) => Effect.Effect<string, CodexQueuedFollowUpsError>;
-    readonly remove: (
-      threadId: string,
-      followUpId: string,
-    ) => Effect.Effect<boolean, CodexQueuedFollowUpsError>;
-    readonly replace: (
-      threadId: string,
-      followUpId: string,
-      expectedLedgerRevision: number,
-      input: Omit<CodexQueuedFollowUpEnqueueInput, "threadId">,
-    ) => Effect.Effect<boolean, CodexQueuedFollowUpsError>;
-    readonly reorder: (
-      threadId: string,
-      orderedFollowUpIds: readonly string[],
+    readonly readHead: (threadId: string) => CodexQueuedMessage | null | undefined;
+    readonly acquireSendLock: (input: QueuedMessageLockIdentity) => boolean;
+    readonly releaseSendLock: (input: QueuedMessageLockIdentity & { sent: boolean }) => void;
+    readonly readMessageState: Effect.Effect<CodexQueuedMessageState, CodexQueuedFollowUpsError>;
+    readonly writeMessageState: (
+      state: CodexQueuedMessageState,
     ) => Effect.Effect<void, CodexQueuedFollowUpsError>;
-    readonly resumeInterrupted: (
+    readonly prepareMessage: (
+      input: CodexQueuedFollowUpEnqueueInput,
+    ) => Effect.Effect<CodexQueuedMessage, CodexQueuedFollowUpsError>;
+    readonly acceptFromFollower: (
       threadId: string,
-    ) => Effect.Effect<boolean, CodexQueuedFollowUpsError>;
-    readonly resolveAfterFreshStart: (
-      threadId: string,
-      expectedLedgerRevision: number,
-      resolution: CodexQueuedFollowUpFreshStartResolution,
-    ) => Effect.Effect<boolean, CodexQueuedFollowUpsError>;
-    readonly requestDispatch: (threadId: string) => Effect.Effect<void>;
-    readonly sendNow: (
-      threadId: string,
-      followUpId: string,
+      messages: readonly CodexQueuedMessage[],
     ) => Effect.Effect<void, CodexQueuedFollowUpsError>;
     /** Called only while the notification consequence already owns the Thread lane. */
     readonly acceptTerminalOutcomeInCurrentLane: (input: {
       readonly threadId: string;
-      readonly rows: readonly CodexQueuedFollowUp[];
       readonly interrupted: boolean;
     }) => Effect.Effect<void, CodexQueuedFollowUpsError>;
-    /** Cancels process-local delivery only; durable queue rows remain in Core. */
-    readonly closeThread: (threadId: string) => Effect.Effect<void>;
   }
 >()("nodex/main/codex-application/CodexQueuedFollowUps") {}
 
-const normalizeId = (value: string): string => value.trim();
-
-const queueError = (
-  operation: QueueOperation,
-  threadId: string,
-  cause: unknown,
-): CodexQueuedFollowUpsError =>
+const queueError = (operation: QueueOperation, threadId: string, cause: unknown) =>
   cause instanceof CodexQueuedFollowUpsError
     ? cause
     : new CodexQueuedFollowUpsError({ operation, threadId, cause });
 
-const safeErrorMessage = (cause: unknown): string => {
-  if (cause instanceof Error && cause.message.trim()) return cause.message.trim();
-  return "Queued follow-up state could not be updated";
-};
-
-const sameEntries = (
-  left: readonly CodexQueuedFollowUp[],
-  right: readonly CodexQueuedFollowUp[],
-): boolean =>
-  left.length === right.length &&
-  left.every((entry, index) => JSON.stringify(entry) === JSON.stringify(right[index]));
-
-const toCoreEntry = (entry: CodexQueuedFollowUp): CoreQueuedFollowUpEntry => {
-  if (!entry.payloadRef) {
-    throw new Error(`Queued follow-up '${entry.followUpId}' has no durable payload`);
-  }
-  return {
-    follow_up_id: entry.followUpId,
-    client_user_message_id: entry.clientUserMessageId,
-    created_at_ms: entry.createdAtMs,
-    pause: entry.pause,
-    payload: {
-      schema_version: entry.payloadRef.schemaVersion,
-      asset_uri: entry.payloadRef.assetUri,
-      sha256: entry.payloadRef.sha256,
-      byte_length: entry.payloadRef.byteLength,
-    },
-  };
-};
-
-const toDurableEntry = (
-  threadId: string,
-  entry: CoreQueuedFollowUpEntry,
-): CodexQueuedFollowUpDurableEntry => {
-  if (entry.payload.schema_version !== CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION) {
-    throw new Error("Core returned an unsupported queued follow-up payload schema");
-  }
-  const pause = entry.pause
-    ? entry.pause.kind === "interrupted"
-      ? entry.pause.reason === CODEX_INTERRUPTED_STEER_REASON
-        ? ({ kind: "interrupted", reason: CODEX_INTERRUPTED_STEER_REASON } as const)
-        : (() => {
-            throw new Error("Core returned a non-canonical interruption pause");
-          })()
-      : ({ kind: "failed", reason: entry.pause.reason } as const)
-    : null;
-  return {
-    followUpId: entry.follow_up_id,
-    clientUserMessageId: entry.client_user_message_id,
-    threadId,
-    createdAtMs: entry.created_at_ms,
-    pause,
-    payloadRef: {
-      schemaVersion: CODEX_QUEUED_FOLLOW_UP_PAYLOAD_SCHEMA_VERSION,
-      assetUri: entry.payload.asset_uri,
-      sha256: entry.payload.sha256,
-      byteLength: entry.payload.byte_length,
-    },
-  };
-};
-
-const projectionFromLedger = (
-  previous: CodexQueuedFollowUpProjection,
-  ledger: CodexQueuedFollowUpLedgerState,
-  patch: Partial<
-    Pick<
-      CodexQueuedFollowUpProjection,
-      "status" | "inFlightFollowUpId" | "editingFollowUpId" | "error"
-    >
-  > = {},
-): CodexQueuedFollowUpProjection => ({
-  status: patch.status ?? "ready",
-  ledgerRevision: ledger.ledgerRevision,
-  projectionRevision: previous.projectionRevision + 1,
-  entries: [...ledger.entries],
-  inFlightFollowUpId:
-    patch.inFlightFollowUpId === undefined ? previous.inFlightFollowUpId : patch.inFlightFollowUpId,
-  editingFollowUpId:
-    patch.editingFollowUpId === undefined ? previous.editingFollowUpId : patch.editingFollowUpId,
-  error: patch.error === undefined ? null : patch.error,
-});
-
-const effectRetryable = (cause: unknown): boolean =>
-  typeof cause === "object" &&
-  cause !== null &&
-  "retryable" in cause &&
-  (cause as Pick<CoreRuntimeError, "retryable">).retryable === true;
-
-interface QueuedDelivery {
-  readonly row: CodexQueuedFollowUp;
-  readonly activeTurnId: string | null;
-  readonly generation: number;
-  readonly ownerClientId: string | null;
-}
-
-export const make: Effect.Effect<
-  CodexQueuedFollowUps["Service"],
-  never,
-  | CodexConversationProjection
-  | CodexInputAssets
-  | CodexRendererConversationRegistry
-  | CodexTurnCommands
-  | CodexTurnPresentation
-  | ConversationEntityMap
-  | CoreModules
-  | RendererClientRuntime
-  | Scope.Scope
-> = Effect.gen(function* () {
-  const conversations = yield* ConversationEntityMap;
+export const make = Effect.gen(function* () {
   const core = yield* CoreModules;
-  const payloads = yield* CodexInputAssets;
-  const rendererConversations = yield* CodexRendererConversationRegistry;
-  const rendererClients = yield* RendererClientRuntime;
-  const turns = yield* CodexTurnCommands;
+  const callbacks = yield* ScopedCallbackRuntime;
+  const hosts = yield* CodexThreadHostResolver;
+  const managers = yield* CodexMainConversationManagers;
+  const assets = yield* CodexInputAssets;
   const presentation = yield* CodexTurnPresentation;
-  const reconcilePresentations = (threadId: string) =>
-    presentation.reconcileQueued(
-      threadId,
-      current(threadId)
-        ?.readQueuedFollowUpProjection()
-        .entries.map((row) => row.clientUserMessageId) ?? [],
-    );
-  const conversationProjection = yield* CodexConversationProjection;
-  const dispatchIntents = yield* Queue.bounded<string>(MAIN_RELIABLE_COMMAND_CAPACITY);
-  const dispatches = yield* FiberMap.make<string, void, CodexQueuedFollowUpsError>();
-  const deferredDispatchThreadIds = new Set<string>();
-  const hydratedGenerationByThread = new Map<string, number>();
-  let closed = false;
-
-  yield* Effect.addFinalizer(() =>
-    Effect.sync(() => {
-      closed = true;
-      deferredDispatchThreadIds.clear();
-      hydratedGenerationByThread.clear();
-    }).pipe(Effect.andThen(Queue.shutdown(dispatchIntents))),
+  const events = yield* CodexApplicationEventHub;
+  const entities = yield* ConversationEntityMap;
+  const writeLock = yield* Semaphore.make(1);
+  const coordinators = new Map<
+    MainConversationManager,
+    QueuedMessageCoordinator<CodexQueuedMessage>
+  >();
+  let loaded: CodexQueuedMessageState | undefined;
+  const readMessageState = core.workspace.read({ kind: "queued_message_state" }).pipe(
+    Effect.flatMap((snapshot) =>
+      Effect.try(() => {
+        if (snapshot.value.kind !== "queued_message_state")
+          throw new Error("Wrong queue document response");
+        loaded = parseCodexQueuedMessageState(snapshot.value.state);
+        return loaded;
+      }),
+    ),
+    Effect.mapError((cause) => queueError("read", "", cause)),
   );
-
-  const current = (threadId: string) => conversations.current(threadId);
-
-  const installProjection = (
-    threadId: string,
-    projection: CodexQueuedFollowUpProjection,
-    projectReplica: boolean,
-  ): void => {
-    const aggregate = current(threadId);
-    if (!aggregate) throw new Error(`Conversation '${threadId}' is not loaded`);
-    aggregate.installQueuedFollowUpProjection(projection, projectReplica);
-  };
-
-  const publishProjection = (
-    threadId: string,
-    projection: CodexQueuedFollowUpProjection,
-    transcript: CodexQueueOwnerTranscriptDirective = { kind: "none" },
-  ): Effect.Effect<void, CodexQueuedFollowUpsError> =>
+  const persist = (state: CodexQueuedMessageState) =>
     Effect.gen(function* () {
-      const aggregate = current(threadId);
-      if (!aggregate) return;
-      const ownerClientId = rendererConversations.getOwnerClientId(threadId);
-      const ownerEpoch = rendererConversations.getOwnerEpoch(threadId);
-      if (!ownerClientId || ownerEpoch === null) {
-        installProjection(threadId, projection, true);
-        return;
-      }
-
-      installProjection(threadId, projection, false);
-      const result = yield* rendererClients
-        .request<CodexQueueOwnerUpdateResult>(ownerClientId, CODEX_QUEUE_OWNER_UPDATE_METHOD, {
-          threadId,
-          threadGeneration: aggregate.generation,
-          ownerEpoch,
-          projectionRevision: projection.projectionRevision,
-          projection,
-          transcript,
-        })
-        .pipe(Effect.retry({ times: 2 }));
-      if (result.kind === "rejected") {
-        return yield* queueError(
-          "project",
-          threadId,
-          new Error(`Renderer owner rejected queue projection: ${result.reason}`),
-        );
-      }
-      if (
-        rendererConversations.getOwnerClientId(threadId) !== ownerClientId ||
-        rendererConversations.getOwnerEpoch(threadId) !== ownerEpoch ||
-        current(threadId)?.generation !== aggregate.generation
-      ) {
-        return yield* queueError(
-          "project",
-          threadId,
-          new Error("Renderer owner changed while queue projection was being applied"),
-        );
-      }
-    }).pipe(Effect.mapError((cause) => queueError("project", threadId, cause)));
-
-  const readCoreLedger = (
-    threadId: string,
-  ): Effect.Effect<CodexQueuedFollowUpLedgerState, CodexQueuedFollowUpsError> =>
-    Effect.gen(function* () {
-      const snapshot = yield* core.workspace.read({
-        kind: "queued_follow_up_ledger",
-        thread_id: threadId,
-      });
-      if (snapshot.value.kind !== "queued_follow_up_ledger") {
-        return yield* queueError(
-          "read",
-          threadId,
-          new Error("Core returned the wrong queued follow-up read variant"),
-        );
-      }
-      const entries = yield* Effect.forEach(snapshot.value.ledger.entries, (entry) =>
-        payloads.hydrate(toDurableEntry(threadId, entry)),
-      );
-      return {
-        ledgerRevision: snapshot.value.ledger.revision,
-        entries,
-      };
-    }).pipe(Effect.mapError((cause) => queueError("read", threadId, cause)));
-
-  const loadInCurrentLane = (
-    threadId: string,
-    force = false,
-    projectionTarget: "owner" | "replica" = "owner",
-  ): Effect.Effect<CodexQueuedFollowUpProjection, CodexQueuedFollowUpsError> =>
-    Effect.gen(function* () {
-      const aggregate = current(threadId);
-      if (!aggregate) {
-        return yield* queueError("read", threadId, new Error("Conversation is not loaded"));
-      }
-      const previous = aggregate.readQueuedFollowUpProjection();
-      if (!force && hydratedGenerationByThread.get(threadId) === aggregate.generation) {
-        return previous;
-      }
-      const loading: CodexQueuedFollowUpProjection = {
-        ...previous,
-        status: "loading",
-        projectionRevision: previous.projectionRevision + 1,
-        inFlightFollowUpId: null,
-        editingFollowUpId: null,
-        error: null,
-      };
-      const projectReplica =
-        projectionTarget === "replica" || !rendererConversations.hasOwner(threadId);
-      installProjection(threadId, loading, projectReplica);
-      const ledger = yield* readCoreLedger(threadId).pipe(
-        Effect.catch((cause) => {
-          const failed: CodexQueuedFollowUpProjection = {
-            ...loading,
-            status: "error",
-            projectionRevision: loading.projectionRevision + 1,
-            error: safeErrorMessage(cause),
-          };
-          installProjection(threadId, failed, projectReplica);
-          if (projectionTarget === "replica") return Effect.fail(cause);
-          return publishProjection(threadId, failed).pipe(
-            Effect.catch(() => Effect.void),
-            Effect.andThen(Effect.fail(cause)),
-          );
-        }),
-      );
-      const ready = projectionFromLedger(loading, ledger, {
-        status: "ready",
-        inFlightFollowUpId: null,
-        editingFollowUpId: null,
-        error: null,
-      });
-      hydratedGenerationByThread.set(threadId, aggregate.generation);
-      if (projectionTarget === "replica") {
-        installProjection(threadId, ready, true);
-      } else {
-        yield* publishProjection(threadId, ready);
-      }
-      return ready;
-    });
-
-  const applyCoreCommit = (
-    threadId: string,
-    operation: QueueOperation,
-    expectedRevision: number,
-    entries: readonly CodexQueuedFollowUp[],
-    operationId: string,
-    remainingAttempts = 2,
-  ): Effect.Effect<number, CodexQueuedFollowUpsError> =>
-    payloads
-      .publish(threadId, operationId, entries)
-      .pipe(
-        Effect.flatMap((preparedBlobReceiptIds) =>
-          core.workspace.apply({
-            operationId,
-            intent: {
-              kind: "commit_queued_follow_up_ledger",
-              thread_id: threadId,
-              expected_revision: expectedRevision,
-              entries: entries.map(toCoreEntry),
-              prepared_blob_receipt_ids: [...preparedBlobReceiptIds],
-            },
-          }),
-        ),
-      )
-      .pipe(
-        Effect.flatMap((result) => {
-          const commit = result.outcome.queued_follow_up_ledger;
-          return commit?.thread_id === threadId
-            ? Effect.succeed(commit.revision)
-            : Effect.fail(
-                queueError(
-                  operation,
-                  threadId,
-                  new Error("Core omitted the queued follow-up commit outcome"),
-                ),
-              );
-        }),
-        Effect.catch((cause) =>
-          remainingAttempts > 0 && effectRetryable(cause)
-            ? Effect.sleep("50 millis").pipe(
-                Effect.andThen(
-                  applyCoreCommit(
-                    threadId,
-                    operation,
-                    expectedRevision,
-                    entries,
-                    operationId,
-                    remainingAttempts - 1,
-                  ),
-                ),
-              )
-            : Effect.fail(queueError(operation, threadId, cause)),
-        ),
-      );
-
-  const commitTransitionInCurrentLane = (
-    threadId: string,
-    operation: QueueOperation,
-    transition: (state: CodexQueuedFollowUpLedgerState) => CodexQueuedFollowUpLedgerState,
-    options: { readonly clearInFlight?: boolean; readonly operationId?: string } = {},
-  ): Effect.Effect<
-    { readonly changed: boolean; readonly projection: CodexQueuedFollowUpProjection },
-    CodexQueuedFollowUpsError
-  > =>
-    Effect.gen(function* () {
-      let previous = yield* loadInCurrentLane(threadId);
-      let next = transition({
-        ledgerRevision: previous.ledgerRevision,
-        entries: previous.entries,
-      });
-      if (sameEntries(previous.entries, next.entries)) {
-        if (!options.clearInFlight || previous.inFlightFollowUpId === null) {
-          return { changed: false, projection: previous };
-        }
-        const settled = {
-          ...previous,
-          projectionRevision: previous.projectionRevision + 1,
-          inFlightFollowUpId: null,
-        };
-        yield* publishProjection(threadId, settled);
-        return { changed: false, projection: settled };
-      }
-      const operationId = options.operationId ?? createOperationId(`queued-follow-up.${operation}`);
-      let revision: number;
-      const attempted = yield* Effect.exit(
-        applyCoreCommit(threadId, operation, previous.ledgerRevision, next.entries, operationId),
-      );
-      if (attempted._tag === "Success") {
-        revision = attempted.value;
-      } else {
-        const reloaded = yield* readCoreLedger(threadId);
-        if (sameEntries(reloaded.entries, next.entries)) {
-          revision = reloaded.ledgerRevision;
-          next = reloaded;
-        } else if (reloaded.ledgerRevision !== previous.ledgerRevision) {
-          previous = projectionFromLedger(previous, reloaded);
-          installProjection(threadId, previous, !rendererConversations.hasOwner(threadId));
-          next = transition(reloaded);
-          if (sameEntries(reloaded.entries, next.entries)) {
-            return { changed: false, projection: previous };
-          }
-          revision = yield* applyCoreCommit(
-            threadId,
-            operation,
-            reloaded.ledgerRevision,
-            next.entries,
-            `${operationId}:rebase`,
-          );
-        } else {
-          return yield* Effect.failCause(attempted.cause);
-        }
-      }
-      const accepted = projectionFromLedger(
-        previous,
-        { ledgerRevision: revision, entries: next.entries },
-        options.clearInFlight ? { inFlightFollowUpId: null } : {},
-      );
-      yield* publishProjection(threadId, accepted);
-      return { changed: true, projection: accepted };
-    }).pipe(Effect.mapError((cause) => queueError(operation, threadId, cause)));
-
-  const runMutation = <A>(
-    threadId: string,
-    operation: QueueOperation,
-    effect: Effect.Effect<A, CodexQueuedFollowUpsError>,
-  ): Effect.Effect<A, CodexQueuedFollowUpsError> =>
-    conversations
-      .runCommand(threadId, effect)
-      .pipe(Effect.mapError((cause) => queueError(operation, threadId, cause)));
-
-  const requestDispatch = (threadId: string): Effect.Effect<void> => {
-    const normalized = normalizeId(threadId);
-    return !closed && normalized
-      ? Queue.offer(dispatchIntents, normalized).pipe(Effect.asVoid)
-      : Effect.void;
-  };
-
-  const beginDelivery = (
-    threadId: string,
-    requestedFollowUpId: string | undefined,
-    allowActiveTurn: boolean,
-  ): Effect.Effect<QueuedDelivery | null, CodexQueuedFollowUpsError> =>
-    runMutation(
-      threadId,
-      "send",
-      Effect.gen(function* () {
-        const projection = yield* loadInCurrentLane(threadId);
-        if (projection.status !== "ready" || projection.inFlightFollowUpId) return null;
-        const state = yield* conversationProjection
-          .read(threadId)
-          .pipe(Effect.mapError((cause) => queueError("send", threadId, cause)));
-        const activeTurnId =
-          state.canonical.turns.findLast((turn) => turn.protocol.status === "inProgress")?.protocol
-            .id ?? null;
-        if (activeTurnId && !allowActiveTurn) return null;
-        const row = requestedFollowUpId
-          ? projection.entries.find((entry) => entry.followUpId === requestedFollowUpId)
-          : projection.entries[0];
-        if (!row || (!requestedFollowUpId && row.pause)) return null;
-        const inFlight: CodexQueuedFollowUpProjection = {
-          ...projection,
-          projectionRevision: projection.projectionRevision + 1,
-          inFlightFollowUpId: row.followUpId,
-          error: null,
-        };
-        yield* publishProjection(threadId, inFlight);
-        return {
-          row,
-          activeTurnId,
-          generation: current(threadId)?.generation ?? -1,
-          ownerClientId: rendererConversations.getOwnerClientId(threadId),
-        };
-      }),
-    );
-
-  const markDeliveryFailure = (
-    threadId: string,
-    followUpId: string,
-    generation: number,
-    cause: unknown,
-  ) =>
-    runMutation(
-      threadId,
-      "send",
-      Effect.gen(function* () {
-        if (current(threadId)?.generation !== generation) return;
-        yield* commitTransitionInCurrentLane(
-          threadId,
-          "send",
-          (state) => failCodexQueuedFollowUp(state, followUpId, safeErrorMessage(cause)),
-          { clearInFlight: true },
-        );
-      }),
-    );
-
-  const clearInterruptedInFlight = (threadId: string, followUpId: string, generation: number) =>
-    conversations.runCommand(
-      threadId,
-      Effect.gen(function* () {
-        const aggregate = current(threadId);
-        const projection = aggregate?.readQueuedFollowUpProjection();
-        if (
-          !aggregate ||
-          aggregate.generation !== generation ||
-          projection?.inFlightFollowUpId !== followUpId
-        ) {
-          return;
-        }
-        yield* publishProjection(threadId, {
-          ...projection,
-          projectionRevision: projection.projectionRevision + 1,
-          inFlightFollowUpId: null,
-        }).pipe(Effect.catch(() => Effect.void));
-      }),
-    );
-
-  const settleDeliverySuccess = (threadId: string, followUpId: string, generation: number) =>
-    runMutation(
-      threadId,
-      "send",
-      Effect.gen(function* () {
-        if (current(threadId)?.generation !== generation) return;
-        const result = yield* Effect.exit(
-          commitTransitionInCurrentLane(
-            threadId,
-            "send",
-            (state) => completeCodexQueuedFollowUp(state, followUpId),
-            {
-              clearInFlight: true,
-              operationId: createOperationId("queued-follow-up.settle"),
-            },
+      const validated = yield* Effect.try(() => parseCodexQueuedMessageState(state));
+      yield* core.workspace.apply({
+        operationId: createOperationId("queued-messages"),
+        intent: {
+          kind: "set_queued_message_state",
+          state: Object.fromEntries(
+            Object.entries(validated).map(([id, messages]) => [id, [...messages]]),
           ),
-        );
-        if (result._tag === "Success") return;
-        const projection = current(threadId)?.readQueuedFollowUpProjection();
-        if (projection?.inFlightFollowUpId === followUpId) {
-          yield* publishProjection(threadId, {
-            ...projection,
-            status: "error",
-            projectionRevision: projection.projectionRevision + 1,
-            error: "Message was accepted, but its queue receipt could not be saved",
-          }).pipe(Effect.catch(() => Effect.void));
-        }
-        return yield* Effect.failCause(result.cause);
-      }),
-    );
-
-  const submit = (delivery: QueuedDelivery) => {
-    const overrides = {
-      collaborationMode: delivery.row.collaborationMode ?? undefined,
-      serviceTier: delivery.row.serviceTier,
-      summary: delivery.row.summary,
-      promptInput: delivery.row.promptInput,
-      clientUserMessageId: delivery.row.clientUserMessageId,
-      presentationClaim: presentation.readQueued(
-        delivery.row.threadId,
-        delivery.row.clientUserMessageId,
-      ),
-    };
-    if (delivery.activeTurnId) {
-      return turns
-        .steer({
-          threadId: delivery.row.threadId,
-          expectedTurnId: delivery.activeTurnId,
-          prompt: delivery.row.prompt,
-          promptInput: delivery.row.promptInput,
-          collaborationMode: delivery.row.collaborationMode,
-          serviceTier: delivery.row.serviceTier,
-          summary: delivery.row.summary,
-          intent: {
-            steerId: `steer:${delivery.row.followUpId}`,
-            recoveryRow: { ...delivery.row, pause: null },
-          },
-        })
-        .pipe(Effect.asVoid);
-    }
-    if (delivery.ownerClientId) {
-      return turns
-        .startRendererOwned(delivery.row.threadId, delivery.row.prompt, overrides)
-        .pipe(Effect.asVoid);
-    }
-    return turns.start(delivery.row.threadId, delivery.row.prompt, overrides).pipe(Effect.asVoid);
-  };
-
-  const dispatch = (
-    threadId: string,
-    followUpId: string | undefined,
-    allowActiveTurn: boolean,
-  ): Effect.Effect<void, CodexQueuedFollowUpsError> => {
-    let interruptCleanup: QueuedDelivery | null = null;
-    return Effect.gen(function* () {
-      const delivery = yield* beginDelivery(threadId, followUpId, allowActiveTurn);
-      if (!delivery) return;
-      interruptCleanup = delivery;
-      const transported = yield* Effect.exit(submit(delivery));
-      if (transported._tag === "Failure") {
-        yield* markDeliveryFailure(
-          threadId,
-          delivery.row.followUpId,
-          delivery.generation,
-          transported.cause,
-        );
-        return yield* queueError("send", threadId, transported.cause);
-      }
-      yield* settleDeliverySuccess(threadId, delivery.row.followUpId, delivery.generation);
-      interruptCleanup = null;
-    }).pipe(
-      Effect.onInterrupt(() => {
-        return interruptCleanup
-          ? clearInterruptedInFlight(
-              threadId,
-              interruptCleanup.row.followUpId,
-              interruptCleanup.generation,
-            )
-          : Effect.void;
-      }),
-      Effect.mapError((cause) => queueError("send", threadId, cause)),
-    );
-  };
-
-  const forkDispatch = (threadId: string, effect: Effect.Effect<void, CodexQueuedFollowUpsError>) =>
+        },
+      });
+      loaded = validated;
+      events.publish({ kind: "queuedMessageStateChanged", value: null });
+    }).pipe(Effect.mapError((cause) => queueError("project", "", cause)));
+  const writeMessageState = (state: CodexQueuedMessageState) =>
+    writeLock.withPermit(persist(state));
+  const getCoordinator = (threadId: string) =>
     Effect.gen(function* () {
-      const running = Option.getOrUndefined(FiberMap.getUnsafe(dispatches, threadId));
-      if (running) {
-        if (!deferredDispatchThreadIds.has(threadId)) {
-          deferredDispatchThreadIds.add(threadId);
-          yield* Effect.forkChild(
-            Fiber.await(running).pipe(
-              Effect.andThen(
-                Effect.sync(() => {
-                  deferredDispatchThreadIds.delete(threadId);
+      const hostId = yield* hosts.resolve(threadId);
+      const manager = yield* managers.get(hostId);
+      const existing = coordinators.get(manager);
+      if (existing) return existing;
+      const coordinator = new QueuedMessageCoordinator<CodexQueuedMessage>({
+        storage: {
+          read: () => ({ isLoading: loaded === undefined, value: loaded }),
+          load: () => callbacks.runPromise(readMessageState),
+          update: (recipe) =>
+            callbacks.runPromise(
+              writeLock.withPermit(
+                Effect.gen(function* () {
+                  const state = yield* readMessageState;
+                  yield* persist(recipe(state));
                 }),
               ),
-              Effect.andThen(requestDispatch(threadId)),
+            ),
+        },
+        role: (id) => manager.stream.getRole(id),
+        validate: (messages) => {
+          parseCodexQueuedMessageState({ [threadId]: messages });
+        },
+        requestFollower: async (id, state, ownerClientId) => {
+          manager.assertCurrent();
+          const response = await manager.coordination.requestThreadFollower({
+            hostId,
+            request: {
+              method: "thread-follower-set-queued-follow-ups-state",
+              params: { conversationId: id, state },
+            },
+            targetClientId: ownerClientId,
+          });
+          manager.assertCurrent();
+          if (response.resultType === "error") throw new Error(response.error);
+        },
+        broadcast: (id, messages) => {
+          manager.assertCurrent();
+          return manager.coordination.threadQueuedFollowUpsChanged({
+            hostId,
+            conversationId: id,
+            messages,
+          });
+        },
+        changed: () => {},
+        // Ordinary Main managers coordinate storage but do not automatically execute queued input.
+        wake: () => {},
+        error: (operation, cause) => {
+          callbacks.fork(
+            Effect.logWarning("Queued message update failed").pipe(
+              Effect.annotateLogs({ operation, cause }),
             ),
           );
+        },
+      });
+      const broadcast = manager.subscribeQueuedMessages((event) => {
+        const value = event.params;
+        if (!value || typeof value !== "object" || Reflect.get(value, "hostId") !== hostId) return;
+        const id: unknown = Reflect.get(value, "conversationId");
+        if (typeof id !== "string") return;
+        try {
+          const state = parseCodexQueuedMessageState({ [id]: Reflect.get(value, "messages") });
+          coordinator.receiveBroadcast(event.sourceClientId, id, state[id]!);
+        } catch (cause) {
+          callbacks.fork(
+            Effect.logWarning("Invalid queue broadcast").pipe(Effect.annotateLogs({ cause })),
+          );
         }
-        return running;
-      }
-      const fiber = yield* Effect.forkChild(effect, { startImmediately: false });
-      FiberMap.setUnsafe(dispatches, threadId, fiber, { onlyIfMissing: true });
-      return Option.getOrUndefined(FiberMap.getUnsafe(dispatches, threadId)) ?? fiber;
-    });
-
-  yield* Effect.forever(
-    Queue.take(dispatchIntents).pipe(
-      Effect.tap((threadId) =>
-        forkDispatch(threadId, dispatch(threadId, undefined, false)).pipe(Effect.asVoid),
-      ),
-    ),
-  ).pipe(Effect.forkScoped);
-
-  const acceptTerminalOutcomeInCurrentLane = (input: {
-    readonly threadId: string;
-    readonly rows: readonly CodexQueuedFollowUp[];
-    readonly interrupted: boolean;
-  }) =>
+      });
+      manager.onDispose(() => {
+        broadcast[Symbol.dispose]();
+        coordinator[Symbol.dispose]();
+        coordinators.delete(manager);
+      });
+      coordinators.set(manager, coordinator);
+      return coordinator;
+    }).pipe(Effect.mapError((cause) => queueError("read", threadId, cause)));
+  const update = (
+    threadId: string,
+    recipe: (messages: readonly CodexQueuedMessage[]) => readonly CodexQueuedMessage[],
+    owner = false,
+  ) =>
     Effect.gen(function* () {
-      const projection = yield* loadInCurrentLane(input.threadId);
-      const existingById = new Map(
-        projection.entries.map((entry) => [entry.followUpId, entry] as const),
-      );
-      const durableRows = yield* Effect.forEach(input.rows, (row) => {
-        const existing = existingById.get(row.followUpId);
-        if (existing) return Effect.succeed(existing);
-        return payloads
-          .freeze(row)
-          .pipe(Effect.mapError((cause) => queueError("terminal", input.threadId, cause)));
-      });
-      yield* commitTransitionInCurrentLane(input.threadId, "terminal", (state) =>
-        input.interrupted
-          ? recoverInterruptedCodexQueuedFollowUps(state, durableRows)
-          : recoverEndedCodexQueuedFollowUps(state, durableRows),
-      );
-      reconcilePresentations(input.threadId);
-    }).pipe(Effect.mapError((cause) => queueError("terminal", input.threadId, cause)));
-
-  return CodexQueuedFollowUps.of({
-    read: (threadId, options = {}) => {
-      const normalized = normalizeId(threadId);
-      return runMutation(
-        normalized,
-        "read",
-        loadInCurrentLane(normalized, false, options.projectionTarget),
-      );
-    },
-    list: (threadId) =>
-      current(normalizeId(threadId))?.readQueuedFollowUpProjection().entries ?? [],
-    enqueue: (input) => {
-      const threadId = normalizeId(input.threadId);
-      const prompt = input.prompt.trim();
-      const promptInput = input.promptInput ?? { text: input.prompt };
-      const hasStructuredInput = Object.entries(promptInput).some(([key, value]) => {
-        if (key === "text") return typeof value === "string" && value.trim().length > 0;
-        return Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined;
-      });
-      if (!threadId || closed || (!prompt && !hasStructuredInput)) {
-        return Effect.fail(
-          queueError(
-            "enqueue",
-            threadId,
-            new Error(closed ? "Queued follow-up state is closed" : "Queued follow-up is empty"),
-          ),
-        );
-      }
-      return runMutation(
-        threadId,
-        "enqueue",
-        Effect.gen(function* () {
-          const createdAtMs = yield* Clock.currentTimeMillis;
-          const row = yield* payloads
-            .freeze({
-              followUpId: `follow-up:${createUuidV7()}`,
-              clientUserMessageId: randomUUID(),
+      const coordinator = yield* getCoordinator(threadId);
+      yield* Effect.tryPromise(() => coordinator.loadMessages(threadId));
+      return yield* Effect.tryPromise(() =>
+        owner
+          ? coordinator.acceptFromFollower(
               threadId,
-              prompt,
-              promptInput,
-              createdAtMs,
-              collaborationMode: input.collaborationMode ?? null,
-              serviceTier: normalizeCodexServiceTier(input.serviceTier),
-              summary: input.summary ?? null,
-              pause: input.pause ?? null,
-              payloadRef: null,
-            })
-            .pipe(Effect.mapError((cause) => queueError("enqueue", threadId, cause)));
-          const presentationClaim = input.presentationTicket
-            ? yield* presentation
-                .claim(
-                  input.presentationTicket,
-                  { kind: "thread", threadId },
-                  row.clientUserMessageId,
-                )
-                .pipe(Effect.mapError((cause) => queueError("enqueue", threadId, cause)))
-            : undefined;
-          yield* commitTransitionInCurrentLane(threadId, "enqueue", (state) =>
-            enqueueCodexQueuedFollowUp(state, row),
-          ).pipe(
-            Effect.tapError(() => Effect.sync(() => presentation.releaseClaim(presentationClaim))),
-          );
-          presentation.retainQueued(presentationClaim);
-          yield* requestDispatch(threadId);
-          return row.followUpId;
-        }),
+              recipe(coordinator.readMessages(threadId) ?? []),
+            )
+          : coordinator.update(threadId, recipe),
       );
-    },
-    remove: (threadId, followUpId) => {
-      const normalizedThreadId = normalizeId(threadId);
-      const normalizedFollowUpId = normalizeId(followUpId);
-      return runMutation(
-        normalizedThreadId,
-        "remove",
-        Effect.gen(function* () {
-          const projection = yield* loadInCurrentLane(normalizedThreadId);
-          if (projection.inFlightFollowUpId === normalizedFollowUpId) return false;
-          const removed = projection.entries.find(
-            (entry) => entry.followUpId === normalizedFollowUpId,
-          );
-          const result = yield* commitTransitionInCurrentLane(
-            normalizedThreadId,
-            "remove",
-            (state) => completeCodexQueuedFollowUp(state, normalizedFollowUpId),
-          );
-          if (result.changed && removed)
-            presentation.releaseClaim(
-              presentation.readQueued(normalizedThreadId, removed.clientUserMessageId),
-            );
-          return result.changed;
-        }),
+    }).pipe(Effect.mapError((cause) => queueError("project", threadId, cause)));
+  const prepareMessage = (input: CodexQueuedFollowUpEnqueueInput) =>
+    Effect.gen(function* () {
+      const id = randomUUID();
+      const hostId = yield* hosts.resolve(input.threadId);
+      const prompt = yield* assets.retainCaptured(
+        input.threadId,
+        id,
+        input.promptInput ?? { text: input.prompt },
       );
-    },
-    replace: (threadId, followUpId, expectedLedgerRevision, input) => {
-      const normalizedThreadId = normalizeId(threadId);
-      const normalizedFollowUpId = normalizeId(followUpId);
-      const prompt = input.prompt.trim();
-      const promptInput = input.promptInput ?? { text: input.prompt };
-      const hasStructuredInput = Object.entries(promptInput).some(([key, value]) => {
-        if (key === "text") return typeof value === "string" && value.trim().length > 0;
-        return Array.isArray(value) ? value.length > 0 : value !== null && value !== undefined;
-      });
-      if (!normalizedThreadId || !normalizedFollowUpId || (!prompt && !hasStructuredInput)) {
-        return Effect.fail(
-          queueError("replace", normalizedThreadId, new Error("Queued follow-up edit is empty")),
+      const { text: _text, images, textAttachments, ...context } = prompt;
+      const canonical = entities.current(input.threadId)?.readCanonicalState();
+      const cwd = canonical?.cwd ?? "/";
+      const selectedModel =
+        canonical?.latestCollaborationMode?.settings.model ?? canonical?.latestModel ?? null;
+      const collaborationMode =
+        input.collaborationMode && selectedModel
+          ? {
+              mode: input.collaborationMode,
+              settings: {
+                model: selectedModel,
+                reasoning_effort: canonical?.latestReasoningEffort ?? null,
+                developer_instructions: null,
+              },
+            }
+          : null;
+      const message: CodexQueuedMessage = {
+        id,
+        cwd,
+        createdAt: Date.now(),
+        context: {
+          ...context,
+          prompt: input.prompt,
+          workspaceRoots: input.workspaceRoots ? [...input.workspaceRoots] : [cwd],
+          fileAttachments: [...(prompt.fileAttachments ?? [])],
+          addedFiles: [...(prompt.addedFiles ?? [])],
+          commentAttachments: [...(prompt.commentAttachments ?? [])],
+          imageAttachments: [...(images ?? [])],
+          ...(textAttachments ? { pastedTextAttachments: textAttachments } : {}),
+        },
+        submissionOptions: {
+          executionHostId: hostId,
+          collaborationMode,
+          serviceTier: input.serviceTier,
+          summary: input.summary,
+          agentMode: input.permissionMode,
+          permissionSelection: input.permissionSelection,
+          permissionProfileId: input.permissionProfileId,
+          usePermissionSelection: input.usePermissionSelection,
+          shouldSendPermissionOverrides:
+            input.shouldSendPermissionOverrides ?? input.permissionMode !== undefined,
+        },
+        ...(input.pause ? { pausedReason: input.pause.reason } : {}),
+      };
+      if (input.presentationTicket) {
+        const claim = yield* presentation.claim(
+          input.presentationTicket,
+          { kind: "thread", threadId: input.threadId },
+          id,
         );
+        presentation.retainQueued(claim);
       }
-      return runMutation(
-        normalizedThreadId,
-        "replace",
-        Effect.gen(function* () {
-          const projection = yield* loadInCurrentLane(normalizedThreadId);
-          if (projection.ledgerRevision !== expectedLedgerRevision) return false;
-          if (projection.inFlightFollowUpId === normalizedFollowUpId) return false;
-          const previous = projection.entries.find(
-            (entry) => entry.followUpId === normalizedFollowUpId,
-          );
-          if (!previous) return false;
-          const replacement = yield* payloads
-            .freeze({
-              ...previous,
-              prompt,
-              promptInput,
-              collaborationMode: input.collaborationMode ?? previous.collaborationMode,
-              serviceTier:
-                input.serviceTier === undefined
-                  ? previous.serviceTier
-                  : normalizeCodexServiceTier(input.serviceTier),
-              summary: input.summary === undefined ? previous.summary : input.summary,
-            })
-            .pipe(Effect.mapError((cause) => queueError("replace", normalizedThreadId, cause)));
-          const previousClaim = presentation.readQueued(
-            normalizedThreadId,
-            previous.clientUserMessageId,
-          );
-          const presentationClaim = input.presentationTicket
-            ? yield* presentation
-                .claim(
-                  input.presentationTicket,
-                  { kind: "thread", threadId: normalizedThreadId },
-                  replacement.clientUserMessageId,
-                )
-                .pipe(Effect.mapError((cause) => queueError("replace", normalizedThreadId, cause)))
-            : undefined;
-          const result = yield* commitTransitionInCurrentLane(
-            normalizedThreadId,
-            "replace",
-            (state) => replaceCodexQueuedFollowUp(state, replacement),
-          ).pipe(
-            Effect.tapError(() => Effect.sync(() => presentation.releaseClaim(presentationClaim))),
-          );
-          if (result.changed) {
-            presentation.releaseClaim(previousClaim);
-            presentation.retainQueued(presentationClaim);
-          } else presentation.releaseClaim(presentationClaim);
-          return result.changed;
-        }),
-      );
+      return message;
+    }).pipe(Effect.mapError((cause) => queueError("enqueue", input.threadId, cause)));
+  yield* events.events.pipe(
+    Stream.runForEach((event) =>
+      Effect.sync(() => {
+        if (event.kind === "queuedMessageStateChanged")
+          for (const coordinator of coordinators.values()) coordinator.storageChanged();
+      }),
+    ),
+    Effect.forkScoped,
+  );
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      for (const coordinator of coordinators.values()) coordinator[Symbol.dispose]();
+      coordinators.clear();
+    }),
+  );
+  const sendLocks = new QueuedMessageLocks();
+  return CodexQueuedFollowUps.of({
+    readHead: (threadId) => {
+      for (const [manager, coordinator] of coordinators)
+        if (manager.stream.getRole(threadId))
+          return coordinator.readMessages(threadId)?.[0] ?? null;
+      return loaded === undefined ? undefined : (loaded[threadId]?.[0] ?? null);
     },
-    reorder: (threadId, orderedFollowUpIds) => {
-      const normalizedThreadId = normalizeId(threadId);
-      return runMutation(
-        normalizedThreadId,
-        "reorder",
-        Effect.gen(function* () {
-          const projection = yield* loadInCurrentLane(normalizedThreadId);
-          if (projection.inFlightFollowUpId) return;
-          yield* commitTransitionInCurrentLane(normalizedThreadId, "reorder", (state) =>
-            reorderCodexQueuedFollowUps(state, orderedFollowUpIds.map(normalizeId)),
-          );
-        }),
-      );
-    },
-    resumeInterrupted: (threadId) => {
-      const normalized = normalizeId(threadId);
-      return runMutation(
-        normalized,
-        "resume",
-        commitTransitionInCurrentLane(
-          normalized,
-          "resume",
-          resumeInterruptedCodexQueuedFollowUps,
-        ).pipe(
-          Effect.tap((result) => (result.changed ? requestDispatch(normalized) : Effect.void)),
-          Effect.map((result) => result.changed),
-        ),
-      );
-    },
-    resolveAfterFreshStart: (threadId, expectedLedgerRevision, resolution) => {
-      const normalized = normalizeId(threadId);
-      return runMutation(
-        normalized,
-        "resolve-after-fresh-start",
-        Effect.gen(function* () {
-          const currentProjection = yield* loadInCurrentLane(normalized);
-          if (currentProjection.ledgerRevision !== expectedLedgerRevision) return false;
-          const transition =
-            resolution === "clear"
-              ? clearCodexQueuedFollowUps
-              : resumeInterruptedCodexQueuedFollowUps;
-          const result = yield* commitTransitionInCurrentLane(
-            normalized,
-            "resolve-after-fresh-start",
-            transition,
-          );
-          if (result.changed && resolution === "clear") {
-            for (const row of currentProjection.entries)
-              presentation.releaseClaim(
-                presentation.readQueued(normalized, row.clientUserMessageId),
-              );
-          }
-          return result.changed;
-        }),
-      );
-    },
-    requestDispatch,
-    sendNow: (threadId, followUpId) => {
-      const normalizedThreadId = normalizeId(threadId);
-      return Effect.gen(function* () {
-        const running = Option.getOrUndefined(FiberMap.getUnsafe(dispatches, normalizedThreadId));
-        if (running) yield* Fiber.join(running);
-        const fiber = yield* forkDispatch(
-          normalizedThreadId,
-          dispatch(normalizedThreadId, normalizeId(followUpId), true),
+    acquireSendLock: (input) => sendLocks.tryAcquire(input),
+    releaseSendLock: (input) => sendLocks.release(input),
+    readMessageState,
+    writeMessageState,
+    prepareMessage,
+    acceptFromFollower: (threadId, incoming) =>
+      update(threadId, () => incoming, true).pipe(Effect.asVoid),
+    acceptTerminalOutcomeInCurrentLane: ({ threadId, interrupted }) =>
+      Effect.gen(function* () {
+        if (!interrupted) return;
+        const manager = yield* managers.get(yield* hosts.resolve(threadId));
+        if (manager.stream.getRole(threadId)?.role === "follower") return;
+        yield* update(threadId, (messages) =>
+          messages.map((message) => ({
+            ...message,
+            pausedReason: message.pausedReason ?? CODEX_INTERRUPTED_STEER_REASON,
+          })),
         );
-        yield* Fiber.join(fiber);
-      });
-    },
-    acceptTerminalOutcomeInCurrentLane,
-    closeThread: (threadId) =>
-      FiberMap.remove(dispatches, normalizeId(threadId)).pipe(
-        Effect.tap(() =>
-          Effect.sync(() => {
-            hydratedGenerationByThread.delete(normalizeId(threadId));
-            presentation.reconcileQueued(normalizeId(threadId), []);
-          }),
-        ),
-      ),
+      }).pipe(Effect.mapError((cause) => queueError("terminal", threadId, cause))),
   });
 });

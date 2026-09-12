@@ -59,7 +59,7 @@ function fixture(
   const projectRoot = path.join(root, "project");
   const outputPath = path.join(root, "output");
   const files = new Map([
-    ["bin/codex-app-server", "app-server"],
+    ["bin/codex", "app-server"],
     ["bin/codex-code-mode-host", "code-mode"],
     ["codex-path/rg", "rg"],
     ["codex-resources/zsh/bin/zsh", "zsh"],
@@ -72,12 +72,12 @@ function fixture(
     chmodSync(pathname, 0o755);
   }
   const packageManifest = {
-    entrypoint: "bin/codex-app-server",
+    entrypoint: "bin/codex",
     layoutVersion: 1,
     pathDir: "codex-path",
     resourcesDir: "codex-resources",
     target: "aarch64-apple-darwin",
-    variant: "codex-app-server",
+    variant: "codex",
     version: "0.152.0",
   };
   writeFileSync(
@@ -132,11 +132,11 @@ function fixture(
     builds: {
       "darwin-arm64": build(
         "aarch64-apple-darwin",
-        "codex-app-server-package-aarch64-apple-darwin.tar.gz",
+        "codex-package-aarch64-apple-darwin.tar.gz",
       ),
       "darwin-x64": build(
         "x86_64-apple-darwin",
-        "codex-app-server-package-x86_64-apple-darwin.tar.gz",
+        "codex-package-x86_64-apple-darwin.tar.gz",
       ),
     },
     notices: {
@@ -163,7 +163,7 @@ function fixture(
       },
     },
     requiredArtifacts: ["codex-package.json", ...files.keys()],
-    runtimeFamily: "codex-app-server",
+    runtimeFamily: "codex",
     schemaVersion: 1,
     upstream,
   };
@@ -492,7 +492,7 @@ describe("stage-codex-runtime", () => {
     const options = stageOptions(input, { reuseExisting: true });
     await stageCodexRuntime(options);
     const runtimeRoot = path.join(input.outputPath, "agent-runtime");
-    const entrypoint = path.join(runtimeRoot, "bin", "codex-app-server");
+    const entrypoint = path.join(runtimeRoot, "bin", "codex");
     const metadataPath = path.join(runtimeRoot, "agent-runtime.json");
     const initialModifiedAt = statSync(entrypoint).mtimeMs;
 

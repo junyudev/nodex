@@ -120,7 +120,10 @@ const ThreadNotificationUpdate = z
   })
   .strict() satisfies z.ZodType<UpdateThreadNotificationSettingsInput>;
 const DeveloperInstructionUpdate = z
-  .object({ detailLevel: z.enum(["STEPS_PROSE", "STEPS_COMMANDS", "STEPS_EXECUTION"]) })
+  .object({
+    detailLevel: z.enum(["STEPS_PROSE", "STEPS_COMMANDS", "STEPS_EXECUTION"]).optional(),
+    defaultModeRequestUserInput: z.boolean().optional(),
+  })
   .strict() satisfies z.ZodType<UpdateCodexDeveloperInstructionSettingsInput>;
 const GitUpdate = z
   .object({

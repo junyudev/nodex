@@ -3,7 +3,7 @@ import type { CodexComposerSkill } from "../../shared/types";
 import {
   resolveComposerInventoryIconUrl,
   type ComposerInventoryIconResolver,
-} from "./composer-inventory-icon";
+} from "../../shared/codex-composer-inventory-icon";
 
 function normalizeOptionalText(value: string | null | undefined): string | null {
   const normalized = value?.trim() ?? "";

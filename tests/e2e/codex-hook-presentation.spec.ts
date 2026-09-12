@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import path from "node:path";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
+import { openNewChatDraft } from "./support/new-chat-draft";
 
 test("shows completed lifecycle hooks only through accessible message action tooltips", async ({}, testInfo) => {
   test.setTimeout(120_000);
@@ -24,11 +25,13 @@ test("shows completed lifecycle hooks only through accessible message action too
   try {
     const page = await harness.launch();
     await page.emulateMedia({ colorScheme: "light" });
-    await page.getByRole("button", { name: "New chat", exact: true }).first().click();
-    const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
+    const scene = await openNewChatDraft(page);
+    const composer = scene.locator('[data-codex-composer="true"][aria-label="Do anything"]');
     await expect(composer).toBeVisible();
     await composer.fill("Check the session hook");
-    await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+    const sendButton = scene.getByRole("button", { name: "Send prompt", exact: true });
+    await expect(sendButton).toBeEnabled();
+    await sendButton.click();
     const reply = page.getByText("The hook completed successfully.", { exact: true });
     await expect(reply).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();

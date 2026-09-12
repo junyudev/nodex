@@ -1,3 +1,4 @@
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -61,8 +62,8 @@ export const make: Effect.Effect<CodexForkTitlePolicy["Service"], never, CoreMod
     ) {
       const sourceTitle = resolveCodexForkSourceConversationTitle({
         explicitTitle: source.threadName,
-        firstTurnInput: source.canonical.turns[0]?.sidecar.params?.input,
-        firstTurnCommentAttachments: source.canonical.turns[0]?.sidecar.params?.commentAttachments,
+        firstTurnInput: residentConversationTurns(source.canonical)[0]?.params?.input,
+        firstTurnCommentAttachments: residentConversationTurns(source.canonical)[0]?.params?.commentAttachments,
       });
       const scanCatalog = Effect.gen(function* () {
         const known: CodexForkTitleThread[] = [];

@@ -6,35 +6,22 @@ import type * as Scope from "effect/Scope";
 import {
   CODEX_COMMAND_OUTPUT_FLUSH_INTERVAL_MS,
   CODEX_COMMAND_OUTPUT_MAX_BUFFERED_CHARS,
-  CODEX_COMMAND_OUTPUT_MAX_BUFFERED_KEYS,
-  CODEX_COMMAND_OUTPUT_MAX_BUFFERED_UPDATES,
-  CODEX_COMMAND_OUTPUT_MAX_BUFFERED_UTF8_BYTES,
   CodexCommandOutputQueue,
   type CodexCommandOutputScheduler,
   type CodexCommandOutputUpdate,
 } from "../../shared/codex-conversation-state/codex-command-output-queue";
 import {
   CODEX_FRAME_TEXT_DELTA_FALLBACK_INTERVAL_MS,
-  CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_CODE_UNITS,
-  CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_CODE_UNITS_PER_KEY,
-  CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_KEYS,
   CodexFrameTextDeltaQueue,
   type CodexFrameTextDeltaScheduler,
   type CodexFrameTextDeltaUpdate,
 } from "../../shared/codex-conversation-state/codex-frame-text-delta-queue";
-import { CodexRendererConversationRegistry } from "./CodexRendererConversationRegistry";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
 export interface CodexConversationDeltaBufferRuntimeOptions {
   readonly frameFlushIntervalMs?: number;
   readonly outputFlushIntervalMs?: number;
-  readonly maxBufferedFrameKeys?: number;
-  readonly maxBufferedFrameCodeUnitsPerKey?: number;
-  readonly maxBufferedFrameCodeUnits?: number;
   readonly maxBufferedOutputChars?: number;
-  readonly maxBufferedOutputKeys?: number;
-  readonly maxBufferedOutputUpdates?: number;
-  readonly maxBufferedOutputUtf8Bytes?: number;
 }
 
 export class CodexConversationDeltaBufferRuntime extends Context.Service<
@@ -61,19 +48,18 @@ const makeEffectTimerScheduler = (
 });
 
 /**
- * Process-global bounded delta admission. Canonical conversation entities own durable state, not
- * transient string buffers; queue pressure therefore cannot grow with Thread fan-out.
+ * Scoped scheduling for manager-local prose and command-output batches. Command output retains
+ * a bounded tail per item and flushes on its timer or an explicit completion drain.
  */
 export const make = (
   options: CodexConversationDeltaBufferRuntimeOptions = {},
 ): Effect.Effect<
   CodexConversationDeltaBufferRuntime["Service"],
   never,
-  ConversationEntityMap | CodexRendererConversationRegistry | Scope.Scope
+  ConversationEntityMap | Scope.Scope
 > =>
   Effect.gen(function* () {
     const conversations = yield* ConversationEntityMap;
-    const rendererRegistry = yield* CodexRendererConversationRegistry;
     const frameTimer = yield* FiberHandle.make<void, never>();
     const outputTimer = yield* FiberHandle.make<void, never>();
     const frameScheduler = makeEffectTimerScheduler(yield* FiberHandle.runtime(frameTimer)());
@@ -109,7 +95,6 @@ export const make = (
         const outcomes = aggregate.commitFrameTextDeltas({
           updates: threadUpdates,
           observedAtMs,
-          projectReplica: !rendererRegistry.hasOwner(threadId),
         });
         for (const outcome of outcomes) {
           if (outcome.disposition === "applied") continue;
@@ -133,10 +118,10 @@ export const make = (
       observedAtMs = Date.now(),
     ): void => {
       for (const [threadId, threadUpdates] of groupByConversation(updates)) {
-        conversations.current(threadId)?.commitCommandOutputDeltas({
+        const aggregate = conversations.current(threadId);
+        aggregate?.commitCommandOutputDeltas({
           updates: threadUpdates,
           observedAtMs,
-          projectReplica: !rendererRegistry.hasOwner(threadId),
         });
       }
     };
@@ -145,23 +130,12 @@ export const make = (
       scheduler: frameScheduler,
       fallbackIntervalMs:
         options.frameFlushIntervalMs ?? CODEX_FRAME_TEXT_DELTA_FALLBACK_INTERVAL_MS,
-      maxBufferedKeys: options.maxBufferedFrameKeys ?? CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_KEYS,
-      maxBufferedCodeUnitsPerKey:
-        options.maxBufferedFrameCodeUnitsPerKey ??
-        CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_CODE_UNITS_PER_KEY,
-      maxBufferedCodeUnits:
-        options.maxBufferedFrameCodeUnits ?? CODEX_FRAME_TEXT_DELTA_MAX_BUFFERED_CODE_UNITS,
       onFlush: commitFrameText,
     });
     const outputQueue = new CodexCommandOutputQueue({
       scheduler: outputScheduler,
       flushIntervalMs: options.outputFlushIntervalMs ?? CODEX_COMMAND_OUTPUT_FLUSH_INTERVAL_MS,
       maxBufferedChars: options.maxBufferedOutputChars ?? CODEX_COMMAND_OUTPUT_MAX_BUFFERED_CHARS,
-      maxBufferedKeys: options.maxBufferedOutputKeys ?? CODEX_COMMAND_OUTPUT_MAX_BUFFERED_KEYS,
-      maxBufferedUpdates:
-        options.maxBufferedOutputUpdates ?? CODEX_COMMAND_OUTPUT_MAX_BUFFERED_UPDATES,
-      maxBufferedUtf8Bytes:
-        options.maxBufferedOutputUtf8Bytes ?? CODEX_COMMAND_OUTPUT_MAX_BUFFERED_UTF8_BYTES,
       onFlush: commitCommandOutput,
     });
 
@@ -174,26 +148,17 @@ export const make = (
 
     return CodexConversationDeltaBufferRuntime.of({
       enqueueFrameText: (update) => {
-        const first = frameQueue.enqueue(update);
-        if (first.accepted) return;
-
-        // A pressure cut publishes the already bounded batch before accepting more work.
-        frameQueue.flushNow({ terminalDrainCommit: false });
-        const retry = frameQueue.enqueue(update);
-        if (retry.accepted) return;
-
-        // One individually over-budget delta is never retained and is never lost.
-        commitFrameText([update]);
+        frameQueue.enqueue(update);
       },
       enqueueCommandOutput: (update) => {
         outputQueue.enqueue(update);
       },
       drainBeforeCompletion: (conversationId, observedAtMs) => {
-        // Output is synchronous and manager-global; prose keeps its per-Thread terminal drain.
+        // Completion drains the manager-global output and prose batches before applying lifecycle state.
         outputQueue.flushNow();
         terminalObservedAtMsByConversation.set(conversationId, observedAtMs);
         try {
-          frameQueue.flushConversationNow(conversationId, { terminalDrainCommit: true });
+          frameQueue.flushNow({ terminalDrainCommit: true });
         } finally {
           terminalObservedAtMsByConversation.delete(conversationId);
         }

@@ -19,7 +19,12 @@ import { captureBrowserUseRoute } from "@/lib/browser-use-route-capture";
 import { cleanupMaterializedThreadGoalDraft } from "./thread-goal-materialization";
 import type { ThreadStageActions } from "./thread-stage-types";
 import type { BrowserSidebarCommandResult } from "../../../shared/browser-sidebar";
+import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
 import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
+import {
+  codexTurnFirstResponseNow,
+  codexTurnFirstResponseTracker,
+} from "./codex-turn-first-response";
 
 const captureTurnBrowserRouteCommand = defineRendererCommand({
   key: "browser_use.capture_turn_route",
@@ -214,6 +219,13 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
         prompt: request.prompt,
         promptInput: request.promptInput,
       });
+      codexTurnFirstResponseTracker.start(
+        firstSubmission.clientUserMessageId,
+        "new_thread",
+        null,
+        firstSubmission.launchId,
+        firstSubmission.acceptedAt,
+      );
       let failureStage:
         | "materializingTarget"
         | "startingThread"
@@ -228,10 +240,18 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
           promptInput,
           threadGoalDraft,
           threadGoalMaterializedDraft,
+          threadGoalMaterializedHostId,
           runInTarget,
           runInEnvironmentPath,
           worktreeStartingState,
         } = request;
+        const materializedGoalHostId =
+          threadGoalMaterializedHostId ??
+          (runInTarget === "cloud" ? "durable" : DEFAULT_CODEX_HOST_ID);
+        const cleanupMaterializedGoal = (materialized: CodexThreadGoalMaterializedDraft | null) =>
+          input.cleanupThreadGoalMaterializedDraft
+            ? input.cleanupThreadGoalMaterializedDraft(materialized)
+            : cleanupMaterializedThreadGoalDraft(materializedGoalHostId, materialized);
         let targetSession: ProjectSession | null = null;
         if (projectDraftId) {
           if (projectId === null || !input.onMaterializeProjectDraft) {
@@ -243,18 +263,14 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
               draftId: projectDraftId,
             });
           } catch (error) {
-            await (input.cleanupThreadGoalMaterializedDraft ?? cleanupMaterializedThreadGoalDraft)(
-              threadGoalMaterializedDraft ?? null,
-            );
+            await cleanupMaterializedGoal(threadGoalMaterializedDraft ?? null);
             throw error;
           }
         } else if (projectId !== input.currentSessionProjectId) {
           try {
             targetSession = await input.onEnsureDefaultDraftSessionForProject(projectId);
           } catch (error) {
-            await (input.cleanupThreadGoalMaterializedDraft ?? cleanupMaterializedThreadGoalDraft)(
-              threadGoalMaterializedDraft ?? null,
-            );
+            await cleanupMaterializedGoal(threadGoalMaterializedDraft ?? null);
             throw error;
           }
         }
@@ -275,9 +291,7 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
         try {
           await captureTurnOrigin(targetSessionId, targetSessionId, projectId);
         } catch (error) {
-          await (input.cleanupThreadGoalMaterializedDraft ?? cleanupMaterializedThreadGoalDraft)(
-            threadGoalMaterializedDraft ?? null,
-          );
+          await cleanupMaterializedGoal(threadGoalMaterializedDraft ?? null);
           throw error;
         }
         failureStage = "startingThread";
@@ -324,6 +338,9 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
           if (!input.onOpenPendingWorktree) {
             throw new Error("Pending worktree navigation is unavailable");
           }
+          codexTurnFirstResponseTracker.markNewThreadNavigationDispatched(
+            firstSubmission.clientUserMessageId,
+          );
           input.onOpenPendingWorktree(result.clientThreadId, targetSessionId);
           return;
         }
@@ -407,29 +424,59 @@ export function createThreadStageActions(input: ThreadActionControllerInput): Th
     ...(input.onToggleThreadPin ? { onToggleThreadPin: input.onToggleThreadPin } : {}),
     onSendPrompt: async (prompt, opts) => {
       const threadId = requireActiveThreadId(input.activeThreadId, "Sending a prompt");
+      const clientUserMessageId = crypto.randomUUID();
+      const startedAtMs = codexTurnFirstResponseNow();
+      codexTurnFirstResponseTracker.start(
+        clientUserMessageId,
+        "existing_thread",
+        threadId,
+        threadId,
+        startedAtMs,
+      );
       const submittedPresentation =
         opts?.submittedPresentation ?? input.codexControl.captureSubmissionPresentation();
-      await captureTurnOrigin(input.currentSessionId, threadId, input.projectId);
-      await input.codexControl.startTurn(
-        threadId,
-        prompt,
-        {
-          ...(input.projectId === null ? {} : { projectId: input.projectId }),
-          collaborationMode: opts?.collaborationMode,
-          promptInput: opts?.promptInput,
-          model: opts?.model,
-          reasoningEffort: opts?.reasoningEffort,
-          serviceTier: opts?.serviceTier,
-        },
-        submittedPresentation,
-      );
+      try {
+        await captureTurnOrigin(input.currentSessionId, threadId, input.projectId);
+        await input.codexControl.startTurn(
+          threadId,
+          prompt,
+          {
+            ...(input.projectId === null ? {} : { projectId: input.projectId }),
+            collaborationMode: opts?.collaborationMode,
+            promptInput: opts?.promptInput,
+            model: opts?.model,
+            reasoningEffort: opts?.reasoningEffort,
+            serviceTier: opts?.serviceTier,
+          },
+          submittedPresentation,
+          { clientUserMessageId, startedAtMs },
+        );
+      } catch (error) {
+        codexTurnFirstResponseTracker.fail(clientUserMessageId, "submit_failed");
+        throw error;
+      }
     },
     onSteerPrompt: async (steerInput) => {
       const threadId = requireActiveThreadId(input.activeThreadId, "Steering a prompt");
-      await input.codexControl.steerTurn({
-        ...steerInput,
+      const clientUserMessageId = crypto.randomUUID();
+      codexTurnFirstResponseTracker.start(
+        clientUserMessageId,
+        "existing_thread",
         threadId,
-      });
+        threadId,
+        codexTurnFirstResponseNow(),
+      );
+      try {
+        await input.codexControl.steerTurn({
+          ...steerInput,
+          threadId,
+          clientUserMessageId,
+        });
+        codexTurnFirstResponseTracker.abort(clientUserMessageId, "active_turn_steer");
+      } catch (error) {
+        codexTurnFirstResponseTracker.fail(clientUserMessageId, "submit_failed");
+        throw error;
+      }
     },
     onInterruptTurn: async (turnId) => {
       const threadId = requireActiveThreadId(input.activeThreadId, "Stopping Nodex");

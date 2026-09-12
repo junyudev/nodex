@@ -7,7 +7,12 @@ import * as Ref from "effect/Ref";
 import * as Semaphore from "effect/Semaphore";
 import type { CodexSessionTransport } from "../platform/node/CodexSessionTransport";
 import type { CodexApplicationRequestInbox } from "./CodexApplicationRequestInbox";
-import { CodexEndpoint, live as endpointLive, type CodexEndpointConfig } from "./CodexEndpoint";
+import {
+  CodexEndpoint,
+  live as endpointLive,
+  type CodexEndpointConfig,
+  type CodexEndpointInternalServerRequestHandler,
+} from "./CodexEndpoint";
 import type { CodexEventHub } from "./CodexEventHub";
 import type { CodexRequestScheduler } from "./CodexRequestScheduler";
 import { codexRuntimeError, type CodexRuntimeError } from "./CodexRuntimeError";
@@ -44,6 +49,9 @@ const unavailable = (hostId: string) =>
  */
 export const live = (
   local: CodexExecutionHostConfig,
+  options: {
+    readonly internalServerRequestHandler?: CodexEndpointInternalServerRequestHandler;
+  } = {},
 ): Layer.Layer<
   CodexEndpointMap,
   never,
@@ -52,9 +60,20 @@ export const live = (
   Layer.effect(
     CodexEndpointMap,
     Effect.gen(function* () {
+      const withInternalServerRequestHandler = (
+        config: CodexExecutionHostConfig,
+      ): CodexExecutionHostConfig =>
+        options.internalServerRequestHandler && !config.internalServerRequestHandler
+          ? { ...config, internalServerRequestHandler: options.internalServerRequestHandler }
+          : config;
       const localHostId = local.hostId.trim();
       const configs = yield* Ref.make<ReadonlyMap<string, CodexExecutionHostConfig>>(
-        new Map([[localHostId, { ...local, hostId: localHostId, kind: "local" }]]),
+        new Map([
+          [
+            localHostId,
+            withInternalServerRequestHandler({ ...local, hostId: localHostId, kind: "local" }),
+          ],
+        ]),
       );
       const mutationLock = yield* Semaphore.make(1);
       const lookup = (
@@ -112,7 +131,7 @@ export const live = (
             }),
           );
         }
-        const normalized = { ...config, hostId };
+        const normalized = withInternalServerRequestHandler({ ...config, hostId });
         return Effect.gen(function* () {
           const previous = yield* Ref.get(configs);
           const next = new Map(previous);

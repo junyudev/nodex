@@ -118,7 +118,7 @@ const probe = async (callbacks: ScopedCallbackRuntime["Service"]) => {
       withCodexProbeSession(
         callbacks,
         {
-          binaryPath: resolve(".generated/codex-runtime/agent-runtime/bin/codex-app-server"),
+          binaryPath: resolve(".generated/codex-runtime/agent-runtime/bin/codex"),
           expectedCodexHome: home,
           env: {
             ...process.env,

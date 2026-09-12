@@ -1,4 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
+import { produce } from "immer";
+import {
+  mutateCodexTurnStartRejection,
+  type CodexPreparedTurnExecution,
+} from "./codex-turn-execution";
 import type { Turn } from "@nodex/codex-app-server-protocol/v2/Turn";
 import {
   createCodexCanonicalHydratedConversationState,
@@ -47,22 +52,25 @@ function buildState() {
       turns: [],
     },
     {
-      model: "gpt-test",
-      reasoningEffort: "medium",
-      cwd: "/workspace",
-      approvalPolicy: "on-request",
-      approvalsReviewer: "user",
-      sandboxPolicy: {
-        type: "workspaceWrite",
-        writableRoots: ["/workspace"],
-        networkAccess: false,
-        excludeTmpdirEnvVar: false,
-        excludeSlashTmp: false,
+      hostId: "local",
+      ...{
+        model: "gpt-test",
+        reasoningEffort: "medium",
+        cwd: "/workspace",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        sandboxPolicy: {
+          type: "workspaceWrite",
+          writableRoots: ["/workspace"],
+          networkAccess: false,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        },
+        activePermissionProfile: { id: ":workspace", extends: null },
+        runtimeWorkspaceRoots: ["/workspace"],
+        pendingRequests: [],
+        hasUnreadTurn: false,
       },
-      activePermissionProfile: { id: ":workspace", extends: null },
-      runtimeWorkspaceRoots: ["/workspace"],
-      pendingRequests: [],
-      hasUnreadTurn: false,
     },
   );
 }
@@ -96,6 +104,225 @@ function buildParams(): CodexCanonicalLiveTurnParams {
   };
 }
 
+const preparedExecution = (before = buildState()): CodexPreparedTurnExecution => ({
+  model: null,
+  reasoningEffort: null,
+  shouldUpdateReasoningEffort: true,
+  collaborationMode: {
+    mode: "plan",
+    settings: {
+      model: "selected-model",
+      reasoning_effort: "high",
+      developer_instructions: "Keep selected instructions",
+    },
+  },
+  permissions: {
+    approvalPolicy: "never",
+    approvalsReviewer: "user",
+    sandboxPolicy: { type: "readOnly", networkAccess: false },
+  },
+  previousPermissions: before.currentPermissions,
+});
+
+describe("prepared Turn execution context", () => {
+  test("updates execution metadata and permissions without manufacturing next-Turn settings", () => {
+    const before = buildState();
+    const execution = preparedExecution(before);
+    const after = appendCodexCanonicalOptimisticTurn(before, { params: buildParams(), execution });
+    expect(after.latestModel).toBe(before.latestModel);
+    expect(after.latestReasoningEffort).toBeNull();
+    expect(after.latestCollaborationMode).toBe(execution.collaborationMode);
+    expect(after.currentPermissions).toBe(execution.permissions);
+    expect(after.latestThreadSettings).toBe(before.latestThreadSettings);
+    expect(after.hydrationContext).toBe(before.hydrationContext);
+    expect(after.turns[0]?.params).toEqual(buildParams());
+  });
+
+  test("keeps current permissions until a pending workspace is accepted", () => {
+    const before = buildState();
+    const execution: CodexPreparedTurnExecution = {
+      ...preparedExecution(before),
+      workspaceKind: "project",
+      pendingWorkspace: {
+        projectSources: ["/next-project"],
+        cwd: "/next-project",
+        runtimeWorkspaceRoots: ["/next-project"],
+      },
+    };
+    const after = appendCodexCanonicalOptimisticTurn(before, { params: buildParams(), execution });
+
+    expect(after.currentPermissions).toBe(before.currentPermissions);
+  });
+
+  test("publishes an owner-prepared projectless workspace before dispatch", () => {
+    const before = produce(buildState(), (draft) => {
+      draft.workspaceKind = "projectless";
+      draft.workspaceBrowserRoot = null;
+      draft.cwd = "/outside";
+    });
+    const execution: CodexPreparedTurnExecution = {
+      ...preparedExecution(before),
+      workspaceKind: "projectless",
+      projectlessWorkspace: {
+        cwd: "/Users/test/Documents/Nodex/2026-09-17/new-chat",
+        workspaceRoot: "/Users/test/Documents/Nodex",
+      },
+      pendingWorkspace: null,
+    };
+    const after = appendCodexCanonicalOptimisticTurn(before, { params: buildParams(), execution });
+
+    expect(after.workspaceKind).toBe("projectless");
+    expect(after.workspaceBrowserRoot).toBe("/Users/test/Documents/Nodex");
+    expect(after.cwd).toBe("/Users/test/Documents/Nodex/2026-09-17/new-chat");
+    expect(after.currentPermissions).toBe(execution.permissions);
+  });
+
+  test.each([
+    { explicit: false, effort: null, expected: "high" },
+    { explicit: true, effort: null, expected: null },
+    { explicit: false, effort: "low" as const, expected: "low" },
+  ])(
+    "retains effort only when a null resolution is implicit: $explicit / $effort",
+    ({ explicit, effort, expected }) => {
+      const before = { ...buildState(), latestReasoningEffort: "high" as const };
+      const after = appendCodexCanonicalOptimisticTurn(before, {
+        params: buildParams(),
+        execution: {
+          ...preparedExecution(before),
+          reasoningEffort: effort,
+          shouldUpdateReasoningEffort: explicit,
+        },
+      });
+      expect(after.latestReasoningEffort).toBe(expected);
+    },
+  );
+
+  test.each([true, false])(
+    "restores permission presence after rejecting an empty Turn: $0",
+    (hadPermissions) => {
+      const before = produce(buildState(), (draft) => {
+        draft.hydrationContext = null;
+        if (!hadPermissions) delete draft.currentPermissions;
+      });
+      const execution = preparedExecution(before);
+      const pending = appendCodexCanonicalOptimisticTurn(before, {
+        params: buildParams(),
+        execution,
+      });
+      expect(pending.currentPermissions).toBe(execution.permissions);
+      const after = produce(pending, (draft) =>
+        mutateCodexTurnStartRejection(draft, {
+          clientUserMessageId: "client-message",
+          previousPermissions: before.currentPermissions,
+          message: "Native request rejected",
+          failureItemId: "failed",
+          restoreRuntimeStatus: before.threadRuntimeStatus,
+        }),
+      );
+      expect(after.turns).toHaveLength(0);
+      expect(after.currentPermissions).toBe(before.currentPermissions);
+      expect(Object.hasOwn(after, "currentPermissions")).toBe(hadPermissions);
+      expect(after.hydrationContext).toBeNull();
+      expect(after.latestCollaborationMode).toBe(execution.collaborationMode);
+      expect(after.threadRuntimeStatus).toBe(before.threadRuntimeStatus);
+    },
+  );
+
+  test("retains received content and newer settings when a submitted Turn fails", () => {
+    const before = buildState();
+    const execution = preparedExecution(before);
+    const pending = appendCodexCanonicalOptimisticTurn(before, {
+      params: buildParams(),
+      execution,
+    });
+    const observed = produce(pending, (draft) => {
+      draft.turns[0]!.items.push({
+        type: "agentMessage",
+        id: "partial",
+        text: "Already received",
+        phase: "commentary",
+        delivery: null,
+        memoryCitation: null,
+        questions: null,
+      });
+      draft.latestThreadSettings = {
+        model: "newer-setting",
+        effort: "high",
+        collaborationMode: before.latestCollaborationMode,
+        personality: "pragmatic",
+      };
+    });
+    const after = produce(observed, (draft) =>
+      mutateCodexTurnStartRejection(draft, {
+        clientUserMessageId: "client-message",
+        previousPermissions: before.currentPermissions,
+        message: "Submission failed after content arrived",
+        failureItemId: "failed",
+      }),
+    );
+    expect(after.turns[0]?.items[0]).toEqual(observed.turns[0]?.items[0]);
+    expect(after.turns[0]?.status).toBe("failed");
+    expect(after.turns[0]?.error?.message).toBe("Submission failed after content arrived");
+    expect(after.latestThreadSettings).toBe(observed.latestThreadSettings);
+    expect(after.currentPermissions).toBe(before.currentPermissions);
+  });
+
+  test.each(["assigned", "completed", "missing"] as const)(
+    "a late rejection cannot change a %s Turn or its status",
+    (kind) => {
+      const before = buildState();
+      const pending = appendCodexCanonicalOptimisticTurn(before, {
+        params: buildParams(),
+        execution: preparedExecution(before),
+      });
+      const observed = produce(pending, (draft) => {
+        if (kind === "assigned") draft.turns[0]!.turnId = "native-turn";
+        if (kind === "completed") draft.turns[0]!.status = "completed";
+        if (kind === "missing") draft.turns[0]!.params.clientUserMessageId = "another-client";
+        draft.threadRuntimeStatus = { type: "active", activeFlags: [] };
+      });
+      const after = produce(observed, (draft) =>
+        mutateCodexTurnStartRejection(draft, {
+          clientUserMessageId: "client-message",
+          previousPermissions: before.currentPermissions,
+          message: "Late native error",
+          failureItemId: "failed",
+          restoreRuntimeStatus: before.threadRuntimeStatus,
+        }),
+      );
+      expect(after.turns).toBe(observed.turns);
+      expect(after.threadRuntimeStatus).toBe(observed.threadRuntimeStatus);
+      expect(after.currentPermissions).toBe(before.currentPermissions);
+    },
+  );
+
+  test("an uncertain injection retains its empty placeholder as a failed Turn", () => {
+    const before = buildState();
+    const pending = appendCodexCanonicalOptimisticTurn(before, {
+      params: buildParams(),
+      execution: preparedExecution(before),
+    });
+    const after = produce(pending, (draft) =>
+      mutateCodexTurnStartRejection(draft, {
+        clientUserMessageId: "client-message",
+        previousPermissions: before.currentPermissions,
+        message: "Injection outcome is unknown",
+        failureItemId: "failed",
+        retainTurn: true,
+        restoreRuntimeStatus: before.threadRuntimeStatus,
+      }),
+    );
+    expect(after.turns).toHaveLength(1);
+    expect(after.turns[0]).toMatchObject({
+      turnId: null,
+      status: "failed",
+      error: { message: "Injection outcome is unknown" },
+    });
+    expect(after.currentPermissions).toBe(before.currentPermissions);
+    expect(after.threadRuntimeStatus).toBe(before.threadRuntimeStatus);
+  });
+});
+
 describe("Codex optimistic worktree initialization ordering", () => {
   test("publishes worktree initialization inside the optimistic first turn", () => {
     const state = appendCodexCanonicalOptimisticFirstTurn(
@@ -110,9 +337,9 @@ describe("Codex optimistic worktree initialization ordering", () => {
     );
 
     expect(state.turns).toHaveLength(1);
-    expect(state.turns[0]?.protocol.status).toBe("inProgress");
+    expect(state.turns[0]?.status).toBe("inProgress");
     expect(state.turns[0]?.items[0]?.type).toBe("worktreeInit");
-    expect(state.turns[0]?.sidecar.params.clientUserMessageId).toBe("client-message");
+    expect(state.turns[0]?.params.clientUserMessageId).toBe("client-message");
   });
 
   test("publishes the exact nullable in-progress placeholder before dispatch", () => {
@@ -122,12 +349,31 @@ describe("Codex optimistic worktree initialization ordering", () => {
     });
     const turn = state.turns[0];
 
-    expect(turn?.protocol.id).toBe(null);
-    expect(turn?.protocol.status).toBe("inProgress");
-    expect(turn?.sidecar.turnStartedAtMs).toBe(42);
-    expect(turn?.sidecar.params.clientUserMessageId).toBe("client-message");
-    expect(turn?.sidecar.entityKey).toBe("turn-local:client-message");
+    expect(turn?.turnId).toBe(null);
+    expect(turn?.status).toBe("inProgress");
+    expect(turn?.turnStartedAtMs).toBe(42);
+    expect(state.updatedAt).toBe(42);
+    expect(state.recencyAt).toBe(42);
+    expect(state.threadRuntimeStatus).toEqual({ type: "active", activeFlags: [] });
+    expect(turn?.params.clientUserMessageId).toBe("client-message");
+    expect(turn?.entityKey).toBe("turn-local:client-message");
     expect(turn?.items.length).toBe(0);
+  });
+
+  test("retains active runtime flags while submission advances manager timestamps", () => {
+    const before = {
+      ...buildState(),
+      threadRuntimeStatus: { type: "active" as const, activeFlags: ["waitingOnApproval" as const] },
+      updatedAt: 100,
+      recencyAt: 100,
+    };
+    const after = appendCodexCanonicalOptimisticTurn(before, {
+      params: buildParams(),
+      startedAtMs: 42,
+    });
+    expect(after.threadRuntimeStatus).toBe(before.threadRuntimeStatus);
+    expect(after.updatedAt).toBe(42);
+    expect(after.recencyAt).toBe(42);
   });
 
   test("binds the matching placeholder while preserving its launch params", () => {
@@ -164,7 +410,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
       },
       startedAt: 10,
       completedAt: 12,
-      durationMs: 2_000,
+      durationMs: 2000,
     };
     const bound = bindCodexCanonicalOptimisticTurn(
       withWorktreeInit,
@@ -172,13 +418,13 @@ describe("Codex optimistic worktree initialization ordering", () => {
       responseTurn,
     );
 
-    expect(bound.turns[0]?.protocol.id).toBe("turn-server");
-    expect(bound.turns[0]?.protocol.status).toBe("completed");
-    expect(bound.turns[0]?.protocol.error).toBe(null);
-    expect(bound.turns[0]?.protocol.durationMs).toBe(null);
-    expect(bound.turns[0]?.sidecar.turnStartedAtMs).toBe(42);
-    expect(bound.turns[0]?.sidecar.params.input[0]?.type).toBe("text");
-    expect(bound.turns[0]?.sidecar.entityKey).toBe("turn-local:client-message");
+    expect(bound.turns[0]?.turnId).toBe("turn-server");
+    expect(bound.turns[0]?.status).toBe("completed");
+    expect(bound.turns[0]?.error).toBe(null);
+    expect(bound.turns[0]?.durationMs).toBe(null);
+    expect(bound.turns[0]?.turnStartedAtMs).toBe(42);
+    expect(bound.turns[0]?.params.input[0]?.type).toBe("text");
+    expect(bound.turns[0]?.entityKey).toBe("turn-local:client-message");
     expect(bound.turns[0]?.items).toStrictEqual(withWorktreeInit.turns[0]?.items);
   });
 
@@ -200,17 +446,11 @@ describe("Codex optimistic worktree initialization ordering", () => {
       turns: [
         {
           ...existing,
-          protocol: {
-            ...existing.protocol,
-            id: "turn-server",
-            status: "completed" as const,
-            durationMs: 90,
-          },
+          turnId: "turn-server",
+          status: "completed" as const,
+          durationMs: 90,
           items: [notificationItem],
-          sidecar: {
-            ...existing.sidecar,
-            completedAtMs: 132,
-          },
+          completedAtMs: 132,
         },
       ],
     };
@@ -227,9 +467,9 @@ describe("Codex optimistic worktree initialization ordering", () => {
 
     expect(rebound).toBe(raced);
     expect(rebound.turns[0]?.items).toStrictEqual([notificationItem]);
-    expect(rebound.turns[0]?.protocol.status).toBe("completed");
-    expect(rebound.turns[0]?.protocol.durationMs).toBe(90);
-    expect(rebound.turns[0]?.sidecar.completedAtMs).toBe(132);
+    expect(rebound.turns[0]?.status).toBe("completed");
+    expect(rebound.turns[0]?.durationMs).toBe(90);
+    expect(rebound.turns[0]?.completedAtMs).toBe(132);
   });
 
   test("merges a server turn that raced ahead of its optimistic occurrence", () => {
@@ -260,13 +500,10 @@ describe("Codex optimistic worktree initialization ordering", () => {
         placeholder,
         {
           ...placeholder,
-          protocol: { ...placeholder.protocol, id: "turn-server" },
+          turnId: "turn-server",
           items: [assistant, echo],
-          sidecar: {
-            ...placeholder.sidecar,
-            params: { ...placeholder.sidecar.params, input: [] },
-            firstTurnWorkItemStartedAtMs: 50,
-          },
+          params: { ...placeholder.params, input: [] },
+          firstTurnWorkItemStartedAtMs: 50,
         },
       ],
     };
@@ -283,10 +520,10 @@ describe("Codex optimistic worktree initialization ordering", () => {
     });
 
     expect(rebound.turns).toHaveLength(1);
-    expect(rebound.turns[0]?.protocol.id).toBe("turn-server");
-    expect(rebound.turns[0]?.sidecar.params.input).toEqual(buildParams().input);
-    expect(rebound.turns[0]?.sidecar.turnStartedAtMs).toBe(42);
-    expect(rebound.turns[0]?.sidecar.firstTurnWorkItemStartedAtMs).toBe(50);
+    expect(rebound.turns[0]?.turnId).toBe("turn-server");
+    expect(rebound.turns[0]?.params.input).toEqual(buildParams().input);
+    expect(rebound.turns[0]?.turnStartedAtMs).toBe(42);
+    expect(rebound.turns[0]?.firstTurnWorkItemStartedAtMs).toBe(50);
     expect(rebound.turns[0]?.items).toEqual([assistant, echo]);
   });
 
@@ -296,10 +533,10 @@ describe("Codex optimistic worktree initialization ordering", () => {
     });
     const failed = failCodexCanonicalOptimisticTurn(optimistic, "client-message");
 
-    expect(failed.protocol.id).toBe("thread-created");
-    expect(failed.turns[0]?.protocol.id).toBe(null);
-    expect(failed.turns[0]?.protocol.status).toBe("failed");
-    expect(failed.turns[0]?.protocol.error?.message).toBe("Error submitting message");
+    expect(failed.id).toBe("thread-created");
+    expect(failed.turns[0]?.turnId).toBe(null);
+    expect(failed.turns[0]?.status).toBe("failed");
+    expect(failed.turns[0]?.error?.message).toBe("Error submitting message");
     expect(failed.turns[0]?.items[0]?.type).toBe("error");
   });
 
@@ -307,7 +544,7 @@ describe("Codex optimistic worktree initialization ordering", () => {
     const base = buildState();
     const withPendingModel = {
       ...base,
-      sidecar: { ...base.sidecar, previousTurnModel: "gpt-before-resume" },
+      previousTurnModel: "gpt-before-resume",
     };
     const optimistic = appendCodexCanonicalOptimisticTurn(withPendingModel, {
       params: { ...buildParams(), input: [] },
@@ -317,14 +554,18 @@ describe("Codex optimistic worktree initialization ordering", () => {
     });
 
     expect(restored.turns).toEqual([]);
-    expect(restored.sidecar.previousTurnModel).toBe("gpt-before-resume");
+    expect(restored.previousTurnModel).toBe("gpt-before-resume");
   });
 
   test("adds the exact model-change marker for a downgrade and consumes the pending model", () => {
     const base = buildState();
     const state = {
       ...base,
-      sidecar: { ...base.sidecar, previousTurnModel: "gpt-terra" },
+      previousTurnModel: "gpt-terra",
+      latestCollaborationMode: {
+        ...base.latestCollaborationMode,
+        settings: { ...base.latestCollaborationMode.settings, model: "gpt-luna" },
+      },
     };
     const params = {
       ...buildParams(),
@@ -340,7 +581,6 @@ describe("Codex optimistic worktree initialization ordering", () => {
 
     const optimistic = appendCodexCanonicalOptimisticTurn(state, {
       params,
-      currentCollaborationModel: "gpt-luna",
     });
 
     expect(optimistic.turns[0]?.items[0]).toMatchObject({
@@ -348,10 +588,17 @@ describe("Codex optimistic worktree initialization ordering", () => {
       fromModel: "gpt-terra",
       toModel: "gpt-luna",
     });
-    expect(optimistic.sidecar.previousTurnModel).toBe(null);
+    expect(optimistic.previousTurnModel).toBe(null);
 
     const upgrade = appendCodexCanonicalOptimisticTurn(
-      { ...base, sidecar: { ...base.sidecar, previousTurnModel: "gpt-luna" } },
+      {
+        ...base,
+        previousTurnModel: "gpt-luna",
+        latestCollaborationMode: {
+          ...base.latestCollaborationMode,
+          settings: { ...base.latestCollaborationMode.settings, model: "gpt-terra" },
+        },
+      },
       {
         params: {
           ...params,
@@ -360,7 +607,6 @@ describe("Codex optimistic worktree initialization ordering", () => {
             settings: { ...params.collaborationMode.settings, model: "gpt-terra" },
           },
         },
-        currentCollaborationModel: "gpt-terra",
       },
     );
     expect(upgrade.turns[0]?.items).toStrictEqual([]);

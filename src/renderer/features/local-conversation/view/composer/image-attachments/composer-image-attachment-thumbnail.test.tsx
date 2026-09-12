@@ -91,7 +91,7 @@ describe("ComposerImageAttachmentThumbnail", () => {
           src: "/managed/diagram.png",
           origin: "restored",
           materialization: {
-            hostId: "default",
+            hostId: "local",
             managedSource: null,
             localPath: "/managed/diagram.png",
           },

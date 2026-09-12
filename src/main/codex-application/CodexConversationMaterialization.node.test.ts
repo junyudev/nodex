@@ -42,20 +42,25 @@ const thread: Thread = {
 };
 
 const canonical = createCodexCanonicalHydratedConversationState(thread, {
-  model: "gpt-test",
-  reasoningEffort: "high",
-  cwd: "/workspace",
-  approvalPolicy: "on-request",
-  approvalsReviewer: "user",
-  sandboxPolicy: { type: "readOnly", networkAccess: false },
-  activePermissionProfile: null,
-  runtimeWorkspaceRoots: ["/workspace"],
+  hostId: "local",
+  ...{
+    model: "gpt-test",
+    reasoningEffort: "high",
+    cwd: "/workspace",
+    approvalPolicy: "on-request",
+    approvalsReviewer: "user",
+    sandboxPolicy: { type: "readOnly", networkAccess: false },
+    activePermissionProfile: null,
+    runtimeWorkspaceRoots: ["/workspace"],
+  },
 });
 
 it.effect("materializes through the Directory's non-reentrant current-lane seam", () =>
   Effect.gen(function* () {
     const aggregates = makeConversationEntityStateRegistry();
     const conversations = ConversationEntityMap.of({
+      registerThreadMetadata: aggregates.registerThreadMetadata,
+      readThreadMetadata: aggregates.readThreadMetadata,
       entity: aggregates.acquire,
       current: aggregates.current,
     } as unknown as ConversationEntityMap["Service"]);

@@ -21,6 +21,7 @@ import {
   setAgentExecutionProfile,
   waitForCompletedAgentTurn,
   waitForFinalMarker,
+  waitForNativeCompletedAgentTurn,
 } from "./support/agent-smoke-harness";
 
 const toolOutputRecords = (output: unknown) =>
@@ -45,9 +46,14 @@ test("reads its Session through native MCP before and after restarting Nodex", a
       exchanges: [
         ...["initial", "restored"].map<ScriptedModelExchange>((phase) => ({
           name: `native application context ${phase}`,
-          match: (request) =>
-            request.hasUserInputText(`APP_CONTEXT_${phase}`) &&
-            (phase === "restored" || !request.hasUserInputText("APP_CONTEXT_restored")),
+          match: (request) => {
+            const callId = `app_context_${phase}`;
+            return (
+              (request.hasUserInputText(`APP_CONTEXT_${phase}`) &&
+                (phase === "restored" || !request.hasUserInputText("APP_CONTEXT_restored"))) ||
+              request.toolCallOutput(callId) !== null
+            );
+          },
           expectedCalls: 2,
           maximumCalls: 2,
           respond: (request, index) => {
@@ -285,7 +291,9 @@ test("reads its Session through native MCP before and after restarting Nodex", a
         })),
         ...["initial", "restored"].map<ScriptedModelExchange>((phase) => ({
           name: `fork session ${phase}`,
-          match: (request) => request.hasUserInputText(`APP_FORK_${phase}`),
+          match: (request) =>
+            request.hasUserInputText(`APP_FORK_${phase}`) ||
+            request.toolCallOutput(`fork_context_${phase}`) !== null,
           expectedCalls: 2,
           maximumCalls: 2,
           respond: (request, index) => {
@@ -415,7 +423,7 @@ test("reads its Session through native MCP before and after restarting Nodex", a
         await composer.fill("APP_CONTEXT_restored");
         await composer.press("Enter");
         await waitForFinalMarker(page, "APP_CONTEXT_OK_restored");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
+        await waitForNativeCompletedAgentTurn(page, threadId, 60_000);
       } catch (error) {
         throw new Error(
           `${error instanceof Error ? error.message : String(error)}\n${await readBoundedElectronRuntimeLogs(harness.profile)}`,

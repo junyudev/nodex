@@ -26,7 +26,13 @@ export const live: Layer.Layer<ElectronNet> = Layer.effect(
       appVersion: app.getVersion(),
       fetch: (input, init) =>
         Effect.tryPromise({
-          try: (signal) => net.fetch(input, { ...init, signal }),
+          try: (signal) => {
+            const externalSignal = init.signal;
+            const combinedSignal = externalSignal
+              ? AbortSignal.any([signal, externalSignal])
+              : signal;
+            return net.fetch(input, { ...init, signal: combinedSignal });
+          },
           catch: (cause) => new ElectronNetError({ operation: "fetch", cause }),
         }),
       readBase64: (response) =>

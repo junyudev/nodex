@@ -1,3 +1,6 @@
+import { produce } from "immer";
+import { CodexMainConversationResume } from "./CodexMainConversationResume";
+import { createCodexCanonicalConversationMetadata } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { assert, it } from "@effect/vitest";
 import type {
   Thread,
@@ -22,16 +25,19 @@ import {
 } from "../codex-runtime/CodexEphemeralThreadRouting";
 import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import { CoreModules, type CoreModuleClients } from "../core-runtime/CoreModules";
+import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { CodexConversationProjection } from "./CodexConversationProjection";
 import { make as makePersistentFork } from "./CodexConversationFork";
+import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
+import { makeReadyCodexExecutionAssignments } from "./CodexExecutionAssignments.test-support";
+import { CodexGitProbe } from "./CodexGitProbe";
+import { makeTestCodexGitProbe } from "./CodexGitProbe.test-support";
 import { CodexForkSidePanelTransfer } from "./CodexForkSidePanelTransferRuntime";
 import {
   CODEX_FORK_TITLE_MAX_PAGES,
   CodexForkTitlePolicy,
   make as makeForkTitlePolicy,
 } from "./CodexForkTitlePolicy";
-import { CodexOwnerNotificationDrainRuntime } from "./CodexOwnerNotificationDrainRuntime";
-import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
 import { make as makeSideChatCommands } from "./CodexSideChatCommands";
 import { SIDE_CHAT_BOUNDARY_TEXT } from "./CodexSideChatPolicy";
 import { CodexThreadCatalog } from "./CodexThreadCatalog";
@@ -213,7 +219,10 @@ const sourceEntry = (
     summary,
     canonical: includeMetadataOnlyCanonical
       ? createCodexCanonicalConversationState(protocolThread(SOURCE_THREAD_ID), {
-          turnParamsById: {},
+          hostId: "local",
+          ...{
+            turnParamsById: {},
+          },
         })
       : null,
     snapshot: null,
@@ -243,10 +252,9 @@ const makePersistentForkHarness = (
   const source = sourceEntry(logicalTurnCount, options.productionForkTitlePolicy === true);
   const childSummary = conversationSnapshot(PERSISTENT_CHILD_ID, 0);
   const childCanonical = {
-    protocol: protocolThread(PERSISTENT_CHILD_ID),
+    ...createCodexCanonicalConversationMetadata(protocolThread(PERSISTENT_CHILD_ID), "local"),
     turns: [],
     requests: [],
-    sidecar: {},
   } as unknown as CodexCanonicalConversationState;
   const gateway = CodexGateway.of({
     localHostId: "local",
@@ -274,26 +282,6 @@ const makePersistentForkHarness = (
         snapshot: childSummary,
       } as never),
   } as unknown as CodexThreadDirectory["Service"]);
-  const projection = CodexConversationProjection.of({
-    hydrate: (input: {
-      readonly canonical: CodexCanonicalConversationState;
-      readonly pagination: CodexConversationSnapshot["turnPagination"];
-    }) =>
-      Effect.sync(() => {
-        canonical = input.canonical;
-        snapshot = {
-          ...childSummary,
-          canonicalState: input.canonical,
-          turnPagination: input.pagination,
-          turns: [],
-        } as CodexConversationSnapshot;
-        return snapshot;
-      }),
-    read: () => {
-      if (!canonical || !snapshot) return Effect.die(new Error("Fork projection not hydrated"));
-      return Effect.succeed({ canonical, snapshot });
-    },
-  } as unknown as CodexConversationProjection["Service"]);
   const core = CoreModules.of({
     workspace: {
       read: (input: Parameters<CoreModuleClients["workspace"]["read"]>[0]) => {
@@ -343,7 +331,17 @@ const makePersistentForkHarness = (
     Effect.flatMap((forkTitlePolicy) =>
       makePersistentFork.pipe(
         Effect.provideService(CodexAppServerCapabilities, capabilityService),
-        Effect.provideService(CodexConversationProjection, projection),
+        Effect.provideService(
+          CodexMainConversationResume,
+          CodexMainConversationResume.of({
+            resume: () =>
+              Effect.sync(() => {
+                canonical = childCanonical;
+                snapshot = { ...childSummary, canonicalState: canonical };
+                return { status: "ready", snapshot } as const;
+              }),
+          }),
+        ),
         Effect.provideService(
           CodexForkSidePanelTransfer,
           CodexForkSidePanelTransfer.of({
@@ -354,14 +352,10 @@ const makePersistentForkHarness = (
         Effect.provideService(CodexForkTitlePolicy, forkTitlePolicy),
         Effect.provideService(CodexGateway, gateway),
         Effect.provideService(
-          CodexOwnerNotificationDrainRuntime,
-          CodexOwnerNotificationDrainRuntime.of({ awaitCurrent: () => Effect.void } as never),
-        ),
-        Effect.provideService(
-          CodexRendererConversationCoordinator,
-          CodexRendererConversationCoordinator.of({
-            adoptRendererOwner: () => Effect.die("No renderer owner requested"),
-          } as never),
+          DesktopToolRuntime,
+          DesktopToolRuntime.of({
+            threadConfig: () => Effect.succeed(null),
+          } as unknown as DesktopToolRuntime["Service"]),
         ),
         Effect.provideService(
           CodexThreadCatalog,
@@ -387,6 +381,18 @@ const makePersistentForkHarness = (
         Effect.provideService(
           ConversationEntityMap,
           ConversationEntityMap.of({
+            entity: () => ({
+              mutateCanonicalState: (
+                recipe: (draft: import("immer").Draft<CodexCanonicalConversationState>) => void,
+              ) => {
+                if (!canonical) throw new Error("Fork not resumed");
+                canonical = produce(canonical, recipe);
+                return true;
+              },
+              readSnapshot: () => snapshot,
+            }),
+            registerThreadMetadata: () => {},
+            readThreadMetadata: () => null,
             runCommand: <A, E, R>(_threadId: string, operation: Effect.Effect<A, E, R>) =>
               operation,
           } as unknown as ConversationEntityMap["Service"]),
@@ -427,13 +433,15 @@ const measurePersistentFork = (logicalTurnCount: number): Effect.Effect<Creation
       excludeTurns: params.excludeTurns === true,
       resultResidentTurns: result.conversation.turns.length,
     };
-  });
+  }).pipe(Effect.scoped);
 
 const makeSideChatHarness = (logicalTurnCount: number) => {
   const requests: PhysicalRequest[] = [];
   const routes = new Map<string, string>();
   const aggregates = makeConversationEntityStateRegistry();
   const conversations = ConversationEntityMap.of({
+    registerThreadMetadata: aggregates.registerThreadMetadata,
+    readThreadMetadata: aggregates.readThreadMetadata,
     entity: aggregates.acquire,
     current: aggregates.current,
     runCommand: <A, E, R>(_threadId: string, operation: Effect.Effect<A, E, R>) => operation,
@@ -459,6 +467,7 @@ const makeSideChatHarness = (logicalTurnCount: number) => {
     requestOnHost: (hostId: string, method: string, params: Readonly<Record<string, unknown>>) =>
       Effect.sync(() => {
         requests.push({ hostId, method, params });
+        if (method === "experimentalFeature/list") return { data: [], nextCursor: null };
         if (method === "thread/fork") return forkResponse(SIDE_CHAT_CHILD_ID, true);
         if (method === "thread/inject_items") return {};
         throw new Error(`Unexpected request '${method}'`);
@@ -483,7 +492,15 @@ const makeSideChatHarness = (logicalTurnCount: number) => {
   const commands = makeSideChatCommands.pipe(
     Effect.provideService(CodexAppServerCapabilities, capabilityService),
     Effect.provideService(CodexConversationProjection, projection),
+    Effect.provideService(CodexExecutionAssignments, makeReadyCodexExecutionAssignments()),
+    Effect.provideService(CodexGitProbe, makeTestCodexGitProbe()),
     Effect.provideService(CodexGateway, gateway),
+    Effect.provideService(
+      DesktopToolRuntime,
+      DesktopToolRuntime.of({
+        threadConfig: () => Effect.succeed(null),
+      } as unknown as DesktopToolRuntime["Service"]),
+    ),
     Effect.provideService(
       CodexThreadHostResolver,
       CodexThreadHostResolver.of({ resolve: () => Effect.succeed(HOST_ID) }),
@@ -494,12 +511,20 @@ const makeSideChatHarness = (logicalTurnCount: number) => {
     Effect.provideService(
       CodexTurnCommands,
       CodexTurnCommands.of({
+        prepareNativeToolMessage: () => Effect.die("unused"),
+        injectPreparedNativeStart: () => Effect.die("unused"),
+        prepareNativeQueuedMessage: () => Effect.die("unused"),
+        prepareNativeStart: () => Effect.die("unused"),
+        inspectPreparedNativeStart: () => Effect.die("unused"),
+        executePreparedNativeStart: () => Effect.die("unused"),
+        releasePreparedNativeStart: () => {},
+        prepareNativeSteer: () => Effect.die("unused"),
+        inspectPreparedNativeSteer: () => Effect.die("unused"),
+        executePreparedNativeSteer: () => Effect.die("unused"),
+        releasePreparedNativeSteer: () => {},
         start: () => Effect.die("Side-chat fixture has no initial prompt"),
         startAutomation: () => Effect.die("unused"),
-        startRendererOwned: () => Effect.die("unused"),
-        acceptPreparedRendererTurn: () => Effect.die("unused"),
         steer: () => Effect.die("unused"),
-        continueGoal: () => Effect.die("unused"),
       } satisfies CodexTurnCommandsService),
     ),
     Effect.provideService(ConversationEntityMap, conversations),
@@ -610,7 +635,18 @@ it.effect("keeps side-chat creation independent from parent history length", () 
       concurrency: 1,
     });
     for (const measurement of measurements) {
-      assert.deepEqual(measurement.methods, ["thread/fork", "thread/inject_items"]);
+      assert.strictEqual(
+        measurement.methods.filter((method) => method === "thread/fork").length,
+        1,
+      );
+      assert.strictEqual(
+        measurement.methods.filter((method) => method === "thread/inject_items").length,
+        1,
+      );
+      assert.isAtMost(
+        measurement.methods.filter((method) => method === "experimentalFeature/list").length,
+        1,
+      );
       assert.strictEqual(measurement.historyRequests, 0);
       assert.isTrue(measurement.excludeTurns);
       assert.strictEqual(measurement.resultResidentTurns, 0);

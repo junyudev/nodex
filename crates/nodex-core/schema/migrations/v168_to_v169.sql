@@ -1,0 +1,4 @@
+DROP TABLE codex_queued_follow_up_entries;
+DROP TABLE codex_queued_follow_up_payload_asset_refs;
+DROP TABLE codex_queued_follow_up_payload_manifests;
+DROP TABLE codex_queued_follow_up_ledgers;

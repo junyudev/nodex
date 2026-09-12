@@ -584,7 +584,9 @@ const handle = (message) => {
     case "getAuthStatus":
       respond(id, {
         authMethod: "chatgpt",
-        authToken: null,
+        authToken: params.includeToken
+          ? `fixture.${Buffer.from(JSON.stringify({ exp: 4102444800, "https://api.openai.com/auth": { chatgpt_account_id: "subagent-scenario", user_id: "subagent-user" } })).toString("base64url")}.unsigned`
+          : null,
         requiresOpenaiAuth: false,
       });
       return;
@@ -612,6 +614,9 @@ const handle = (message) => {
     case "configRequirements/read":
       respond(id, { requirements: null });
       return;
+    case "thread/queue/list":
+      respond(id, { data: [], nextCursor: null });
+      return;
     case "thread/list": {
       if (params.ancestorThreadId === rootThreadId) {
         const visibleDefinitions = discoveryDefinitions.filter(
@@ -637,6 +642,20 @@ const handle = (message) => {
       respond(id, { data: [], nextCursor: null });
       return;
     case "thread/start":
+      if (params.ephemeral === true) {
+        const helperThreadIds = state.helperThreadIds ?? [];
+        const helperThreadId = scenarioThreadId(String(900000000001 + helperThreadIds.length));
+        state.helperThreadIds = [...helperThreadIds, helperThreadId];
+        persist();
+        respond(id, threadResponse({
+          ...rootThread(),
+          id: helperThreadId,
+          sessionId: helperThreadId,
+          ephemeral: true,
+          threadSource: params.threadSource ?? "system",
+        }));
+        return;
+      }
       if (Number.isFinite(threadStartDelayMs) && threadStartDelayMs >= 0) {
         setTimeout(() => {
           state.rootStarted = true;
@@ -742,6 +761,33 @@ const handle = (message) => {
       respond(id, {});
       return;
     case "turn/start": {
+      if (state.helperThreadIds?.includes(params.threadId)) {
+        const turn = emptyTurn(`turn-${params.threadId}`);
+        const item = {
+          type: "agentMessage",
+          id: `title-${params.threadId}`,
+          text: JSON.stringify({ title: "Coordinate subagents" }),
+          phase: null,
+          memoryCitation: null,
+          delivery: null,
+          questions: null,
+        };
+        respond(id, { turn });
+        setTimeout(() => {
+          notify("turn/started", { threadId: params.threadId, turn });
+          notify("item/completed", {
+            threadId: params.threadId,
+            turnId: turn.id,
+            completedAtMs: Date.now(),
+            item,
+          });
+          notify("turn/completed", {
+            threadId: params.threadId,
+            turn: { ...emptyTurn(turn.id, "completed"), items: [item] },
+          });
+        }, 0);
+        return;
+      }
       state.rootTurnStarted = true;
       state.rootTurnStartedAtMs = Date.now();
       state.rootCompletedAtMs = null;

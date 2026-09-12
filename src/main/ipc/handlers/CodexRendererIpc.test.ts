@@ -1,27 +1,32 @@
+import {
+  CodexApplicationRequestInbox,
+  make as makeRequestInbox,
+} from "../../codex-runtime/CodexApplicationRequestInbox";
 import type { IpcMainEvent } from "electron";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
-import {
-  RENDERER_DELIVERY_ACK_CHANNEL,
-  RENDERER_DELIVERY_WIRE_VERSION,
-  type RendererDeliveryTransferAckEnvelope,
-} from "../../../shared/renderer-delivery-transport";
+import { CODEX_HOST_CHUNK_ACK_CHANNEL } from "../../../shared/codex-host-chunked-message";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { CodexAppProtocolTools } from "../../codex-application/CodexAppProtocolTools";
-import { CodexRendererConversationCoordinator } from "../../codex-application/CodexRendererConversationCoordinator";
-import { CodexRendererConversationRegistry } from "../../codex-application/CodexRendererConversationRegistry";
+import {
+  CodexApplicationEventHub,
+  make as makeApplicationEvents,
+} from "../../codex-application/CodexApplicationEventHub";
+import {
+  CodexRendererPresentationRegistry,
+  make as makePresentationRegistry,
+} from "../../codex-application/CodexRendererPresentationRegistry";
 import { CodexUserInputAutoResolution } from "../../codex-application/CodexUserInputAutoResolution";
-import { ConversationEntityMap } from "../../codex-application/internal/ConversationEntityMap";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live, routeRendererDeliveryAcknowledgment } from "./CodexRendererIpc";
 
-type OnHandler = (event: IpcMainEvent, input: unknown) => Effect.Effect<void>;
+type OnHandler = (event: IpcMainEvent, ...args: readonly unknown[]) => Effect.Effect<void>;
 
 it.effect("registers ACK ingress and routes only validated renderer delivery envelopes", () =>
   Effect.gen(function* () {
@@ -37,7 +42,7 @@ it.effect("registers ACK ingress and routes only validated renderer delivery env
       handle: (channel: string) => register(channel),
       on: (channel: string, handler: OnHandler) => register(channel, handler),
     });
-    const handled: RendererDeliveryTransferAckEnvelope[] = [];
+    const handled: Array<readonly [string, number]> = [];
     const rendererClients = RendererClientRuntime.of(
       {} as unknown as RendererClientRuntime["Service"],
     );
@@ -47,25 +52,16 @@ it.effect("registers ACK ingress and routes only validated renderer delivery env
       live.pipe(
         Layer.provide(
           Layer.mergeAll(
+            Layer.effect(CodexApplicationRequestInbox, makeRequestInbox),
             Layer.succeed(
               CodexAppProtocolTools,
               empty as unknown as CodexAppProtocolTools["Service"],
             ),
-            Layer.succeed(
-              CodexRendererConversationCoordinator,
-              empty as unknown as CodexRendererConversationCoordinator["Service"],
-            ),
-            Layer.succeed(
-              CodexRendererConversationRegistry,
-              empty as unknown as CodexRendererConversationRegistry["Service"],
-            ),
+            Layer.effect(CodexApplicationEventHub, makeApplicationEvents),
+            Layer.effect(CodexRendererPresentationRegistry, makePresentationRegistry),
             Layer.succeed(
               CodexUserInputAutoResolution,
               empty as unknown as CodexUserInputAutoResolution["Service"],
-            ),
-            Layer.succeed(
-              ConversationEntityMap,
-              empty as unknown as ConversationEntityMap["Service"],
             ),
             Layer.succeed(ElectronIpc, ipc),
             mainConfigLayer(),
@@ -79,28 +75,22 @@ it.effect("registers ACK ingress and routes only validated renderer delivery env
       scope,
     );
 
-    const acknowledgment: RendererDeliveryTransferAckEnvelope = {
-      version: RENDERER_DELIVERY_WIRE_VERSION,
-      kind: "transferAck",
-      targetId: "renderer:one",
-      generation: 7,
-      transferId: "transfer:one",
-      sequence: 2,
-    };
-
-    assert.isDefined(onHandlers.get(RENDERER_DELIVERY_ACK_CHANNEL));
-    const route = (input: unknown) =>
-      routeRendererDeliveryAcknowledgment(input, (value) =>
-        Effect.sync(() => {
-          handled.push(value);
-          return true;
-        }),
+    assert.isDefined(onHandlers.get(CODEX_HOST_CHUNK_ACK_CHANNEL));
+    const route = (transferId: unknown, sequence: unknown) =>
+      routeRendererDeliveryAcknowledgment(
+        transferId,
+        sequence,
+        (parsedTransferId, parsedSequence) =>
+          Effect.sync(() => {
+            handled.push([parsedTransferId, parsedSequence]);
+          }),
       );
-    yield* route(acknowledgment);
-    yield* route({ ...acknowledgment, kind: "transferEnd" });
+    yield* route("transfer:one", 2);
+    yield* route("transfer:one", 2.5);
+    yield* route(7, 2);
 
-    assert.deepEqual(handled, [acknowledgment]);
+    assert.deepEqual(handled, [["transfer:one", 2]]);
     yield* Scope.close(scope, Exit.void);
-    assert.isFalse(onHandlers.has(RENDERER_DELIVERY_ACK_CHANNEL));
+    assert.isFalse(onHandlers.has(CODEX_HOST_CHUNK_ACK_CHANNEL));
   }),
 );

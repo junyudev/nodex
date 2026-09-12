@@ -6,6 +6,7 @@ import {
   isLocalConversationPersistedSearchMatchMeta,
   projectLocalConversationPersistedSearchResult,
   resolveLocalConversationPersistedSearchTarget,
+  waitForLocalConversationPersistedSearchTarget,
 } from "./local-conversation-persisted-search";
 
 const occurrence = (overrides: Partial<ThreadSearchOccurrence> = {}): ThreadSearchOccurrence => ({
@@ -143,4 +144,29 @@ describe("persisted conversation search projection", () => {
       occurrenceIndex: 1,
     });
   });
+});
+
+it("waits beyond five renders for the actual selected projection", async () => {
+  let renders = 0;
+  const target = { turnKey: "turn", unitKey: "item", occurrenceIndex: 0 };
+  const result = await waitForLocalConversationPersistedSearchTarget({
+    signal: new AbortController().signal,
+    readTarget: () => (renders >= 8 ? target : null),
+    waitForRender: async () => {
+      renders += 1;
+    },
+  });
+  expect(result).toBe(target);
+  expect(renders).toBe(8);
+});
+
+it("cancels projection waiting even when the next render is suspended", async () => {
+  const controller = new AbortController();
+  const pending = waitForLocalConversationPersistedSearchTarget({
+    signal: controller.signal,
+    readTarget: () => null,
+    waitForRender: () => new Promise(() => {}),
+  });
+  controller.abort();
+  await expect(pending).resolves.toBeNull();
 });

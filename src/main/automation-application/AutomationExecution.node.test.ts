@@ -1,4 +1,5 @@
 import { appToolCatalog } from "../../shared/nodex-app-tools/catalog";
+import type { ConversationStreamRole } from "../../shared/codex-conversation-stream";
 import { resolveCodexPermissionState } from "../codex/codex-permission-resolver";
 import type { ClientRequestParamsByMethod } from "@nodex/effect-codex-app-server/rpc";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
@@ -15,8 +16,10 @@ import { CodexApplicationEventHub } from "../codex-application/CodexApplicationE
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { CodexHeartbeatTurnCompletion } from "../codex-application/CodexHeartbeatTurnCompletion";
 import { CodexHistoryPageAdapter } from "../codex-application/CodexHistoryPageAdapter";
+import { CodexExecutionAssignments } from "../codex-application/CodexExecutionAssignments";
+import { makeReadyCodexExecutionAssignments } from "../codex-application/CodexExecutionAssignments.test-support";
 import { CodexPermissions } from "../codex-application/CodexPermissions";
-import { CodexRendererConversationRegistry } from "../codex-application/CodexRendererConversationRegistry";
+import { CodexMainConversationManagers } from "../codex-application/CodexMainConversationManagers";
 import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
 import { ThreadCreationRuntime } from "../codex-application/ThreadCreationRuntime";
 import { transparentThreadCreationRuntime } from "../codex-application/ThreadCreationRuntime.test-support";
@@ -34,6 +37,7 @@ import {
 } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
+import { CodexScheduledAutomationRetryError } from "../host-runtime/ScheduledAutomationPolicy";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AutomationApplication } from "./AutomationApplication";
 import {
@@ -63,8 +67,13 @@ const capability = {
   generation: 1,
   userAgent: "codex-app-server/0.145.0-alpha.15",
   version: "0.145.0-alpha.15",
+  nativeAppTools: true,
   flags: {
+    turnApprovalsReviewer: false,
+
+    turnToolOutput: false,
     forkLastTurnId: true,
+    paginatedFork: false,
     paginatedHistory: true,
     searchOccurrences: true,
     ephemeralFork: false,
@@ -72,6 +81,7 @@ const capability = {
     sideConversation: false,
     subagentAncestorFilter: false,
     threadRevert: false,
+    threadQueue: false,
   },
 } satisfies CodexAppServerCapabilitySnapshot;
 
@@ -89,6 +99,7 @@ const buildExecutionContext = (
     readonly composer?: ComposerCatalog["Service"];
     readonly conversations?: CodexConversations["Service"];
     readonly desktopTools?: DesktopToolRuntime["Service"];
+    readonly executionAssignments?: CodexExecutionAssignments["Service"];
     readonly directory?: CodexThreadDirectory["Service"];
     readonly gateway?: CodexGateway["Service"];
     readonly git?: CodexGitProbe["Service"];
@@ -96,7 +107,7 @@ const buildExecutionContext = (
     readonly turns?: CodexTurnCommands["Service"];
     readonly titles?: CodexThreadTitlePersistence["Service"];
     readonly historyPages?: CodexHistoryPageAdapter["Service"];
-    readonly rendererConversations?: CodexRendererConversationRegistry["Service"];
+    readonly managers?: CodexMainConversationManagers["Service"];
     readonly workspace?: ProjectWorkspace["Service"];
   } = {},
 ) =>
@@ -113,6 +124,10 @@ const buildExecutionContext = (
           } as unknown as CodexApplicationEventHub["Service"]),
           Layer.succeed(CodexAppServerCapabilities, input.capabilities ?? capabilities),
           Layer.succeed(
+            CodexExecutionAssignments,
+            input.executionAssignments ?? makeReadyCodexExecutionAssignments(),
+          ),
+          Layer.succeed(
             CodexGateway,
             input.gateway ?? ({ localHostId: "local" } as CodexGateway["Service"]),
           ),
@@ -127,8 +142,9 @@ const buildExecutionContext = (
           ),
           Layer.succeed(CodexPermissions, input.permissions ?? ({} as CodexPermissions["Service"])),
           Layer.succeed(
-            CodexRendererConversationRegistry,
-            input.rendererConversations ?? ({} as CodexRendererConversationRegistry["Service"]),
+            CodexMainConversationManagers,
+            input.managers ??
+              ({ role: () => null } as unknown as CodexMainConversationManagers["Service"]),
           ),
           Layer.succeed(
             CodexThreadDirectory,
@@ -316,7 +332,8 @@ it.effect("starts cron runs with the native catalog and no dynamic registration"
       } as unknown as AutomationApplication["Service"],
       composer: { listModels: Effect.succeed([]) } as unknown as ComposerCatalog["Service"],
       desktopTools: {
-        threadConfig: Effect.succeed({ "mcp_servers.nodex_app.enabled_tools": ["retired_tool"] }),
+        threadConfig: () =>
+          Effect.succeed({ "mcp_servers.node_repl": { command: "/runtime/node" } }),
       } as unknown as DesktopToolRuntime["Service"],
       git: { readPath: () => Effect.succeed(null) } as unknown as CodexGitProbe["Service"],
       permissions: {
@@ -516,6 +533,59 @@ const heartbeatDirectoryEntry = {
   },
 } as never;
 
+it.effect("rejects heartbeat eligibility when its renderer is no longer the peer owner", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    let streamRole: ConversationStreamRole | null = null;
+    const queriedRoles: Array<readonly [string, string]> = [];
+    const methods: string[] = [];
+    const context = yield* buildExecutionContext(scope, {
+      directory: {
+        resolve: () => Effect.succeed(heartbeatDirectoryEntry),
+        observeMetadata: () => Effect.succeed(heartbeatDirectoryEntry),
+      } as unknown as CodexThreadDirectory["Service"],
+      gateway: {
+        localHostId: "local",
+        awaitReady: () => Effect.void,
+        requestOnHost: (_hostId: string, method: string) =>
+          Effect.sync(() => {
+            methods.push(method);
+            return { thread: { id: "thread-heartbeat", path: "/tmp/rollout.jsonl" } };
+          }),
+      } as unknown as CodexGateway["Service"],
+      managers: {
+        role: (hostId: string, threadId: string) => {
+          queriedRoles.push([hostId, threadId]);
+          return streamRole;
+        },
+      } as unknown as CodexMainConversationManagers["Service"],
+    });
+    const roles: Array<ConversationStreamRole | null> = [
+      null,
+      { role: "owner" },
+      { role: "follower", ownerClientId: "replacement-renderer" },
+    ];
+    for (const role of roles) {
+      streamRole = role;
+      const failure = yield* Effect.flip(
+        Context.get(context, AutomationExecution).executeClaimed(
+          heartbeatDefinition,
+          heartbeatContext,
+        ),
+      );
+      assert.instanceOf(failure.cause, CodexScheduledAutomationRetryError);
+      if (!(failure.cause instanceof CodexScheduledAutomationRetryError)) continue;
+      assert.strictEqual(failure.cause.reasonCode, "renderer_owner_lease_stale");
+    }
+    assert.deepEqual(methods, ["thread/read", "thread/read", "thread/read"]);
+    assert.deepEqual(
+      queriedRoles,
+      roles.map(() => ["local", "thread-heartbeat"]),
+    );
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
 it.effect("does not observe heartbeat metadata returned by a replaced host generation", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
@@ -582,7 +652,7 @@ it.effect("does not accept heartbeat resume metadata from a replaced host genera
         isCurrent: () => Effect.sync(() => current),
       }),
       desktopTools: {
-        threadConfig: Effect.succeed(null),
+        threadConfig: () => Effect.succeed(null),
       } as unknown as DesktopToolRuntime["Service"],
       directory: {
         resolve: () => Effect.succeed(heartbeatDirectoryEntry),
@@ -601,10 +671,12 @@ it.effect("does not accept heartbeat resume metadata from a replaced host genera
             methods.push(method);
             scheduling.push(options);
             if (method === "thread/resume") {
+              const resume = _params as ClientRequestParamsByMethod["thread/resume"];
+              assert.isNull(resume.model);
+              assert.isNull(resume.serviceTier);
+              assert.isUndefined(resume.config?.model_reasoning_effort);
               assert.deepEqual(
-                (_params as { config: Record<string, unknown> }).config[
-                  "mcp_servers.nodex_app.enabled_tools"
-                ],
+                resume.config?.["mcp_servers.nodex_app.enabled_tools"],
                 appToolCatalog.map((tool) => tool.name),
               );
               current = false;
@@ -614,9 +686,9 @@ it.effect("does not accept heartbeat resume metadata from a replaced host genera
               : { thread: { id: "thread-heartbeat" } };
           }) as never,
       } as unknown as CodexGateway["Service"],
-      rendererConversations: {
-        getOwnerClientId: () => "renderer-owner",
-      } as unknown as CodexRendererConversationRegistry["Service"],
+      managers: {
+        role: () => ({ role: "follower", ownerClientId: "renderer-owner" }),
+      } as unknown as CodexMainConversationManagers["Service"],
     });
 
     const exit = yield* Effect.exit(

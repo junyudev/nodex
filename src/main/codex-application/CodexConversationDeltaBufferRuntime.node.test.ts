@@ -15,10 +15,6 @@ import {
   type CodexConversationDeltaBufferRuntimeOptions,
 } from "./CodexConversationDeltaBufferRuntime";
 import {
-  CodexRendererConversationRegistry,
-  makeCodexRendererConversationRegistryState,
-} from "./CodexRendererConversationRegistry";
-import {
   ConversationEntityMap,
   live as conversationRuntimeMapLive,
 } from "./internal/ConversationEntityMap";
@@ -80,17 +76,13 @@ const withRuntime = <A, E>(
     const conversations = Context.get(context, ConversationEntityMap);
     const runtime = yield* make(options).pipe(
       Effect.provideService(ConversationEntityMap, conversations),
-      Effect.provideService(
-        CodexRendererConversationRegistry,
-        makeCodexRendererConversationRegistryState(),
-      ),
     );
     const result = yield* use(runtime, conversations);
     yield* Scope.close(ownerScope, Exit.void);
     return result;
   });
 
-it.effect("drains one Thread synchronously and keeps another Thread scheduled", () =>
+it.effect("completion drains every Thread in the manager prose batch", () =>
   withRuntime((runtime, conversations) =>
     Effect.gen(function* () {
       const commits: string[] = [];
@@ -99,10 +91,11 @@ it.effect("drains one Thread synchronously and keeps another Thread scheduled", 
       runtime.enqueueFrameText(frame("a"));
       runtime.enqueueFrameText({ ...frame("b"), conversationId: "thread-2" });
       runtime.drainBeforeCompletion("thread-1", 1_000);
-      assert.deepEqual(commits, ["thread-1:a:1000"]);
+      assert.strictEqual(commits.length, 2);
+      assert.strictEqual(commits[0], "thread-1:a:1000");
+      assert.isTrue(commits[1]?.startsWith("thread-2:b:"));
       yield* TestClock.adjust("20 millis");
       assert.strictEqual(commits.length, 2);
-      assert.isTrue(commits[1]?.startsWith("thread-2:b:"));
     }),
   ),
 );
@@ -120,92 +113,85 @@ it.effect("clear removes only the addressed global-queue entries before the time
   ),
 );
 
-it.effect("cuts the bounded frame batch under cross-Thread pressure without losing deltas", () =>
-  withRuntime(
-    (runtime, conversations) =>
-      Effect.gen(function* () {
-        const commits: string[] = [];
-        observeCommits(conversations, "thread-1", commits);
-        observeCommits(conversations, "thread-2", commits);
-
-        runtime.enqueueFrameText(frame("a"));
-        runtime.enqueueFrameText({ ...frame("b"), conversationId: "thread-2" });
-        runtime.enqueueFrameText({ ...frame("cd"), conversationId: "thread-2" });
-        runtime.enqueueFrameText({ ...frame("xyz"), conversationId: "thread-2" });
-
-        assert.deepEqual(
-          commits.map((entry) => entry.split(":").slice(0, 2).join(":")),
-          ["thread-1:a", "thread-2:b", "thread-2:cd", "thread-2:xyz"],
-        );
-        yield* TestClock.adjust("1 second");
-        assert.strictEqual(commits.length, 4);
-      }),
-    {
-      maxBufferedFrameKeys: 1,
-      maxBufferedFrameCodeUnitsPerKey: 2,
-      maxBufferedFrameCodeUnits: 2,
-    },
+it.effect("coalesces each Thread's prose until the fallback timer", () =>
+  withRuntime((runtime, conversations) =>
+    Effect.gen(function* () {
+      const commits: string[] = [];
+      observeCommits(conversations, "thread-1", commits);
+      observeCommits(conversations, "thread-2", commits);
+      runtime.enqueueFrameText(frame("a"));
+      runtime.enqueueFrameText({ ...frame("b"), conversationId: "thread-2" });
+      runtime.enqueueFrameText({ ...frame("cd"), conversationId: "thread-2" });
+      runtime.enqueueFrameText({ ...frame("xyz"), conversationId: "thread-2" });
+      assert.deepEqual(commits, []);
+      yield* TestClock.adjust("1 second");
+      assert.deepEqual(
+        commits.map((entry) => entry.split(":").slice(0, 2).join(":")),
+        ["thread-1:a", "thread-2:bcdxyz"],
+      );
+    }),
   ),
 );
 
-it.effect("commits a large pressure delta without losing output", () =>
-  withRuntime(
-    (runtime, conversations) =>
-      Effect.sync(() => {
-        const protocol: Thread = {
-          model: null,
-          reasoningEffort: null,
-          id: "thread-1",
-          extra: null,
-          sessionId: "session-1",
-          forkedFromId: null,
-          parentThreadId: null,
-          preview: "",
-          ephemeral: false,
-          section: null,
-          sectionEnteredAt: null,
-          projectId: null,
-          historyMode: "paginated",
-          modelProvider: "openai",
-          createdAt: 1,
-          updatedAt: 1,
-          recencyAt: 1,
-          status: { type: "active", activeFlags: [] },
-          path: null,
-          cwd: "/repo",
-          cliVersion: "test",
-          source: "unknown",
-          canAcceptDirectInput: true,
-          threadSource: null,
-          agentNickname: null,
-          agentRole: null,
-          gitInfo: null,
-          name: null,
-          turns: [
-            {
-              id: "turn-1",
-              status: "inProgress",
-              error: null,
-              itemsView: "full",
-              startedAt: 1,
-              completedAt: null,
-              durationMs: null,
-              items: [
-                {
-                  questions: null,
-                  type: "agentMessage",
-                  id: "item-1",
-                  text: "",
-                  phase: null,
-                  memoryCitation: null,
-                  delivery: null,
-                },
-              ],
-            },
-          ],
-        };
-        conversations.entity("thread-1").acceptCanonicalState(
-          createCodexCanonicalHydratedConversationState(protocol, {
+it.effect("commits a large buffered delta on the explicit completion drain", () =>
+  withRuntime((runtime, conversations) =>
+    Effect.sync(() => {
+      const protocol: Thread = {
+        model: null,
+        reasoningEffort: null,
+        id: "thread-1",
+        extra: null,
+        sessionId: "session-1",
+        forkedFromId: null,
+        parentThreadId: null,
+        preview: "",
+        ephemeral: false,
+        section: null,
+        sectionEnteredAt: null,
+        projectId: null,
+        historyMode: "paginated",
+        modelProvider: "openai",
+        createdAt: 1,
+        updatedAt: 1,
+        recencyAt: 1,
+        status: { type: "active", activeFlags: [] },
+        path: null,
+        cwd: "/repo",
+        cliVersion: "test",
+        source: "unknown",
+        canAcceptDirectInput: true,
+        threadSource: null,
+        agentNickname: null,
+        agentRole: null,
+        gitInfo: null,
+        name: null,
+        turns: [
+          {
+            id: "turn-1",
+            status: "inProgress",
+            error: null,
+            itemsView: "full",
+            startedAt: 1,
+            completedAt: null,
+            durationMs: null,
+            items: [
+              {
+                questions: null,
+                type: "agentMessage",
+                id: "item-1",
+                text: "",
+                phase: null,
+                memoryCitation: null,
+                delivery: null,
+              },
+            ],
+          },
+        ],
+      };
+      conversations.entity("thread-1").acceptCanonicalState(
+        createCodexCanonicalHydratedConversationState(protocol, {
+          hostId: "local",
+          ...{
             model: "gpt-test",
             reasoningEffort: "high",
             cwd: "/repo",
@@ -214,44 +200,33 @@ it.effect("commits a large pressure delta without losing output", () =>
             sandboxPolicy: { type: "readOnly", networkAccess: false },
             activePermissionProfile: null,
             runtimeWorkspaceRoots: ["/repo"],
-          }),
-        );
+          },
+        }),
+      );
 
-        runtime.enqueueFrameText(frame("x".repeat(2 * 1024 * 1024 + 1_024)));
+      runtime.enqueueFrameText(frame("x".repeat(2 * 1024 * 1024 + 1_024)));
+      runtime.drainBeforeCompletion("thread-1", 1000);
 
-        const turn = conversations.current("thread-1")?.readCanonicalState()?.turns[0];
-        assert.strictEqual(turn?.items[0]?.type, "agentMessage");
-        assert.isAbove(Buffer.byteLength(JSON.stringify(turn), "utf8"), 2 * 1024 * 1024);
-      }),
-    {
-      maxBufferedFrameCodeUnitsPerKey: 2,
-      maxBufferedFrameCodeUnits: 2,
-    },
+      const turn = conversations.current("thread-1")?.readCanonicalState()?.turns[0];
+      assert.strictEqual(turn?.items[0]?.type, "agentMessage");
+      assert.isAbove(Buffer.byteLength(JSON.stringify(turn), "utf8"), 2 * 1024 * 1024);
+    }),
   ),
 );
 
-it.effect("bounds command output globally by keys, updates, and UTF-8 bytes", () =>
-  withRuntime(
-    (runtime, conversations) =>
-      Effect.gen(function* () {
-        const frameCommits: string[] = [];
-        const outputCommits: string[] = [];
-        observeCommits(conversations, "thread-1", frameCommits, outputCommits);
-        observeCommits(conversations, "thread-2", frameCommits, outputCommits);
-
-        runtime.enqueueCommandOutput(output("ab"));
-        runtime.enqueueCommandOutput(output("cd", "thread-2"));
-        runtime.enqueueCommandOutput(output("😀😀😀", "thread-2"));
-
-        assert.deepEqual(outputCommits, ["thread-1:ab", "thread-2:cd", "thread-2:😀😀😀"]);
-        yield* TestClock.adjust("1 second");
-        assert.strictEqual(outputCommits.length, 3);
-      }),
-    {
-      maxBufferedOutputKeys: 1,
-      maxBufferedOutputUpdates: 1,
-      maxBufferedOutputUtf8Bytes: 4,
-    },
+it.effect("flushes all command keys at the timer while coalescing each item's output", () =>
+  withRuntime((runtime, conversations) =>
+    Effect.gen(function* () {
+      const outputCommits: string[] = [];
+      observeCommits(conversations, "thread-1", [], outputCommits);
+      observeCommits(conversations, "thread-2", [], outputCommits);
+      runtime.enqueueCommandOutput(output("ab"));
+      runtime.enqueueCommandOutput(output("cd", "thread-2"));
+      runtime.enqueueCommandOutput(output("😀😀😀", "thread-2"));
+      assert.deepEqual(outputCommits, []);
+      yield* TestClock.adjust("1 second");
+      assert.deepEqual(outputCommits, ["thread-1:ab", "thread-2:cd😀😀😀"]);
+    }),
   ),
 );
 

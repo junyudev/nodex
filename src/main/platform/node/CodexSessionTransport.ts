@@ -1,4 +1,8 @@
+import { codexJsonLineTransport } from "./CodexJsonLineStream";
+import { CodexHostRequestMetrics } from "../../codex-runtime/CodexHostRequestMetrics";
+import { openCodexLocalDaemon, type CodexLocalDaemonConfig } from "./CodexLocalDaemon";
 import * as Context from "effect/Context";
+import { makeCodexSshSessionRuntime, type CodexSshSessionConfig } from "./CodexSshSession";
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -16,6 +20,8 @@ import {
 export interface CodexSessionProcessConfig {
   readonly hostId: string;
   readonly generation: number;
+  readonly ssh?: CodexSshSessionConfig;
+  readonly localDaemon?: CodexLocalDaemonConfig;
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd?: string;
@@ -29,6 +35,8 @@ export interface CodexSessionProcessConfig {
 
 export interface CodexSessionTransportHandle {
   readonly pid: number;
+  readonly transportKind: "stdio" | "websocket";
+  readonly onInitializationFailed?: () => void;
   readonly client: CodexAppServerClient["Service"];
   readonly termination: Effect.Effect<never, CodexRuntimeError>;
 }
@@ -50,11 +58,24 @@ export const live: Layer.Layer<
 > = Layer.effect(
   CodexSessionTransport,
   Effect.gen(function* () {
+    const ssh = makeCodexSshSessionRuntime();
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const fileSystem = yield* FileSystem.FileSystem;
     return CodexSessionTransport.of({
       open: Effect.fn("CodexSessionTransport.open")(function* (config) {
+        const hostMetrics = yield* CodexHostRequestMetrics;
+        if (config.ssh) return yield* ssh.open(config.ssh, config.hostId, config.generation);
         const env = config.resolveEnv === undefined ? config.env : yield* config.resolveEnv();
+        if (config.localDaemon) {
+          const daemon = yield* openCodexLocalDaemon({
+            config: config.localDaemon,
+            command: config.command,
+            env,
+            hostId: config.hostId,
+            generation: config.generation,
+          });
+          if (daemon) return daemon;
+        }
         const handle = yield* spawner
           .spawn(
             ChildProcess.make(config.command, config.args, {
@@ -78,7 +99,9 @@ export const live: Layer.Layer<
               }),
             ),
           );
-        const clientContext = yield* Layer.build(layerChildProcess(handle));
+        const clientContext = yield* Layer.build(
+          layerChildProcess(handle, codexJsonLineTransport(handle.stdout, hostMetrics)),
+        );
         const client = Context.get(clientContext, CodexAppServerClient);
         const pid = Number(handle.pid);
         const childTermination = handle.exitCode.pipe(
@@ -119,7 +142,7 @@ export const live: Layer.Layer<
           ),
         );
         const termination = Effect.raceFirst(childTermination, protocolTermination);
-        return { pid, client, termination };
+        return { pid, transportKind: "stdio", client, termination };
       }),
       canonicalPath: Effect.fn("CodexSessionTransport.canonicalPath")((path) =>
         fileSystem.realPath(path).pipe(

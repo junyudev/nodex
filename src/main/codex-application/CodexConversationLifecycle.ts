@@ -1,12 +1,11 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
-import { CodexActiveGoalContinuation } from "./CodexActiveGoalContinuation";
 import { CodexConversationDeltaBufferRuntime } from "./CodexConversationDeltaBufferRuntime";
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import { CodexManualCompactionRuntime } from "./CodexManualCompactionRuntime";
 import { CodexPendingServerRequestRuntime } from "./CodexPendingServerRequestRuntime";
-import { CodexQueuedFollowUps } from "./CodexQueuedFollowUps";
-import { CodexRendererConversationCoordinator } from "./CodexRendererConversationCoordinator";
+import { CodexRendererPresentationRegistry } from "./CodexRendererPresentationRegistry";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 
 export class CodexConversationLifecycle extends Context.Service<
@@ -29,21 +28,19 @@ export class CodexConversationLifecycle extends Context.Service<
 export const make: Effect.Effect<
   CodexConversationLifecycle["Service"],
   never,
-  | CodexActiveGoalContinuation
   | CodexConversationDeltaBufferRuntime
+  | CodexMainConversationManagers
   | CodexManualCompactionRuntime
   | CodexPendingServerRequestRuntime
-  | CodexQueuedFollowUps
-  | CodexRendererConversationCoordinator
+  | CodexRendererPresentationRegistry
   | ConversationEntityMap
   | BrowserUseRuntime
 > = Effect.gen(function* () {
-  const activeGoalContinuation = yield* CodexActiveGoalContinuation;
   const deltas = yield* CodexConversationDeltaBufferRuntime;
+  const managers = yield* CodexMainConversationManagers;
   const manualCompaction = yield* CodexManualCompactionRuntime;
   const pending = yield* CodexPendingServerRequestRuntime;
-  const queuedFollowUps = yield* CodexQueuedFollowUps;
-  const renderer = yield* CodexRendererConversationCoordinator;
+  const presentation = yield* CodexRendererPresentationRegistry;
   const conversations = yield* ConversationEntityMap;
   const browserUse = yield* BrowserUseRuntime;
 
@@ -59,10 +56,9 @@ export const make: Effect.Effect<
     deltas.clear(threadId);
     manualCompaction.clear(threadId);
 
-    // Cancellation must finish before entity reset invalidates a claimed queue generation.
-    yield* queuedFollowUps.closeThread(threadId);
-    yield* renderer.clearConversation(threadId);
-    yield* activeGoalContinuation.clear(threadId);
+    const hostId = conversations.current(threadId)?.readCanonicalState()?.hostId ?? "local";
+    managers.current(hostId)?.stream.removeConversation(threadId);
+    presentation.clearConversation(threadId);
 
     // Preserve the current runtime/lane while retiring all canonical process-local state,
     // including the visible and claimed queued-follow-up generation.

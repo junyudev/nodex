@@ -25,18 +25,19 @@ import type {
   CodexConversationChildMembership,
   CodexConversationResumeState,
   CodexConversationServerRequest,
-  CodexConversationSnapshot,
   CodexConversationTurn,
   CodexConversationTurnPagination,
-  CodexThreadStatusType,
 } from "../../../lib/types";
 import { searchCodexPersistedHistory } from "../../../lib/api";
 import {
   hydrateLocalPersistedHistoryOccurrence,
-  publishLocalConversationHistoryMutation,
+  prepareLocalConversationPromptRailNavigation,
   requestLocalConversationHistoryPage,
 } from "../local-conversation-store";
-import { selectVisibleConversationTurnEntries } from "../selectors";
+import {
+  selectVisibleConversationTurnEntries,
+  type VisibleConversationContext,
+} from "../selectors";
 import type {
   ThreadBodyModel,
   ThreadBodyUiStateOverrides,
@@ -74,6 +75,7 @@ import {
   isLocalConversationPersistedSearchMatchMeta,
   projectLocalConversationPersistedSearchResult,
   resolveLocalConversationPersistedSearchTarget,
+  waitForLocalConversationPersistedSearchTarget,
   type LocalConversationSearchTarget,
 } from "./local-conversation-persisted-search";
 import { projectLocalConversationLegacyHistoryRows } from "./local-conversation-history-gap";
@@ -91,7 +93,6 @@ import type {
 } from "../../../../shared/codex-conversation-state/codex-history-topology";
 import {
   createCodexConversationHistoryTurnItemsRef,
-  type CodexConversationHistoryItemWindowSnapshot,
   type CodexConversationHistoryTurnItemsRef,
 } from "../../../../shared/codex-conversation-history-page";
 
@@ -335,6 +336,7 @@ export function ThreadStartProgressPanel({
 interface LocalConversationThreadBodyOwnerProps {
   body: ThreadBodyModel;
   projectId: string | null;
+  hostId: string;
   threadId: string | null;
   isSideChat: boolean;
   cwd: string | null;
@@ -344,14 +346,12 @@ interface LocalConversationThreadBodyOwnerProps {
   conversationEntityGeneration?: number;
   historyTopologyGeneration?: number;
   historyMutationRevision?: number;
-  historyItemWindowsByTurnId?: Readonly<Record<string, CodexConversationHistoryItemWindowSnapshot>>;
   turnItemsPaginationById?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
   requests: CodexConversationServerRequest[];
   canonicalRequests: CodexCanonicalServerRequest[];
   resumeState: CodexConversationResumeState | null;
   attachmentState?: LocalConversationAttachmentState;
   capabilityFlags: CodexConversationCapabilityFlags;
-  statusType: CodexThreadStatusType | null;
   parentTurns: readonly CodexConversationTurn[];
   childMemberships: readonly CodexConversationChildMembership[];
   backgroundAgentRows: readonly ThreadComposerShellBackgroundAgentRowModel[];
@@ -394,6 +394,7 @@ export type LocalConversationForkIntoWorktreeHandler = (
 export function LocalConversationThreadBodyOwner({
   body,
   projectId,
+  hostId,
   threadId,
   isSideChat,
   cwd,
@@ -403,14 +404,12 @@ export function LocalConversationThreadBodyOwner({
   conversationEntityGeneration,
   historyTopologyGeneration,
   historyMutationRevision,
-  historyItemWindowsByTurnId,
   turnItemsPaginationById,
   requests,
   canonicalRequests,
   resumeState,
   attachmentState,
   capabilityFlags,
-  statusType,
   parentTurns,
   childMemberships,
   backgroundAgentRows,
@@ -445,67 +444,19 @@ export function LocalConversationThreadBodyOwner({
     if (!threadId || !actions.onRetryThreadAttachment) return;
     void actions.onRetryThreadAttachment(threadId);
   }, [actions, threadId]);
-  const conversation = useMemo<CodexConversationSnapshot | null>(
+  const conversation = useMemo<VisibleConversationContext | null>(
     () =>
       threadId || turns.length > 0
         ? {
             threadId: threadId ?? turns[0]?.threadId ?? "unattached",
             projectId: null,
-            source: null,
-            threadName: null,
-            threadPreview: "",
-            cwd,
-            projectlessOutputDirectory: projectlessOutputDirectory ?? null,
-            statusType: statusType ?? (resumeState === "resumed" ? "idle" : "notLoaded"),
-            statusActiveFlags: [],
-            archived: false,
-            createdAt: 0,
-            updatedAt: 0,
-            linkedAt: "",
-            latestCollaborationMode: undefined,
             resumeState: resumeState ?? "needs_resume",
-            turnPagination: turnPagination ?? undefined,
-            historyRows: canonicalHistoryRows,
-            conversationEntityGeneration,
-            historyTopologyGeneration,
-            historyMutationRevision,
-            historyItemWindowsByTurnId,
-            turnItemsPaginationById,
             turns,
             requests,
             canonicalRequests,
-            queuedFollowUps: {
-              status: "ready",
-              ledgerRevision: 0,
-              projectionRevision: 0,
-              entries: [],
-              inFlightFollowUpId: null,
-              editingFollowUpId: null,
-              error: null,
-            },
-            pendingSteers: [],
-            backgroundTerminalRows: [],
-            capabilityFlags,
           }
         : null,
-    [
-      canonicalRequests,
-      canonicalHistoryRows,
-      capabilityFlags,
-      conversationEntityGeneration,
-      cwd,
-      projectlessOutputDirectory,
-      requests,
-      resumeState,
-      statusType,
-      threadId,
-      historyTopologyGeneration,
-      historyMutationRevision,
-      historyItemWindowsByTurnId,
-      turnItemsPaginationById,
-      turnPagination,
-      turns,
-    ],
+    [canonicalRequests, requests, resumeState, threadId, turns],
   );
 
   const editableTurnId = capabilityFlags.canEditLastUserTurn
@@ -554,25 +505,22 @@ export function LocalConversationThreadBodyOwner({
     if (historyTopologyGeneration === undefined) return {};
     return Object.fromEntries(
       Object.entries(turnItemsPaginationById ?? {}).flatMap(([turnId, pagination]) => {
-        const window = historyItemWindowsByTurnId?.[turnId] ?? null;
         const older = createCodexConversationHistoryTurnItemsRef({
           turnId,
           expectedTopologyGeneration: historyTopologyGeneration,
           pagination,
           edge: "older",
-          window,
         });
         const newer = createCodexConversationHistoryTurnItemsRef({
           turnId,
           expectedTopologyGeneration: historyTopologyGeneration,
           pagination,
           edge: "newer",
-          window,
         });
         return older || newer ? [[turnId, { older, newer }] as const] : [];
       }),
     );
-  }, [historyItemWindowsByTurnId, historyTopologyGeneration, turnItemsPaginationById]);
+  }, [historyTopologyGeneration, turnItemsPaginationById]);
   const userMessageNavigationItems = useMemo(
     () =>
       buildThreadUserMessageNavigationItems(turnEntries, {
@@ -657,15 +605,18 @@ export function LocalConversationThreadBodyOwner({
       ) {
         return;
       }
-      const result = await requestLocalConversationHistoryPage({
-        threadId: targetThreadId,
-        expectedConversationGeneration: conversationEntityGeneration,
-        expectedHistoryMutationRevision: historyMutationRevision,
-        target: { kind: "turnBoundary", boundary },
-      });
+      const result = await requestLocalConversationHistoryPage(
+        {
+          threadId: targetThreadId,
+          expectedConversationGeneration: conversationEntityGeneration,
+          expectedHistoryMutationRevision: historyMutationRevision,
+          target: { kind: "turnBoundary", boundary },
+        },
+        hostId,
+      );
       return result.status;
     },
-    [body.threadId, conversationEntityGeneration, historyMutationRevision, threadId],
+    [body.threadId, conversationEntityGeneration, historyMutationRevision, hostId, threadId],
   );
   const handleLoadHistoryTurnItems = useCallback(
     async (items: CodexConversationHistoryTurnItemsRef) => {
@@ -677,15 +628,18 @@ export function LocalConversationThreadBodyOwner({
       ) {
         return;
       }
-      const result = await requestLocalConversationHistoryPage({
-        threadId: targetThreadId,
-        expectedConversationGeneration: conversationEntityGeneration,
-        expectedHistoryMutationRevision: historyMutationRevision,
-        target: { kind: "turnItems", items },
-      });
+      const result = await requestLocalConversationHistoryPage(
+        {
+          threadId: targetThreadId,
+          expectedConversationGeneration: conversationEntityGeneration,
+          expectedHistoryMutationRevision: historyMutationRevision,
+          target: { kind: "turnItems", items },
+        },
+        hostId,
+      );
       return result.status;
     },
-    [body.threadId, conversationEntityGeneration, historyMutationRevision, threadId],
+    [body.threadId, conversationEntityGeneration, historyMutationRevision, hostId, threadId],
   );
 
   const searchSource = useMemo(
@@ -865,34 +819,28 @@ export function LocalConversationThreadBodyOwner({
           topologyGeneration: resolution.topologyGeneration,
         };
 
-        let target: LocalConversationSearchTarget | null = null;
-        let entry = currentTurnEntriesRef.current.find(
-          (candidate) => candidate.turnId === meta.occurrence.turnId,
-        );
-        for (let attempt = 0; attempt < 5 && !target; attempt += 1) {
-          if (entry) {
-            target = resolveLocalConversationPersistedSearchTarget({
-              entry,
-              occurrence: meta.occurrence,
-              itemOccurrenceIndex: meta.itemOccurrenceIndex,
-              query: meta.query,
-              units: searchSource.getUnitsForTurn(entry),
-            });
-          }
-          if (target || signal.aborted) break;
-          await nextAnimationFrame();
-          entry = currentTurnEntriesRef.current.find(
-            (candidate) => candidate.turnId === meta.occurrence.turnId,
-          );
-        }
+        const target = await waitForLocalConversationPersistedSearchTarget({
+          signal,
+          waitForRender: nextAnimationFrame,
+          readTarget: () => {
+            const entry = currentTurnEntriesRef.current.find(
+              (candidate) => candidate.turnId === meta.occurrence.turnId,
+            );
+            return entry
+              ? resolveLocalConversationPersistedSearchTarget({
+                  entry,
+                  occurrence: meta.occurrence,
+                  itemOccurrenceIndex: meta.itemOccurrenceIndex,
+                  query: meta.query,
+                  units: searchSource.getUnitsForTurn(entry),
+                })
+              : null;
+          },
+        });
         if (signal.aborted) return;
         if (target) {
           persistedSearchTargetsRef.current.set(match.id, target);
           await searchSource.scrollAdapter.scrollToTurn(target.turnKey, { signal });
-          return;
-        }
-        if (resolution.status === "bounded-incomplete" && entry) {
-          await searchSource.scrollAdapter.scrollToTurn(entry.turnKey, { signal });
           return;
         }
         throw new Error("Hydrated persisted-history occurrence is not renderable");
@@ -1034,7 +982,7 @@ export function LocalConversationThreadBodyOwner({
     [],
   );
   const handlePublishPromptRailReveal = useCallback(async (reveal: CodexPromptRailReveal) => {
-    await publishLocalConversationHistoryMutation(reveal.threadId, reveal.mutation);
+    await prepareLocalConversationPromptRailNavigation(reveal);
   }, []);
   const handleRevealInstalledPromptRailTurn = useCallback(
     async (
@@ -1063,6 +1011,7 @@ export function LocalConversationThreadBodyOwner({
     <>
       <LocalConversationPromptRail
         enabled={Boolean((threadId ?? body.threadId) && historyTopologyGeneration !== undefined)}
+        hostId={hostId}
         threadId={threadId ?? body.threadId}
         topologyGeneration={historyTopologyGeneration ?? null}
         residentItems={userMessageNavigationItems}
@@ -1164,7 +1113,7 @@ export function LocalConversationThreadBodyOwner({
               entries={virtualizedEntries}
               historyRows={historyRows}
               conversationId={conversation?.threadId ?? body.threadId ?? ""}
-              threadCwd={conversation?.cwd ?? null}
+              threadCwd={cwd}
               projectWorkspacePath={projectWorkspacePath}
               projectlessOutputDirectory={projectlessOutputDirectory}
               editableTurnId={editableTurnId}

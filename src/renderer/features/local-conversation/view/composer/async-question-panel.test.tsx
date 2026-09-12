@@ -1,3 +1,5 @@
+import { createCodexCanonicalHydratedConversationState } from "../../../../../shared/codex-conversation-state/codex-conversation-state";
+import { buildAgentActivityV2CorpusThread } from "../../../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { useSyncExternalStore } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
@@ -21,18 +23,32 @@ function setup(questions = [{ title: "Which scope?", options: ["Local", "Global"
     memoryCitation: null,
     questions,
   };
+  const base = createCodexCanonicalHydratedConversationState(
+    { ...buildAgentActivityV2CorpusThread([]), id: "thread" },
+    {
+      hostId: "local",
+      model: "test",
+      reasoningEffort: null,
+      cwd: "/repo",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+      activePermissionProfile: null,
+      runtimeWorkspaceRoots: ["/repo"],
+    },
+  );
   runtime.reconcile({
     threadId: "thread",
     canonicalState: {
+      ...base,
       turns: [
         {
-          protocol: {
-            id: "turn",
-            status: "inProgress",
-            error: null,
-            durationMs: null,
-            itemsView: "full",
-          },
+          ...base.turns[0]!,
+          turnId: "turn",
+          status: "inProgress",
+          error: null,
+          durationMs: null,
+          itemsView: "full",
           items: [],
         },
       ],
@@ -41,15 +57,15 @@ function setup(questions = [{ title: "Which scope?", options: ["Local", "Global"
   runtime.reconcile({
     threadId: "thread",
     canonicalState: {
+      ...base,
       turns: [
         {
-          protocol: {
-            id: "turn",
-            status: "inProgress",
-            error: null,
-            durationMs: null,
-            itemsView: "full",
-          },
+          ...base.turns[0]!,
+          turnId: "turn",
+          status: "inProgress",
+          error: null,
+          durationMs: null,
+          itemsView: "full",
           items: [item],
         },
       ],

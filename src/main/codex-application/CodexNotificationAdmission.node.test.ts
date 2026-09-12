@@ -1,3 +1,4 @@
+import type { CodexCanonicalTurnHeader } from "../../shared/types";
 import { CodexTurnPresentation } from "./CodexTurnPresentation";
 import {
   makeTestTurnPresentation,
@@ -127,12 +128,21 @@ const makeHarness = (trace: string[]) =>
       abort: () => undefined,
     });
     const conversations = ConversationEntityMap.of({
+      registerThreadMetadata: () => {},
+      readThreadMetadata: () => null,
       current: (threadId: string) =>
         threadId === "parent"
           ? ({
               readCanonicalState: () =>
                 ({
-                  turns: [{ protocol: { id: "parent-turn", status: "inProgress" } }],
+                  turns: [
+                    {
+                      ...({ turnId: "parent-turn", status: "inProgress" } satisfies Pick<
+                        CodexCanonicalTurnHeader,
+                        "turnId" | "status"
+                      >),
+                    },
+                  ],
                 }) as unknown as CodexCanonicalConversationState,
             } as unknown as ReturnType<ConversationEntityMap["Service"]["entity"]>)
           : null,

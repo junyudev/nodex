@@ -7,8 +7,6 @@ import {
 } from "./codex-conversation-state";
 import {
   groupCodexCommandOutputUpdatesByConversation,
-  CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT,
-  CODEX_TERMINAL_COMMAND_ACTION_MAX_UTF8_BYTES,
   reduceCodexCommandOutputRawTurns,
   reduceCodexConversationCommandOutput,
   reduceCodexConversationTerminalCommands,
@@ -18,9 +16,12 @@ import { CODEX_COMMAND_OUTPUT_TRUNCATION_PREFIX } from "./codex-command-output-q
 
 const THREAD_ID = "thread_c05";
 const TURN_ID = "turn_c05";
-
-type CommandExecutionItem = Extract<ThreadItem, { type: "commandExecution" }>;
-
+type CommandExecutionItem = Extract<
+  ThreadItem,
+  {
+    type: "commandExecution";
+  }
+>;
 function buildCommand(
   id: string,
   overrides: Partial<CommandExecutionItem> = {},
@@ -112,7 +113,10 @@ function buildState(items: ThreadItem[] = []): CodexCanonicalConversationState {
   };
 
   return createCodexCanonicalConversationState(thread, {
-    turnParamsById: { [TURN_ID]: buildTurnParams() },
+    hostId: "local",
+    ...{
+      turnParamsById: { [TURN_ID]: buildTurnParams() },
+    },
   });
 }
 
@@ -191,22 +195,21 @@ describe("canonical command-execution stream reduction", () => {
 
   test("retains the exact sticky prefix and a 20,000 UTF-16-unit tail", () => {
     const command = buildCommand("exec", { aggregatedOutput: "seed" });
-    const emojiDelta = "🙂".repeat(10_001);
+    const emojiDelta = "🙂".repeat(10001);
     const truncated = reduceCodexCommandOutputRawTurns([{ items: [command] }], {
       conversationId: THREAD_ID,
       turnId: null,
       itemId: "exec",
       delta: emojiDelta,
     });
-    const expectedPayload = "🙂".repeat(10_000);
+    const expectedPayload = "🙂".repeat(10000);
     const expectedOutput = `${CODEX_COMMAND_OUTPUT_TRUNCATION_PREFIX}${expectedPayload}`;
 
     expect(truncated.rawItem?.aggregatedOutput).toBe(expectedOutput);
     expect(
       truncated.rawItem?.aggregatedOutput?.slice(CODEX_COMMAND_OUTPUT_TRUNCATION_PREFIX.length)
         .length,
-    ).toBe(20_000);
-
+    ).toBe(20000);
     const empty = reduceCodexCommandOutputRawTurns([{ items: [truncated.rawItem] }], {
       conversationId: THREAD_ID,
       turnId: "ignored",
@@ -285,41 +288,29 @@ describe("canonical command-execution stream reduction", () => {
     expect(empty.stateChanged).toBe(false);
   });
 
-  test("keeps terminal command actions to a bounded recent tail", () => {
-    const command = buildCommand("exec", {
-      commandActions: Array.from(
-        { length: CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT },
-        (_, index) => ({ type: "unknown" as const, command: `existing-${index}` }),
-      ),
-    });
+  test("retains existing command actions and appends every new command in order", () => {
+    const existing = Array.from({ length: 128 }, (_, index) => ({
+      type: "unknown" as const,
+      command: `existing-${index}`,
+    }));
+    const command = buildCommand("exec", { commandActions: existing });
+    const commands = [
+      ...Array.from({ length: 512 }, (_, index) => `incoming-${index}`),
+      "x".repeat(300000),
+    ];
     const result = reduceCodexTerminalCommandsRawTurns([{ items: [command] }], {
       conversationId: THREAD_ID,
       turnId: TURN_ID,
       itemId: "exec",
-      commands: Array.from(
-        { length: CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT * 4 },
-        (_, index) => `incoming-${index}`,
-      ),
+      commands,
     });
-    const actions = result.rawItem?.commandActions ?? [];
-    const oversized = reduceCodexTerminalCommandsRawTurns([{ items: [command] }], {
-      conversationId: THREAD_ID,
-      turnId: TURN_ID,
-      itemId: "exec",
-      commands: ["x".repeat(CODEX_TERMINAL_COMMAND_ACTION_MAX_UTF8_BYTES + 1)],
-    });
-
-    expect(actions.length).toBe(CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT);
-    expect(actions[0]?.command).toBe(
-      `incoming-${CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT * 4 - CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT}`,
-    );
-    expect(actions.at(-1)?.command).toBe(
-      `incoming-${CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT * 4 - 1}`,
-    );
-    expect(oversized.rawItem?.commandActions.length).toBe(CODEX_TERMINAL_COMMAND_ACTION_MAX_COUNT);
+    expect(result.rawItem?.commandActions).toEqual([
+      ...existing,
+      ...commands.map((value) => ({ type: "unknown", command: value })),
+    ]);
+    expect(command.commandActions).toBe(existing);
   });
-
-  test("clones only the targeted canonical path without changing lifecycle sidecars", () => {
+  test("clones only the targeted canonical path without changing lifecycle metadata", () => {
     const untouched = buildCommand("untouched", { aggregatedOutput: "stable" });
     const target = buildCommand("target", {
       status: "completed",
@@ -331,8 +322,6 @@ describe("canonical command-execution stream reduction", () => {
     const originalTurn = state.turns[0];
     const originalUntouched = originalTurn?.items[0];
     const originalTarget = originalTurn?.items[1];
-    const originalSidecar = originalTurn?.sidecar;
-    const originalProtocol = originalTurn?.protocol;
 
     const result = reduceCodexConversationCommandOutput(state, {
       conversationId: THREAD_ID,
@@ -347,9 +336,15 @@ describe("canonical command-execution stream reduction", () => {
     expect(result.state === state).toBe(false);
     expect(nextTurn === originalTurn).toBe(false);
     expect(nextTurn?.items[0]).toBe(originalUntouched);
-    expect(nextTurn?.sidecar).toBe(originalSidecar);
-    expect(nextTurn?.protocol).toBe(originalProtocol);
-    expect(result.state.protocol).toBe(state.protocol);
+    expect(nextTurn?.params).toBe(originalTurn?.params);
+    expect(nextTurn?.turnStartedAtMs).toBe(originalTurn?.turnStartedAtMs);
+    expect(nextTurn?.hookRuns).toBe(originalTurn?.hookRuns);
+    expect(nextTurn?.turnId).toBe(originalTurn?.turnId);
+    expect(nextTurn?.status).toBe(originalTurn?.status);
+    expect(nextTurn?.error).toBe(originalTurn?.error);
+    expect(nextTurn?.durationMs).toBe(originalTurn?.durationMs);
+    expect(result.state.threadRuntimeStatus).toBe(state.threadRuntimeStatus);
+    expect(result.state.title).toBe(state.title);
     expect(result.state.requests).toBe(state.requests);
     expect(nextTarget.aggregatedOutput).toBe("before+after");
     expect(nextTarget.status).toBe("completed");

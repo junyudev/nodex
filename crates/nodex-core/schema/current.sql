@@ -735,6 +735,12 @@ CREATE TABLE codex_thread_writable_roots (
   CHECK (length(thread_id) BETWEEN 1 AND 512),
   CHECK (length(root) BETWEEN 1 AND 16384)
 ) WITHOUT ROWID, STRICT;
+CREATE TABLE codex_thread_workspace_states (
+  thread_id TEXT PRIMARY KEY REFERENCES codex_threads(thread_id) ON DELETE CASCADE,
+  state_json TEXT NOT NULL
+    CHECK (json_valid(state_json) AND json_type(state_json) = 'object'),
+  updated_at_unix_ms INTEGER NOT NULL CHECK (updated_at_unix_ms >= 0)
+) WITHOUT ROWID, STRICT;
 CREATE TABLE core_automation_runtime_metadata (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   jitter_salt TEXT NOT NULL,
@@ -4939,12 +4945,6 @@ BEFORE UPDATE ON structural_retention_members
 BEGIN
   SELECT RAISE(ABORT, 'Structural retention members are immutable');
 END;
-CREATE TABLE codex_queued_follow_up_ledgers (
-  thread_id TEXT PRIMARY KEY REFERENCES codex_threads(thread_id) ON DELETE CASCADE,
-  revision INTEGER NOT NULL CHECK (revision >= 0),
-  ledger_hash TEXT NOT NULL CHECK (length(ledger_hash) = 64),
-  updated_at TEXT NOT NULL CHECK (length(updated_at) > 0)
-) WITHOUT ROWID, STRICT;
 CREATE TABLE codex_thread_asset_refs (
   thread_id TEXT NOT NULL REFERENCES codex_threads(thread_id) ON DELETE CASCADE,
   library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE RESTRICT,
@@ -4962,46 +4962,6 @@ CREATE TRIGGER codex_thread_asset_refs_immutable BEFORE UPDATE ON codex_thread_a
 BEGIN SELECT RAISE(ABORT, 'Retained Thread attachment identities are immutable'); END;
 CREATE INDEX idx_codex_thread_asset_refs_blob ON codex_thread_asset_refs(blob_hash);
 
-CREATE TABLE codex_queued_follow_up_payload_manifests (
-  payload_sha256 TEXT PRIMARY KEY REFERENCES managed_blobs(content_hash) ON DELETE RESTRICT CHECK (length(payload_sha256) = 64),
-  schema_version INTEGER NOT NULL CHECK (schema_version = 2),
-  asset_uri TEXT NOT NULL UNIQUE CHECK (
-    asset_uri = 'nodex://assets/' || payload_sha256 || '.blob'
-  ),
-  byte_length INTEGER NOT NULL CHECK (byte_length >= 2)
-) WITHOUT ROWID, STRICT;
-CREATE TABLE codex_queued_follow_up_payload_asset_refs (
-  payload_sha256 TEXT NOT NULL REFERENCES codex_queued_follow_up_payload_manifests(payload_sha256) ON DELETE CASCADE,
-  ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
-  asset_uri TEXT NOT NULL CHECK (asset_uri LIKE 'nodex://assets/%'),
-  sha256 TEXT NOT NULL REFERENCES managed_blobs(content_hash) ON DELETE RESTRICT CHECK (length(sha256) = 64),
-  byte_length INTEGER NOT NULL CHECK (byte_length >= 0),
-  mime_type TEXT NOT NULL CHECK (length(trim(mime_type)) BETWEEN 1 AND 255),
-  CHECK (asset_uri = 'nodex://assets/' || sha256 || '.blob'),
-  PRIMARY KEY (payload_sha256, ordinal),
-  UNIQUE (payload_sha256, asset_uri)
-) WITHOUT ROWID, STRICT;
-CREATE TABLE codex_queued_follow_up_entries (
-  thread_id TEXT NOT NULL REFERENCES codex_queued_follow_up_ledgers(thread_id) ON DELETE CASCADE,
-  follow_up_id TEXT NOT NULL,
-  position INTEGER NOT NULL CHECK (position >= 0),
-  client_user_message_id TEXT NOT NULL,
-  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
-  pause_kind TEXT CHECK (pause_kind IN ('interrupted', 'failed')),
-  pause_reason TEXT,
-  payload_sha256 TEXT NOT NULL REFERENCES codex_queued_follow_up_payload_manifests(payload_sha256),
-  PRIMARY KEY (thread_id, follow_up_id),
-  UNIQUE (thread_id, position),
-  UNIQUE (thread_id, client_user_message_id),
-  CHECK (length(trim(follow_up_id)) BETWEEN 1 AND 512),
-  CHECK (length(trim(client_user_message_id)) BETWEEN 1 AND 512),
-  CHECK (
-    (pause_kind IS NULL AND pause_reason IS NULL)
-    OR (pause_kind IS NOT NULL AND length(trim(pause_reason)) BETWEEN 1 AND 4096)
-  )
-) WITHOUT ROWID, STRICT;
-CREATE INDEX idx_codex_queued_follow_up_entries_payload
-  ON codex_queued_follow_up_entries(payload_sha256);
 CREATE TABLE operational_journal_state (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   commit_head_seq INTEGER NOT NULL DEFAULT 0 CHECK (commit_head_seq >= 0),
@@ -5060,7 +5020,22 @@ CREATE TABLE block_mutation_body_gc (
   check_after_ms INTEGER NOT NULL DEFAULT 0 CHECK (check_after_ms >= 0)
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX idx_block_mutation_body_gc_due ON block_mutation_body_gc(check_after_ms, mutation_id);
-PRAGMA user_version = 166;
+CREATE TABLE codex_identity_unread_threads (
+  identity_key TEXT NOT NULL,
+  execution_host_key TEXT NOT NULL,
+  thread_id TEXT NOT NULL,
+  unread_position INTEGER NOT NULL,
+  PRIMARY KEY(identity_key, execution_host_key, thread_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX codex_identity_unread_order ON codex_identity_unread_threads(identity_key, execution_host_key, unread_position);
+
+CREATE TABLE codex_queued_message_state (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  state_json TEXT NOT NULL CHECK (json_valid(state_json))
+) STRICT;
+
+PRAGMA user_version = 170;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

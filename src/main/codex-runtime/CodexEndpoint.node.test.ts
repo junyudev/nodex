@@ -1,7 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import { sanitizeCodexEndpointNotification } from "./CodexEndpoint";
 
-it("strips transcript payloads at the endpoint before inbox and event-hub fan-out", () => {
+it("keeps the observational endpoint projection free of embedded transcript payloads", () => {
   const input = {
     protocol: "generated",
     method: "thread/started",

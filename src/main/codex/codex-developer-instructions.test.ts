@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vite-plus/test";
-import { buildCodexDesktopDeveloperInstructions } from "./codex-developer-instructions";
+import {
+  buildCodexDesktopDeveloperInstructions,
+  buildCodexThreadDeveloperInstructions,
+} from "./codex-developer-instructions";
 
 describe("Codex desktop developer instructions", () => {
   test("builds the exact side-chat envelope without thread tools and preserves base ordering", () => {
@@ -73,5 +76,27 @@ describe("Codex desktop developer instructions", () => {
 
     expect(instructions.includes("### Workspace Dependencies")).toBe(false);
     expect(instructions.includes("### Automations")).toBe(true);
+  });
+
+  test("appends title, writing, presentation, and caller instructions in request order", () => {
+    const instructions = buildCodexThreadDeveloperInstructions({
+      automaticTitleCheckpoints: true,
+      writingBlockInstructions: true,
+      presentationOutlineInstructions: true,
+      additionalDeveloperInstructions: "Caller instructions",
+    });
+    const order = [
+      "<app-context>",
+      "### Task title checkpoints",
+      "### Writing blocks",
+      "### Presentation outline writing blocks",
+      "Caller instructions",
+    ].map((section) => instructions.indexOf(section));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(
+      order.every((index, position) => position === 0 || index > (order[position - 1] ?? -1)),
+    ).toBe(true);
+    expect(instructions.includes("::thread-purpose-changed{}")).toBe(true);
+    expect(instructions.includes('variant="slides"')).toBe(true);
   });
 });

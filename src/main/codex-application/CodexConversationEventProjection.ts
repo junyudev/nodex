@@ -1,3 +1,4 @@
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import type { CodexCanonicalConversationState } from "../../shared/types";
 import type { CodexApplicationProtocolOccurrence } from "../codex-runtime/CodexApplicationRequestInbox";
 
@@ -74,9 +75,9 @@ const compactEvents = <Event>(input: {
   }
 
   const duplicateCharactersByKey = new Map<string, number>();
-  const canonicalTurns = input.canonicalState?.turns ?? [];
+  const canonicalTurns = residentConversationTurns(input.canonicalState);
   for (const [key, buffered] of bufferedDeltasByKey) {
-    const turn = canonicalTurns.find((candidate) => candidate.protocol.id === buffered.turnId);
+    const turn = canonicalTurns.find((candidate) => candidate.turnId === buffered.turnId);
     const item = turn?.items.find(
       (candidate) =>
         candidate.id === buffered.itemId &&

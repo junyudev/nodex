@@ -2,12 +2,15 @@ import { delimiter as pathDelimiter } from "node:path";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import { live as sessionLive } from "../../codex-runtime/CodexAppServerSession";
+import type { CodexSessionProcessConfig } from "./CodexSessionTransport";
 import type { CodexExecutionHostConfig } from "../../codex-runtime/CodexEndpointMap";
 import { codexRuntimeError } from "../../codex-runtime/CodexRuntimeError";
-import { standaloneCodexAppServerArgs } from "../../../shared/codex-app-server-launch";
+import { codexCliAppServerArgs } from "../../../shared/codex-app-server-launch";
+import { supportsCodexAttestationRequests } from "../../codex-application/CodexAttestation";
 
 export interface CodexAppServerClientOptions {
   readonly binaryPath?: string;
+  readonly ssh?: CodexSessionProcessConfig["ssh"];
   readonly args?: string[];
   readonly env?: NodeJS.ProcessEnv;
   readonly resolveEnv?: () => NodeJS.ProcessEnv | Promise<NodeJS.ProcessEnv>;
@@ -33,7 +36,7 @@ const initializeParams = (options: CodexAppServerClientOptions) => ({
   capabilities: {
     experimentalApi: true,
     extensions: { "openai/form": {} },
-    requestAttestation: false,
+    requestAttestation: supportsCodexAttestationRequests(process.platform),
   },
 });
 
@@ -61,12 +64,15 @@ export const makeCodexProcessExecutionHost = (
   return {
     kind: hostId === "local" ? "local" : "remote",
     hostId,
+    hostKind: options.ssh ? "ssh" : "local",
+    transportKind: options.ssh ? "websocket" : "stdio",
     sessionLayer: (generation) =>
       sessionLive({
         hostId,
         generation,
-        command: options.binaryPath ?? "codex-app-server",
-        args: options.args ?? standaloneCodexAppServerArgs(),
+        ...(options.ssh ? { ssh: options.ssh } : {}),
+        command: options.binaryPath ?? "codex",
+        args: options.args ?? codexCliAppServerArgs(),
         env: {},
         resolveEnv,
         forceTermination: "2 seconds",

@@ -39,6 +39,7 @@ import {
   hasSidebarThreadSummaryChanged,
   isNonSidebarThreadWithoutParent,
   normalizeSidebarSessionFallbackTitle,
+  projectCodexCatalogDisplayTitle,
   projectCoreWorkspaceProject,
   projectCoreWorkspaceTask,
   resolveSidebarProjectIdForCwd,
@@ -366,7 +367,10 @@ export const make = (
         id: session.id,
         projectId: session.project_id ?? null,
         noThreadFallbackTitle: session.no_thread_fallback_title,
-        displayTitle: session.display_title,
+        displayTitle:
+          entry.durable.backendBinding.kind === "codex"
+            ? projectCodexCatalogDisplayTitle(session.display_title)
+            : session.display_title,
         order: session.order,
         pinned: session.pinned,
         pinnedOrder: session.pinned_order ?? null,

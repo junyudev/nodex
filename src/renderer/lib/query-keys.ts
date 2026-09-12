@@ -1,3 +1,4 @@
+import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import type { ProtocolMcpResourceReadParams } from "../../shared/types";
 import type { ContentAccessContext } from "../../shared/content-access-context";
 import type {
@@ -210,12 +211,12 @@ export const queryKeys = {
   },
   codexComposerPlugins: {
     all: () => ["codexComposerPlugins"] as const,
-    list: (cwds: readonly string[], hostId = "default") =>
+    list: (cwds: readonly string[], hostId = DEFAULT_CODEX_HOST_ID) =>
       ["codexComposerPlugins", "list", hostId, ...cwds] as const,
   },
   codexComposerSkills: {
     all: () => ["codexComposerSkills"] as const,
-    list: (cwds: readonly string[], hostId = "default") =>
+    list: (cwds: readonly string[], hostId = DEFAULT_CODEX_HOST_ID) =>
       ["codexComposerSkills", "list", hostId, ...cwds] as const,
   },
   codexComposerSites: {

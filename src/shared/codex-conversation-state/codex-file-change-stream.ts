@@ -1,3 +1,5 @@
+import { produce, type Draft } from "immer";
+import { residentConversationTurnEntries, residentConversationTurns, conversationTurnDraft } from "./codex-turn-mutation";
 import type { ServerNotification } from "@nodex/codex-app-server-protocol";
 import type { FileUpdateChange, ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import type {
@@ -13,21 +15,30 @@ import {
 
 export type CodexFileChangePatchUpdatedNotification = Extract<
   ServerNotification,
-  { method: "item/fileChange/patchUpdated" }
+  {
+    method: "item/fileChange/patchUpdated";
+  }
 >;
 
 export type CodexFileChangeOutputDeltaNotification = Extract<
   ServerNotification,
-  { method: "item/fileChange/outputDelta" }
+  {
+    method: "item/fileChange/outputDelta";
+  }
 >;
 
 export type CodexMcpToolCallProgressNotification = Extract<
   ServerNotification,
-  { method: "item/mcpToolCall/progress" }
+  {
+    method: "item/mcpToolCall/progress";
+  }
 >;
-
-export type CodexRawFileChange = Extract<ThreadItem, { type: "fileChange" }>;
-
+export type CodexRawFileChange = Extract<
+  ThreadItem,
+  {
+    type: "fileChange";
+  }
+>;
 export interface CodexFileChangePatchUpdate {
   readonly conversationId: string;
   readonly turnId: string | null;
@@ -299,118 +310,59 @@ export function reduceCodexMcpToolCallProgressRawTurns(
 function buildCanonicalRawTurns(
   state: CodexCanonicalConversationState,
 ): readonly CodexFileChangeRawTurn[] {
-  return state.turns.map((turn) => ({
-    turnId: turn.protocol.id,
-    status: turn.protocol.status,
-    hasError: turn.protocol.error !== null,
+  return residentConversationTurns(state).map((turn) => ({
+    turnId: turn.turnId,
+    status: turn.status,
+    hasError: turn.error !== null,
     itemCount: turn.items.length,
-    turnStartedAtMs: turn.sidecar.turnStartedAtMs,
-    firstTurnWorkItemStartedAtMs: turn.sidecar.firstTurnWorkItemStartedAtMs,
+    turnStartedAtMs: turn.turnStartedAtMs,
+    firstTurnWorkItemStartedAtMs: turn.firstTurnWorkItemStartedAtMs,
     items: turn.items,
-    hookRuns: turn.sidecar.hookRuns,
+    hookRuns: turn.hookRuns,
   }));
 }
 
-function replaceCanonicalTurn(
-  state: CodexCanonicalConversationState,
-  turnIndex: number,
-  rawTurn: CodexFileChangeRawTurn,
-): CodexCanonicalConversationState {
-  const sourceTurn = state.turns[turnIndex];
-  if (!sourceTurn) return state;
-
-  const turn: CodexCanonicalTurnState = {
-    ...sourceTurn,
-    protocol: {
-      ...sourceTurn.protocol,
-      id: rawTurn.turnId,
-      status: rawTurn.status,
-    },
-    items: rawTurn.items as readonly CodexCanonicalItem[],
-    sidecar: {
-      ...sourceTurn.sidecar,
-      turnStartedAtMs: rawTurn.turnStartedAtMs ?? null,
-      ...(rawTurn.firstTurnWorkItemStartedAtMs === undefined
-        ? {}
-        : {
-            firstTurnWorkItemStartedAtMs: rawTurn.firstTurnWorkItemStartedAtMs,
-          }),
-      ...(rawTurn.hookRuns === undefined
-        ? {}
-        : { hookRuns: rawTurn.hookRuns as CodexCanonicalTurnState["sidecar"]["hookRuns"] }),
-    },
-  };
-  const turns = [...state.turns];
-  turns[turnIndex] = turn;
-  return { ...state, turns };
+function applyRawTurnMetadata(state: Draft<CodexCanonicalConversationState>, index: number, raw: CodexFileChangeRawTurn): Draft<CodexCanonicalTurnState> | null {
+  const entry = residentConversationTurnEntries(state)[index];
+  const turn = entry ? conversationTurnDraft(state, entry.address) : null;
+  if (!turn) return null;
+  turn.turnId = raw.turnId;
+  turn.status = raw.status;
+  turn.turnStartedAtMs = raw.turnStartedAtMs ?? null;
+  if (raw.firstTurnWorkItemStartedAtMs !== undefined) turn.firstTurnWorkItemStartedAtMs = raw.firstTurnWorkItemStartedAtMs;
+  if (raw.hookRuns !== undefined) Object.assign(turn, { hookRuns: raw.hookRuns });
+  return turn;
 }
 
-export function reduceCodexConversationFileChangePatch(
-  state: CodexCanonicalConversationState,
-  update: CodexFileChangePatchUpdate,
-  context: CodexFileChangeMutationContext,
-): CodexFileChangeCanonicalMutationResult {
-  if (state.protocol.id !== update.conversationId) {
-    return {
-      state,
-      disposition: "foreignConversation",
-      resolutionKind: "none",
-      turnIndex: -1,
-      itemIndex: -1,
-      itemMutation: null,
-      stateChanged: false,
-    };
-  }
-
+export function mutateCodexConversationFileChangePatch(state: Draft<CodexCanonicalConversationState>, update: CodexFileChangePatchUpdate, context: CodexFileChangeMutationContext): Omit<CodexFileChangeCanonicalMutationResult, "state"> {
+  if (state.id !== update.conversationId) return { disposition: "foreignConversation", resolutionKind: "none", turnIndex: -1, itemIndex: -1, itemMutation: null, stateChanged: false };
   const result = reduceCodexFileChangePatchRawTurns(buildCanonicalRawTurns(state), update, context);
-  const nextState =
-    result.stateChanged && result.turn
-      ? replaceCanonicalTurn(state, result.turnIndex, result.turn)
-      : state;
-  return {
-    state: nextState,
-    disposition: result.disposition,
-    resolutionKind: result.resolutionKind,
-    turnIndex: result.turnIndex,
-    itemIndex: result.itemIndex,
-    itemMutation: result.itemMutation,
-    stateChanged: nextState !== state,
-  };
-}
-
-export function reduceCodexConversationMcpToolCallProgress(
-  state: CodexCanonicalConversationState,
-  update: CodexMcpToolCallProgressUpdate,
-  context: CodexFileChangeMutationContext,
-): CodexMcpProgressCanonicalMutationResult {
-  if (state.protocol.id !== update.conversationId) {
-    return {
-      state,
-      disposition: "foreignConversation",
-      resolutionKind: "none",
-      turnIndex: -1,
-      matchedItemIndex: -1,
-      stateChanged: false,
-    };
+  if (result.stateChanged && result.turn) {
+    const turn = applyRawTurnMetadata(state, result.turnIndex, result.turn);
+    if (turn && result.rawItem) {
+      const current = turn.items[result.itemIndex];
+      if (result.itemMutation === "updatedExact" && current?.type === "fileChange") Object.assign(current, { changes: result.rawItem.changes });
+      else if (result.itemIndex < turn.items.length) turn.items[result.itemIndex] = result.rawItem as Draft<CodexCanonicalItem>;
+      else turn.items.push(result.rawItem as Draft<CodexCanonicalItem>);
+    }
   }
-
-  const result = reduceCodexMcpToolCallProgressRawTurns(
-    buildCanonicalRawTurns(state),
-    update,
-    context,
-  );
-  const nextState =
-    result.stateChanged && result.turn
-      ? replaceCanonicalTurn(state, result.turnIndex, result.turn)
-      : state;
-  return {
-    state: nextState,
-    disposition: result.disposition,
-    resolutionKind: result.resolutionKind,
-    turnIndex: result.turnIndex,
-    matchedItemIndex: result.matchedItemIndex,
-    stateChanged: nextState !== state,
-  };
+  return { disposition: result.disposition, resolutionKind: result.resolutionKind, turnIndex: result.turnIndex, itemIndex: result.itemIndex, itemMutation: result.itemMutation, stateChanged: result.stateChanged };
+}
+export function mutateCodexConversationMcpToolCallProgress(state: Draft<CodexCanonicalConversationState>, update: CodexMcpToolCallProgressUpdate, context: CodexFileChangeMutationContext): Omit<CodexMcpProgressCanonicalMutationResult, "state"> {
+  if (state.id !== update.conversationId) return { disposition: "foreignConversation", resolutionKind: "none", turnIndex: -1, matchedItemIndex: -1, stateChanged: false };
+  const result = reduceCodexMcpToolCallProgressRawTurns(buildCanonicalRawTurns(state), update, context);
+  if (result.stateChanged && result.turn) applyRawTurnMetadata(state, result.turnIndex, result.turn);
+  return { disposition: result.disposition, resolutionKind: result.resolutionKind, turnIndex: result.turnIndex, matchedItemIndex: result.matchedItemIndex, stateChanged: result.stateChanged };
+}
+export function reduceCodexConversationFileChangePatch(state: CodexCanonicalConversationState, update: CodexFileChangePatchUpdate, context: CodexFileChangeMutationContext): CodexFileChangeCanonicalMutationResult {
+  let operation!: Omit<CodexFileChangeCanonicalMutationResult, "state">;
+  const next = produce(state, (draft) => { operation = mutateCodexConversationFileChangePatch(draft, update, context); });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+export function reduceCodexConversationMcpToolCallProgress(state: CodexCanonicalConversationState, update: CodexMcpToolCallProgressUpdate, context: CodexFileChangeMutationContext): CodexMcpProgressCanonicalMutationResult {
+  let operation!: Omit<CodexMcpProgressCanonicalMutationResult, "state">;
+  const next = produce(state, (draft) => { operation = mutateCodexConversationMcpToolCallProgress(draft, update, context); });
+  return { ...operation, state: next, stateChanged: next !== state };
 }
 
 export function isCodexFileChangePatchUpdatedNotification(

@@ -65,7 +65,12 @@ const build = Effect.fn("CodexMediaTest.build")(function* (
           Layer.succeed(
             CodexConnection,
             CodexConnection.of({
+              readAll: Effect.succeed(
+                new Map([["local", { status: "connected" as const, retries: 0 }]]),
+              ),
+              allChanges: Stream.empty,
               read: Effect.succeed({ status: "connected", retries: 0 }),
+              readForHost: () => Effect.succeed({ status: "connected", retries: 0 }),
               changes: Stream.empty,
             }),
           ),
@@ -193,7 +198,7 @@ it.effect("resolves generated images without leaking transport failures", () =>
     );
     const media = Context.get(context, CodexMedia);
     assert.deepEqual(
-      yield* media.resolveImage({ hostId: "default", pointer: "file-service://file-1" }),
+      yield* media.resolveImage({ hostId: "local", pointer: "file-service://file-1" }),
       { ok: true, dataBase64: "AQID", mimeType: "image/png" },
     );
     assert.deepEqual(

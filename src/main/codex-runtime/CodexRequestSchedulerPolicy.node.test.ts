@@ -2,7 +2,6 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   admitCodexCoalescedWaiter,
   admitCodexScheduledRequest,
-  CODEX_REQUEST_SCHEDULER_BYTE_LIMITS,
   CODEX_REQUEST_SCHEDULER_LIMITS,
   codexRequestBackgroundLane,
   codexRequestCoalescingKey,
@@ -88,7 +87,7 @@ describe("Codex request scheduler method policy", () => {
 
   test("derives background lanes and queue expiry without reading a clock", () => {
     expect(codexRequestBackgroundLane("background", "tail_history")).toBe("thread");
-    expect(codexRequestBackgroundLane("background", "history_export")).toBe("thread");
+    expect(codexRequestBackgroundLane("background", "history_export")).toBe("metadata");
     expect(codexRequestBackgroundLane("background", null)).toBe("metadata");
     expect(codexRequestBackgroundLane("interactive", "tail_history")).toBeNull();
     expect(
@@ -121,7 +120,7 @@ describe("Codex request scheduler method policy", () => {
         timeoutMs: 0,
         nowMs: 1_000,
       }),
-    ).toBe(0);
+    ).toBeNull();
     expect(
       codexRequestQueueExpiryMs({
         priority: "interactive",
@@ -133,9 +132,9 @@ describe("Codex request scheduler method policy", () => {
 });
 
 describe("Codex request coalescing policy", () => {
-  test("uses stable params and every isolation dimension in the key", () => {
+  test("uses serialized request identity independently of caller routing context", () => {
     const first = scheduledRequest("first", {
-      method: "thread/items/list",
+      method: "thread/turns/list",
       params: { turnId: "turn-a", page: { limit: 100, cursor: "next" } },
       priority: "background",
       source: "tail_history",
@@ -150,13 +149,17 @@ describe("Codex request coalescing policy", () => {
     });
     const key = codexRequestCoalescingKey(first);
     expect(key).not.toBeNull();
-    expect(codexRequestCoalescingKey(reordered)).toBe(key);
-
+    expect(codexRequestCoalescingKey(reordered)).not.toBe(key);
     for (const changed of [
       { hostId: "remote" },
       { generation: 2 },
       { conversationId: "thread-b" },
       { widgetId: "widget-b" },
+    ]) {
+      expect(codexRequestCoalescingKey({ ...first, ...changed })).toBe(key);
+    }
+
+    for (const changed of [
       { timeoutMs: 30_000 },
       { source: "thread_hydration" as CodexRequestSchedulingSource },
       { priority: "interactive" as const },
@@ -166,10 +169,10 @@ describe("Codex request coalescing policy", () => {
     }
   });
 
-  test("coalesces selected reads including exact item pages and fails open for unsafe params", () => {
+  test("does not coalesce item pages or mutations and skips unsafe keys", () => {
     expect(
       codexRequestCoalescingKey(scheduledRequest("items", { method: "thread/items/list" })),
-    ).not.toBeNull();
+    ).toBeNull();
     expect(
       codexRequestCoalescingKey(scheduledRequest("mutation", { method: "turn/start" })),
     ).toBeNull();
@@ -189,7 +192,7 @@ describe("Codex request coalescing policy", () => {
     );
   });
 
-  test("admits parameterless protocol requests and keeps omitted params distinct from null", () => {
+  test("admits parameterless requests and treats omitted params like null for coalescing", () => {
     const omittedBytes = codexScheduledRequestBytes("configRequirements/read", undefined);
     expect(omittedBytes).toBe(
       new TextEncoder().encode('{"method":"configRequirements/read"}').byteLength,
@@ -205,22 +208,17 @@ describe("Codex request coalescing policy", () => {
       params: null,
     });
 
-    expect(admitCodexScheduledRequest({ request: omitted, queued: [] })).toEqual({
+    expect(admitCodexScheduledRequest({ request: omitted, queued: [], inFlightCount: 0 })).toEqual({
       accepted: true,
     });
     expect(codexRequestCoalescingKey(omitted)).not.toBeNull();
-    expect(codexRequestCoalescingKey(omitted)).not.toBe(codexRequestCoalescingKey(explicitNull));
+    expect(codexRequestCoalescingKey(omitted)).toBe(codexRequestCoalescingKey(explicitNull));
   });
 
-  test("rejects an oversized request before stable JSON materialization", () => {
-    const oversized = "x".repeat(CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request);
-
-    expect(codexScheduledRequestBytes("thread/read", { oversized })).toBe(
-      CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request + 1,
-    );
-    expect(
-      codexRequestCoalescingKey(scheduledRequest("oversized", { params: { oversized } })),
-    ).toBeNull();
+  test("measures and coalesces large requests without a scheduler byte ceiling", () => {
+    const params = { text: "x".repeat(17 * 1024 * 1024) };
+    expect(codexScheduledRequestBytes("thread/read", params)).toBeGreaterThan(17 * 1024 * 1024);
+    expect(codexRequestCoalescingKey(scheduledRequest("large", { params }))).not.toBeNull();
   });
 
   test("caps logical waiters independently of the physical queue", () => {
@@ -237,31 +235,30 @@ describe("Codex request queue admission", () => {
     ["background", 128],
     ["critical", 16],
     ["interactive", 64],
-  ] as const)(
-    "enforces the %s count cap even while execution capacity is free",
-    (priority, count) => {
-      const queued = queueOf(count, priority);
-      const result = admitCodexScheduledRequest({
-        request: scheduledRequest("candidate", {
-          priority,
-          conversationId: "candidate-thread",
-        }),
-        queued,
-      });
-      expect(result).toMatchObject({
-        accepted: false,
-        rejection: { reason: "priority-queue-full", queuedCount: count, limit: count },
-      });
-    },
-  );
+  ] as const)("enforces the %s count cap when execution capacity is full", (priority, count) => {
+    const queued = queueOf(count, priority);
+    const result = admitCodexScheduledRequest({
+      inFlightCount: 6,
+      request: scheduledRequest("candidate", {
+        priority,
+        conversationId: "candidate-thread",
+      }),
+      queued,
+    });
+    expect(result).toMatchObject({
+      accepted: false,
+      rejection: { reason: "priority-queue-full", queuedCount: count, limit: count },
+    });
+  });
 
-  test("enforces count and byte caps for a conversation/widget group", () => {
+  test("enforces the count cap for a conversation/widget group", () => {
     const group = queueOf(20, "interactive", {
       conversationId: "thread-a",
       widgetId: "widget-a",
     });
     expect(
       admitCodexScheduledRequest({
+        inFlightCount: 6,
         request: scheduledRequest("group-count", {
           conversationId: "thread-a",
           widgetId: "widget-a",
@@ -272,73 +269,48 @@ describe("Codex request queue admission", () => {
       accepted: false,
       rejection: { reason: "group-queue-full", queuedCount: 20 },
     });
+  });
 
-    const groupBytes = queueOf(2, "interactive", {
+  test("does not use retained byte counts as an admission ceiling", () => {
+    const queued = queueOf(2, "interactive", {
       conversationId: "thread-a",
-      widgetId: "widget-a",
-      queuedBytes: CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.groupQueue / 2,
+      queuedBytes: 100 * 1024 * 1024,
     });
     expect(
       admitCodexScheduledRequest({
-        request: scheduledRequest("group-bytes", {
+        request: scheduledRequest("large", {
           conversationId: "thread-a",
-          widgetId: "widget-a",
+          queuedBytes: 100 * 1024 * 1024,
         }),
-        queued: groupBytes,
+        queued,
+        inFlightCount: 6,
       }),
-    ).toMatchObject({
+    ).toEqual({ accepted: true });
+  });
+
+  test("admits critical work at queue pressure while any physical execution slot is free", () => {
+    const queued = queueOf(20, "critical", { conversationId: "thread-a" });
+    const request = scheduledRequest("critical", {
+      priority: "critical",
+      conversationId: "thread-a",
+    });
+    expect(admitCodexScheduledRequest({ request, queued, inFlightCount: 5 })).toEqual({
+      accepted: true,
+    });
+    expect(admitCodexScheduledRequest({ request, queued, inFlightCount: 6 })).toMatchObject({
       accepted: false,
-      rejection: { reason: "group-queue-bytes-full" },
     });
   });
 
-  test("enforces per-request, priority, and host byte budgets with typed reasons", () => {
+  test("global requests use the priority queue cap rather than the conversation group cap", () => {
+    const queued = queueOf(20, "interactive", { conversationId: null, widgetId: null });
     expect(
       admitCodexScheduledRequest({
-        request: scheduledRequest("invalid", { queuedBytes: Number.NaN }),
-        queued: [],
-      }),
-    ).toMatchObject({ accepted: false, rejection: { reason: "invalid-request-bytes" } });
-    expect(
-      admitCodexScheduledRequest({
-        request: scheduledRequest("too-large", {
-          queuedBytes: CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request + 1,
-        }),
-        queued: [],
-      }),
-    ).toMatchObject({ accepted: false, rejection: { reason: "request-too-large" } });
-
-    const priorityBytes = queueOf(2, "interactive", {
-      widgetId: "widget-a",
-      queuedBytes: CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.priorityQueue / 2,
-    });
-    expect(
-      admitCodexScheduledRequest({
-        request: scheduledRequest("priority-bytes", {
-          priority: "interactive",
-          conversationId: "different-thread",
-        }),
-        queued: priorityBytes,
-      }),
-    ).toMatchObject({ accepted: false, rejection: { reason: "priority-queue-bytes-full" } });
-
-    const queued = [
-      ...queueOf(2, "background", {
-        queuedBytes: CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.priorityQueue / 2,
-      }),
-      ...queueOf(2, "interactive", {
-        queuedBytes: CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.priorityQueue / 2,
-      }),
-    ];
-    expect(
-      admitCodexScheduledRequest({
-        request: scheduledRequest("host-bytes", {
-          priority: "critical",
-          conversationId: "critical-thread",
-        }),
+        request: scheduledRequest("global", { conversationId: null }),
         queued,
+        inFlightCount: 6,
       }),
-    ).toMatchObject({ accepted: false, rejection: { reason: "host-queue-bytes-full" } });
+    ).toEqual({ accepted: true });
   });
 });
 

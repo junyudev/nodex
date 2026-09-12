@@ -5,11 +5,16 @@ use crate::agent::AgentBackendBinding;
 use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 29;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 32;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceRead {
+    QueuedMessageState,
+    ThreadReadState {
+        identity_key: String,
+        window: CollectionWindowRequest,
+    },
     ProjectBootstrap,
     ProjectWindow {
         include_archived: Option<bool>,
@@ -81,9 +86,6 @@ pub enum ProjectWorkspaceRead {
     ThreadBackendSession {
         thread_id: String,
     },
-    QueuedFollowUpLedger {
-        thread_id: String,
-    },
     ChildThreadWindow {
         parent_thread_id: String,
         include_archived: Option<bool>,
@@ -126,6 +128,12 @@ pub enum ProjectWorkspaceRead {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceReadValue {
+    QueuedMessageState {
+        state: std::collections::BTreeMap<String, Vec<serde_json::Value>>,
+    },
+    ThreadReadState {
+        entries: CollectionWindow<ThreadUnreadEntry>,
+    },
     ProjectBootstrap {
         bootstrap: ProjectWorkspaceBootstrap,
     },
@@ -189,9 +197,6 @@ pub enum ProjectWorkspaceReadValue {
     },
     ThreadBackendSession {
         session: Option<ProjectWorkspaceThreadBackendSession>,
-    },
-    QueuedFollowUpLedger {
-        ledger: ProjectWorkspaceQueuedFollowUpLedger,
     },
     ChildThreadWindow {
         threads: CollectionWindow<ProjectWorkspaceThreadSummary>,
@@ -424,6 +429,27 @@ pub struct ProjectWorkspaceExecutionContext {
     pub thread: ProjectWorkspaceThread,
     pub project: Option<ProjectWorkspaceProject>,
     pub permission_mode: Option<CodexPermissionMode>,
+    pub workspace_state: Option<ProjectWorkspaceThreadWorkspaceState>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceThreadWorkspace {
+    pub project_sources: Vec<String>,
+    pub cwd: String,
+    pub runtime_workspace_roots: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceThreadWorkspaceState {
+    pub revision: String,
+    pub applied: Option<ProjectWorkspaceThreadWorkspace>,
+    pub pending: Option<ProjectWorkspaceThreadWorkspace>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceThreadWorkspaceTransition {
+    pub revision: String,
+    pub pending: Option<ProjectWorkspaceThreadWorkspace>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1107,50 +1133,25 @@ pub struct ProjectWorkspaceStarterPage {
     pub nfm: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceQueuedFollowUpPayloadRef {
-    pub schema_version: u32,
-    pub asset_uri: String,
-    pub sha256: String,
-    pub byte_length: u64,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum ProjectWorkspaceQueuedFollowUpPause {
-    Interrupted { reason: String },
-    Failed { reason: String },
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceQueuedFollowUpEntry {
-    pub follow_up_id: String,
-    pub client_user_message_id: String,
-    pub created_at_ms: i64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pause: Option<ProjectWorkspaceQueuedFollowUpPause>,
-    pub payload: ProjectWorkspaceQueuedFollowUpPayloadRef,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceQueuedFollowUpLedger {
-    pub thread_id: String,
-    pub revision: i64,
-    pub ledger_hash: String,
-    pub entries: Vec<ProjectWorkspaceQueuedFollowUpEntry>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
-pub struct ProjectWorkspaceQueuedFollowUpLedgerCommit {
-    pub thread_id: String,
-    pub revision: i64,
-    pub ledger_hash: String,
-    pub changed: bool,
-}
-
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceIntent {
+    SetQueuedMessageState {
+        state: std::collections::BTreeMap<String, Vec<serde_json::Value>>,
+    },
+    SelectThreadReadStateIdentity {
+        identity_key: Option<String>,
+        execution_host_keys: std::collections::BTreeMap<String, String>,
+    },
+    SetIdentityThreadUnread {
+        identity_key: String,
+        execution_host_key: String,
+        thread_id: String,
+        unread: bool,
+    },
+    ClearIdentityThreadReadState {
+        identity_key: String,
+    },
     /// A Turn-authorized application command. Core admits only organization intents.
     AgentCommand {
         provenance: Box<crate::agent::AgentTurnProvenance>,
@@ -1342,12 +1343,6 @@ pub enum ProjectWorkspaceIntent {
         thread_id: String,
         prepared_blob_receipt_ids: Vec<String>,
     },
-    CommitQueuedFollowUpLedger {
-        thread_id: String,
-        expected_revision: i64,
-        entries: Vec<ProjectWorkspaceQueuedFollowUpEntry>,
-        prepared_blob_receipt_ids: Vec<String>,
-    },
     ObserveAppServerThreadWindow {
         sweep_id: String,
         thread_ids: Vec<String>,
@@ -1412,9 +1407,16 @@ pub enum ProjectWorkspaceIntent {
         placement: ProjectWorkspaceThreadPlacement,
         metadata: ProjectWorkspaceThreadMoveMetadataPatch,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        workspace_transition: Option<ProjectWorkspaceThreadWorkspaceTransition>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         runtime_workspace_roots: Option<Vec<String>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         project_access_grant: Option<ProjectWorkspaceThreadMoveProjectAccessGrant>,
+    },
+    CommitThreadWorkspaceTransition {
+        thread_id: String,
+        revision: String,
+        workspace: ProjectWorkspaceThreadWorkspace,
     },
     SetThreadUnread {
         thread_id: String,
@@ -1502,8 +1504,6 @@ pub struct ProjectWorkspaceCommitValue {
     pub affected_project_ids: Vec<String>,
     pub affected_session_ids: Vec<String>,
     pub affected_thread_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub queued_follow_up_ledger: Option<ProjectWorkspaceQueuedFollowUpLedgerCommit>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
@@ -1570,9 +1570,7 @@ mod tests {
 
     use super::{
         ProjectAppearance, ProjectMarker, ProjectMarkerColor, ProjectMarkerIcon,
-        ProjectWorkspaceIntent, ProjectWorkspaceQueuedFollowUpEntry,
-        ProjectWorkspaceQueuedFollowUpPause, ProjectWorkspaceQueuedFollowUpPayloadRef,
-        ProjectWorkspaceThreadLane, ProjectWorkspaceThreadPlacement,
+        ProjectWorkspaceIntent, ProjectWorkspaceThreadLane, ProjectWorkspaceThreadPlacement,
     };
 
     #[test]
@@ -1725,33 +1723,10 @@ mod tests {
             }
         );
     }
+}
 
-    #[test]
-    fn queued_follow_up_contract_keeps_queue_and_wire_identities_distinct() {
-        let intent = ProjectWorkspaceIntent::CommitQueuedFollowUpLedger {
-            prepared_blob_receipt_ids: Vec::new(),
-            thread_id: "thread-1".to_owned(),
-            expected_revision: 7,
-            entries: vec![ProjectWorkspaceQueuedFollowUpEntry {
-                follow_up_id: "follow-up-1".to_owned(),
-                client_user_message_id: "message-1".to_owned(),
-                created_at_ms: 42,
-                pause: Some(ProjectWorkspaceQueuedFollowUpPause::Interrupted {
-                    reason: "Interrupted before the steer was accepted.".to_owned(),
-                }),
-                payload: ProjectWorkspaceQueuedFollowUpPayloadRef {
-                    schema_version: 2,
-                    asset_uri: format!("nodex://assets/{}.blob", "a".repeat(64)),
-                    sha256: "a".repeat(64),
-                    byte_length: 123,
-                },
-            }],
-        };
-        let encoded = serde_json::to_value(intent).expect("queued follow-up intent");
-        assert_eq!(encoded["kind"], "commit_queued_follow_up_ledger");
-        assert_eq!(encoded["entries"][0]["follow_up_id"], "follow-up-1");
-        assert_eq!(encoded["entries"][0]["client_user_message_id"], "message-1");
-        assert_eq!(encoded["entries"][0]["pause"]["kind"], "interrupted");
-        assert_eq!(encoded["entries"][0]["payload"]["schema_version"], 2);
-    }
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ThreadUnreadEntry {
+    pub execution_host_key: String,
+    pub thread_id: String,
 }

@@ -1393,7 +1393,11 @@ export function WorkbenchRuntime({
     [processManagerThreads],
   );
   const processManagerConversationsById = useConversationSubset(processManagerThreadIds);
-  const workbenchCodexControl = useCodexAppServerControl(activeProject?.id ?? activeProjectId);
+  const workbenchCodexControl = useCodexAppServerControl(
+    activeProject?.id ?? activeProjectId,
+    activeSession?.thread?.threadId ?? null,
+    activeSession?.thread?.executionHostId ?? null,
+  );
   const sceneCommands = useWorkbenchSceneCommands(
     workbenchWindow.owner,
     windowSessionId,

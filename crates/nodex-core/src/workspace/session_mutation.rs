@@ -656,7 +656,6 @@ pub(super) fn finish_session_mutation(
             view_ids: Vec::new(),
             document_heads: Vec::new(),
             committed_at,
-            queued_follow_up_ledger: None,
         },
     )
 }

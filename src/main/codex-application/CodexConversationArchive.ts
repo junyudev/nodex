@@ -3,7 +3,6 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import { isCodexAgentBackendBinding } from "../../shared/agent-backend";
-import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import type { CodexThreadSummary } from "../../shared/types";
 import { AutomationApplication } from "../automation-application/AutomationApplication";
 import {
@@ -27,12 +26,14 @@ import {
   type ProjectWorkspaceError,
 } from "../project-application/ProjectWorkspace";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
+import { CodexConversationLifecycle } from "./CodexConversationLifecycle";
 import { CodexHistoryPageAdapter } from "./CodexHistoryPageAdapter";
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import {
   CodexSubagentDirectory,
   type CodexSubagentLifecycleSnapshot,
 } from "./CodexSubagentDirectory";
-import { buildWorkspaceThreadSummary } from "./CodexThreadCatalogProjection";
+import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { ManagedWorktreeRuntime } from "./ManagedWorktreeRuntime";
 import { NodexAgentAuthorizationRuntime } from "./NodexAgentAuthorizationRuntime";
@@ -96,9 +97,12 @@ export const make: Effect.Effect<
   | AutomationRoutingIndex
   | CodexApplicationEventHub
   | CodexAppServerCapabilities
+  | CodexConversationLifecycle
   | CodexGateway
   | CodexHistoryPageAdapter
+  | CodexMainConversationManagers
   | CodexSubagentDirectory
+  | CodexThreadDirectory
   | ConversationEntityMap
   | ManagedWorktreeRuntime
   | NodexAgentAuthorizationRuntime
@@ -109,9 +113,12 @@ export const make: Effect.Effect<
   const automationRouting = yield* AutomationRoutingIndex;
   const events = yield* CodexApplicationEventHub;
   const capabilities = yield* CodexAppServerCapabilities;
+  const conversationLifecycle = yield* CodexConversationLifecycle;
   const gateway = yield* CodexGateway;
   const historyPages = yield* CodexHistoryPageAdapter;
+  const mainManagers = yield* CodexMainConversationManagers;
   const subagents = yield* CodexSubagentDirectory;
+  const threadDirectory = yield* CodexThreadDirectory;
   const conversations = yield* ConversationEntityMap;
   const managedWorktrees = yield* ManagedWorktreeRuntime;
   const authorizations = yield* NodexAgentAuthorizationRuntime;
@@ -135,6 +142,37 @@ export const make: Effect.Effect<
       try: () => resolveWorktreePathComparisonKey(value),
       catch: (cause) => fail("archive-worktree", threadId, cause),
     });
+
+  const prepareOwnedThreadForUnarchive = Effect.fn(
+    "CodexConversationArchive.prepareOwnedThreadForUnarchive",
+  )(function* (thread: DesktopProjectWorkspaceThread) {
+    const manager = mainManagers.current(thread.executionHostId);
+    if (manager?.stream.getRole(thread.threadId)?.role !== "owner") return;
+    const generation = manager.generation;
+    yield* Effect.try({
+      try: () => manager.assertCurrent(generation),
+      catch: (cause) => fail("unarchive", thread.threadId, cause),
+    });
+    yield* gateway
+      .requestOnHost(
+        thread.executionHostId,
+        "thread/unsubscribe",
+        { threadId: thread.threadId },
+        {
+          expectedHostId: thread.executionHostId,
+          expectedGeneration: generation,
+          conversationId: thread.threadId,
+        },
+      )
+      .pipe(Effect.mapError((cause) => fail("unarchive", thread.threadId, cause)));
+    yield* Effect.try({
+      try: () => {
+        manager.assertCurrent(generation);
+        manager.stream.removeConversation(thread.threadId);
+      },
+      catch: (cause) => fail("unarchive", thread.threadId, cause),
+    });
+  });
 
   const reconcilePhysicalLifecycle = Effect.fn(
     "CodexConversationArchive.reconcilePhysicalLifecycle",
@@ -446,13 +484,16 @@ export const make: Effect.Effect<
           workspace.setThreadArchived(normalizedThreadId, true),
         );
         yield* retireRemoteHostedPip("archive", reconciled.settledThreadIds);
-        conversations.current(normalizedThreadId)?.setHasUnreadTurn(false, true);
+        yield* conversationLifecycle.close(
+          normalizedThreadId,
+          new Error(`Codex Thread '${normalizedThreadId}' was archived`),
+        );
         if (thread.hasUnreadTurn) {
           events.publish({
             kind: "hostMessage",
             value: {
               type: "threadReadStateChanged",
-              hostId: DEFAULT_CODEX_HOST_ID,
+              hostId: thread.executionHostId,
               conversationId: normalizedThreadId,
               hasUnreadTurn: false,
             },
@@ -536,7 +577,10 @@ export const make: Effect.Effect<
         yield* authorizations.revokeRoot(normalizedThreadId);
         yield* project("delete", normalizedThreadId, workspace.deleteThread(normalizedThreadId));
         yield* retireRemoteHostedPip("delete", reconciled.settledThreadIds);
-        conversations.current(normalizedThreadId)?.setHasUnreadTurn(false, true);
+        yield* conversationLifecycle.close(
+          normalizedThreadId,
+          new Error(`Codex Thread '${normalizedThreadId}' was deleted`),
+        );
         events.publish({
           kind: "codex",
           value: { type: "threadDeleted", threadId: normalizedThreadId },
@@ -566,6 +610,7 @@ export const make: Effect.Effect<
             new Error("Thread is not owned by the native Codex backend"),
           );
         }
+        yield* prepareOwnedThreadForUnarchive(existing);
         yield* gateway
           .requestForThread(normalizedThreadId, "thread/unarchive", {
             threadId: normalizedThreadId,
@@ -576,13 +621,20 @@ export const make: Effect.Effect<
           normalizedThreadId,
           workspace.setThreadArchived(normalizedThreadId, false),
         );
-        const persisted = yield* project(
-          "unarchive",
-          normalizedThreadId,
-          workspace.getThread(normalizedThreadId),
-        );
-        if (!persisted) return null;
-        const summary = buildWorkspaceThreadSummary(persisted);
+        const hydrated = yield* threadDirectory
+          .refreshMetadataInCurrentLane({
+            threadId: normalizedThreadId,
+            hostId: existing.executionHostId,
+          })
+          .pipe(Effect.mapError((cause) => fail("unarchive", normalizedThreadId, cause)));
+        if (!hydrated) {
+          return yield* fail(
+            "unarchive",
+            normalizedThreadId,
+            new Error("Unarchived Thread could not be loaded"),
+          );
+        }
+        const summary = hydrated.summary;
         events.publish({ kind: "codex", value: { type: "threadSummary", thread: summary } });
         events.publish({
           kind: "codex",

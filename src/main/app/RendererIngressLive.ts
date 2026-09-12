@@ -12,6 +12,7 @@ import * as BrowserSidebarIpc from "../ipc/handlers/BrowserSidebarIpc";
 import * as ComposerAppshotIpc from "../ipc/handlers/ComposerAppshotIpc";
 import * as CodexApplicationIpc from "../ipc/handlers/CodexApplicationIpc";
 import * as CodexRendererIpc from "../ipc/handlers/CodexRendererIpc";
+import * as CodexConversationServiceIpc from "../ipc/handlers/CodexConversationServiceIpc";
 import * as CodexPermissionsIpc from "../ipc/handlers/CodexPermissionsIpc";
 import * as ChromeControlSettingsIpc from "../ipc/handlers/ChromeControlSettingsIpc";
 import * as ComputerUseSettingsIpc from "../ipc/handlers/ComputerUseSettingsIpc";
@@ -22,7 +23,6 @@ import * as AgentBackendIpc from "../ipc/handlers/AgentBackendIpc";
 import * as AutomationIpc from "../ipc/handlers/AutomationIpc";
 import * as AvatarOverlayIpc from "../ipc/handlers/AvatarOverlayIpc";
 import * as CodexPendingWorktreeIpc from "../ipc/handlers/CodexPendingWorktreeIpc";
-import * as CodexPromptRailIpc from "../ipc/handlers/CodexPromptRailIpc";
 import * as CodexWorkspaceIpc from "../ipc/handlers/CodexWorkspaceIpc";
 import * as CoreDocumentIpc from "../ipc/handlers/CoreDocumentIpc";
 import * as DocumentRecoveryIpc from "../ipc/handlers/DocumentRecoveryIpc";
@@ -70,6 +70,7 @@ export const live = Layer.mergeAll(
   ComposerAppshotIpc.live,
   CodexApplicationIpc.live,
   CodexRendererIpc.live,
+  CodexConversationServiceIpc.live,
   CodexRendererProjectionRuntime.live,
   CodexThreadNotificationRuntime.live,
   CodexPermissionsIpc.live,
@@ -84,7 +85,6 @@ export const live = Layer.mergeAll(
   AutomationIpc.live,
   CodexPendingWorktreeIpc.live,
   CodexThreadHandoffIpc.live,
-  CodexPromptRailIpc.live(),
   CodexWorkspaceIpc.live,
   CoreDocumentIpc.live,
   CoreMutationIpc.live,

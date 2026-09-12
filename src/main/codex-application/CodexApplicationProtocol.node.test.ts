@@ -1,3 +1,4 @@
+import { CodexResumeIngress, make as makeResumeIngress } from "./CodexResumeIngress";
 import { assert, it } from "@effect/vitest";
 import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import { CodexAppServerNoResponse } from "@nodex/effect-codex-app-server/protocol";
@@ -15,6 +16,7 @@ import {
 } from "../codex-runtime/CodexApplicationRequestInbox";
 import {
   CodexApplicationEventHub,
+  type CodexApplicationEvent,
   make as makeApplicationEvents,
 } from "./CodexApplicationEventHub";
 import { CodexAppProtocolTools } from "./CodexAppProtocolTools";
@@ -29,14 +31,11 @@ import {
 } from "./CodexPendingServerRequestRuntime";
 import { CodexNotificationAdmission } from "./CodexNotificationAdmission";
 import { CodexProtocolNotificationEffects } from "./CodexProtocolNotificationEffects";
+import { CodexMainConversationManagers } from "./CodexMainConversationManagers";
 import {
-  CodexRendererConversationCoordinator,
-  type CodexRendererConversationCoordinatorService,
-} from "./CodexRendererConversationCoordinator";
-import {
-  CodexRendererConversationRegistry,
+  CodexRendererPresentationRegistry,
   make as makeRendererRegistry,
-} from "./CodexRendererConversationRegistry";
+} from "./CodexRendererPresentationRegistry";
 import {
   CodexUserInputAutoResolution,
   make as makeAutoResolution,
@@ -53,13 +52,12 @@ import {
 } from "./ThreadCreationRuntime";
 import { NodexAgentProtocolTools } from "../nodex-agent-application/NodexAgentProtocolTools";
 import { MainShutdown, layer as mainShutdownLayer } from "../app/MainShutdown";
-
-const coordinator = CodexRendererConversationCoordinator.of({
-  forwardNotificationForConversation: () => false,
-  forwardServerRequest: () => false,
-  clearRequestDelivery: () => undefined,
-  reconcileOwnership: () => undefined,
-} as unknown as CodexRendererConversationCoordinatorService);
+import { createCodexCanonicalConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
+import {
+  AGENT_ACTIVITY_V2_CORPUS_THREAD_ID,
+  AGENT_ACTIVITY_V2_CORPUS_TURN_ID,
+  buildAgentActivityV2CorpusThread,
+} from "../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-corpus-provenance";
 
 const userInputParams = (threadId: string) => ({
   isBlocking: true,
@@ -90,40 +88,97 @@ const directDynamicToolParams = (threadId: string) => ({
   arguments: { step: "complete" },
 });
 
+const browserOriginAutoAcceptParams = {
+  threadId: AGENT_ACTIVITY_V2_CORPUS_THREAD_ID,
+  turnId: AGENT_ACTIVITY_V2_CORPUS_TURN_ID,
+  serverName: "browser-use",
+  mode: "form" as const,
+  _meta: {
+    codex_approval_kind: "mcp_tool_call",
+    connector_id: "browser-use",
+    tool_name: "access_browser_origin",
+    tool_params: { origin: "https://example.com" },
+  },
+  message: "Allow browser origin",
+  requestedSchema: { type: "object" as const, properties: {} },
+};
+
+const browserOriginAutoAcceptState = () =>
+  createCodexCanonicalConversationState(buildAgentActivityV2CorpusThread([]), {
+    hostId: "local",
+    turnParamsById: {
+      [AGENT_ACTIVITY_V2_CORPUS_TURN_ID]: {
+        threadId: AGENT_ACTIVITY_V2_CORPUS_THREAD_ID,
+        input: [],
+        approvalPolicy: "never",
+        approvalsReviewer: "user",
+        sandboxPolicy: { type: "dangerFullAccess" },
+        model: "fixture-model",
+        cwd: "/workspace/project",
+        attachments: [],
+        effort: "high",
+        summary: "none",
+        personality: null,
+        outputSchema: null,
+        collaborationMode: null,
+      },
+    },
+  });
+
 const withProtocol = <A, E>(
   run: (services: {
     readonly inbox: CodexApplicationRequestInbox["Service"];
     readonly conversations: ConversationEntityMap["Service"];
+    readonly publishedEvents: CodexApplicationEvent[];
     readonly appliedNotifications: string[];
     readonly appliedThreadStartedTurns: (readonly unknown[])[];
     readonly appliedTurnStartedItems: (readonly unknown[])[];
     readonly protocol: CodexApplicationProtocol["Service"];
     readonly executedDynamicTools: string[];
-    readonly forwardedRequests: unknown[];
     readonly threadStarts: ThreadCreationRuntime["Service"];
     readonly autoResolution: CodexUserInputAutoResolution["Service"];
   }) => Effect.Effect<A, E>,
+  options: { readonly streamRole?: "owner" | "follower" } = {},
 ) =>
   Effect.gen(function* () {
     const rootScope = yield* Scope.make();
     const shutdownContext = yield* Layer.buildWithScope(mainShutdownLayer, rootScope);
     const shutdown = Context.get(shutdownContext, MainShutdown);
-    const inbox = yield* makeInbox.pipe(Effect.provideService(Scope.Scope, rootScope));
+    const nativeInbox = yield* makeInbox.pipe(Effect.provideService(Scope.Scope, rootScope));
+    let activeGeneration = 0;
+    const inbox = CodexApplicationRequestInbox.of({
+      ...nativeInbox,
+      openGeneration: (hostId, generation) =>
+        Effect.suspend(() => {
+          activeGeneration = generation;
+          return nativeInbox.openGeneration(hostId, generation);
+        }),
+    });
     const conversationContext = yield* Layer.buildWithScope(conversationRuntimeMapLive, rootScope);
     const conversations = Context.get(conversationContext, ConversationEntityMap);
     const applicationEvents = yield* makeApplicationEvents.pipe(
       Effect.provideService(Scope.Scope, rootScope),
     );
+    const publishedEvents: CodexApplicationEvent[] = [];
+    const observedApplicationEvents = CodexApplicationEventHub.of({
+      ...applicationEvents,
+      publish: (event) => {
+        publishedEvents.push(event);
+        applicationEvents.publish(event);
+      },
+    });
     const oneShotContext = yield* Layer.buildWithScope(oneShotServerRequestsLive, rootScope);
     const oneShot = Context.get(oneShotContext, CodexOneShotServerRequests);
-    const rendererRegistry = yield* makeRendererRegistry().pipe(
+    const rendererRegistry = yield* makeRendererRegistry.pipe(
       Effect.provideService(Scope.Scope, rootScope),
     );
     const autoResolution = yield* makeAutoResolution.pipe(
-      Effect.provideService(CodexRendererConversationRegistry, rendererRegistry),
+      Effect.provideService(CodexRendererPresentationRegistry, rendererRegistry),
       Effect.provideService(Scope.Scope, rootScope),
     );
     const pending = yield* makePending({
+      abandon: (_threadId, _requestId, occurrenceToken) =>
+        inbox.settleOccurrenceToken(occurrenceToken, { kind: "abandon" }),
       respond: (_threadId, _requestId, occurrenceToken, response) =>
         inbox.settleOccurrenceToken(occurrenceToken, { kind: "result", value: response }),
       reject: (_threadId, requestId, occurrenceToken, cause) =>
@@ -140,7 +195,6 @@ const withProtocol = <A, E>(
       create: () => Effect.succeed({ items: [] }),
     });
     const executedDynamicTools: string[] = [];
-    const forwardedRequests: unknown[] = [];
     const nodexAgentTools = NodexAgentProtocolTools.of({
       execute: (params) =>
         Effect.sync(() => {
@@ -197,8 +251,12 @@ const withProtocol = <A, E>(
       Effect.provideService(Scope.Scope, rootScope),
     );
 
+    const resumeIngress = yield* makeResumeIngress.pipe(
+      Effect.provideService(Scope.Scope, rootScope),
+    );
     const protocol = yield* makeProtocol.pipe(
-      Effect.provideService(CodexApplicationEventHub, applicationEvents),
+      Effect.provideService(CodexResumeIngress, resumeIngress),
+      Effect.provideService(CodexApplicationEventHub, observedApplicationEvents),
       Effect.provideService(CodexAppProtocolTools, codexAppTools),
       Effect.provideService(CodexApplicationRequestInbox, inbox),
       Effect.provideService(CodexAutomationInbox, automationInbox),
@@ -206,14 +264,15 @@ const withProtocol = <A, E>(
       Effect.provideService(CodexOneShotServerRequests, oneShot),
       Effect.provideService(CodexPendingServerRequestRuntime, pending),
       Effect.provideService(CodexProtocolNotificationEffects, notificationEffects),
-      Effect.provideService(CodexRendererConversationCoordinator, {
-        ...coordinator,
-        forwardServerRequest: (request) => {
-          forwardedRequests.push(request);
-          return false;
-        },
-      }),
-      Effect.provideService(CodexRendererConversationRegistry, rendererRegistry),
+      Effect.provideService(CodexMainConversationManagers, {
+        current: () => ({
+          generation: activeGeneration,
+          stream: {
+            getRole: () => ({ role: options.streamRole ?? "owner" }),
+            shouldHandleDynamicToolCall: () => true,
+          },
+        }),
+      } as unknown as CodexMainConversationManagers["Service"]),
       Effect.provideService(ThreadCreationRuntime, threadStarts),
       Effect.provideService(CodexUserInputAutoResolution, autoResolution),
       Effect.provideService(ConversationEntityMap, conversations),
@@ -235,6 +294,7 @@ const withProtocol = <A, E>(
     );
 
     const result = yield* run({
+      publishedEvents,
       autoResolution,
       appliedNotifications,
       appliedThreadStartedTurns,
@@ -243,7 +303,6 @@ const withProtocol = <A, E>(
       conversations,
       protocol,
       executedDynamicTools,
-      forwardedRequests,
       threadStarts,
     }).pipe(Effect.provideService(Scope.Scope, rootScope));
     yield* Scope.close(rootScope, Exit.void);
@@ -253,6 +312,7 @@ const withProtocol = <A, E>(
 it.effect("replays bounded lifecycle metadata after its local materialization commits", () =>
   withProtocol(
     ({
+      publishedEvents,
       appliedNotifications,
       appliedThreadStartedTurns,
       appliedTurnStartedItems,
@@ -276,7 +336,7 @@ it.effect("replays bounded lifecycle metadata after its local materialization co
               {
                 id: "poison-item",
                 type: "agentMessage",
-                text: "must never enter the deferred thread-start buffer",
+                text: "x".repeat(2 * 1024 * 1024 + 1),
               },
             ],
           },
@@ -334,6 +394,31 @@ it.effect("replays bounded lifecycle metadata after its local materialization co
           },
         });
         yield* Effect.yieldNow;
+        for (
+          let attempt = 0;
+          attempt < 1_000 &&
+          !publishedEvents.some(
+            (event) => event.kind === "hostMessage" && event.value.type === "nativeNotification",
+          );
+          attempt += 1
+        )
+          yield* Effect.yieldNow;
+        const rawThreadStart = publishedEvents.find(
+          (event) =>
+            event.kind === "hostMessage" &&
+            event.value.type === "nativeNotification" &&
+            event.value.notification.method === "thread/started",
+        );
+        assert.ok(
+          rawThreadStart?.kind === "hostMessage" &&
+            rawThreadStart.value.type === "nativeNotification" &&
+            rawThreadStart.value.notification.method === "thread/started",
+        );
+        assert.strictEqual(rawThreadStart.value.generation, 8);
+        assert.deepEqual<readonly unknown[]>(
+          rawThreadStart.value.notification.params.thread.turns,
+          poisonTurns,
+        );
         assert.deepEqual(appliedNotifications, []);
         assert.deepEqual(appliedThreadStartedTurns, []);
         assert.deepEqual(appliedTurnStartedItems, []);
@@ -392,6 +477,45 @@ it.effect(
     ),
 );
 
+it.effect("routes remote interactive request notifications through their execution host", () =>
+  withProtocol(({ inbox, publishedEvents }) =>
+    Effect.gen(function* () {
+      const generationScope = yield* Scope.make();
+      const generation = yield* inbox
+        .openGeneration("ssh:builder", 4)
+        .pipe(Effect.provideService(Scope.Scope, generationScope));
+
+      yield* generation.admit({
+        requestId: "remote-input",
+        protocol: "generated",
+        method: "item/tool/requestUserInput",
+        params: userInputParams("remote-thread"),
+      });
+      for (
+        let index = 0;
+        index < 20 && !publishedEvents.some((event) => event.kind === "threadNotification");
+        index += 1
+      ) {
+        yield* Effect.yieldNow;
+      }
+
+      const notification = publishedEvents.find(
+        (event) =>
+          event.kind === "threadNotification" && event.value.type === "user-input-requested",
+      );
+      assert.isDefined(notification);
+      if (
+        notification?.kind === "threadNotification" &&
+        notification.value.type === "user-input-requested"
+      ) {
+        assert.strictEqual(notification.value.hostId, "ssh:builder");
+        assert.strictEqual(notification.value.conversation.conversationId, "remote-thread");
+      }
+      yield* Scope.close(generationScope, Exit.void);
+    }),
+  ),
+);
+
 it.effect("retires the exact Conversation Entity after a terminal notification commits", () =>
   withProtocol(({ inbox, conversations }) =>
     Effect.gen(function* () {
@@ -417,13 +541,146 @@ it.effect("retires the exact Conversation Entity after a terminal notification c
 );
 
 it.effect.each([
+  { streamRole: "owner" as const, expectedKind: "result" as const },
+  { streamRole: "follower" as const, expectedKind: "abandon" as const },
+])(
+  "conditionally auto-accepts browser-origin MCP elicitation as $streamRole",
+  ({ streamRole, expectedKind }) =>
+    withProtocol(
+      ({ inbox, conversations }) =>
+        Effect.gen(function* () {
+          const generationScope = yield* Scope.make();
+          const generation = yield* inbox
+            .openGeneration("local", 21)
+            .pipe(Effect.provideService(Scope.Scope, generationScope));
+          conversations
+            .entity(AGENT_ACTIVITY_V2_CORPUS_THREAD_ID)
+            .installFollowerCanonicalState(browserOriginAutoAcceptState());
+          const settled = yield* generation.settlements.pipe(Stream.runHead, Effect.forkChild);
+          yield* generation.admit({
+            requestId: `browser-auto-${streamRole}`,
+            protocol: "generated",
+            method: "mcpServer/elicitation/request",
+            params: browserOriginAutoAcceptParams,
+          });
+
+          const settlement = yield* Fiber.join(settled);
+          assert.strictEqual(settlement._tag, "Some");
+          if (settlement._tag === "Some") {
+            assert.strictEqual(settlement.value.outcome.kind, expectedKind);
+            if (settlement.value.outcome.kind === "result") {
+              assert.deepEqual(settlement.value.outcome.value, {
+                action: "accept",
+                content: {},
+                _meta: null,
+              });
+            }
+          }
+          assert.deepEqual(
+            conversations.entity(AGENT_ACTIVITY_V2_CORPUS_THREAD_ID).readServerRequests(),
+            [],
+          );
+          yield* Scope.close(generationScope, Exit.void);
+        }),
+      { streamRole },
+    ),
+);
+
+it.effect("declines the private MCP user-verification mode before canonical storage", () =>
+  withProtocol(({ inbox, conversations }) =>
+    Effect.gen(function* () {
+      const generationScope = yield* Scope.make();
+      const generation = yield* inbox
+        .openGeneration("local", 22)
+        .pipe(Effect.provideService(Scope.Scope, generationScope));
+      const settled = yield* generation.settlements.pipe(Stream.runHead, Effect.forkChild);
+      yield* generation.admit({
+        requestId: "private-user-verification",
+        protocol: "extension",
+        method: "mcpServer/elicitation/request",
+        params: {
+          threadId: "thread-private-verification",
+          turnId: "turn-private-verification",
+          serverName: "browser-use",
+          mode: "openai/userVerification",
+          _meta: { verificationUrl: "https://example.com" },
+        },
+      });
+
+      const settlement = yield* Fiber.join(settled);
+      assert.strictEqual(settlement._tag, "Some");
+      if (settlement._tag === "Some") {
+        assert.deepEqual(settlement.value.outcome, {
+          kind: "result",
+          value: { action: "decline", content: null, _meta: null },
+        });
+      }
+      assert.deepEqual(
+        conversations.entity("thread-private-verification").readServerRequests(),
+        [],
+      );
+      yield* Scope.close(generationScope, Exit.void);
+    }),
+  ),
+);
+
+it.effect.each([
+  { autoResolutionMs: 5_000, tracked: true },
+  { autoResolutionMs: 300_000, tracked: true },
+  { autoResolutionMs: 4_999, tracked: false },
+  { autoResolutionMs: 300_001, tracked: false },
+  { autoResolutionMs: 5_000.5, tracked: false },
+])(
+  "tracks MCP auto-resolution only for exact bounded integer metadata",
+  ({ autoResolutionMs, tracked }) =>
+    withProtocol(({ inbox, autoResolution, conversations }) =>
+      Effect.gen(function* () {
+        const generationScope = yield* Scope.make();
+        const generation = yield* inbox
+          .openGeneration("local", 23)
+          .pipe(Effect.provideService(Scope.Scope, generationScope));
+        const threadId = `thread-mcp-auto-${String(autoResolutionMs).replace(".", "-")}`;
+        yield* generation.admit({
+          requestId: `mcp-auto-${String(autoResolutionMs)}`,
+          protocol: "generated",
+          method: "mcpServer/elicitation/request",
+          params: {
+            threadId,
+            turnId: null,
+            serverName: "fixture",
+            mode: "form",
+            _meta: { autoResolutionMs, extra: "allowed" },
+            message: "Choose",
+            requestedSchema: { type: "object", properties: {} },
+          },
+        });
+        for (
+          let attempt = 0;
+          attempt < 1_000 && conversations.entity(threadId).readServerRequests().length === 0;
+          attempt += 1
+        ) {
+          yield* Effect.yieldNow;
+        }
+        assert.lengthOf(conversations.entity(threadId).readServerRequests(), 1);
+
+        const entry = (yield* autoResolution.snapshot).find(
+          (candidate) => candidate.conversationId === threadId,
+        );
+        assert.strictEqual(entry !== undefined, tracked);
+        if (tracked) assert.strictEqual(entry?.phase.type, "scheduled");
+        yield* Scope.close(generationScope, Exit.void);
+      }),
+    ),
+);
+
+it.effect.each([
   { namespace: "nodex_app", tool: "get_context", message: /native MCP/ },
   { namespace: "codex_app", tool: "create_thread", message: /native MCP/ },
   { namespace: "codex_app", tool: "automation_update", message: /native MCP/ },
   { namespace: "codex_app", tool: "read_thread_terminal", message: /native MCP/ },
   { namespace: "codex_app", tool: "setup_codex_step", message: /unavailable/ },
 ])("rejects retired local $namespace.$tool before dispatch or renderer storage", (input) =>
-  withProtocol(({ inbox, conversations, executedDynamicTools, forwardedRequests }) =>
+  withProtocol(({ inbox, conversations, executedDynamicTools }) =>
     Effect.gen(function* () {
       const generationScope = yield* Scope.make();
       const generation = yield* inbox
@@ -456,7 +713,6 @@ it.effect.each([
         }
       }
       assert.deepEqual(executedDynamicTools, []);
-      assert.deepEqual(forwardedRequests, []);
       assert.deepEqual(conversations.entity("thread-a").readServerRequests(), []);
       yield* Scope.close(generationScope, Exit.void);
     }),
@@ -518,45 +774,75 @@ it.effect("lets another Thread respond while the first Thread command lane is oc
   ),
 );
 
-it.effect("keeps one-shot requests outside a blocked Thread command lane", () =>
-  withProtocol(({ inbox, conversations }) =>
-    Effect.gen(function* () {
-      const generationScope = yield* Scope.make();
-      const generation = yield* inbox
-        .openGeneration("local", 5)
-        .pipe(Effect.provideService(Scope.Scope, generationScope));
-      const laneEntered = yield* Deferred.make<void>();
-      const releaseLane = yield* Deferred.make<void>();
-      const blocker = yield* conversations
-        .runCommand(
-          "thread-a",
-          Deferred.succeed(laneEntered, undefined).pipe(
-            Effect.andThen(Deferred.await(releaseLane)),
-          ),
-        )
-        .pipe(Effect.forkChild);
-      yield* Deferred.await(laneEntered);
-      const settled = yield* generation.settlements.pipe(Stream.runHead, Effect.forkChild);
-      yield* generation.admit({
-        requestId: "time",
-        protocol: "generated",
-        method: "currentTime/read",
-        params: { threadId: "thread-a" },
-      });
+it.effect(
+  "leaves current-time responses to the renderer outside a blocked Thread command lane",
+  () =>
+    withProtocol(({ inbox, conversations, publishedEvents }) =>
+      Effect.gen(function* () {
+        const generationScope = yield* Scope.make();
+        const generation = yield* inbox
+          .openGeneration("local", 5)
+          .pipe(Effect.provideService(Scope.Scope, generationScope));
+        const laneEntered = yield* Deferred.make<void>();
+        const releaseLane = yield* Deferred.make<void>();
+        const blocker = yield* conversations
+          .runCommand(
+            "thread-a",
+            Deferred.succeed(laneEntered, undefined).pipe(
+              Effect.andThen(Deferred.await(releaseLane)),
+            ),
+          )
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(laneEntered);
+        const settled = yield* generation.settlements.pipe(Stream.runHead, Effect.forkChild);
+        const occurrence = yield* generation.admit({
+          requestId: "time",
+          protocol: "generated",
+          method: "currentTime/read",
+          params: { threadId: "thread-a" },
+        });
+        for (let index = 0; index < 20 && publishedEvents.length === 0; index += 1) {
+          yield* Effect.yieldNow;
+        }
 
-      const settlement = yield* Fiber.join(settled);
-      assert.strictEqual(settlement._tag, "Some");
-      if (settlement._tag === "Some") {
-        assert.strictEqual(settlement.value.outcome.kind, "result");
-      }
-      yield* Deferred.succeed(releaseLane, undefined);
-      yield* Fiber.join(blocker);
-      yield* Scope.close(generationScope, Exit.void);
-    }),
-  ),
+        assert.isUndefined(settled.pollUnsafe());
+        const nativeRequests = publishedEvents.filter(
+          (event) => event.kind === "hostMessage" && event.value.type === "nativeRequest",
+        );
+        assert.strictEqual(nativeRequests.length, 1);
+        const published = nativeRequests[0];
+        assert.isDefined(published);
+        if (published?.kind === "hostMessage" && published.value.type === "nativeRequest") {
+          assert.strictEqual(published.value.hostId, "local");
+          assert.strictEqual(published.value.generation, 5);
+          assert.strictEqual(published.value.occurrenceId, occurrence.occurrenceId);
+          assert.strictEqual(published.value.occurrenceToken, occurrence.occurrenceToken);
+          assert.strictEqual(published.value.request.id, "time");
+          assert.strictEqual(published.value.request.method, "currentTime/read");
+        }
+        assert.isTrue(
+          yield* inbox.settle(occurrence, {
+            kind: "result",
+            value: { currentTimeAt: 123 },
+          }),
+        );
+
+        const settlement = yield* Fiber.join(settled);
+        assert.strictEqual(settlement._tag, "Some");
+        if (settlement._tag === "Some") {
+          assert.deepEqual(settlement.value.outcome, {
+            kind: "result",
+            value: { currentTimeAt: 123 },
+          });
+        }
+        yield* Deferred.succeed(releaseLane, undefined);
+        yield* Fiber.join(blocker);
+        yield* Scope.close(generationScope, Exit.void);
+      }),
+    ),
 );
 
-it.effect("commits a request before the following resolution notification in the same Thread", () =>
+it.effect("abandons a request after the following resolution notification in the same Thread", () =>
   withProtocol(({ inbox }) =>
     Effect.gen(function* () {
       const generationScope = yield* Scope.make();
@@ -582,7 +868,7 @@ it.effect("commits a request before the following resolution notification in the
       assert.strictEqual(settlement._tag, "Some");
       if (settlement._tag === "Some") {
         assert.strictEqual(settlement.value.occurrence, request);
-        assert.strictEqual(settlement.value.outcome.kind, "result");
+        assert.strictEqual(settlement.value.outcome.kind, "abandon");
       }
       yield* Scope.close(generationScope, Exit.void);
     }),

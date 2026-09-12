@@ -8174,6 +8174,42 @@
           }
         }
       },
+      "CollectionWindow_ThreadUnreadEntry": {
+        "type": "object",
+        "required": [
+          "items",
+          "authority"
+        ],
+        "properties": {
+          "authority": {
+            "$ref": "#/components/schemas/CollectionWindowAuthority"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "execution_host_key",
+                "thread_id"
+              ],
+              "properties": {
+                "execution_host_key": {
+                  "type": "string"
+                },
+                "thread_id": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "CommitIdentity": {
         "type": "object",
         "description": "Stable identity shared by every authorized representation of one semantic\nmutation. `manifest_hash` authenticates the immutable manifest; delivery\ncoverage and recipient identity are deliberately outside this coordinate.",
@@ -29073,6 +29109,109 @@
             "oneOf": [
               {
                 "type": "object",
+                "required": [
+                  "state",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "set_queued_message_state"
+                    ]
+                  },
+                  "state": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "propertyNames": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "execution_host_keys",
+                  "kind"
+                ],
+                "properties": {
+                  "execution_host_keys": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "propertyNames": {
+                      "type": "string"
+                    }
+                  },
+                  "identity_key": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "select_thread_read_state_identity"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "identity_key",
+                  "execution_host_key",
+                  "thread_id",
+                  "unread",
+                  "kind"
+                ],
+                "properties": {
+                  "execution_host_key": {
+                    "type": "string"
+                  },
+                  "identity_key": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "set_identity_thread_unread"
+                    ]
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  },
+                  "unread": {
+                    "type": "boolean"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "identity_key",
+                  "kind"
+                ],
+                "properties": {
+                  "identity_key": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "clear_identity_thread_read_state"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "description": "A Turn-authorized application command. Core admits only organization intents.",
                 "required": [
                   "provenance",
@@ -30132,43 +30271,6 @@
               {
                 "type": "object",
                 "required": [
-                  "thread_id",
-                  "expected_revision",
-                  "entries",
-                  "prepared_blob_receipt_ids",
-                  "kind"
-                ],
-                "properties": {
-                  "entries": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/components/schemas/ProjectWorkspaceQueuedFollowUpEntry"
-                    }
-                  },
-                  "expected_revision": {
-                    "type": "integer",
-                    "format": "int64"
-                  },
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "commit_queued_follow_up_ledger"
-                    ]
-                  },
-                  "prepared_blob_receipt_ids": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "thread_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
                   "sweep_id",
                   "thread_ids",
                   "kind"
@@ -30531,6 +30633,42 @@
                   },
                   "thread_id": {
                     "type": "string"
+                  },
+                  "workspace_transition": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspaceTransition"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "thread_id",
+                  "revision",
+                  "workspace",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "commit_thread_workspace_transition"
+                    ]
+                  },
+                  "revision": {
+                    "type": "string"
+                  },
+                  "thread_id": {
+                    "type": "string"
+                  },
+                  "workspace": {
+                    "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspace"
                   }
                 }
               },
@@ -34594,6 +34732,42 @@
                   "kind": {
                     "type": "string",
                     "enum": [
+                      "queued_message_state"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "identity_key",
+                  "window",
+                  "kind"
+                ],
+                "properties": {
+                  "identity_key": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "thread_read_state"
+                    ]
+                  },
+                  "window": {
+                    "$ref": "#/components/schemas/CollectionWindowRequest"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
                       "project_bootstrap"
                     ]
                   }
@@ -35010,24 +35184,6 @@
                     "type": "string",
                     "enum": [
                       "thread_backend_session"
-                    ]
-                  },
-                  "thread_id": {
-                    "type": "string"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
-                  "thread_id",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "queued_follow_up_ledger"
                     ]
                   },
                   "thread_id": {
@@ -37005,11 +37161,124 @@
           },
           "thread": {
             "$ref": "#/components/schemas/ProjectWorkspaceThread"
+          },
+          "workspace_state": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspaceState"
+              }
+            ]
           }
         }
       },
       "ProjectWorkspaceIntent": {
         "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "state",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_queued_message_state"
+                ]
+              },
+              "state": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {}
+                },
+                "propertyNames": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "execution_host_keys",
+              "kind"
+            ],
+            "properties": {
+              "execution_host_keys": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "propertyNames": {
+                  "type": "string"
+                }
+              },
+              "identity_key": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "select_thread_read_state_identity"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "identity_key",
+              "execution_host_key",
+              "thread_id",
+              "unread",
+              "kind"
+            ],
+            "properties": {
+              "execution_host_key": {
+                "type": "string"
+              },
+              "identity_key": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_identity_thread_unread"
+                ]
+              },
+              "thread_id": {
+                "type": "string"
+              },
+              "unread": {
+                "type": "boolean"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "identity_key",
+              "kind"
+            ],
+            "properties": {
+              "identity_key": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "clear_identity_thread_read_state"
+                ]
+              }
+            }
+          },
           {
             "type": "object",
             "description": "A Turn-authorized application command. Core admits only organization intents.",
@@ -38071,43 +38340,6 @@
           {
             "type": "object",
             "required": [
-              "thread_id",
-              "expected_revision",
-              "entries",
-              "prepared_blob_receipt_ids",
-              "kind"
-            ],
-            "properties": {
-              "entries": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/ProjectWorkspaceQueuedFollowUpEntry"
-                }
-              },
-              "expected_revision": {
-                "type": "integer",
-                "format": "int64"
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "commit_queued_follow_up_ledger"
-                ]
-              },
-              "prepared_blob_receipt_ids": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "thread_id": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
               "sweep_id",
               "thread_ids",
               "kind"
@@ -38470,6 +38702,42 @@
               },
               "thread_id": {
                 "type": "string"
+              },
+              "workspace_transition": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspaceTransition"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "thread_id",
+              "revision",
+              "workspace",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "commit_thread_workspace_transition"
+                ]
+              },
+              "revision": {
+                "type": "string"
+              },
+              "thread_id": {
+                "type": "string"
+              },
+              "workspace": {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspace"
               }
             }
           },
@@ -38999,158 +39267,6 @@
             "type": "integer",
             "format": "int32",
             "minimum": 0
-          }
-        }
-      },
-      "ProjectWorkspaceQueuedFollowUpEntry": {
-        "type": "object",
-        "required": [
-          "follow_up_id",
-          "client_user_message_id",
-          "created_at_ms",
-          "payload"
-        ],
-        "properties": {
-          "client_user_message_id": {
-            "type": "string"
-          },
-          "created_at_ms": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "follow_up_id": {
-            "type": "string"
-          },
-          "pause": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ProjectWorkspaceQueuedFollowUpPause"
-              }
-            ]
-          },
-          "payload": {
-            "$ref": "#/components/schemas/ProjectWorkspaceQueuedFollowUpPayloadRef"
-          }
-        }
-      },
-      "ProjectWorkspaceQueuedFollowUpLedger": {
-        "type": "object",
-        "required": [
-          "thread_id",
-          "revision",
-          "ledger_hash",
-          "entries"
-        ],
-        "properties": {
-          "entries": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ProjectWorkspaceQueuedFollowUpEntry"
-            }
-          },
-          "ledger_hash": {
-            "type": "string"
-          },
-          "revision": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "thread_id": {
-            "type": "string"
-          }
-        }
-      },
-      "ProjectWorkspaceQueuedFollowUpLedgerCommit": {
-        "type": "object",
-        "required": [
-          "thread_id",
-          "revision",
-          "ledger_hash",
-          "changed"
-        ],
-        "properties": {
-          "changed": {
-            "type": "boolean"
-          },
-          "ledger_hash": {
-            "type": "string"
-          },
-          "revision": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "thread_id": {
-            "type": "string"
-          }
-        }
-      },
-      "ProjectWorkspaceQueuedFollowUpPause": {
-        "oneOf": [
-          {
-            "type": "object",
-            "required": [
-              "reason",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "interrupted"
-                ]
-              },
-              "reason": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "reason",
-              "kind"
-            ],
-            "properties": {
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "failed"
-                ]
-              },
-              "reason": {
-                "type": "string"
-              }
-            }
-          }
-        ]
-      },
-      "ProjectWorkspaceQueuedFollowUpPayloadRef": {
-        "type": "object",
-        "required": [
-          "schema_version",
-          "asset_uri",
-          "sha256",
-          "byte_length"
-        ],
-        "properties": {
-          "asset_uri": {
-            "type": "string"
-          },
-          "byte_length": {
-            "type": "integer",
-            "format": "int64",
-            "minimum": 0
-          },
-          "schema_version": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "sha256": {
-            "type": "string"
           }
         }
       },
@@ -40740,6 +40856,83 @@
           "updated_at": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "ProjectWorkspaceThreadWorkspace": {
+        "type": "object",
+        "required": [
+          "project_sources",
+          "cwd",
+          "runtime_workspace_roots"
+        ],
+        "properties": {
+          "cwd": {
+            "type": "string"
+          },
+          "project_sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "runtime_workspace_roots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ProjectWorkspaceThreadWorkspaceState": {
+        "type": "object",
+        "required": [
+          "revision"
+        ],
+        "properties": {
+          "applied": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspace"
+              }
+            ]
+          },
+          "pending": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspace"
+              }
+            ]
+          },
+          "revision": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectWorkspaceThreadWorkspaceTransition": {
+        "type": "object",
+        "required": [
+          "revision"
+        ],
+        "properties": {
+          "pending": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceThreadWorkspace"
+              }
+            ]
+          },
+          "revision": {
+            "type": "string"
           }
         }
       },
@@ -44340,16 +44533,6 @@
                             "items": {
                               "type": "string"
                             }
-                          },
-                          "queued_follow_up_ledger": {
-                            "oneOf": [
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "$ref": "#/components/schemas/ProjectWorkspaceQueuedFollowUpLedgerCommit"
-                              }
-                            ]
                           }
                         }
                       },
@@ -44426,16 +44609,6 @@
                             "items": {
                               "type": "string"
                             }
-                          },
-                          "queued_follow_up_ledger": {
-                            "oneOf": [
-                              {
-                                "type": "null"
-                              },
-                              {
-                                "$ref": "#/components/schemas/ProjectWorkspaceQueuedFollowUpLedgerCommit"
-                              }
-                            ]
                           }
                         }
                       },
@@ -47009,6 +47182,49 @@
                       {
                         "type": "object",
                         "required": [
+                          "state",
+                          "kind"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "queued_message_state"
+                            ]
+                          },
+                          "state": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "array",
+                              "items": {}
+                            },
+                            "propertyNames": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "entries",
+                          "kind"
+                        ],
+                        "properties": {
+                          "entries": {
+                            "$ref": "#/components/schemas/CollectionWindow_ThreadUnreadEntry"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "thread_read_state"
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
                           "bootstrap",
                           "kind"
                         ],
@@ -47413,24 +47629,6 @@
                                 "$ref": "#/components/schemas/ProjectWorkspaceThreadBackendSession"
                               }
                             ]
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "ledger",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "queued_follow_up_ledger"
-                            ]
-                          },
-                          "ledger": {
-                            "$ref": "#/components/schemas/ProjectWorkspaceQueuedFollowUpLedger"
                           }
                         }
                       },

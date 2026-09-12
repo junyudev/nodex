@@ -59,13 +59,13 @@ const ENTRIES: HooksListEntry[] = [
 ];
 
 function HooksStory(props: Partial<CodexHooksSettingsViewProps> & { initialPath?: string }) {
-  const [path, setPath] = useState(props.initialPath ?? "/settings/hooks-settings?hostId=default");
+  const [path, setPath] = useState(props.initialPath ?? "/settings/hooks-settings?hostId=local");
 
   return (
     <div className="h-screen bg-token-main-surface-primary">
       <CodexHooksSettingsView
         entries={ENTRIES}
-        hostId="default"
+        hostId="local"
         path={path}
         projectRoots={["/Users/asc/repo/nodex"]}
         projectRootLabels={{ "/Users/asc/repo/nodex": "Nodex" }}
@@ -97,7 +97,7 @@ export const Overview: Story = {
 
 export const ProjectNeedsReview: Story = {
   render: () => (
-    <HooksStory initialPath="/settings/hooks-settings?hostId=default&source=project&projectRoot=%2FUsers%2Fasc%2Frepo%2Fnodex" />
+    <HooksStory initialPath="/settings/hooks-settings?hostId=local&source=project&projectRoot=%2FUsers%2Fasc%2Frepo%2Fnodex" />
   ),
 };
 

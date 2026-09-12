@@ -128,6 +128,7 @@ export const make = Effect.gen(function* () {
         {
           sessionId,
           projectId,
+          executionHostId: input.caller.hostId,
           prompt: request.prompt,
           threadName: request.title,
           model: request.model,

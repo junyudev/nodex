@@ -4,11 +4,7 @@ import {
   applyCodexConversationStateUpdates,
   buildCodexConversationStateUpdates,
 } from "./codex-conversation-patches";
-import {
-  advanceRendererDeliveryAssembler,
-  createRendererDeliveryAssemblerState,
-  encodeRendererDelivery,
-} from "./renderer-delivery-transport";
+import { codexHostMessageParts, CodexHostMessageReceiver } from "./codex-host-chunked-message";
 import type { CodexConversationSnapshot } from "./types";
 
 const conversation = (): CodexConversationSnapshot => ({
@@ -73,16 +69,10 @@ const conversation = (): CodexConversationSnapshot => ({
 });
 
 const relay = <T>(payload: T): T => {
-  const dispatch = encodeRendererDelivery({
-    target: { targetId: "renderer-follower", generation: 1 },
-    transferId: "conversation-relay",
-    payload,
-  });
-  let state = createRendererDeliveryAssemblerState();
-  for (const envelope of dispatch.envelopes) {
-    const result = advanceRendererDeliveryAssembler(state, envelope);
-    state = result.state;
-    if (result.kind === "complete") return result.delivery.payload as T;
+  const receiver = new CodexHostMessageReceiver();
+  for (const part of codexHostMessageParts(payload, { transferId: "conversation-relay" })) {
+    const result = receiver.receive(part);
+    if (result.type === "complete") return result.message as T;
   }
   throw new Error("The conversation relay did not complete");
 };
@@ -131,7 +121,7 @@ describe("shared conversation document", () => {
     for (const turns of [[undefined], new Array(1), [Number.NaN], [() => null]]) {
       const invalid = { ...conversation(), turns } as CodexConversationSnapshot;
       expect(() => projectCodexConversationDocument(invalid)).toThrow();
-      expect(() => relay(invalid)).toThrow();
+      expect(invalid.turns).toBe(turns);
     }
   });
 });

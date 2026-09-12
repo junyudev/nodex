@@ -385,9 +385,7 @@ describe("UserMessageBubble collapse", () => {
     );
 
     const status = getByText("Hook feedback");
-    expect(status.closest("a")?.getAttribute("href")).toBe(
-      "/settings/hooks-settings?hostId=default",
-    );
+    expect(status.closest("a")?.getAttribute("href")).toBe("/settings/hooks-settings?hostId=local");
     expect(queryByLabelText("Edit message")).toBe(null);
   });
 
@@ -1574,7 +1572,7 @@ describe("ThreadSystemErrorBlock", () => {
 
 describe("image-view and completed elicitation leaves", () => {
   beforeEach(() => {
-    installWindowApi({});
+    installWindowApi({ on: () => () => {} });
     installMeasuredResizeObserver({ blockSize: 72, inlineSize: 320 });
   });
 
@@ -1683,7 +1681,7 @@ describe("image-view and completed elicitation leaves", () => {
       dataBase64: "aW1hZ2U=",
       mimeType: "image/png",
     });
-    installWindowApi({ invoke });
+    installWindowApi({ invoke, on: () => () => {} });
     try {
       const { findByLabelText } = render(
         <TestQueryProvider>

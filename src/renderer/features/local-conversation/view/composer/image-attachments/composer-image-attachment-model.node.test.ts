@@ -14,7 +14,7 @@ function attachment(overrides: Partial<ComposerImageAttachment> = {}): ComposerI
     src: "data:image/png;base64,aW1hZ2U=",
     origin: "paste",
     materialization: {
-      hostId: "default",
+      hostId: "local",
       managedSource: "nodex://assets/image-1.png",
       localPath: "/managed/image-1.png",
     },
@@ -33,7 +33,7 @@ describe("composer image attachment model", () => {
 
   test("uses a local materialization only on its execution host", () => {
     const value = attachment();
-    expect(selectComposerImagePromptSource(value, "default")).toBe("/managed/image-1.png");
+    expect(selectComposerImagePromptSource(value, "local")).toBe("/managed/image-1.png");
     expect(selectComposerImagePromptSource(value, "ssh:remote")).toBe(value.src);
     expect(selectComposerImagePromptSource(value, null)).toBe(value.src);
   });
@@ -43,7 +43,7 @@ describe("composer image attachment model", () => {
       materialization: null,
       materializationStatus: "failed",
     });
-    expect(buildComposerImagePromptInputs([value], "default")).toEqual([
+    expect(buildComposerImagePromptInputs([value], "local")).toEqual([
       {
         source: value.src,
         caption: "diagram.png",
@@ -56,7 +56,7 @@ describe("composer image attachment model", () => {
       src: "/managed/image-1.png",
     });
 
-    expect(selectComposerImagePromptSource(value, "default")).toBe("/managed/image-1.png");
+    expect(selectComposerImagePromptSource(value, "local")).toBe("/managed/image-1.png");
     expect(selectComposerImagePromptSource(value, "ssh:remote")).toBeNull();
     expect(selectComposerImagePromptSource(value, null)).toBeNull();
     expect(buildComposerImagePromptInputs([value], "ssh:remote")).toEqual([]);
@@ -66,13 +66,13 @@ describe("composer image attachment model", () => {
     const value = attachment({
       src: "nodex://assets/image-1.png",
       materialization: {
-        hostId: "default",
+        hostId: "local",
         managedSource: "nodex://assets/image-1.png",
         localPath: null,
       },
     });
 
-    expect(selectComposerImagePromptSource(value, "default")).toBe("nodex://assets/image-1.png");
+    expect(selectComposerImagePromptSource(value, "local")).toBe("nodex://assets/image-1.png");
     expect(selectComposerImagePromptSource(value, "ssh:remote")).toBeNull();
   });
 
@@ -83,7 +83,7 @@ describe("composer image attachment model", () => {
       materializationStatus: "failed",
     });
 
-    expect(selectComposerImagePromptSource(value, "default")).toBeNull();
-    expect(buildComposerImagePromptInputs([value], "default")).toEqual([]);
+    expect(selectComposerImagePromptSource(value, "local")).toBeNull();
+    expect(buildComposerImagePromptInputs([value], "local")).toEqual([]);
   });
 });

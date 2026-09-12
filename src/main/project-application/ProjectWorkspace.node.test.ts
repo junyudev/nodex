@@ -340,6 +340,73 @@ it.effect("moves a Thread as one typed Core intent and returns its commit cursor
   }),
 );
 
+it.effect("serializes pending workspace transitions and accepted commits through Core", () =>
+  Effect.gen(function* () {
+    const applies: ProjectWorkspaceApplyInput[] = [];
+    const reads: CoreModuleClients["workspace"]["read"] = (input) => {
+      if (input.kind !== "thread") return Effect.die(new Error("Unexpected Core read"));
+      return Effect.succeed({
+        value: {
+          kind: "thread",
+          thread: thread({ project_id: "project:two", cwd: "/workspace/old" }),
+        },
+      } as ProjectWorkspaceReadSnapshot);
+    };
+    const apply: CoreModuleClients["workspace"]["apply"] = (input) =>
+      Effect.sync(() => {
+        applies.push(input);
+        return committed(17 + applies.length);
+      });
+    const { scope, workspace } = yield* open(core(reads, apply));
+    const pending = {
+      projectSources: ["/workspace/two"],
+      cwd: "/workspace/two/worktree",
+      runtimeWorkspaceRoots: ["/workspace/two/worktree", "/workspace/two"],
+    };
+
+    yield* workspace.moveThread({
+      threadId: "thread:one",
+      sourceProjectId: "project:one",
+      targetProjectId: "project:two",
+      workspaceTransition: { revision: "workspace:r1", pending },
+    });
+    yield* workspace.commitThreadWorkspaceTransition("thread:one", "workspace:r1", pending);
+
+    assert.deepEqual(
+      applies.map(({ intent }) => intent),
+      [
+        {
+          kind: "move_thread",
+          thread_id: "thread:one",
+          source: { kind: "project", project_id: "project:one" },
+          target: { kind: "project", project_id: "project:two" },
+          placement: { kind: "start" },
+          metadata: {},
+          workspace_transition: {
+            revision: "workspace:r1",
+            pending: {
+              project_sources: ["/workspace/two"],
+              cwd: "/workspace/two/worktree",
+              runtime_workspace_roots: ["/workspace/two/worktree", "/workspace/two"],
+            },
+          },
+        },
+        {
+          kind: "commit_thread_workspace_transition",
+          thread_id: "thread:one",
+          revision: "workspace:r1",
+          workspace: {
+            project_sources: ["/workspace/two"],
+            cwd: "/workspace/two/worktree",
+            runtime_workspace_roots: ["/workspace/two/worktree", "/workspace/two"],
+          },
+        },
+      ],
+    );
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
 it.effect("hydrates a Session and its linked Thread into one product aggregate", () =>
   Effect.gen(function* () {
     const reads: CoreModuleClients["workspace"]["read"] = (input) => {

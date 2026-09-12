@@ -1,20 +1,17 @@
+import { CodexApplicationRequestInbox } from "../../codex-runtime/CodexApplicationRequestInbox";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
-import {
-  RENDERER_DELIVERY_ACK_CHANNEL,
-  parseRendererDeliveryEnvelope,
-  type RendererDeliveryTransferAckEnvelope,
-} from "../../../shared/renderer-delivery-transport";
+import { CODEX_HOST_CHUNK_ACK_CHANNEL } from "../../../shared/codex-host-chunked-message";
 import {
   parseCodexUserInputAutoResolutionActivityInput,
   parseCodexUserInputAutoResolutionTarget,
 } from "../../../shared/codex-user-input-auto-resolution";
 import { MainConfig } from "../../app/MainConfig";
+import { CodexApplicationEventHub } from "../../codex-application/CodexApplicationEventHub";
 import { CodexAppProtocolTools } from "../../codex-application/CodexAppProtocolTools";
-import { CodexRendererConversationCoordinator } from "../../codex-application/CodexRendererConversationCoordinator";
-import { CodexRendererConversationRegistry } from "../../codex-application/CodexRendererConversationRegistry";
+import { CodexRendererPresentationRegistry } from "../../codex-application/CodexRendererPresentationRegistry";
 import { CodexUserInputAutoResolution } from "../../codex-application/CodexUserInputAutoResolution";
 import type { RendererClientWebContents } from "../../codex/renderer-client-runtime-contracts";
 import { RendererClientRuntime } from "../../host-runtime/RendererClientRuntime";
@@ -27,26 +24,26 @@ export class CodexRendererIpcError extends Schema.TaggedError<CodexRendererIpcEr
   { operation: Schema.String, cause: Schema.Defect() },
 ) {}
 
-export const parseRendererDeliveryAcknowledgment = (
-  input: unknown,
-): RendererDeliveryTransferAckEnvelope => {
-  const envelope = parseRendererDeliveryEnvelope(input);
-  if (envelope.kind !== "transferAck") {
-    throw new Error("Renderer delivery acknowledgment channel requires an ACK");
-  }
-  return envelope;
-};
-
 export const routeRendererDeliveryAcknowledgment = (
-  input: unknown,
-  handle: (acknowledgment: RendererDeliveryTransferAckEnvelope) => Effect.Effect<boolean>,
+  transferId: unknown,
+  sequence: unknown,
+  handle: (transferId: string, sequence: number) => Effect.Effect<void>,
 ): Effect.Effect<void> =>
   Effect.try({
-    try: () => parseRendererDeliveryAcknowledgment(input),
+    try: () => {
+      if (typeof transferId !== "string" || !Number.isSafeInteger(sequence)) {
+        throw new Error(
+          "Chunked-message acknowledgment requires a string transfer ID and integer sequence",
+        );
+      }
+      return [transferId, sequence as number] as const;
+    },
     catch: (cause) =>
       new CodexRendererIpcError({ operation: "parse-delivery-acknowledgment", cause }),
   }).pipe(
-    Effect.flatMap(handle),
+    Effect.flatMap(([parsedTransferId, parsedSequence]) =>
+      handle(parsedTransferId, parsedSequence),
+    ),
     Effect.asVoid,
     Effect.catch(() => Effect.void),
   );
@@ -54,8 +51,9 @@ export const routeRendererDeliveryAcknowledgment = (
 export const live: Layer.Layer<
   never,
   never,
-  | CodexRendererConversationCoordinator
-  | CodexRendererConversationRegistry
+  | CodexApplicationEventHub
+  | CodexRendererPresentationRegistry
+  | CodexApplicationRequestInbox
   | CodexAppProtocolTools
   | CodexUserInputAutoResolution
   | ElectronIpc
@@ -66,9 +64,10 @@ export const live: Layer.Layer<
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
-    const coordinator = yield* CodexRendererConversationCoordinator;
+    const events = yield* CodexApplicationEventHub;
     const codexAppTools = yield* CodexAppProtocolTools;
-    const rendererConversations = yield* CodexRendererConversationRegistry;
+    const requestInbox = yield* CodexApplicationRequestInbox;
+    const rendererConversations = yield* CodexRendererPresentationRegistry;
     const userInputAutoResolution = yield* CodexUserInputAutoResolution;
     const windows = yield* WindowRuntime;
     const rendererClients = yield* RendererClientRuntime;
@@ -92,50 +91,21 @@ export const live: Layer.Layer<
         ),
       ),
     );
-    yield* ipc.on(RENDERER_DELIVERY_ACK_CHANNEL, (event, input: unknown) =>
+    yield* ipc.on(CODEX_HOST_CHUNK_ACK_CHANNEL, (event, transferId: unknown, sequence: unknown) =>
       authorize(event).pipe(
         Effect.andThen(
-          routeRendererDeliveryAcknowledgment(input, (acknowledgment) =>
-            rendererClients.handleDeliveryAcknowledgment(
-              event.sender as RendererClientWebContents,
-              acknowledgment,
-            ),
+          routeRendererDeliveryAcknowledgment(
+            transferId,
+            sequence,
+            (parsedTransferId, parsedSequence) =>
+              rendererClients.handleDeliveryAcknowledgment(
+                event.sender as RendererClientWebContents,
+                parsedTransferId,
+                parsedSequence,
+              ),
           ),
         ),
         Effect.catch(() => Effect.void),
-      ),
-    );
-    yield* handleControl("codex:thread:view-active:set", (event, input: unknown) =>
-      authorize(event).pipe(
-        Effect.flatMap((clientId) => {
-          if (typeof input !== "object" || input === null) return Effect.succeed(false);
-          const threadId =
-            "threadId" in input && typeof input.threadId === "string" ? input.threadId.trim() : "";
-          return threadId
-            ? coordinator.setViewActive(
-                threadId,
-                clientId,
-                "active" in input && input.active === true,
-              )
-            : Effect.succeed(false);
-        }),
-      ),
-    );
-    yield* handleControl("codex:thread:stream-following:set", (event, input: unknown) =>
-      authorize(event).pipe(
-        Effect.flatMap((clientId) => {
-          if (typeof input !== "object" || input === null) return Effect.succeed(false);
-          const threadId =
-            "threadId" in input && typeof input.threadId === "string" ? input.threadId.trim() : "";
-          return threadId
-            ? coordinator.setFollowing(
-                threadId,
-                clientId,
-                "following" in input && input.following === true,
-                { forceSnapshot: "reannounce" in input && input.reannounce === true },
-              )
-            : Effect.succeed(false);
-        }),
       ),
     );
     yield* handlePlainCommand("codex:thread:presentation:set", (event, input: unknown) =>
@@ -148,66 +118,45 @@ export const live: Layer.Layer<
             "surfaceId" in input && typeof input.surfaceId === "string"
               ? input.surfaceId.trim()
               : "";
-          return threadId && surfaceId
-            ? coordinator.setPresented(
-                threadId,
-                clientId,
-                surfaceId,
-                "presented" in input && input.presented === true,
-              )
-            : Effect.succeed(false);
+          if (!threadId || !surfaceId) return Effect.succeed(false);
+          const result = rendererConversations.setPresented(
+            threadId,
+            clientId,
+            surfaceId,
+            "presented" in input && input.presented === true,
+          );
+          if (!result.accepted) return Effect.succeed(false);
+          if (result.presentedInForeground) {
+            events.publish({ kind: "rendererConversationPresentedInForeground", value: threadId });
+          }
+          return userInputAutoResolution.reevaluatePresentation(threadId).pipe(Effect.as(true));
         }),
-      ),
-    );
-    yield* handleControl("codex:thread-owner:stream-state:publish", (event, input) =>
-      authorize(event).pipe(
-        Effect.flatMap((clientId) =>
-          Effect.sync(() => coordinator.publishOwnerStateChange(clientId, input)),
-        ),
-      ),
-    );
-    yield* handleControl("codex:thread-follower:snapshot-applied", (event, input) =>
-      authorize(event).pipe(
-        Effect.flatMap((clientId) =>
-          coordinator.acknowledgeFollowerSnapshotApplied(clientId, input),
-        ),
-      ),
-    );
-    yield* handleControl("codex:thread:stream-resync:request", (event, input) =>
-      authorize(event).pipe(
-        Effect.flatMap((clientId) => coordinator.requestStreamResync(clientId, input)),
-      ),
-    );
-    yield* handleControl("codex:thread-owner:notification:ack", (event, input) =>
-      authorize(event).pipe(
-        Effect.flatMap((clientId) => coordinator.acknowledgeOwnerNotification(clientId, input)),
-      ),
-    );
-    yield* handleControl("codex:thread-owner:pending-requests:replay", (event, threadId) =>
-      authorize(event).pipe(
-        Effect.flatMap((clientId) =>
-          Effect.sync(() => coordinator.replayPendingOwnerRequests(threadId, clientId)),
-        ),
-      ),
-    );
-    yield* handlePlainCommand("codex:thread-follower:action", (event, input) =>
-      authorize(event).pipe(
-        Effect.flatMap((clientId) =>
-          coordinator
-            .runFollowerAction(rendererClients, clientId, input)
-            .pipe(
-              Effect.mapError(
-                (cause) => new CodexRendererIpcError({ operation: "run-follower-action", cause }),
-              ),
-            ),
-        ),
       ),
     );
     yield* handleControl(
       "codex:dynamic-tool-call:respond",
       (event, conversationId, requestId, context) =>
         authorize(event).pipe(
-          Effect.flatMap(() => codexAppTools.respond(requestId, conversationId, context)),
+          Effect.flatMap(() =>
+            Effect.gen(function* () {
+              const identity = context.nativeOccurrence;
+              if (!identity) return null;
+              const occurrence = yield* requestInbox.resolveOccurrence({
+                ...identity,
+                requestId,
+                method: "item/tool/call",
+              });
+              if (
+                !occurrence ||
+                occurrence.occurrenceId !== identity.occurrenceId ||
+                occurrence.params === null ||
+                typeof occurrence.params !== "object" ||
+                Reflect.get(occurrence.params, "threadId") !== conversationId
+              )
+                return null;
+              return yield* codexAppTools.respond(requestId, conversationId, context);
+            }),
+          ),
         ),
     );
     yield* handleQuery("codex:user-input:auto-resolution:snapshot", (event) =>

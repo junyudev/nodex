@@ -1948,6 +1948,14 @@ export interface components {
             }[];
             readonly next_cursor?: string | null;
         };
+        readonly CollectionWindow_ThreadUnreadEntry: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly {
+                readonly execution_host_key: string;
+                readonly thread_id: string;
+            }[];
+            readonly next_cursor?: string | null;
+        };
         readonly CollectionWindowAuthority: {
             /** Format: int64 */
             readonly projection_revision: number;
@@ -7039,6 +7047,30 @@ export interface components {
             /** Format: int32 */
             readonly contract_version: number;
             readonly intent: {
+                /** @enum {string} */
+                readonly kind: "set_queued_message_state";
+                readonly state: {
+                    readonly [key: string]: readonly unknown[];
+                };
+            } | {
+                readonly execution_host_keys: {
+                    readonly [key: string]: string;
+                };
+                readonly identity_key?: string | null;
+                /** @enum {string} */
+                readonly kind: "select_thread_read_state_identity";
+            } | {
+                readonly execution_host_key: string;
+                readonly identity_key: string;
+                /** @enum {string} */
+                readonly kind: "set_identity_thread_unread";
+                readonly thread_id: string;
+                readonly unread: boolean;
+            } | {
+                readonly identity_key: string;
+                /** @enum {string} */
+                readonly kind: "clear_identity_thread_read_state";
+            } | {
                 readonly intent: components["schemas"]["ProjectWorkspaceIntent"];
                 /** @enum {string} */
                 readonly kind: "agent_command";
@@ -7262,14 +7294,6 @@ export interface components {
                 readonly prepared_blob_receipt_ids: readonly string[];
                 readonly thread_id: string;
             } | {
-                readonly entries: readonly components["schemas"]["ProjectWorkspaceQueuedFollowUpEntry"][];
-                /** Format: int64 */
-                readonly expected_revision: number;
-                /** @enum {string} */
-                readonly kind: "commit_queued_follow_up_ledger";
-                readonly prepared_blob_receipt_ids: readonly string[];
-                readonly thread_id: string;
-            } | {
                 /** @enum {string} */
                 readonly kind: "observe_app_server_thread_window";
                 readonly sweep_id: string;
@@ -7350,6 +7374,13 @@ export interface components {
                 readonly source: components["schemas"]["ProjectWorkspaceThreadLane"];
                 readonly target: components["schemas"]["ProjectWorkspaceThreadLane"];
                 readonly thread_id: string;
+                readonly workspace_transition?: null | components["schemas"]["ProjectWorkspaceThreadWorkspaceTransition"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "commit_thread_workspace_transition";
+                readonly revision: string;
+                readonly thread_id: string;
+                readonly workspace: components["schemas"]["ProjectWorkspaceThreadWorkspace"];
             } | {
                 /** @enum {string} */
                 readonly kind: "set_thread_unread";
@@ -8270,6 +8301,14 @@ export interface components {
             readonly contract_version: number;
             readonly read: {
                 /** @enum {string} */
+                readonly kind: "queued_message_state";
+            } | {
+                readonly identity_key: string;
+                /** @enum {string} */
+                readonly kind: "thread_read_state";
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
+                /** @enum {string} */
                 readonly kind: "project_bootstrap";
             } | {
                 readonly include_archived?: boolean | null;
@@ -8360,10 +8399,6 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "thread_backend_session";
-                readonly thread_id: string;
-            } | {
-                /** @enum {string} */
-                readonly kind: "queued_follow_up_ledger";
                 readonly thread_id: string;
             } | {
                 readonly include_archived?: boolean | null;
@@ -8938,8 +8973,33 @@ export interface components {
             readonly permission_mode?: null | components["schemas"]["CodexPermissionMode"];
             readonly project?: null | components["schemas"]["ProjectWorkspaceProject"];
             readonly thread: components["schemas"]["ProjectWorkspaceThread"];
+            readonly workspace_state?: null | components["schemas"]["ProjectWorkspaceThreadWorkspaceState"];
         };
         readonly ProjectWorkspaceIntent: {
+            /** @enum {string} */
+            readonly kind: "set_queued_message_state";
+            readonly state: {
+                readonly [key: string]: readonly unknown[];
+            };
+        } | {
+            readonly execution_host_keys: {
+                readonly [key: string]: string;
+            };
+            readonly identity_key?: string | null;
+            /** @enum {string} */
+            readonly kind: "select_thread_read_state_identity";
+        } | {
+            readonly execution_host_key: string;
+            readonly identity_key: string;
+            /** @enum {string} */
+            readonly kind: "set_identity_thread_unread";
+            readonly thread_id: string;
+            readonly unread: boolean;
+        } | {
+            readonly identity_key: string;
+            /** @enum {string} */
+            readonly kind: "clear_identity_thread_read_state";
+        } | {
             readonly intent: components["schemas"]["ProjectWorkspaceIntent"];
             /** @enum {string} */
             readonly kind: "agent_command";
@@ -9163,14 +9223,6 @@ export interface components {
             readonly prepared_blob_receipt_ids: readonly string[];
             readonly thread_id: string;
         } | {
-            readonly entries: readonly components["schemas"]["ProjectWorkspaceQueuedFollowUpEntry"][];
-            /** Format: int64 */
-            readonly expected_revision: number;
-            /** @enum {string} */
-            readonly kind: "commit_queued_follow_up_ledger";
-            readonly prepared_blob_receipt_ids: readonly string[];
-            readonly thread_id: string;
-        } | {
             /** @enum {string} */
             readonly kind: "observe_app_server_thread_window";
             readonly sweep_id: string;
@@ -9251,6 +9303,13 @@ export interface components {
             readonly source: components["schemas"]["ProjectWorkspaceThreadLane"];
             readonly target: components["schemas"]["ProjectWorkspaceThreadLane"];
             readonly thread_id: string;
+            readonly workspace_transition?: null | components["schemas"]["ProjectWorkspaceThreadWorkspaceTransition"];
+        } | {
+            /** @enum {string} */
+            readonly kind: "commit_thread_workspace_transition";
+            readonly revision: string;
+            readonly thread_id: string;
+            readonly workspace: components["schemas"]["ProjectWorkspaceThreadWorkspace"];
         } | {
             /** @enum {string} */
             readonly kind: "set_thread_unread";
@@ -9381,45 +9440,6 @@ export interface components {
             readonly unread_count: number;
             /** Format: int32 */
             readonly waiting_count: number;
-        };
-        readonly ProjectWorkspaceQueuedFollowUpEntry: {
-            readonly client_user_message_id: string;
-            /** Format: int64 */
-            readonly created_at_ms: number;
-            readonly follow_up_id: string;
-            readonly pause?: null | components["schemas"]["ProjectWorkspaceQueuedFollowUpPause"];
-            readonly payload: components["schemas"]["ProjectWorkspaceQueuedFollowUpPayloadRef"];
-        };
-        readonly ProjectWorkspaceQueuedFollowUpLedger: {
-            readonly entries: readonly components["schemas"]["ProjectWorkspaceQueuedFollowUpEntry"][];
-            readonly ledger_hash: string;
-            /** Format: int64 */
-            readonly revision: number;
-            readonly thread_id: string;
-        };
-        readonly ProjectWorkspaceQueuedFollowUpLedgerCommit: {
-            readonly changed: boolean;
-            readonly ledger_hash: string;
-            /** Format: int64 */
-            readonly revision: number;
-            readonly thread_id: string;
-        };
-        readonly ProjectWorkspaceQueuedFollowUpPause: {
-            /** @enum {string} */
-            readonly kind: "interrupted";
-            readonly reason: string;
-        } | {
-            /** @enum {string} */
-            readonly kind: "failed";
-            readonly reason: string;
-        };
-        readonly ProjectWorkspaceQueuedFollowUpPayloadRef: {
-            readonly asset_uri: string;
-            /** Format: int64 */
-            readonly byte_length: number;
-            /** Format: int32 */
-            readonly schema_version: number;
-            readonly sha256: string;
         };
         readonly ProjectWorkspaceReadRequest: components["schemas"]["ModuleReadRequest_ProjectWorkspaceRead"];
         readonly ProjectWorkspaceReadResponse: components["schemas"]["ResponseEnvelope_ModuleReadSnapshot_ProjectWorkspaceReadValue"];
@@ -9790,6 +9810,20 @@ export interface components {
             readonly thread_source?: string | null;
             /** Format: int64 */
             readonly updated_at: number;
+        };
+        readonly ProjectWorkspaceThreadWorkspace: {
+            readonly cwd: string;
+            readonly project_sources: readonly string[];
+            readonly runtime_workspace_roots: readonly string[];
+        };
+        readonly ProjectWorkspaceThreadWorkspaceState: {
+            readonly applied?: null | components["schemas"]["ProjectWorkspaceThreadWorkspace"];
+            readonly pending?: null | components["schemas"]["ProjectWorkspaceThreadWorkspace"];
+            readonly revision: string;
+        };
+        readonly ProjectWorkspaceThreadWorkspaceTransition: {
+            readonly pending?: null | components["schemas"]["ProjectWorkspaceThreadWorkspace"];
+            readonly revision: string;
         };
         readonly ProjectWorkspaceTurnAuthority: {
             readonly actor_project_id?: string | null;
@@ -10475,7 +10509,6 @@ export interface components {
                     readonly affected_project_ids: readonly string[];
                     readonly affected_session_ids: readonly string[];
                     readonly affected_thread_ids: readonly string[];
-                    readonly queued_follow_up_ledger?: null | components["schemas"]["ProjectWorkspaceQueuedFollowUpLedgerCommit"];
                 };
                 readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
                     readonly affected_project_ids: readonly string[];
@@ -10489,7 +10522,6 @@ export interface components {
                     readonly affected_project_ids: readonly string[];
                     readonly affected_session_ids: readonly string[];
                     readonly affected_thread_ids: readonly string[];
-                    readonly queued_follow_up_ledger?: null | components["schemas"]["ProjectWorkspaceQueuedFollowUpLedgerCommit"];
                 };
                 readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
                     readonly affected_project_ids: readonly string[];
@@ -11042,6 +11074,16 @@ export interface components {
                 readonly contract_version: number;
                 readonly store_epoch: components["schemas"]["StoreEpoch"];
                 readonly value: {
+                    /** @enum {string} */
+                    readonly kind: "queued_message_state";
+                    readonly state: {
+                        readonly [key: string]: readonly unknown[];
+                    };
+                } | {
+                    readonly entries: components["schemas"]["CollectionWindow_ThreadUnreadEntry"];
+                    /** @enum {string} */
+                    readonly kind: "thread_read_state";
+                } | {
                     readonly bootstrap: components["schemas"]["ProjectWorkspaceBootstrap"];
                     /** @enum {string} */
                     readonly kind: "project_bootstrap";
@@ -11127,10 +11169,6 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "thread_backend_session";
                     readonly session?: null | components["schemas"]["ProjectWorkspaceThreadBackendSession"];
-                } | {
-                    /** @enum {string} */
-                    readonly kind: "queued_follow_up_ledger";
-                    readonly ledger: components["schemas"]["ProjectWorkspaceQueuedFollowUpLedger"];
                 } | {
                     /** @enum {string} */
                     readonly kind: "child_thread_window";

@@ -23,6 +23,7 @@ import {
   setAgentExecutionProfile,
   waitForCompletedAgentTurn,
   waitForFinalMarker,
+  waitForNativeCompletedAgentTurn,
 } from "./support/agent-smoke-harness";
 
 const toolOutputRecords = (output: unknown) =>
@@ -270,7 +271,7 @@ test("manages durable Automation definitions through native MCP across a restart
         await composer.fill("APP_AUTOMATION_restored");
         await composer.press("Enter");
         await waitForFinalMarker(page, "APP_AUTOMATION_OK_restored");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
+        await waitForNativeCompletedAgentTurn(page, threadId, 60_000);
         expect(await invokeIpc(page, "codex:scheduled-automations:list")).toEqual({ items: [] });
       } catch (error) {
         throw new Error(

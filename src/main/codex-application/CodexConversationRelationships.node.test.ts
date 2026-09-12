@@ -1,5 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Exit from "effect/Exit";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -15,6 +17,11 @@ import {
 } from "./CodexConversationRelationships";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
+import {
+  makeConversationEntityStateRegistry,
+  type ConversationEntityStateRegistry,
+} from "./internal/ConversationEntityState";
+import { conversationFixture, turnFixture } from "./conversation-test-fixture";
 
 type CoreThread = Extract<
   ProjectWorkspaceReadSnapshot["value"],
@@ -95,6 +102,7 @@ const coreThread = (threadId: string, parentThreadId: string | null): CoreThread
 const buildRelationships = Effect.fn("CodexConversationRelationshipsTest.build")(function* (input: {
   readonly scope: Scope.Scope;
   readonly published: CodexApplicationEvent[];
+  readonly thread?: (threadId: string) => CoreThread;
   readonly children: (parentThreadId: string) => readonly CoreThread[];
   readonly childWindow?: (input: {
     readonly parentThreadId: string;
@@ -102,12 +110,27 @@ const buildRelationships = Effect.fn("CodexConversationRelationshipsTest.build")
     readonly first: number;
   }) => { readonly items: readonly CoreThread[]; readonly nextCursor: string | null };
   readonly directory: CodexThreadDirectory["Service"];
+  readonly entities?: ConversationEntityStateRegistry;
+  readonly beforeChildRead?: Effect.Effect<void>;
 }) {
+  const entities = input.entities ?? makeConversationEntityStateRegistry();
+  const current = (threadId: string) => {
+    if (input.entities) return entities.current(threadId);
+    const existing = entities.current(threadId);
+    if (existing) return existing;
+    const entity = entities.acquire(threadId);
+    entity.acceptCanonicalState(conversationFixture(threadId));
+    entity.installSnapshot({ ...conversation, threadId });
+    return entity;
+  };
   const workspace: CoreModuleClients["workspace"] = {
     read: (read) => {
       if (read.kind === "thread") {
         return Effect.succeed({
-          value: { kind: "thread", thread: coreThread(read.thread_id, null) },
+          value: {
+            kind: "thread",
+            thread: input.thread?.(read.thread_id) ?? coreThread(read.thread_id, null),
+          },
         } as never);
       }
       if (read.kind === "child_thread_window") {
@@ -119,12 +142,14 @@ const buildRelationships = Effect.fn("CodexConversationRelationshipsTest.build")
           items: input.children(read.parent_thread_id),
           nextCursor: null,
         };
-        return Effect.succeed({
-          value: {
-            kind: "child_thread_window",
-            threads: { items: page.items, next_cursor: page.nextCursor },
-          },
-        } as never);
+        return (input.beforeChildRead ?? Effect.void).pipe(
+          Effect.as({
+            value: {
+              kind: "child_thread_window",
+              threads: { items: page.items, next_cursor: page.nextCursor },
+            },
+          } as never),
+        );
       }
       return Effect.die(`Unexpected Core read '${read.kind}'`);
     },
@@ -144,10 +169,10 @@ const buildRelationships = Effect.fn("CodexConversationRelationshipsTest.build")
     Effect.provideService(
       ConversationEntityMap,
       ConversationEntityMap.of({
-        current: (threadId: string) => ({
-          readSnapshot: () => ({ ...conversation, threadId }),
-          readCanonicalState: () => null,
-        }),
+        registerThreadMetadata: () => {},
+        readThreadMetadata: () => null,
+        subscribeRetired: entities.subscribeRetired,
+        current,
         runCommand,
       } as unknown as ConversationEntityMap["Service"]),
     ),
@@ -158,6 +183,212 @@ const buildRelationships = Effect.fn("CodexConversationRelationshipsTest.build")
     Effect.provideService(Scope.Scope, input.scope),
   );
 });
+
+it.effect("publishes canonical-only child approvals on their parent's execution host", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const entities = makeConversationEntityStateRegistry();
+    const parent = entities.acquire("parent");
+    parent.acceptCanonicalState(conversationFixture("parent"));
+    const child = entities.acquire("child");
+    child.acceptCanonicalState({
+      ...conversationFixture("child", [turnFixture("child-turn", "inProgress")]),
+      parentThreadId: "parent",
+      title: "Canonical child",
+      agentNickname: "Scout",
+      threadRuntimeStatus: { type: "active", activeFlags: ["waitingOnApproval"] },
+      requests: [
+        {
+          id: 17,
+          method: "item/commandExecution/requestApproval",
+          params: {
+            kind: "command",
+            threadId: "child",
+            turnId: "child-turn",
+            itemId: "command",
+            environmentId: null,
+            startedAtMs: 3,
+            command: "pwd",
+          },
+        },
+      ],
+    });
+    const published: CodexApplicationEvent[] = [];
+    const relationships = yield* buildRelationships({
+      scope,
+      entities,
+      published,
+      thread: (threadId) => ({
+        ...coreThread(threadId, null),
+        project_id: null,
+        execution_host_id: "remote-a",
+      }),
+      children: () => [{ ...coreThread("child", "parent"), thread_name: "Durable child" }],
+      directory: CodexThreadDirectory.of({
+        resolve: () => Effect.die("No metadata repair needed"),
+      } as unknown as CodexThreadDirectory["Service"]),
+    });
+    const memberships = yield* relationships.refresh("parent");
+    assert.strictEqual(memberships.length, 1);
+    assert.strictEqual(memberships[0]?.actorName, "Canonical child");
+    assert.strictEqual(memberships[0]?.statusType, "active");
+    assert.strictEqual(memberships[0]?.role, "childApproval");
+    assert.deepEqual(published, [
+      {
+        kind: "hostMessage",
+        value: {
+          type: "sharedObjectUpdated",
+          hostId: "remote-a",
+          object: {
+            objectType: "conversationChildMemberships",
+            objectId: "parent",
+            value: { parentThreadId: "parent", childMemberships: [...memberships] },
+          },
+        },
+      },
+    ]);
+    assert.isNull(parent.readSnapshot());
+    assert.isNull(child.readSnapshot());
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect(
+  "repairs unresolved durable metadata even when the resident child has a friendly title",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const entities = makeConversationEntityStateRegistry();
+      entities.acquire("parent").acceptCanonicalState(conversationFixture("parent"));
+      entities.acquire("child").acceptCanonicalState({
+        ...conversationFixture("child"),
+        title: "Resident child",
+        parentThreadId: "parent",
+      });
+      let repairs = 0;
+      let released = 0;
+      const relationships = yield* buildRelationships({
+        scope,
+        entities,
+        published: [],
+        children: () => [coreThread("child", "parent")],
+        directory: CodexThreadDirectory.of({
+          resolve: () =>
+            Effect.sync(() => {
+              repairs += 1;
+            }).pipe(
+              Effect.andThen(Effect.never),
+              Effect.onInterrupt(() =>
+                Effect.sync(() => {
+                  released += 1;
+                }),
+              ),
+            ),
+        } as unknown as CodexThreadDirectory["Service"]),
+      });
+      const memberships = yield* relationships.refresh("parent");
+      yield* Effect.yieldNow;
+      assert.strictEqual(memberships[0]?.actorName, "Resident child");
+      assert.strictEqual(repairs, 1);
+      yield* Scope.close(scope, Exit.void);
+      assert.strictEqual(released, 1);
+    }),
+);
+
+it.effect(
+  "releases pending metadata repair when its parent retires while the Profile stays open",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const registry = makeConversationEntityStateRegistry();
+      let subscriptions = 0;
+      const entities: ConversationEntityStateRegistry = {
+        ...registry,
+        subscribeRetired: (listener) => {
+          subscriptions += 1;
+          const subscription = registry.subscribeRetired(listener);
+          return {
+            [Symbol.dispose]: () => {
+              subscriptions -= 1;
+              subscription[Symbol.dispose]();
+            },
+          };
+        },
+      };
+      const parent = entities.acquire("parent");
+      parent.acceptCanonicalState(conversationFixture("parent"));
+      let started = 0;
+      let interrupted = 0;
+      const relationships = yield* buildRelationships({
+        scope,
+        entities,
+        published: [],
+        children: () => [coreThread("child", "parent")],
+        directory: CodexThreadDirectory.of({
+          resolve: () =>
+            Effect.sync(() => {
+              started += 1;
+            }).pipe(
+              Effect.andThen(Effect.never),
+              Effect.onInterrupt(() =>
+                Effect.sync(() => {
+                  interrupted += 1;
+                }),
+              ),
+            ),
+        } as unknown as CodexThreadDirectory["Service"]),
+      });
+      yield* relationships.refresh("parent");
+      yield* Effect.yieldNow;
+      assert.strictEqual(started, 1);
+      assert.strictEqual(subscriptions, 1);
+      entities.releaseGeneration("parent", parent.generation);
+      yield* Effect.yieldNow;
+      assert.strictEqual(interrupted, 1);
+      assert.strictEqual(subscriptions, 0);
+      assert.isNull(entities.current("parent"));
+      entities.acquire("parent").acceptCanonicalState(conversationFixture("parent"));
+      yield* relationships.refresh("parent");
+      yield* Effect.yieldNow;
+      assert.strictEqual(started, 2);
+      yield* Scope.close(scope, Exit.void);
+      assert.strictEqual(interrupted, 2);
+      assert.strictEqual(subscriptions, 0);
+    }),
+);
+
+it.effect("does not publish old relationship work after the parent entity is replaced", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const entities = makeConversationEntityStateRegistry();
+    const parent = entities.acquire("parent");
+    parent.acceptCanonicalState(conversationFixture("parent"));
+    parent.installSnapshot(conversation);
+    const admitted = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    const published: CodexApplicationEvent[] = [];
+    const relationships = yield* buildRelationships({
+      scope,
+      entities,
+      published,
+      children: () => [{ ...coreThread("child", "parent"), thread_name: "Child" }],
+      beforeChildRead: Deferred.succeed(admitted, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+      ),
+      directory: CodexThreadDirectory.of({
+        resolve: () => Effect.die("No metadata repair needed"),
+      } as unknown as CodexThreadDirectory["Service"]),
+    });
+    const fiber = yield* Effect.forkChild(relationships.refresh("parent"));
+    yield* Deferred.await(admitted);
+    entities.releaseGeneration("parent", parent.generation);
+    entities.acquire("parent").acceptCanonicalState(conversationFixture("parent"));
+    yield* Deferred.succeed(release, undefined);
+    assert.deepEqual(yield* Fiber.join(fiber), []);
+    assert.deepEqual(published, []);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
 
 it.effect("shares one metadata repair per child and interrupts it with the owner Scope", () =>
   Effect.gen(function* () {

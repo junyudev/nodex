@@ -3,6 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
+import type { CodexQueuedMessageState } from "../../src/shared/codex-queued-message";
+import type { IpcApi } from "../../src/shared/ipc-api";
+import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2";
 
 const repositoryRoot = process.cwd();
 const interruptedReason = "Queue paused because you interrupted";
@@ -34,6 +37,7 @@ const createQueueHarness = async (
 const queueAndInterrupt = async (
   harness: ElectronScenarioHarness,
   prompts: readonly string[],
+  beforeQueue?: (page: Page) => Promise<void>,
 ): Promise<Page> => {
   const page = await harness.launch();
   await page.getByRole("button", { name: "New chat" }).first().click();
@@ -66,6 +70,7 @@ const queueAndInterrupt = async (
     '[data-codex-composer="true"][aria-label="Ask for follow-up changes"]',
   );
   await expect(composer).toBeVisible({ timeout: 30_000 });
+  await beforeQueue?.(page);
 
   for (const prompt of prompts) {
     await composer.fill(prompt);
@@ -109,9 +114,92 @@ const readAcceptedPrompts = (logPath: string): string[] => {
     });
 };
 
-test("persists an interrupted queue across restart and resumes FIFO", async () => {
+test("retains a queued permission choice when project permissions change before delivery", async () => {
   test.setTimeout(120_000);
-  const harness = await createQueueHarness("codex-queued-follow-up-restart");
+  const prompt = "Use the permission choice captured for this queued message";
+  const harness = await createQueueHarness("codex-queued-permission-intent");
+  try {
+    const page = await queueAndInterrupt(harness, [prompt], async (page) => {
+      await page.evaluate(async () => {
+        if (!window.api) throw new Error("Desktop bridge unavailable");
+        const projects = (await window.api.invoke(
+          "projects:list",
+        )) as IpcApi["projects:list"]["result"];
+        const projectId = projects.items[0]?.id;
+        if (!projectId) throw new Error("Scenario Project missing");
+        await window.api.invoke("codex:permission:mode:set", projectId, "full-access");
+      });
+    });
+    const capture = await page.evaluate(async (prompt) => {
+      if (!window.api) throw new Error("Desktop bridge unavailable");
+      const state = (await window.api.invoke(
+        "codex:queued-messages:read",
+      )) as CodexQueuedMessageState;
+      const entry = Object.entries(state).find(([, messages]) =>
+        messages.some((message) => message.context.prompt === prompt),
+      );
+      if (!entry) throw new Error("Queued message missing");
+      const [threadId, messages] = entry;
+      const captured = messages.find((message) => message.context.prompt === prompt)!;
+      const projects = (await window.api.invoke(
+        "projects:list",
+      )) as IpcApi["projects:list"]["result"];
+      const projectId = projects.items[0]?.id;
+      if (!projectId) throw new Error("Scenario Project missing");
+      await window.api.invoke("codex:permission:mode:set", projectId, "auto");
+      const current = (await window.api.invoke(
+        "codex:permission:state:get",
+        projectId,
+      )) as IpcApi["codex:permission:state:get"]["result"];
+      const restored = (await window.api.invoke(
+        "codex:queued-messages:read",
+      )) as CodexQueuedMessageState;
+      return {
+        captured: restored[threadId]?.find((message) => message.id === captured.id)
+          ?.submissionOptions,
+        currentMode: current.mode,
+        messageId: captured.id,
+      };
+    }, prompt);
+    expect(capture.captured?.agentMode).toBe("full-access");
+    expect(capture.captured?.shouldSendPermissionOverrides).toBe(true);
+    expect(capture.currentMode).toBe("auto");
+    await expect(queuedRow(page, prompt)).toBeVisible();
+    await resumeQueue(page);
+    await queuedRow(page, prompt)
+      .getByRole("button", { name: "Submit without interrupting the model" })
+      .click();
+    await expect(queuedRow(page, prompt)).toHaveCount(0, { timeout: 30_000 });
+    const logPath = path.join(harness.profile.runRoot, ".fake-codex", "requests.jsonl");
+    await expect
+      .poll(() => {
+        const entries = fs
+          .readFileSync(logPath, "utf8")
+          .split("\n")
+          .filter(Boolean)
+          .map((line) => JSON.parse(line) as { method: string; params: TurnStartParams });
+        return entries.find(
+          (entry) =>
+            entry.method === "turn/start" && entry.params.clientUserMessageId === capture.messageId,
+        )?.params;
+      })
+      .toMatchObject({
+        clientUserMessageId: capture.messageId,
+        approvalPolicy: "never",
+        approvalsReviewer: "user",
+        permissions: ":danger-full-access",
+        sandboxPolicy: null,
+      });
+  } finally {
+    await harness.close();
+  }
+});
+
+test("persists an interrupted queue across restart and continues FIFO after an explicit send", async () => {
+  test.setTimeout(120_000);
+  const harness = await createQueueHarness("codex-queued-follow-up-restart", {
+    NODEX_FAKE_CODEX_RESUME_CLOSING_ATTEMPTS: "1",
+  });
 
   try {
     const scenarioLogPath = path.join(harness.profile.runRoot, ".fake-codex", "requests.jsonl");
@@ -127,10 +215,30 @@ test("persists an interrupted queue across restart and resumes FIFO", async () =
     await expect(queuedRow(page, "First queued follow-up")).toBeVisible();
     await expect(queuedRow(page, "Second queued follow-up")).toBeVisible();
 
+    const resumeAttempts = fs
+      .readFileSync(scenarioLogPath, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map(
+        (line) =>
+          JSON.parse(line) as { method: string; params: { requestId: string; closing: boolean } },
+      )
+      .filter((entry) => entry.method === "resume-attempt");
+    expect(resumeAttempts.map(({ params }) => params.closing)).toEqual([true, false]);
+    expect(new Set(resumeAttempts.map(({ params }) => params.requestId)).size).toBe(2);
+
     await resumeQueue(page);
+    await expect(page.getByText(interruptedReason, { exact: true })).toHaveCount(0);
+    await expect(queuedRow(page, "First queued follow-up")).toBeVisible();
+    await expect(queuedRow(page, "Second queued follow-up")).toBeVisible();
+    expect(readAcceptedPrompts(scenarioLogPath)).toEqual(["Hold the active turn for queue parity"]);
+    await queuedRow(page, "First queued follow-up")
+      .getByRole("button", { name: "Submit without interrupting the model" })
+      .click();
     await expect(queuedRow(page, "First queued follow-up")).toHaveCount(0, {
       timeout: 30_000,
     });
+    await expect(page.getByText("The task completed successfully.").first()).toBeVisible();
     await expect(queuedRow(page, "Second queued follow-up")).toHaveCount(0, {
       timeout: 30_000,
     });
@@ -161,6 +269,7 @@ test("keeps a failed head in place while a later row is sent and retried manuall
 
     const failedRow = queuedRow(page, failedPrompt);
     const laterRow = queuedRow(page, laterPrompt);
+    await failedRow.getByRole("button", { name: "Submit without interrupting the model" }).click();
     await expect(
       failedRow.getByRole("button", { name: "Try sending this queued message again" }),
     ).toBeVisible({ timeout: 30_000 });

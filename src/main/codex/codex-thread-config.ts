@@ -1,12 +1,16 @@
-import type { ClientRequestParamsByMethod } from "@nodex/effect-codex-app-server/rpc";
 import {
   selectAppToolCatalog,
   type AppToolCatalogPurpose,
 } from "../../shared/nodex-app-tools/catalog-selection";
-import { buildCodexThreadConfigOverrides } from "./codex-thread-capabilities";
 
-type ThreadConfig = NonNullable<ClientRequestParamsByMethod["thread/start"]["config"]>;
-type ThreadConfigValue = ThreadConfig[string];
+type ThreadConfigValue =
+  | null
+  | string
+  | number
+  | boolean
+  | ThreadConfigValue[]
+  | { [key: string]: ThreadConfigValue };
+type ThreadConfig = Record<string, ThreadConfigValue>;
 
 const normalizeConfigValue = (value: unknown): ThreadConfigValue => {
   if (
@@ -27,20 +31,15 @@ const normalizeConfigValue = (value: unknown): ThreadConfigValue => {
 
 /** Refresh app-tool visibility at every Thread launch, fork, and live resume. */
 export function buildCodexThreadConfig(input: {
-  readonly nativeMcp: boolean;
+  /** The physical app-server Session has the private Nodex App Tools transport installed. */
+  readonly nativeAppTools: boolean;
   readonly purpose?: AppToolCatalogPurpose;
   readonly overrides?: Readonly<Record<string, unknown>> | null;
 }): ThreadConfig {
   const purpose = input.purpose ?? "session";
   return {
-    ...Object.fromEntries(
-      Object.entries(input.overrides ?? {}).flatMap(([key, entry]) =>
-        entry === undefined ? [] : [[key, normalizeConfigValue(entry)]],
-      ),
-    ),
-    ...(purpose === "system" ? {} : buildCodexThreadConfigOverrides()),
-    // Remote endpoints without the private server must not receive a partial MCP definition.
-    ...(input.nativeMcp
+    // A host without the private server must not receive a partial MCP definition.
+    ...(input.nativeAppTools
       ? {
           "mcp_servers.nodex_app.enabled_tools": selectAppToolCatalog({
             nativeMcp: true,
@@ -48,5 +47,10 @@ export function buildCodexThreadConfig(input: {
           }).map((tool) => tool.name),
         }
       : {}),
+    ...Object.fromEntries(
+      Object.entries(input.overrides ?? {}).flatMap(([key, entry]) =>
+        entry === undefined ? [] : [[key, normalizeConfigValue(entry)]],
+      ),
+    ),
   };
 }

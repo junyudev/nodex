@@ -1,347 +1,561 @@
 # Codex Thread Owner/Follower Streaming
 
 Status: Active
-Last Updated: 2026-09-11
+Last Updated: 2026-09-16
 
 ## Intent
 
-Nodex supports multiple desktop windows viewing and operating on the same live Codex thread. One renderer window owns the live transcript projection for a thread; follower windows mirror that owner through ordered snapshots and patches, and route state-changing actions back to the owner instead of mutating local transcript state directly.
-
-This contract keeps live streaming text, request cards, queued state, edit/rollback, and recovery behavior consistent across windows.
-
-## Terms
-
-- **Streaming thread**: a Codex app-server thread that is started, resumed, or attached to a live transport and may emit thread, turn, item, or server-request events.
-- **Owner window**: the renderer window allowed to reduce live app-server events into visible conversation state for one thread.
-- **Follower window**: a renderer window that displays the same thread from owner snapshots and patches.
-- **Dormant conversation document**: a main recovery/hydration cache that is not a visible stream role. A renderer must adopt ownership or attach to an accepted owner baseline before showing live mutations.
-- **Command-only run**: a main-owned automation execution that may issue app-server commands and broker JSON-RPC requests, but does not own or publish conversation state.
-- **Stream revision**: a per-thread monotonically increasing revision attached to owner snapshots and patches.
-- **Owner client id**: the stable renderer-client identity carried with stream updates so followers can reject stale owners.
-- **Follow intent**: a renderer's explicit active-view request to receive a conversation's shared stream. It is independent from Review/presentation state and from app-server connection state.
-- **Ready follower**: a followed renderer client that is connected, is not the owner, and has completed the current owner snapshot barrier. Only ready followers are patch targets.
-- **Snapshot barrier**: the invariant that a newly followed or reconnected renderer receives the current accepted owner snapshot before any later ordinary state patch.
-- **Accepted recovery cache**: main's last owner-accepted conversation document/revision. It is used for snapshot/adoption/repair only; the owner renderer remains the visible canonical reducer.
-- **History-page barrier**: a follower asks the owner to reveal one exact boundary or search island, then waits for the owner-published revision before consuming it.
-
-## Scope
-
-This spec covers:
-
-- owner/follower stream roles for active local Codex threads
-- revisioned snapshot and patch application
-- live assistant, plan, and reasoning prose streaming
-- state-changing action routing from followers to owner
-- request-plane ownership for approvals, user input, permissions, and MCP elicitations
-- edit-last-user-turn rollback/replacement ordering
-- sparse-history paging/search, resume, owner-loss, and inactive-owner cleanup
-
-This spec does not cover:
-
-- browser/HTTP Codex thread support
-- realtime voice transcript UI
-- first-run onboarding picker/setup UI
-- visual styling unrelated to transcript ownership
-- exact replay of hidden prompt-start params not stored in the conversation model
-
-## Ownership Rules
-
-At any moment, a streaming thread has one effective owner window for a given host.
-
-Only the owner may:
-
-- reduce visible thread mutation notifications
-- run the assistant/plan/reasoning prose frame queue
-- publish `threadStreamStateChanged` snapshots or patches
-- own live request cards and request-response cleanup
-- execute state-changing thread actions directly
-
-Followers must:
-
-- apply only matching owner snapshots and contiguous patches
-- reject patches from missing, stale, or mismatched owners
-- reject patches whose `baseRevision` does not equal the local revision
-- route state-changing actions to the owner
-- mark the conversation `needs_resume` when the owner disappears
-
-Main process must:
-
-- provide stable renderer client ids
-- route owner/follower messages and validate response origins
-- maintain followed intent, connected clients, snapshot-pending clients, membership epochs, and owner-detached recovery leases separately
-- deliver ordinary state only to ready follower targets; an empty or unavailable target set fails closed rather than falling back to global stream broadcast
-- send owner/follower control messages through the same targeted client boundary, while keeping status requests global so every renderer can reannounce its own follow intent
-- host app-server transport and durable/recovery cache state
-- keep no-owner hydration and command execution out of the visible stream plane
-- compare-and-set renderer ownership after successful resume hydration and before returning the owner result
-- hydrate the durable follow-up queue into the recovery replica during resume, even when the registry still names the initiating renderer as the prior owner; pre-adoption hydration never calls that transitioning renderer
-- return an accepted owner document/revision to a competing renderer so it attaches as follower instead of starting a second resume implementation
-
-## Stream State
-
-Snapshots contain the full `conversationState` and a target `revision`. Owner identity, epoch, and contiguous revisions fence replication; transcript content is never serialized or hashed to validate a checkpoint. Main preserves each accepted owner document exactly, independently of its dormant control projection.
-
-Patches contain `baseRevision`, `revision`, and ordered Immer-compatible patches.
-
-A follower applies a patch only when:
-
-- local role is `follower`
-- patch `sourceClientId` matches the recorded owner
-- local revision equals patch `baseRevision`
-
-On mismatch, the follower drops the patch and waits for a future owner snapshot, explicit resume, or owner-loss recovery. It does not request a main-authored transcript snapshot just because a stale patch was observed.
-
-A renderer that is already owner ignores incoming stream-state messages, including publish echoes. Production `threadStreamStateChanged` messages always identify a renderer owner; main does not emit source-null conversation snapshots or patches.
-
-## Follower Subscription Control Plane
-
-The stream data plane and the follower subscription control plane are separate. The renderer's active conversation lifecycle calls `setThreadViewActive()`; main records that signal as follow intent through the subscription coordinator. Review tabs, `setThreadPresented()`, above-composer diff banners, and projectless output filtering do not create or remove follow membership.
-
-The coordinator keeps these sets distinct:
-
-- `followedClientIds`: renderer intent, including a client that is temporarily disconnected
-- `connectedClientIds`: clients currently registered with the renderer router
-- `snapshotPendingClientIds`: followed non-owner clients that have not adopted the current accepted owner snapshot
-- ready follower targets: the intersection of followed and connected clients, excluding the owner and snapshot-pending clients
-
-When a follower attaches, the coordinator marks it snapshot-pending. Main requests a fresh snapshot from the current owner, fenced by owner identity and epoch. Only acceptance and delivery of that snapshot makes the client a ready patch target; a patch cannot satisfy this barrier. The same barrier is re-established for a reconnect and for every owner replacement. A missing owner keeps the intent but cannot produce a visible snapshot; the next owner supplies a fresh snapshot to pending followers.
-
-Targeted delivery is fail-closed. `threadStreamStateChanged` and follower control messages carry explicit client targets, exclude the source owner, treat an empty target list as a no-op, and never fall back to all-window broadcast. A missing/destroyed target is converted into an IPC reset, removes it from ready targets, preserves its follow intent during the five-second reconnect grace, and requires a fresh snapshot before patches resume. Following-status requests are the deliberate global exception: every renderer may receive the request, but only renderers with the matching local follow intent reannounce to the current owner.
-
-Owner disposal sends a targeted transport reset to ready followers, preserves main's accepted document/revision, and lets each follower reannounce or enter `needs_resume`. Accidental disposal and IPC reset do not immediately evict the accepted cache; deliberate inactive cleanup may evict it only after there are no followers/pending reconnects and the normal retention gate passes. App-server connection status is not renderer-client status and must not be used as a substitute for this control plane.
-
-App-server endpoint loss is a separate invalidation source. Main marks every loaded conversation `needs_resume` and targets a transport reset to each affected owner/follower surface before replacement. The visible attachment lifecycle then performs bounded resume/adoption or exposes its terminal failure with Retry; it never keeps a dead-generation role or an indefinite restore loader while the host reconnects.
-
-## Prose Streaming
-
-Assistant, plan, and reasoning text stream as live owner patches, not as completed-message animation.
-
-Required behavior:
-
-- `item/started` creates the canonical item and does not force prose flushes.
-- Prose deltas append only to existing matching assistant/plan/reasoning items.
-- Missing or kind-mismatched delta targets are dropped, ACKed, and logged.
-- The owner batches visible prose through a frame queue.
-- `item/completed` synchronously flushes all pending command output, then drains pending prose before applying the authoritative completed item.
-- Terminal `turn/completed`, `turn/interrupted`, and `turn/failed` synchronously flush pending command output, then drain pending prose before final turn state applies. Main fallback uses the same command-first ordering.
-- Renderer command output accepts only sequenced owner notifications; no-owner fallback updates Main canonical state and never supplies an unsequenced renderer write path.
-
-Frame queue constants:
-
-- visible renderer frames use `requestAnimationFrame`
-- fallback timer is `16ms`
-- normal prose flushes up to `24` characters per frame
-- terminal drain uses at most `8` frames
-- hidden/no-rAF/small terminal buffers flush synchronously
-
-Streamdown remains the markdown renderer and in-progress visual animation layer. It is not the upstream transport mechanism for live text.
-
-## Owner Actions
-
-Follower-originated state-changing actions route to the owner:
-
-- start turn / follow-up turn
-- resume the latest interrupted turn
-- steer active turn
-- interrupt turn
-- update thread settings
-- compact thread
-- edit last user turn
-- set or clear thread goal
-- set thread memory mode
-- approval, permission, user-input, and MCP elicitation responses
-- queued follow-up mutations
-- plan-implementation request removal
-- one-page history reveal and persisted-search hydration
-- fork from turn
-
-The owner performs visible mutations locally and publishes the resulting stream revision. Main validates ownership and executes allowlisted app-server requests through the owner-scoped request facade. Queue and steer semantic commands additionally commit through Main's durable queue Module; their owner requests are short, idempotent projection updates and never enclose the app-server transport.
-
-### Start Turn
-
-For active owned threads, the renderer owner creates the submitted-user bubble:
-
-1. Compile the prompt once into app-server `UserInput[]`, attachments, review-comment context, and agent-config sidecars, then generate `clientUserMessageId`.
-2. Synchronously append a nullable in-progress turn whose params retain that exact prepared input and client id; its raw item list contains no synthetic user message.
-3. Queue the resulting owner patch in the renderer publication outbox. Publication does not gate owner-visible state or app-server dispatch.
-4. Call app-server `turn/start` through the owner-scoped facade with the same prepared input and client id. Main validates the owner and resolves permission, workspace, model, and authority policy, but does not parse the prompt again.
-5. Synchronously rebind the temporary turn to the returned app-server turn id and queue the rebind patch.
-
-A visible local conversation with no stream role resumes and adopts renderer ownership before step 1. It never falls through to the main-owned `codex:turn:start` IPC. The owner-scoped main facade is transport-only for `turn/start`: it forwards the request and returns the raw `TurnStartResponse` without merging a turn, inserting a transcript row, or publishing a source-null stream update.
-
-All ordinary state-changing conversation actions use one authority router: owners execute locally, followers forward to the current owner, and no-role renderers resume/adopt before executing locally. There is no per-action main/no-owner transcript fallback; local interrupt is the explicit idempotent control-plane recovery exception.
-
-Ordinary owner mutations commit against the latest renderer document synchronously. The owner action boundary automatically materializes canonical mutations into the visible projection, so a local start or a Main-staged steer cannot update canonical input while forgetting the transcript view. With followers, the per-conversation publication cursor computes patches from its last accepted shared document, coalesces mutations that arrive while a publish is in flight, and repairs a rejected patch with a bounded recovery snapshot. Action receipts may wait for the outbox to reach the required revision, but local visibility and the app-server RPC never wait for publication. With no followers, live updates stay local and acknowledge transport delivery without constructing shared documents or replication patches. A later follower requests the current owner snapshot. Full resident snapshots remain explicit recovery barriers for resume, history commits, owner replacement, revert, and repair; exported complete history never enters this stream.
-
-Direct new-thread creation prepares the same input and client identity before transport and adopts the actual app-server thread as the route identity. Main first hydrates the response into the canonical dormant snapshot, then owner adoption atomically turns that snapshot into the first accepted renderer replica and checkpoint. The renderer installs that owner checkpoint before publishing the first visible conversation snapshot, using the same attachment lifecycle as resume. The first adoption must not require an accepted replica as its own precondition; absence of a canonical snapshot fails closed. Main does not publish the dormant document as a visible source-null stream or add a separate transcript-only user row after the response.
-
-Once Main admits `thread/start` or `thread/fork`, the application-scoped creation owner completes the physical operation even if the initiating renderer disappears. The app-server response's exact Thread id correlates the local commit with any earlier `thread/started` notification. Main must either finish the intended Session/Side Chat/import ownership transaction or run its compensating cleanup; losing an IPC waiter never leaves a normally visible orphan Thread or an indefinitely loading surface.
-
-Interrupted-turn Resume uses the same authority router and optimistic transaction with an explicit userless intent. The owner requires the latest canonical turn to remain `interrupted`, requires idle runtime with no thread goal, pending request, or pending steer, and coalesces concurrent Resume attempts per thread. It appends a nullable in-progress turn whose canonical params contain `input: []`, then calls the owner-scoped `turn/resume-interrupted` facade. Main translates that product-private facade request into the standard app-server `turn/start` with empty input and inherited thread settings. No user bubble is projected. If transport fails, the owner removes only that nullable placeholder and restores the prior runtime status rather than terminalizing an empty failed turn.
-
-Later app-server user-message echoes remain canonical raw turn items but never create a second initial-user bubble while the params-owned row is visible. When app-server supplies `clientId`, reconciliation requires the exact submitted `clientUserMessageId`; structural input comparison is only a compatibility fallback for echoes without a client id. If actual turn work precedes the server `userMessage`, normal local-thread projection treats the completion as a `steered` lifecycle marker even when the client id matches. Preserving a second server-owned user bubble is reserved for explicit server-message-preserving views. The same identity rule applies to incremental `item/completed` projection, full turn hydration, and pending-turn rebind.
-
-### Steer Turn
-
-Steer enters Main as one complete typed intent containing the expected turn, prepared input, stable `clientUserMessageId`, distinct recovery-row identity, and comparison context. Main first sends the owner a closed staging directive for that same identity, then performs transport in the Thread causal lane. If app-server identifies a different active turn, Main retargets the same intent once; if the target ended before acceptance, it falls back to ordinary `turn/start` with the same wire identity. No retry creates a second optimistic item. The authoritative matching user-message completion accepts the pending item; terminal completion restores an unaccepted item exactly once through the durable queue transition.
-
-### Queued Follow-ups
-
-Core owns one exact-revision ordered ledger per Thread. Main's scoped `CodexQueuedFollowUps` Module hydrates that ledger, freezes and verifies payload manifests, serializes mutations through the Thread lane, and owns one bounded per-Thread delivery fiber. The renderer never runs a queue reducer or drain loop.
-
-Dispatch wake-ups are level-triggered per Thread: while a delivery fiber is running, any additional wake-up coalesces into one replay after that fiber settles. A wake-up can never disappear merely because it arrived during transport completion, durable row removal, or fiber cleanup.
-
-Main projects a complete queue snapshot with `threadGeneration`, `ownerEpoch`, `ledgerRevision`, and process-local `projectionRevision`. The active renderer owner accepts only newer coordinates, applies the snapshot atomically to its conversation document, and publishes the resulting owner revision. Followers therefore see queue state from the same visible writer as the transcript without gaining ledger or transport authority. Owner loss interrupts the scoped attempt but retains the durable row; a replacement owner receives the current projection before another attempt.
-
-An in-flight row remains in the durable ledger and visible projection. Only successful transport followed by successful exact-revision removal may make it disappear. Failure updates that same row in place. Interruption recovery is driven by authoritative `turn/completed` and atomically pauses the existing queue even when there was no pending optimistic steer to restore.
-
-### Edit Last User Turn
-
-Editing the latest user turn is an owner-local ordered transaction:
-
-1. Ensure the local conversation is owner; no-role local edits resume first.
-2. Wait for the owner publish cursor and already-forwarded owner notifications to settle.
-3. Read the current conversation and verify the target is still the latest completed editable user turn.
-4. Send the stable target identity as `beforeTurnId` through the owner-scoped facade. Main calls generation-fenced `thread/revert`; a host without the identity-based revert contract fails closed instead of materializing complete history for deprecated count rollback.
-5. Re-read local state, then project the returned bounded retained tail against that current owner conversation.
-6. Tombstone removed turn/item ids so late notifications cannot recreate the old bubble.
-7. Synchronously commit the rollback-only conversation to renderer subscribers and publish that snapshot.
-8. Start the replacement turn through the same owner-local start-turn path only after the rollback publish succeeds.
-9. Followers wait for the returned owner revision before the edit action resolves.
-
-The synchronous rollback-only commit is part of the contract, not a rendering optimization. React must observe a state in which the original bubble is gone before the optimistic replacement is appended.
-
-Current edit replacement input is reconstructed from visible user-message content. Text, images, mentions, skills, and text attachments represented in `rawItem.content` are preserved. Hidden start params such as structured comment attachments or agent config overrides are not replayed unless they are persisted in the conversation model.
-
-## Request Plane
-
-Live approval, permission, request-user-input, and MCP elicitation rows are visible request-plane state. When a renderer owner exists:
-
-- main keeps JSON-RPC pending-response plumbing
-- the owner stores and publishes visible request rows
-- response UI routes by `conversationId` before local request lookup
-- owner response cleanup removes the request and publishes completed request item state
-- stale followers do not call direct response IPC when they missed the request row locally
-
-Non-Nodex dynamic tool calls that do not create visible request state are
-owner-gated and ACKed without ordinary stream patches. Every `nodex_app` call
-executes directly in main with its frozen Turn authority; it never detours
-through the conversation state owner.
-
-Nodex Project-scope write consent is the deliberate exception to request-plane
-ownership. Main targets the most recently activated renderer presenting the
-direct task, or the root task for a background child. That renderer may be an
-owner, follower, or not-yet-adopted viewer. It overlays the authorization card
-locally, preserves it across incoming canonical snapshots, and removes it on a
-response or terminal Turn; the occurrence is never published as canonical
-conversation state and never causes the renderer to adopt ownership.
-
-## History and Resume
-
-History paging and persisted search are owner-visible sparse mutations. A follower sends one exact page or search-island action to the current owner and waits for the resulting revision. Edit and fork route their stable Turn identities directly and require no history barrier. Complete export is renderer-scoped, cancellable, and deliberately outside owner/follower resident-state publication.
-
-Explicit resume returns a role-tagged result. With no owner, main hydrates the latest tail, silently seeds its accepted recovery document, compare-and-sets the invoking renderer as owner, and returns `{ role: "owner", conversation, revision, checkpoint }`. Before notifying transcript subscribers, the renderer installs the owner role and seeds its outbox from that checkpoint; it then applies the document, releases buffered same-thread events, publishes the next owner snapshot, and asks main to replay any transport-brokered pending requests. If another owner already exists, main performs no second resume; it returns `{ role: "follower", conversation, revision, ownerClientId, checkpoint }` from the accepted owner cache, and the renderer installs that provisional follower baseline, reannounces following, and waits for a fresh owner snapshot before completing attachment. A subscriber must never observe a `resumed` document without the role from the same accepted attachment.
-
-Renderer attachment is an explicit observable lifecycle independent from the app-server conversation's `resumeState`: `idle`, `attaching`, `attached`, or `failed`. Only `attaching` renders a restore loader. A settled failure stops automatic render-loop retries and exposes an explicit Retry action; if a valid cached transcript exists, the transcript remains visible with a failure notice instead of being replaced by a loader. Failure before adoption returns the conversation to `needs_resume`; activation failure after adoption also invalidates the unusable stream role while retaining the last truthful local transcript for recovery. Explicit retry or a subsequently accepted owner snapshot may attach the surface again.
-
-Renderer ownership adoption is part of that resume transaction. Main resolves the invoking renderer's registered client ID from the resume IPC event and, after successful hydration but before returning the snapshot, adopts that client only when no different owner exists. A failed, archived, non-resumed, disposed-client, or competing-owner resume never installs or replaces an owner. The first resumed snapshot can therefore publish immediately while unknown and wrong-client publications remain fail-closed.
-
-Buffer release can advance Main's accepted canonical checkpoint after the initial resume handshake. Owner activation therefore treats a rejected checkpoint with recovery data as a convergence boundary: it adopts the recovered checkpoint, preserves Main-owned standalone unread state, and retries the activation snapshot within the same bounded transaction. A stale handshake checkpoint must not require navigation or a second user action to become usable.
-
-Resume, fork, and history-edit synchronization wait for the fixed prefix of owner notifications already sent when that operation begins waiting. Later notifications cannot extend an earlier operation's prefix, and concurrent or canceled callers cannot share an expiring deadline. The bounded cross-process synchronization deadline is independent of renderer frame cadence: a busy or cold window must not turn successfully restored history into a failure after a few frames. Only messages routed to an existing owner consume acknowledgment sequence numbers. Owner replacement, release, or IPC connection loss invalidates pending old-owner waits; neither ownership changes nor timeout can invent acknowledgment. Reconnecting windows retain a monotonic sequence fence so late pre-disconnection acknowledgments cannot consume new deliveries. Genuine timeout reports the captured target and latest acknowledged sequence in diagnostics and exposes an actionable synchronization error.
-
-Background child-agent summaries are not active child-thread streams. Parent
-thread surfaces consume one revisioned root Subagent overview containing only
-positive graph facts, lightweight metadata, causal status, and bounded windows;
-they do not subscribe to child conversations or scan child turns. Receiver
-display metadata is sufficient for friendly names and seed-based identicons.
-Sparse receiver id lists may preserve reference state, but an unrelated or
-unverified id cannot create an openable row.
-
-The background-agent opener verifies the selected child against the root,
-reuses resident sparse history when available, and otherwise hydrates only that
-child through the normal bounded Thread history boundary. The detail surface
-then attaches to the resulting child conversation role. No parent mount,
-overview refresh, status notification, or sibling row marks a child opened or
-hydrates its transcript. The complete product contract is
-[Codex Subagent Behavior](codex-subagent-behavior.md).
-
-When the owner client disappears, followers reject revision waiters, clear the owner role, mark the conversation `needs_resume`, and recover through explicit resume. The last accepted document remains available for owner adoption or a new follower snapshot while that recovery lease is active.
-
-## No-Owner and Automation Boundaries
-
-No-owner state is dormant, not a visible stream role. Main may hydrate/cache protocol history for recovery and may update durable sidebar/read models, but only an identified renderer owner may publish `threadStreamStateChanged`. Opening a dormant task runs resume/adopt; opening a task with an existing owner attaches to that owner's accepted baseline.
-
-Cron automation is a command-only runner: main owns workspace setup, `thread/start`, `turn/start`, tool execution, run lifecycle, and terminal/inbox bookkeeping. It suppresses those notifications from the conversation pipeline while no renderer owns the run. Heartbeat automation requires a fresh lease published by the exact current renderer owner; main then issues transport commands without hydrating, merging, or claiming conversation ownership. Pending automation approvals/user-input remain transport-brokered and replay to a renderer after it adopts the task. Delivery is idempotent per semantic request occurrence (`requestId` plus method and call/item identity) and owner client, so re-resume cannot execute or surface the same pending occurrence twice; reused protocol ids do not collapse distinct dynamic calls, and owner replacement makes the same unresolved request eligible for replay to the new owner.
-
-Owner patch publication is a follower-broadcast side effect, not the owner-visible state boundary. Main validates the owner client, requires the patch base to match its last accepted owner revision, and applies the patch to that accepted document before targeted delivery. A missing, mismatched, or unapplicable base is rejected without advancing revision or acknowledging the owner notification; the owner then publishes its current shared document as the repair snapshot. Main's dormant recovery cache is never an alternate visible writer and never replaces the accepted-owner patch base.
-
-`item/fileChange/patchUpdated` is the Electron-compatible owner-local exception: the owner updates its visible canonical conversation immediately and submits a recovery-only snapshot with follower broadcast disabled. Main accepts that snapshot into the dormant cache and uses it to satisfy a pending follower barrier, but does not synthesize a second visible transcript writer or broadcast the high-frequency intermediate patch.
-
-## Implementation Coverage
-
-The current implementation covers these owner/follower contract areas:
-
-| Area                                   | Status   | Contract                                                                                                                                                                                                                                                                   |
-| -------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Single visible owner                   | complete | One renderer reduces active live transcript state; main owns transport, persistence, routing, and recovery caches.                                                                                                                                                         |
-| Follower mirror semantics              | complete | Followers apply matching owner snapshots/patches and drop stale owner/base mismatches.                                                                                                                                                                                     |
-| Follower mutation guard                | complete | State-changing follower actions route to the owner unless explicitly no-op, owner-local, or outside transcript ownership.                                                                                                                                                  |
-| Action authority routing               | complete | One router implements owner-local, follower-forward, and no-role resume/adopt behavior for ordinary conversation actions.                                                                                                                                                  |
-| Canonical/view commit boundary         | complete | Owner action mutations automatically materialize canonical changes before local notification and shared-document publication.                                                                                                                                              |
-| Request ownership                      | complete | Approval, permission, user-input, and MCP elicitation request rows are owner-visible state.                                                                                                                                                                                |
-| Notification ownership                 | complete | Owner-visible app-server notifications route to the renderer owner; command-only/no-owner notifications never enter the visible conversation pipeline.                                                                                                                     |
-| Prose and output queues                | complete | Assistant, plan, reasoning, and command output use process-global count-and-byte-bounded queues. Owner ACK attribution is bounded and fails the owner generation closed under pressure; Main fallback pressure commits without losing deltas.                              |
-| Resume/start/history lifecycle         | complete | Resume and fresh launch expose one renderer attachment lifecycle, install role/checkpoint before visible notification, terminate failures explicitly, release the resume buffer before the owner snapshot, and keep one-page/search-island revision waits owner-published. |
-| Owner-loss recovery                    | complete | Owner disposal rejects waiters and marks followers `needs_resume`.                                                                                                                                                                                                         |
-| No-owner discipline                    | complete | Main keeps dormant recovery/automation state off the visible stream plane; a renderer must adopt or attach before transcript updates are visible.                                                                                                                          |
-| Late follower bootstrap                | complete | A competing resume receives the accepted owner document, revision, and owner client id without replacing the owner or issuing another app-server resume.                                                                                                                   |
-| Automation boundary                    | complete | Cron is command-only; heartbeat requires a fresh exact-owner lease; protocol turns drive run/inbox bookkeeping without a main transcript.                                                                                                                                  |
-| Follower subscription control plane    | complete | Active view lifecycle creates explicit follow intent; main separates followed/connected/pending state and emits membership epochs.                                                                                                                                         |
-| Targeted relay and delivery failure    | complete | Ordinary state/control messages are target-before-delivery, source-excluding, empty-target no-op, and unavailable targets enter IPC reset/reannounce handling.                                                                                                             |
-| Snapshot barrier and owner replacement | complete | New, reconnected, and replacement-owner followers receive the accepted snapshot before becoming patch targets.                                                                                                                                                             |
-| Accepted-cache lease                   | complete | Accidental owner disposal preserves recovery state; deliberate cleanup evicts only after follower/reconnect eligibility checks.                                                                                                                                            |
-| Empty in-progress file-change activity | complete | Empty active file changes retain stable identity and render `Editing files`; terminal empty policy remains separate.                                                                                                                                                       |
-| Projectless Review affordance          | complete | Session-scoped Review is available when a valid turn target/diff exists; invalid targets hide the affordance without hiding live activity.                                                                                                                                 |
-| Durable queued follow-ups              | complete | Core owns the ordered ledger; Main owns terminal recovery and scoped delivery; the renderer owner publishes fenced full projections and followers remain presentation-only.                                                                                                |
-
-Covered owner-routed actions include start turn, edit last user turn, steer turn, interrupt turn, thread settings, goal changes, memory mode, compaction, one-page history reveal, persisted-search hydration, queued follow-ups, request responses, fork from turn, and plan-implementation request removal.
-
-Covered owner-visible notification categories include thread metadata/status, turn lifecycle, item lifecycle, assistant/plan/reasoning deltas, command output, file-change patches, request resolution, and turn errors. Progress-only, deprecated, or unsupported rows are validated, ACKed when needed, and kept out of ordinary visible stream patches.
-
-The remaining fidelity caveat is edit replacement input: Nodex reconstructs replacement prompt input from visible user-message content, preserving text/images/mentions/skills/text attachments represented in `rawItem.content`. Exact replay of hidden start params such as structured review comments or agent config overrides requires persisting those params in the conversation model. This is outside the apply-patch streaming/review control-plane gap closed by this implementation.
-
-## Validation Expectations
-
-Required regression coverage includes:
-
-- live partial prose appears before completion in owner and follower windows
-- terminal lifecycle waits for pending prose drain
-- owner patch publish does not gate owner-visible state
-- owner publish failure preserves partial text
-- edit rollback removes the old turn before replacement starts
-- follower actions wait for returned owner revisions
-- request responses route through owner by conversation id
-- stale patches are dropped without main-authored transcript resync
-- rejected owner patches repair through an owner snapshot without exposing a split transcript
-- late server user-message completions remain canonical but project as steering lifecycle after work instead of duplicating the params-owned user bubble
-- owner-loss recovery marks followers `needs_resume`
-- failed resume/start requests do not leave stale main-side renderer owner mappings
-- renderer-owned resume seeds the owner cursor from the returned accepted revision, releases the resume buffer, publishes the hydrated owner snapshot, and then replays brokered pending requests
-- competing renderer resume installs the recovery baseline provisionally and completes attachment only after a fresh owner snapshot, without a second app-server resume
-- a renderer that loses a concurrent resume race receives the winning owner's accepted baseline instead of an adoption error
-- command-only automation emits no source-null conversation stream and protocol `turn/completed` drives run/inbox bookkeeping directly
-- brokered pending requests replay once per owner, resolve without canonical transcript state, and can replay again only after owner replacement
-- heartbeat dispatch is rejected when the renderer lease is missing, stale, or belongs to a non-owner window
-- ordinary resume IPC adopts its invoking renderer before returning, so the first owner snapshot succeeds without test-only owner seeding
-- resume failure releases the buffer and rolls local state back to `needs_resume`
-- parent thread mounts do not mark background child agents opened; only background-agent detail tabs do
-- an empty in-progress `fileChange` is visible from the first event, retains its item identity when changes arrive, and does not create a duplicate terminal row
-- a follower cannot receive an ordinary patch before its targeted snapshot barrier completes
-- owner replacement requeues snapshots for every followed follower and never sends the replacement owner's echo back to itself
-- missing/destroyed targeted clients trigger reset/reannounce handling; no target falls back to global stream broadcast
-- accidental owner disposal retains the accepted recovery cache while deliberate inactive cleanup can evict only after the lease gate
-- Projectless Review hides an invalid/dead affordance while `Edited files, read files` and live file-change activity remain visible
-- queue projections reject stale generation/epoch/revision coordinates, survive owner replacement, and never create a source-null competing visible writer
-- interrupted terminal completion pauses an ordinary queue even when no pending steer recovery effect exists
-- an in-flight row remains visible until transport and exact-revision removal both succeed; failure stays in place and blocks automatic FIFO
+Every authenticated execution host has an ordinary conversation manager in Main and in each
+window that uses it. A conversation has one effective owner peer. Other peers follow that
+owner's canonical document and send mutations to its typed action interface. Main also owns
+the native app-server connection and durable product authorization; those capabilities do
+not make Main a second canonical writer for a conversation owned by a window.
+
+Timeline-backed history is not part of the active transcript path.
+
+## Manager and peer lifetimes
+
+A manager belongs to one execution host, authenticated account context and Endpoint identity.
+Main retains that manager across physical reconnects when these identities remain unchanged.
+Replacing the account, execution-host key or Endpoint retires the manager and its subscriptions.
+Physical request lifetimes capture the native generation separately; a late callback cannot
+mutate a successor generation's document even when its manager object is retained.
+
+Peer connection status and IPC reset events reach every registered host manager. They are service
+events and do not require a conversation host field. Connection status names the affected peer
+in its payload; the envelope sender may be the coordination service. Remote connection announces
+existing follow intent to the new peer. Self reconnection announces follow intent to all peers;
+owners respond with their current snapshots. Remote disconnection invalidates that peer's
+ownership. IPC reset clears follower membership with reconnect grace while retaining stream roles.
+Ordinary conversation events remain scoped to their named host.
+
+A disconnection revokes native callers, Turn preparations, resume receipts, history loads, settings work and queued
+native deltas. Resident history stays visible but becomes incomplete and requires resume.
+Main resets stream roles on connection loss. Windows reset roles after a dedicated-process
+restart or identity replacement. For a same-identity WebSocket reconnect, windows retain owner
+and follower roles while invalidating native work, then restore eligible owned streams.
+Refreshing an unchanged connected host preserves its context identity and pending work.
+
+Native Turn admission captures its connection before input preparation. That identity remains
+fixed through queue/delegation preparation, owner discovery, title scheduling, context injection
+and native dispatch, including after the preparation has been consumed. Gateway admission checks
+the captured host and generation again after waiting for readiness. A late native success cannot
+bind presentation, Turn authority or canonical state to a recovered manager. Unused preparations
+are released if their registration crossed a reconnect.
+
+An owner steering action captures the native connection, its exact owner role and the conversation
+lifetime. Reconnection, replacement of the conversation, or losing and reacquiring ownership
+retires the old action. Pending Turn-ID waits, outcome timers and late native responses cannot
+mutate the replacement document, bind submission presentation or report a successful steer.
+Retirement settles through the normal error channel and releases its subscriptions.
+
+Manual compaction waits for pending settings, then routes through the current stream owner.
+A settings failure caused by an unavailable owner can be recovered only while the caller is
+currently a follower. Peer timeouts and other errors do not authorize a second submission.
+Only the executing owner adds the pending compaction marker and sends the native request.
+That marker and request belong to the admitted connection, conversation and owner lifetime;
+an old success cannot report completion and an old failure cannot remove a successor's marker.
+Native item notifications consume the pending manual source once per admitted request.
+
+Delegated messages read the latest meaningful Turn again after settings have settled. An older
+resident in-progress Turn does not override a newer completed Turn. Preparation, forwarding,
+inactive-Turn fallback and completion retain the original connection, conversation and owner
+lifetime. The fallback starts a fresh Turn only for the delegated caller's confirmed inactive
+steer, and all prepared submission identities are released when that operation settles.
+
+WebSocket recovery runs at most two background resumes concurrently, using interactive request
+priority. The retained primary route lets its mounted view resume immediately and reserves a
+ten-second fallback; side chats and background details do not replace the foreground route.
+Successful view or executor settlement cancels the fallback. Transient recovery errors back off
+for 2, 4, 8, 16, 32 and then 60 seconds. A confirmed missing-thread error waits 60 seconds;
+a second consecutive missing result stops recovery. Archive suppression, writer conflicts,
+ownership loss and manager disposal also stop it. A new reconnect cancels prior timers and
+prevents their settlements from consuming the new recovery's concurrency slots.
+
+The mounted conversation stage and standalone composer wait for their conversation's own host
+to be connected before automatically resuming. Offline role invalidation must not leave the view
+in a failed attachment state that prevents the subsequent connected transition from retrying.
+
+Read-state sessions retain their authenticated namespace across physical reconnects. Canonical
+connected-environment evidence is cleared and rebuilt from native notifications; repeated connects
+are deduplicated and the managed environment is excluded. Metadata, history, settings and goal
+hydration capture their physical generation before I/O and reject stale completion.
+
+Window resume attempts retain their caller source. Concurrent requests from the same source
+share an attempt; recovery callers also join any pending attempt. A different source waits for
+settlement, then reevaluates its own inputs and current state, including after failure. Removing
+or archiving the conversation, or disposing its manager, prevents a waiting caller from recreating it.
+
+Registered window managers update acquisition activity on native focus and document visibility
+changes. Ordinary windows may acquire a stream while hidden. An unowned hotkey-window conversation
+requires a visible, focused window, including when the initial route identifies the hotkey window.
+Existing owners and followers retain their roles when activity changes. Automatic execution reads
+current window activity directly; view and recovery requests use the manager's registered activity.
+Unowned acquisition is rechecked after preparation, and unused admission is released while cached
+history remains resumable.
+
+Main and window managers read readiness from their canonical conversation document. They reuse
+an already resumed owner or follower without requesting another snapshot or keeping a competing
+hydration flag. A follower whose owner is still recovering leaves that recovery to the owner;
+Main starts, delegated messages and fork adoption must respect that not-ready result. A ready
+canonical document does not require a presentation snapshot to exist.
+
+Execution context and Side chat operations read resident canonical metadata without requiring a
+presentation. Ephemeral parent links, Side chat identity and projectless intent survive replication;
+an explicit null Project assignment does not inherit an ancestor's Project. Durable Core assignment
+remains authoritative for durable conversations. Side chat preparation uses live workspace and
+execution settings, rejects nested Side chats, and revalidates the parent generation across I/O.
+An unaccepted native fork is cleaned up when subsequent validation or setup fails.
+
+Owner actions route through the current established stream role. Discovery is used when no role
+exists and is followed by another role check; a stale discovery advertisement cannot override an
+owner the peer already follows. The executing peer still validates its own ownership and captured
+native generation before admitting the action.
+
+Ordinary Main preparation establishes follow intent before loading metadata and workspace
+settings. Ownership is acquired only after preparation and a fresh lifetime check. An owner
+snapshot received during ordinary preparation remains authoritative, and the follower skips its
+own native resume. Preparing a cached document for ownership requires actual owner loss or native
+retirement; calling resume again is not an ownership transfer.
+
+After native history hydration, the window awaits durable acceptance before committing the final
+canonical tail and stream role. It then assigns ownership, replays buffered native ingress and
+publishes the completed snapshot without another asynchronous boundary. A peer snapshot received
+while acceptance is pending cannot leave the completed local resume silently following that peer.
+Native notifications arriving during acceptance stay in the resume buffer until this transition.
+
+Main and window preparation share native resume request construction. An idle native Thread may
+reuse its configuration and instructions only when there is no explicit permission or service-tier
+override, no named permission profile being sent, and no nondefault configuration. Empty profiles
+and null configuration entries do not force configuration reload; other configuration, including
+MCP visibility, does. The resume request still carries the selected Thread identity, rollout path,
+settings and history-page contract.
+
+A native resume starts with a 120-second response deadline. Default timeouts allow two
+retries, each after 750 ms, with 240- and 480-second deadlines. An explicit deadline,
+including zero, is preserved and does not permit timeout retries. A closing-thread error
+has a separate budget of four retries after 750, 1,500, 3,000 and 6,000 ms. Other native
+errors propagate. Retiring the manager cancels scheduled waits and retires native callers;
+late completion cannot start another attempt or install history in a successor.
+
+Retrying retains the admitted preparation and parameters but obtains a fresh physical
+request identity. A response from an earlier attempt cannot authorize durable acceptance.
+Receipt renewal is unavailable during or after acceptance; interrupted acceptance releases
+that exclusion, and repeated successful acceptance returns the same result without another
+commit. Main resume preparation, native dispatch, history acceptance, buffered replay and
+publication share one cancellable lifetime bound to the exact native and conversation generations.
+Cleanup finishes before a subsequent Main resume acquires the same serial lane. Detached replay
+retains its own pending occurrences: failure or interruption settles every unfinished occurrence
+without consuming a successor buffer. Synchronous race completion must cancel and finish the
+losing work's cleanup before the enclosing operation settles.
+
+A recovering conversation remains `resuming` until its canonical history tail is installed.
+Queued messages load independently of transcript residency. A newly installed conversation
+projects already loaded messages, their order and pause reasons immediately, even when queue
+loading finished before the conversation existed. History hydration does not replace queue state.
+Window shutdown drains accepted queue edits before retiring IPC, so an interruption immediately
+followed by exit retains the queue's pause reasons on restart.
+
+Queue ownership follows the execution host's admitted capability. When native Thread queues are
+available, all six `thread/queue/*` operations are sent to the current native generation and the
+app server is the durable queue authority. Renderer windows keep only a projection cache used by
+the composer; owner changes do not create another queue copy. A manual send prepares the selected
+row through the current conversation owner, keeps its stable client user-message identity, and
+converges every window from the native queue after admission. When native Thread queues are not
+available, the peer-owned persisted queue remains the authority.
+
+Automatic queue delivery uses the latest execution Turn, skipping completed local markers and
+ignoring display-only overlays. An attached conversation must end with a completed Turn containing
+an assistant message or manual context compaction before its next queued message starts. A
+conversation with no execution Turn or requiring resume may enter preparation, which rechecks the
+current owner, queue identity and active Turn before sending. Unconfirmed native submissions and
+unbound in-progress Turns prevent a second automatic start.
+
+Window queue preparation resumes an unowned or resumable conversation before the execution owner
+check. Automatic preparation uses the executor source; an explicit send uses the view source.
+An owner still recovering or an inactive acquisition defers automatic work without removing the
+captured message or assigning a failure pause. A newly discovered active native Turn also defers it.
+
+Resuming an interrupted queue clears only interruption pauses. Other failures remain available for
+explicit retry, and an interrupted or failed last Turn does not itself authorize automatic delivery.
+An explicit queued send defers automatic sends while loading and refreshing the queue, then captures
+the selected message. Edits or replacement during preparation invalidate that captured submission.
+
+Physical peer identity comes from the coordination connection. A renderer cannot select its
+own execution identity in an IPC payload. The native adapter preserves that physical caller and
+captures the authenticated manager lifetime. Conversation managers enforce operation-specific
+owner rules; native routing does not run a second owner election. Prepared mutations additionally
+validate their admitted executing peer and immutable request capability.
+
+Renderer controls resolve the manager for the target conversation or explicit execution host
+before reading permissions or issuing actions. Archive, queue, goal, read-state, history,
+Subagent, Turn, and background-process actions therefore cannot fall through to an unrelated
+default host when multiple host managers are active in the same window.
+
+Follow intent belongs to active conversation views. Independent view handles keep a count;
+only the final release stops following. Presentation state, Review tabs and focus indicators
+are separate from follow intent. A disposed old view cannot release a successor view's handle.
+
+Main's ordinary peer may own a conversation used by an automation, follow a window owner, or
+retain a dormant document. A dormant document is not permission to process live mutations.
+Native event projection checks the actual manager role and connection generation.
+
+## Canonical document and patches
+
+The owner stores one canonical conversation document. For canonical history, ordered islands
+reference Turn values directly in `entitiesByKey`; live overlay turns remain separate.
+Presentation selectors merge resident history and overlay where required. History pagination
+lives on the resident Turn and conversation, rather than in a parallel item-window authority.
+
+A local mutation runs as an Immer draft recipe. The exact patches produced by that recipe
+are the replication payload. UI snapshots are derived projections and are never diffed back
+into canonical state. Owner-visible updates do not wait for Main publication acceptance.
+
+Snapshots contain the full canonical document and an owner revision. A snapshot replaces the
+receiver's document and owner even when its revision is lower or the receiver was previously
+an owner. Ordinary patches apply only when the receiver follows the source peer and its
+revision equals `baseRevision`. The resulting revision need not equal `baseRevision + 1`.
+Mismatched or failed patches are dropped and logged; they do not issue a hidden resync request.
+
+New or reconnected followers receive the owner's current snapshot before ordinary patches.
+The publisher is excluded from delivery. Empty target sets are no-ops, not a request to
+broadcast to every window. Disconnect/reconnect handling preserves follow intent during the
+bounded grace period and requires a fresh snapshot before patch delivery resumes.
+
+Each manager may load resident history locally without acquiring execution ownership.
+A follower's local history mutation does not publish patches to its owner or other followers.
+An owner may perform a local draft mutation without broadcasting it. Complete history installation
+uses that facility when one explicit snapshot must publish the completed operation. Command
+output may update the local document before a later item lifecycle event publishes it.
+
+## Native ingress and actions
+
+Raw notifications and server requests enter the window manager with their native method,
+parameters, host and generation intact. Metadata hydration cannot delay or reshape that raw
+ingress. The production Inbox has no per-occurrence byte quota that rejects an otherwise
+valid large notification before its owner can process it.
+
+Owner action dispatch uses typed native method payloads. Followers forward the original
+request fields and context; they do not convert them to composer text and ask Main to rebuild
+an unrelated command. Settings, interrupt, start, steer, edit, compaction, complete history and
+approval or user-input responses execute in the current owner. Every peer action requires the
+addressed conversation's current owner and a supported method. There is no generic action fallback.
+
+Option-picker and setup-tool replies use the receiving manager's native request occurrence
+directly. They remove only the matching local request and do not acquire or change ownership.
+Onboarding user input uses the ordinary owner-routed user-input method when sent by a follower.
+
+Native start preflight captures the original request and context in an immutable capability.
+Owner-time materialization resolves current defaults after owner selection. The executing
+peer must match the current owner, and execution accepts only the finalized admitted request.
+An account, generation or owner change invalidates the receipt. Attachments, comments,
+permission-context flags and client user-message identity travel with the admitted operation.
+
+Turn preparation resolves native permission overrides, retained Turn parameters and current
+permission provenance together. Permission-selection context takes precedence over an explicit
+server-default flag. Otherwise an explicit flag, including false, takes precedence over an
+inherited flag from the latest assigned Turn. An optimistic Turn cannot supply that inherited
+decision, and disabling settings inheritance also disables inherited default intent. A defined
+null permission profile is an explicit choice; workspace roots alone are not a permission choice.
+Custom Project permissions do not imply server-default intent.
+
+Server-default preparation leaves policy, reviewer and profile selection to the native runtime
+while retaining the effective policy and sandbox in the local Turn. A named profile never travels
+with a non-null native sandbox override. An explicit sandbox clears inherited profile selection;
+named profiles retain matching provenance from next-Turn settings or current permissions.
+Permission selection requires complete next-Turn permission settings or current permission
+context. Missing settings fail preparation with a specific error before native submission.
+
+Live permission context distinguishes an unobserved profile or root list from an observed null
+profile or empty list. History reconstruction can project concrete defaults for a historical Turn,
+but must preserve the live context used by subsequent preparation. Workspace relocation preserves
+the canonical workspace kind and browser root as well as its effective cwd.
+
+Queued starts and steers retain their captured service tier, including an explicit null reset.
+Turn preparation preserves native tier strings and checks current configuration requirements
+before sending a non-null tier. The requirements request has critical priority and a 30-second
+deadline. A disabled fast mode or failed requirements read selects the default tier consistently
+in the native request, canonical Turn parameters and current settings.
+
+Turn execution settings preserve explicit null values independently of omitted values. Next-Turn
+settings fall back to the conversation's retained model and reasoning effort, while a retained
+collaboration selection keeps its complete settings and developer instructions. An explicit
+collaboration selection leaves top-level model and effort null. Native and resident Turn parameters
+carry the same execution settings and the explicit-request multi-Agent mode.
+
+Both Main and window owners await their pending settings updates before materializing a Turn.
+Optimistic admission updates the retained execution model, reasoning effort, collaboration
+selection and current permission context. It does not create or overwrite next-Turn settings
+or rewrite the hydration snapshot. Active execution readers use the canonical live fields.
+The model-change notice compares the previous model with the collaboration model present at
+admission, before applying the prepared execution selection.
+
+A rejected ordinary start removes its matching empty optimistic Turn, including a Turn containing
+only a model-change notice. Observed partial output stays visible in a failed Turn with the actual
+error message. Rollback targets only an unassigned, in-progress Turn with the admitted client
+message identity. A native-assigned or completed Turn, later settings updates and a newer native
+runtime status survive rejection. Previous permission presence and value are restored separately
+from Turn matching. Optimistic activity belongs to the canonical document; native notifications
+project durable status, and accepting a response never forces a newer idle state back to active.
+
+Personality resolves from the explicit request, defined next-Turn setting, latest assigned Turn,
+then configuration for the prepared working directory. Configuration reads use critical priority;
+an unavailable or unsupported configured personality falls back to the application preference.
+An explicit null request or next-Turn setting suppresses that fallback. The selected personality
+is shared by the native request and resident Turn. Reasoning summaries resolve
+from the assigned Turn, next settings, the enabled capability override, then the explicit request;
+an explicit null is preserved. Optimistic unassigned Turns cannot supply inherited settings.
+
+Caller response metadata remains unchanged in the resident Turn, including absent versus null.
+Native execution metadata additionally records the conversation's effective workspace kind.
+Configuration I/O remains inside the admitted preparation's connection and ownership lifetime;
+a reconnect during the read cannot dispatch the old Turn.
+
+Main-originated user and Automation starts use the same prepared owner action. Peer dispatch
+does not hold the Thread command lane while waiting for the selected owner, whose native
+execution acquires that lane. Main retains durable authorization and submission presentation;
+the current owner alone projects the optimistic Turn. An Automation's initial autonomous
+Turn does not mark its inbox Run as user-accepted. A missing-owner response permits recovery;
+a peer timeout does not authorize a duplicate start.
+
+Public Main steering uses the same prepared owner action as window steering. Main follows the
+selected window instead of writing a second optimistic row or sending a parallel native request.
+The original message identity, attachments, restore context and service tier remain attached to
+the preparation. Only a `no-client-found` peer failure permits owner recovery; timeouts and native
+rejections propagate without another submission. The recovered owner executes the same preparation.
+
+Preparation captures steering input without requiring Main to have a resident Turn or its native ID.
+The executing owner selects the latest resident execution Turn, skips completed local markers and
+display overlays, and waits for a pending Turn's native ID before dispatch. A native expected-Turn
+mismatch corrects that Turn's identity and retries the same message
+once. An ended-Turn error remains an inactive-steer failure; the direct command never starts a new
+Turn implicitly. A terminal unknown-delivery failure preserves its pending row and submission
+presentation for a later correlated server echo, and cannot reuse the admission for another send.
+
+The retained original request and context use their JSON peer-wire values, including omission
+of undefined object properties. Validation still rejects changed values and duplicate execution.
+Window cleanup registrations do not determine whether an admitted Main preparation exists.
+Execution rechecks manager lifetime and owner after asynchronous preparation and immediately
+before dispatch. Late outcomes cannot overwrite the successor owner's canonical document.
+A thread-not-found recovery retains the original submission presentation through its retry;
+the enclosing caller releases that claim when the complete operation settles.
+
+Native error information must survive IPC. Unsupported-method detection, expected-turn retry
+and uncertain-delivery handling consume the actual native error code and message. An Electron
+exception's generic message is insufficient. A timeout with unknown delivery keeps the
+optimistic submission pending until later native evidence settles it.
+
+Window native results arrive as host-scoped `mcp-response` messages. The invoke acknowledgement
+does not carry the result. Preload registers correlation before dispatch and owns one shared
+chunk receiver, so multiple subscribers do not duplicate chunk acknowledgements. Native error
+code, message, data and host timing remain intact across large-response delivery.
+
+Request delivery updates arrive independently through critical, host-scoped
+`mcp-request-delivery` messages addressed to the invoking window. Local timeout reporting and
+host uncertainty share one per-request notification: the first clears the local timer while
+preserving the eventual response. A failed delivery settles that request once. Correlation
+preserves the native request identity without coercing numeric IDs into string IDs, and manager
+disposal removes its delivery subscription.
+
+For retained mutations, preparation and admission failures before the matching physical request
+is sent report `not-sent`. Ancillary Main requests cannot mark the window's mutation as sent.
+Native rejection retains its response error, while a known delivery failure retains its recorded
+stage. A post-dispatch validation failure cannot be reclassified as a preparation failure.
+
+An eligible mutation that times out after native dispatch releases scheduler admission exactly
+once while retaining its result and host pending count. Work that has not been dispatched expires
+without being sent. A read cannot request mutation-style outcome retention. Window closure or
+host replacement rejects retained callers, and late completion cannot settle a reused request ID.
+Transport chunk acknowledgements do not acknowledge conversation publication or snapshot readiness.
+
+Ordinary start, context injection and steering use critical priority and a 30-second caller
+deadline. The deadline covers queueing and readiness as well as response waiting; dispatch does
+not grant a fresh timeout budget. Unspecified native requests have no default timeout, except
+plugin listing, whose default is 30 seconds. Main steering uses the same physical scheduler
+deadline and delivery identity as other Main requests.
+
+Main retains a sent start or steer beyond its deadline, observes its eventual response and records
+the actual request identity while the outcome is unknown. Windows can also retain a context
+injection response and proceed to start after that injection succeeds. Direct Main injection has
+no retained response: a timeout after sending records a terminal unknown injection, fails its
+optimistic Turn and prevents the subsequent start. It leaves physical admission occupied until
+the native request settles. A request that expired before sending is a definite rejection.
+Confirmed native rejection clears the matching unknown record and performs ordinary rollback.
+Delivery stage, identity and native error details survive structured cloning and nested errors.
+
+## Settings
+
+Settings updates serialize per conversation while independent conversations can proceed
+concurrently. An optional effort/model condition is checked when the queued operation runs.
+The owner sends `thread/settings/update` before committing a local patch. A native settings
+notification that replaces the settings object during that request takes precedence.
+
+If that method is unsupported, the manager remembers the result for its own lifetime and
+applies later updates locally. Other failures propagate. Partial settings remain partial;
+missing effort retains the previous value, while explicit null clears it. Collaboration mode
+can supply model and effort. Sandbox/profile overrides clear stale named permission state.
+Hydration context is not rewritten by a partial settings patch.
+
+An explicit active-turn reviewer update follows the thread update only when the native
+capability supports it. Capability state belongs to the physical host generation.
+
+## Interrupt
+
+An expected-turn interrupt is conditional: a different or inactive current turn returns null
+without pausing the goal, declining requests or cleaning a successor turn. Its REPL cleanup
+starts after native interruption succeeds. An unconditional interrupt starts cleanup before
+the native request and may retry the actual active turn ID returned by the server.
+
+System interruption pauses an active goal before interrupting. User stop attempts that pause
+with critical priority and a 500 ms deadline, then interrupts even if the pause fails and
+reports the pause error with the interrupted turn ID. Descendant cleanup pauses the goal
+after interruption and treats a pause failure as a warning.
+
+Unconditional interruption launches dismissal of pending command/file approvals, permission
+requests, user input, option pickers and MCP elicitations without waiting for those replies.
+Descendant interruption runs from the outer operation's cleanup; user stop schedules it in
+the background. An expected-turn mismatch does not trigger descendant cleanup.
+
+Local REPL cleanup reads active execution records for the matching session and turn. It
+verifies that the recorded kernel is still a descendant of the recorded REPL before killing
+kernel descendants deepest first. Invalid/stale records are removed; unrelated valid records
+are retained. Cleanup is bounded, cancellable and best effort. Remote hosts do not use local
+process records.
+
+Cleanup retains its admitted native connection generation through Endpoint/session acquisition
+and process enumeration. A reconnect, manager disposal, native session termination or retirement
+of the admitted conversation cancels pending cleanup, including the Node adapter's signal. An
+owner request cannot adopt a replacement conversation or report a retired operation as successful.
+Main interruption supplies its original native generation; cleanup failure remains best effort
+and does not suppress the native interrupt.
+
+Main and window interruption retain their admitted owner, conversation and native connection
+through goal pausing, native responses and final cleanup. Retirement rejects late completion
+without mutating or cleaning a successor. A failed REPL cleanup is a warning, not an interrupt
+failure. Follower results preserve both the interrupted Turn identity and any goal-pause error.
+Unlike steering and compaction, interruption may recover an unavailable owner after a timeout
+or request-version mismatch as well as a missing client.
+
+## Edit and rollback
+
+Editing preserves the original turn's non-text inputs and context. Only its first text input
+is rewritten, retaining the prefix before the last user-request marker and clearing that
+text input's text elements. An edit waits for pending settings first.
+
+The target must be the most recent user-input turn, but empty-input automatic turns may
+follow it. None of the reverted suffix may be in progress. Paginated history uses
+identity-based `thread/revert` when supported; legacy history uses `thread/rollback` with the
+number of native turns in that suffix.
+
+Identity-based revert deletes only reverted resident entities and advances history
+generation. Retained entities are not refetched. An emptied tail receives the returned older
+cursor, and the returned item cursor remains available for later native paging. Replacement
+start uses the response working directory, the original input/context and an edit trigger.
+
+## Requests and live rendering
+
+Request identity includes host, physical generation, native occurrence, method and request ID.
+A reused request ID cannot make a response capability valid for a different occurrence.
+Decisions mutate the responding manager's canonical request/item state and route through the native Inbox
+that owns the occurrence. Late response callbacks cannot resolve a replacement request.
+Disconnect cleanup is scoped to the affected host and generation. Native responses settle only
+duplicate occurrences from that same connection. User-input timeout delivery retains its source
+connection through the command queue and rechecks the physical generation after acquiring the
+Thread command lane, so an old countdown cannot answer a replacement request with the same ID.
+Turn-completion notifications retain their originating host.
+
+Assistant, plan and reasoning prose are frame-batched as canonical draft mutations. Terminal
+item/turn events drain pending prose first. Command output uses its own bounded-time batching
+schedule; lifecycle publication includes the latest locally accumulated output.
+
+Async questions read merged resident and overlay turns. Hydrating or following an existing
+question does not open it as a new live question. A newly received live item can open it;
+answers, terminal outcomes and document retirement settle its local interaction state.
+
+## History, archive and inactivity
+
+Each actual manager owns its native history loaders. Boundary requests capture generation,
+island, boundary, progress key, source and cursor. Replacing any identity during I/O retires
+the result. Item pages additionally bind to the resident pagination object. A follower loads
+ordinary boundary and item pages through its own native client, coalescing identical requests;
+the resulting resident document stays local and cannot alter the owner's document. Complete-history
+loads coalesce and publish one completed snapshot while retaining live changes made during I/O.
+
+Prompt-rail indexing and hover previews read native pages without installing transcript
+history. Navigation installs the selected history through the owner. Fetch budgets are not
+resident-history byte quotas. Full native items remain intact even when an item exceeds a
+preview-size budget.
+
+Archive suppression uses a marker independent of the canonical document. Readonly archived
+preview uses `thread/read`, followed by native pages when needed; it never resumes the thread
+as a side effect. Replacing the archive marker or manager context invalidates an outstanding
+preview.
+
+Inactive history retention belongs to each manager. Active views, active runtime status,
+unsent steers, followers and reconnecting followers prevent release. In-progress history is
+kept when no interactive request explains its pause; ephemeral side conversations keep it
+regardless of the request. Empty complete history without a rollout path remains loaded.
+Eligible owned conversations expire after three hours; at most ten ordinary inactive owners
+are retained, with oldest eligible owners released first. Failed unsubscribe retries after
+15 seconds. A new keep-loaded interval resets the inactivity deadline when it ends.
+
+Passive history release runs after thread start, runtime status changes, turn completion and
+server request resolution, even when the notification leaves the canonical document unchanged.
+A provisional stream role survives until its first document arrives. Explicit removal retires
+that role. Releasing one inactive conversation must not retire other conversations on the same
+peer. Loaders and revision waiters are cancelled with the released document's lifetime.
+
+## Authenticated read state
+
+Core stores unread membership by authentication identity and execution endpoint key. ChatGPT
+identity uses account and user IDs; other modes use execution-storage identity. Tokens never
+enter durable read-state storage.
+
+Each manager opens an independent read-state RPC session. Initial state and buffered updates
+establish its unread set. Unsubscribed sessions reject late writes; account/endpoint changes
+retire the captured context. Same-account refresh preserves valid sessions. Context-bearing
+peer updates apply externally without being echoed.
+
+Accepted updates go directly to each session's observation or RPC boundary in order, without
+an intermediate application event queue. Delivery backlog does not retire the authenticated
+session or interrupt native conversation work. An actual identity or endpoint change still
+invalidates its captured authority, including while the opening response is being delivered.
+
+While authentication is unavailable, user and turn unread intent is retained against the
+captured endpoint. Ready sessions replay compatible intent; identity retirement discards it.
+
+## Validation
+
+Behavioral coverage must exercise actual native ingress and actual manager streams, including
+concurrent history/live writes, follower attachment, takeover, disposal, large payloads,
+uncertain native delivery, request identity reuse, settings races and expected-turn interrupts.
+Tests of removed ACK or projection envelopes are not evidence for the current peer protocol.
+
+## Goals and manual compaction
+
+Goal objectives require the owning manager and wait for pending settings before the native write.
+Status changes use the native status request; reactivation waits for settings. Accepted objectives
+append one params-owned goal row, while status-only changes clear the local resume confirmation.
+Goal clear updates the document when its native notification arrives. Resume reads saved goals in
+the background, accepting the result only if its hydration token, manager lifetime and captured
+goal value remain current. An explicit resume-confirmation request waits for that read and offers
+confirmation for paused, blocked or usage-limited goals.
+
+Manual compaction waits for settings and forwards the typed compaction request to a follower's
+owner. Its owner inserts a pending manual marker before the native request, removes it on failure,
+and consumes the manual classification when the actual compaction starts. These counters belong
+to each manager; native item lifecycle removes the placeholder. Background-terminal cleanup applies
+to all resident command items locally without broadcasting a fabricated completion.
+
+### Remote connection lifetime
+
+SSH hosts keep a private remote app-server running independently of desktop connection lifetimes. Each desktop session reaches that server through an SSH-backed WebSocket proxy. Startup commands and proxy handshakes serialize for the same SSH destination; established connections remain independent. Reconnection first tries the existing server, and repeats bootstrap only when that attempt fails. A failed initialization resets that reuse decision. Closing a session closes its local proxy without terminating the persistent remote server.
+
+Remote commands run through the user's login shell. Local shell environment discovery begins during connection; an unresolved SSH ProxyCommand executable waits for that discovery before connecting. Remote Codex lookup and version checks precede bootstrap. An explicit SSH port selects a direct destination so the configured override is honored.
+
+Local hosts use the bundled full Codex CLI. With local-daemon use enabled, a compatible already-running daemon may be selected through its private Unix socket; Windows, launch overrides, explicit CLI selection, and bundled macOS Git retain a dedicated process. Failed daemon-version probes fall back to the dedicated process. Once a daemon is selected, connection errors surface through the normal session retry lifecycle rather than silently starting another server.
+
+Connection provenance comes from the acquired transport handle. A configured daemon possibility
+does not make a fallback child process a WebSocket connection. Before the first session is acquired
+the physical transport is unknown; reconnect transitions retain the last acquired transport and
+the Endpoint identity until a new handle is selected.

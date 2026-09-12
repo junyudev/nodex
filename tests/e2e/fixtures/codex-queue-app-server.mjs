@@ -10,15 +10,16 @@ const automaticCompletionDelayMs = Number.parseInt(
   process.env.NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS ?? "120",
   10,
 );
-// This fixture implements the bounded paginated-history protocol introduced at this version.
-// Do not claim a newer generation until its additional capability contracts are implemented here.
-const appServerVersion = "0.145.0-alpha.15";
+const injectionReleasePath = process.env.NODEX_FAKE_CODEX_INJECTION_RELEASE_PATH;
+const threadReadReleasePath = process.env.NODEX_FAKE_CODEX_THREAD_READ_RELEASE_PATH;
+// Individual scenarios can opt into newer contracts after enabling their matching fixture paths.
+const appServerVersion = process.env.NODEX_FAKE_CODEX_APP_SERVER_VERSION ?? "0.145.0-alpha.15";
 
 const readState = () => {
   try {
     return JSON.parse(fs.readFileSync(statePath, "utf8"));
   } catch {
-    return { thread: null, turns: [], turnSequence: 0 };
+    return { thread: null, turns: [], turnSequence: 0, queueSequence: 0, queuedSubmissions: [] };
   }
 };
 
@@ -61,7 +62,7 @@ const record = (method, params) => {
   fs.appendFileSync(logPath, `${JSON.stringify({ method, params })}\n`);
 };
 
-record("launch", { args: process.argv.slice(2) });
+record("launch", { args: process.argv.slice(2), pid: process.pid });
 
 const turn = (id, status, timestamps = {}, items = []) => ({
   id,
@@ -127,16 +128,52 @@ const threadResponse = (includeTurns = false) => ({
   itemsBackwardsCursor: null,
 });
 
+const listTurns = ({ cursor, limit = 50, sortDirection = "desc", itemsView } = {}) => {
+  const ordered = sortDirection === "asc" ? state.turns : [...state.turns].reverse();
+  const start = cursor == null ? 0 : ordered.findIndex((entry) => entry.id === cursor);
+  if (start < 0) throw new Error(`Unknown turn cursor: ${cursor}`);
+  const page = ordered.slice(start, start + (limit ?? 50));
+  return {
+    data: page.map((entry) =>
+      itemsView === "notLoaded" ? { ...entry, items: [], itemsView: "notLoaded" } : entry,
+    ),
+    nextCursor: ordered[start + page.length]?.id ?? null,
+    backwardsCursor: ordered[start - 1]?.id ?? null,
+  };
+};
+
+const queuedSubmissions = () =>
+  Array.isArray(state.queuedSubmissions) ? state.queuedSubmissions : (state.queuedSubmissions = []);
+
+let startQueuedSubmission;
+
 const completeTurn = (turnId, status) => {
   state = readState();
   const current = state.turns.find((entry) => entry.id === turnId);
   if (!current || current.status !== "inProgress") return;
+  if (status === "completed" && !current.items.some((item) => item.type === "agentMessage")) {
+    const reply = {
+      type: "agentMessage",
+      id: `reply-${turnId}`,
+      text: "The task completed successfully.",
+      phase: "final_answer",
+      delivery: null,
+      memoryCitation: null,
+      questions: null,
+    };
+    current.items.push(reply);
+    notify("item/started", { threadId: thread().id, turnId, item: reply, startedAtMs: Date.now() });
+    notify("item/completed", { threadId: thread().id, turnId, item: reply, completedAtMs: Date.now() });
+  }
   current.status = status;
   current.completedAt = nowSeconds();
   current.durationMs = 50;
   persist();
   notify("turn/completed", { threadId: thread().id, turn: current });
   notify("thread/status/changed", { threadId: thread().id, status: { type: "idle" } });
+  if (status === "completed" && queuedSubmissions().length > 0) {
+    setTimeout(() => startQueuedSubmission(), 0);
+  }
 };
 
 const scheduleAutomaticCompletion = (turnId) => {
@@ -146,29 +183,43 @@ const scheduleAutomaticCompletion = (turnId) => {
   );
 };
 
-const startTurn = (params) => {
+const startTurn = (params, source = "turn/start") => {
   state = readState();
   state.turnSequence += 1;
   const shouldAutoComplete =
     process.env.NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN === "1" || state.turnSequence > 1;
+  const userMessage = {
+    type: "userMessage",
+    id: `item-user-queue-parity-${state.turnSequence}`,
+    clientId: params.clientUserMessageId ?? null,
+    content: Array.isArray(params.input) ? params.input : [],
+  };
   const next = turn(
     `turn-queue-parity-${state.turnSequence}`,
     "inProgress",
     {},
-    [
-      {
-        type: "userMessage",
-        id: `item-user-queue-parity-${state.turnSequence}`,
-        clientId: params.clientUserMessageId ?? null,
-        content: Array.isArray(params.input) ? params.input : [],
-      },
-    ],
+    [userMessage],
   );
   state.turns.push(next);
   persist();
-  record("turn/start", params);
+  record(source, params);
   setTimeout(() => {
     notify("turn/started", { threadId: thread().id, turn: next });
+    if (params.queuedSubmissionId != null) {
+      const timestamp = Date.now();
+      notify("item/started", {
+        threadId: thread().id,
+        turnId: next.id,
+        item: userMessage,
+        startedAtMs: timestamp,
+      });
+      notify("item/completed", {
+        threadId: thread().id,
+        turnId: next.id,
+        item: userMessage,
+        completedAtMs: timestamp,
+      });
+    }
     notify("thread/status/changed", {
       threadId: thread().id,
       status: { type: "active", activeFlags: [] },
@@ -212,6 +263,28 @@ const startTurn = (params) => {
     if (shouldAutoComplete) scheduleAutomaticCompletion(next.id);
   }, 0);
   return next;
+};
+
+startQueuedSubmission = (queuedSubmissionId = null) => {
+  state = readState();
+  const queue = queuedSubmissions();
+  const index = queuedSubmissionId == null
+    ? 0
+    : queue.findIndex((entry) => entry.id === queuedSubmissionId);
+  const submission = queue[index];
+  if (!submission) return null;
+  queue.splice(index, 1);
+  persist();
+  notify("thread/queue/changed", { threadId: thread().id });
+  return startTurn(
+    {
+      threadId: thread().id,
+      input: submission.input,
+      clientUserMessageId: submission.clientUserMessageId,
+      queuedSubmissionId: submission.id,
+    },
+    "queue-turn/start",
+  );
 };
 
 const emptyConfig = {
@@ -289,6 +362,15 @@ const handle = (message) => {
         requiresOpenaiAuth: false,
       });
       return;
+    case "getAuthStatus":
+      respond(id, {
+        authMethod: "chatgpt",
+        authToken: params.includeToken
+          ? `fixture.${Buffer.from(JSON.stringify({ exp: 4102444800, "https://api.openai.com/auth": { chatgpt_account_id: "queue-scenario", user_id: "queue-user" } })).toString("base64url")}.unsigned`
+          : null,
+        requiresOpenaiAuth: false,
+      });
+      return;
     case "account/rateLimits/read":
       respond(id, { rateLimits: null });
       return;
@@ -357,9 +439,15 @@ const handle = (message) => {
     case "mcpServerStatus/list":
       respond(id, { data: [], nextCursor: null });
       return;
-    case "config/read":
+    case "config/read": {
+      const holdPath = process.env.NODEX_FAKE_CODEX_HOLD_CONFIG_PATH;
+      if (holdPath && fs.existsSync(holdPath) && fs.readFileSync(holdPath, "utf8") === params.cwd) {
+        record("config-read-held", { cwd: params.cwd, id, pid: process.pid });
+        return;
+      }
       respond(id, { config: emptyConfig, origins: {}, layers: [] });
       return;
+    }
     case "config/batchWrite": {
       const keys = new Set(["sandbox_mode", "approval_policy", "approvals_reviewer"]);
       if (!Array.isArray(params.edits) || params.edits.some((edit) => !keys.has(edit.keyPath))) {
@@ -386,34 +474,78 @@ const handle = (message) => {
       };
       persist();
       record(method, params);
-      respond(id, threadResponse());
+      const profileId = process.env.NODEX_FAKE_CODEX_INITIAL_PERMISSION_PROFILE;
+      respond(id, {
+        ...threadResponse(),
+        ...(profileId ? { activePermissionProfile: { id: profileId, extends: null } } : {}),
+      });
       setTimeout(() => notify("thread/started", { thread: thread() }), 0);
       return;
     }
-    case "thread/resume":
-      respond(id, {
-        ...threadResponse(false),
-        initialTurnsPage: null,
-        turnsBackwardsCursor: null,
+    case "thread/resume": {
+      const closingAttempts = Number.parseInt(process.env.NODEX_FAKE_CODEX_RESUME_CLOSING_ATTEMPTS ?? "0", 10);
+      if (closingAttempts > 0) {
+        state.resumeAttempts = (state.resumeAttempts ?? 0) + 1;
+        persist();
+        const closing = state.resumeAttempts <= closingAttempts;
+        record("resume-attempt", { requestId: id, threadId: params.threadId, closing });
+        if (closing) {
+          write({ id, error: { code: -32603, message: `thread ${params.threadId} is closing; retry thread/resume after the thread is closed` } });
+          return;
+        }
+      }
+      const response = {
+        ...threadResponse(params.excludeTurns !== true),
+        initialTurnsPage: params.initialTurnsPage ? listTurns(params.initialTurnsPage) : null,
+        turnsBackwardsCursor: state.turns.at(-1)?.id ?? null,
         itemsBackwardsCursor: null,
-      });
+      };
+      if (process.env.NODEX_FAKE_CODEX_RESUME_PARENT_CWD === "1") {
+        response.cwd = path.dirname(response.cwd);
+        record("resume-context", { requestedCwd: params.cwd, responseCwd: response.cwd });
+      }
+      if (process.env.NODEX_FAKE_CODEX_INITIAL_PERMISSION_PROFILE)
+        record("resume-permissions", { activePermissionProfile: response.activePermissionProfile });
+      respond(id, response);
       for (const pending of state.turns.slice(1)) {
         if (pending.status === "inProgress") scheduleAutomaticCompletion(pending.id);
       }
       return;
-    case "thread/read":
-      respond(id, { thread: thread(true) });
+    }
+    case "thread/read": {
+      if (threadReadReleasePath && params.threadId === "coalesced-read-thread") {
+        record("thread/read-held", { requestId: id, ...params });
+        const release = setInterval(() => {
+          if (!fs.existsSync(threadReadReleasePath)) return;
+          clearInterval(release);
+          record("thread/read-released", { requestId: id });
+          respond(id, {
+            thread: { ...thread(params.includeTurns === true), id: params.threadId },
+          });
+        }, 10);
+        release.unref();
+        return;
+      }
+      if (process.env.NODEX_FAKE_CODEX_LARGE_HISTORY === "1" && params.threadId === "large-response-thread") {
+        const text = "多窗口😀".repeat(256);
+        const turns = Array.from({ length: 4096 }, (_, index) => turn(
+          `large-turn-${index}`,
+          "completed",
+          { startedAt: 1, completedAt: 2, durationMs: 1000 },
+          [{ type: "agentMessage", id: `large-item-${index}`, text: `${index}:${text}`, phase: "final_answer", delivery: null, memoryCitation: null, questions: null }],
+        ));
+        const largeThread = { ...thread(), id: params.threadId, turns };
+        const result = { thread: largeThread };
+        record("large-history-response", { responseBytes: Buffer.byteLength(`${JSON.stringify({ id, result })}\n`), turnCount: turns.length });
+        respond(id, result);
+        notify("thread/started", { thread: largeThread });
+        return;
+      }
+      respond(id, { thread: thread(params.includeTurns === true) });
       return;
+    }
     case "thread/turns/list":
-      respond(id, {
-        data: state.turns.map((entry) =>
-          params.itemsView === "notLoaded"
-            ? { ...entry, items: [], itemsView: "notLoaded" }
-            : entry,
-        ),
-        nextCursor: null,
-        backwardsCursor: null,
-      });
+      respond(id, listTurns(params));
       return;
     case "thread/items/list": {
       const selectedTurn = state.turns.find((entry) => entry.id === params.turnId);
@@ -428,6 +560,70 @@ const handle = (message) => {
       });
       return;
     }
+    case "thread/queue/list":
+      respond(id, { data: [...queuedSubmissions()], nextCursor: null });
+      return;
+    case "thread/queue/add": {
+      state.queueSequence = (state.queueSequence ?? 0) + 1;
+      const queuedSubmission = {
+        id: `queued-submission-${state.queueSequence}`,
+        input: Array.isArray(params.input) ? params.input : [],
+        clientUserMessageId: params.clientUserMessageId,
+      };
+      queuedSubmissions().push(queuedSubmission);
+      persist();
+      respond(id, { queuedSubmission });
+      setTimeout(() => notify("thread/queue/changed", { threadId: params.threadId }), 0);
+      return;
+    }
+    case "thread/queue/update": {
+      const queue = queuedSubmissions();
+      const index = queue.findIndex((entry) => entry.id === params.queuedSubmissionId);
+      const current = queue[index];
+      if (!current) {
+        write({ id, error: { code: -32600, message: "Queued submission not found" } });
+        return;
+      }
+      const queuedSubmission = { ...current, input: Array.isArray(params.input) ? params.input : [] };
+      queue[index] = queuedSubmission;
+      persist();
+      respond(id, { queuedSubmission });
+      setTimeout(() => notify("thread/queue/changed", { threadId: params.threadId }), 0);
+      return;
+    }
+    case "thread/queue/delete": {
+      const queue = queuedSubmissions();
+      const index = queue.findIndex((entry) => entry.id === params.queuedSubmissionId);
+      const deleted = index !== -1;
+      if (deleted) queue.splice(index, 1);
+      persist();
+      respond(id, { deleted });
+      if (deleted) setTimeout(() => notify("thread/queue/changed", { threadId: params.threadId }), 0);
+      return;
+    }
+    case "thread/queue/reorder": {
+      const queue = queuedSubmissions();
+      const byId = new Map(queue.map((entry) => [entry.id, entry]));
+      state.queuedSubmissions = params.queuedSubmissionIds.flatMap((queuedId) => {
+        const entry = byId.get(queuedId);
+        byId.delete(queuedId);
+        return entry ? [entry] : [];
+      });
+      state.queuedSubmissions.push(...byId.values());
+      persist();
+      respond(id, {});
+      setTimeout(() => notify("thread/queue/changed", { threadId: params.threadId }), 0);
+      return;
+    }
+    case "thread/queue/start": {
+      const next = startQueuedSubmission(params.queuedSubmissionId ?? null);
+      if (!next) {
+        write({ id, error: { code: -32600, message: "Queued submission not found" } });
+        return;
+      }
+      respond(id, { turn: next });
+      return;
+    }
     case "thread/goal/get":
       respond(id, { goal: null });
       return;
@@ -436,11 +632,36 @@ const handle = (message) => {
       return;
     case "thread/delete":
       if (state.thread?.id === params.threadId) {
-        state = { thread: null, turns: [], turnSequence: 0 };
+        state = {
+          thread: null,
+          turns: [],
+          turnSequence: 0,
+          queueSequence: 0,
+          queuedSubmissions: [],
+        };
         persist();
       }
       respond(id, {});
       return;
+    case "thread/inject_items": {
+      if (!injectionReleasePath) {
+        reject(id, method);
+        return;
+      }
+      record("injection-held", { requestId: id, ...params });
+      const release = setInterval(() => {
+        if (!fs.existsSync(injectionReleasePath)) return;
+        clearInterval(release);
+        record("injection-released", { requestId: id });
+        if (fs.readFileSync(injectionReleasePath, "utf8").trim() === "reject") {
+          write({ id, error: { code: -32600, message: "Native context rejected", data: { reason: "ContextRejected" } } });
+          return;
+        }
+        respond(id, {});
+      }, 10);
+      release.unref();
+      return;
+    }
     case "turn/start":
       if (
         process.env.NODEX_FAKE_CODEX_FAIL_ONCE_PROMPT === promptText(params) &&
@@ -460,13 +681,13 @@ const handle = (message) => {
         const activeTurn = state.turns.find((entry) => entry.id === params.expectedTurnId);
         if (activeTurn) activeTurn.id = "replacement-turn";
         persist();
-        write({ id, error: { code: -32600, message: `expected active turn id '${params.expectedTurnId}' but found 'replacement-turn'` } });
+        write({ id, error: { code: -32600, message: `expected active turn id \`${params.expectedTurnId}\` but found \`replacement-turn\`` } });
         return;
       }
       if (["inactive", "mismatch"].includes(process.env.NODEX_FAKE_CODEX_ASYNC_STEER_FAILURE)) {
         const message = process.env.NODEX_FAKE_CODEX_ASYNC_STEER_FAILURE === "inactive"
-          ? "SteerTurnInactiveError: active turn not steerable"
-          : `expected active turn id '${params.expectedTurnId}' but found 'replacement-turn'`;
+          ? "no active turn to steer"
+          : `expected active turn id \`${params.expectedTurnId}\` but found \`replacement-turn\``;
         write({ id, error: { code: -32600, message } });
         return;
       }
@@ -482,6 +703,23 @@ const handle = (message) => {
         }, Number(process.env.NODEX_FAKE_CODEX_ASYNC_ECHO_DELAY_MS ?? 20));
       }
       return;
+    case "thread/compact/start": {
+      record(method, params);
+      const current = state.turns.findLast((entry) => entry.status === "inProgress");
+      if (!current) {
+        write({ id, error: { code: -32600, message: "No active scenario Turn to compact" } });
+        return;
+      }
+      const item = { type: "contextCompaction", id: `compaction-${current.id}-${current.items.length}` };
+      current.items.push(item);
+      persist();
+      respond(id, {});
+      setTimeout(() => {
+        notify("item/started", { threadId: thread().id, turnId: current.id, item, startedAtMs: Date.now() });
+        notify("item/completed", { threadId: thread().id, turnId: current.id, item, completedAtMs: Date.now() });
+      }, 20);
+      return;
+    }
     case "turn/interrupt": {
       record(method, params);
       respond(id, {});

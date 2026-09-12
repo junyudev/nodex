@@ -89,6 +89,19 @@ The execution-location identity, post-creation snapshot/removal/restore,
 retention, owner-transfer, and handoff contracts live in
 [Codex Managed Worktree Lifecycle Behavior](codex-managed-worktree-lifecycle-behavior.md).
 
+Turn preparation treats workspace selection as one owner-time transition. A selected native
+Environment supplies its own cwd and runtime workspace roots and suppresses any pending workspace
+transition for that Turn. Without an Environment, a pending Project workspace takes precedence
+over the caller cwd, and its accepted revision commits the pending workspace as the new applied
+workspace after native Turn acceptance. The writable-root update uses replacement semantics for
+that transition so roots from the previous applied workspace do not leak into the new workspace.
+Legacy Threads without durable workspace state may merge newly observed durable roots instead.
+
+Environment metadata is generation-aware. Stored Thread metadata cannot overwrite a newer live
+Environment selection, and an in-flight resume or Turn response may commit its captured selection
+only if no newer live selection won while the native request was pending. The same acceptance
+fence applies in Main and renderer-owned execution paths.
+
 Stopping an ordinary Turn leaves the Chat resumable. Resume starts a userless
 continuation with current Thread settings and creates no synthetic user message.
 An archived Thread must be explicitly restored before resume.
@@ -100,6 +113,11 @@ under the user's Documents/Nodex collection. It persists cwd, output-directory,
 and workspace-browser-root hints. Scratch work belongs under `work/`; user-facing
 deliverables belong under `outputs/`. A persistent fork or Side chat inherits
 the same workspace boundary.
+
+Owner-time preparation reuses an existing generated projectless cwd before creating another one.
+It prefers the current generated cwd, then the newest retained writable root under the same
+Documents/Nodex collection, then repairs from the persisted workspace-browser root. A selected
+Environment or pending Project workspace suppresses projectless materialization for that Turn.
 
 Projectless Chats support conversation, Browser, exact-file previews, and
 Terminal only when a cwd is available. They never infer Project ownership from
@@ -196,8 +214,14 @@ working directory; Stop acts on the exact live process or Terminal session.
 A new Codex Chat selects a model, reasoning effort, service tier,
 collaboration mode, and personality from current app-server catalogs. Existing
 Chats allow only catalog-approved same-Thread changes to mutable intelligence
-settings. Forks and scheduled/child execution inherit the source's latest
-durable Codex profile.
+settings. Fork creation leaves the execution profile to app-server unless the
+specific caller supplies an explicit override. Persistent and Side Chat forks
+therefore do not force the source Chat's model, reasoning effort, service tier,
+approval policy, or permission profile into `thread/fork`; the accepted fork
+response becomes the child's canonical runtime profile. Heartbeat restoration
+likewise resumes with server profile selection, while cron runs use the
+automation's explicit execution settings. A Side Chat's first prompted Turn may
+still apply its own explicit Turn overrides after the fork is accepted.
 The composer exposes one catalog-driven intelligence selector with Model,
 Effort, and Speed submenus. It does not split model selection into simplified
 and advanced modes, so the same hierarchy remains valid as backend catalogs and

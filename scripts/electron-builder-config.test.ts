@@ -92,7 +92,7 @@ describe("electron-builder runtime resources", () => {
       to: "Frameworks/Sparkle.framework",
       filter: ["**/*"],
     });
-    expect(config.mac?.binaries).not.toContain("Contents/Resources/bin/codex-app-server");
+    expect(config.mac?.binaries).not.toContain("Contents/Resources/bin/codex");
     expect(config.mac?.binaries).not.toContain("Contents/Resources/bin/codex-code-mode-host");
     expect(config.mac?.binaries).not.toContain("Contents/Resources/codex-path/rg");
     expect(config.mac?.binaries).not.toContain("Contents/Resources/codex-resources/zsh/bin/zsh");

@@ -247,6 +247,7 @@ export const make: Effect.Effect<
       const canonical = yield* Effect.try({
         try: () =>
           createCodexCanonicalHydratedConversationState(thread, {
+            hostId: input.hostId,
             model: persisted.model_id ?? "",
             reasoningEffort: persisted.reasoning_effort ?? null,
             cwd: persisted.cwd || thread.cwd || "/",
@@ -273,6 +274,7 @@ export const make: Effect.Effect<
 
     if (thread.ephemeral !== true && thread.threadSource !== "system") {
       yield* autoTitle.scheduleAddedThread({
+        hostId: input.hostId,
         threadId: id,
         prompt: resolveCodexThreadAddedTitlePrompt(
           thread,

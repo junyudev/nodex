@@ -42,14 +42,8 @@ import type {
   ReasoningEffortOption as CodexAppServerReasoningEffortOption,
   ThreadActiveFlag as CodexAppServerThreadActiveFlag,
   ThreadGoal as CodexAppServerThreadGoal,
-  ThreadGoalClearParams as CodexAppServerThreadGoalClearParams,
   ThreadGoalSetParams as CodexAppServerThreadGoalSetParams,
-  ThreadBackgroundTerminalsListParams as CodexAppServerThreadBackgroundTerminalsListParams,
-  ThreadBackgroundTerminalsTerminateParams as CodexAppServerThreadBackgroundTerminalsTerminateParams,
   ThreadBackgroundTerminal as CodexAppServerThreadBackgroundTerminal,
-  ThreadCompactStartParams as CodexAppServerThreadCompactStartParams,
-  ThreadMemoryModeSetParams as CodexAppServerThreadMemoryModeSetParams,
-  Thread as CodexAppServerThread,
   ThreadStatus as CodexAppServerThreadStatus,
   ThreadSettings as CodexAppServerThreadSettings,
   ThreadSource as CodexAppServerThreadSource,
@@ -82,11 +76,9 @@ import type {
   ReasoningSummary as CodexAppServerReasoningSummary,
   RequestId as CodexAppServerRequestId,
   ServerNotification as CodexAppServerServerNotification,
-  ThreadMemoryMode as CodexAppServerThreadMemoryMode,
 } from "@nodex/codex-app-server-protocol";
 import type { CodexExecutionProfile } from "./codex-execution-profile";
 import type { AgentBackendBinding } from "./agent-backend";
-import type { CodexPersistedHistoryOccurrenceHydrateRequest } from "./codex-persisted-history-search";
 import type {
   NodexClipboardEnvelopeV1,
   NodexStructuralClipboardDescriptorV1,
@@ -103,26 +95,15 @@ export type {
 } from "./nodex-agent-tools";
 import type {
   CodexCanonicalConversationState,
-  CodexCanonicalLiveTurnParams,
-  CodexCanonicalOptionPickerRequest,
-  CodexCanonicalOptionPickerResponse,
   CodexCanonicalServerRequest,
-  CodexCanonicalSetupContextPickerRequest,
-  CodexProtocolServerRequestOf,
-  CodexCanonicalSetupCodexStepResponse,
 } from "./codex-conversation-state/codex-conversation-state";
 import type { WorkbenchPanelSplitSide } from "./workbench-session-view";
 export type {
   CodexQueuedFollowUp,
   CodexQueuedFollowUpFreshStartResolution,
   CodexQueuedFollowUpPause,
-  CodexQueuedFollowUpPayloadRef,
   CodexQueuedFollowUpProjection,
   CodexQueuedFollowUpProjectionStatus,
-  CodexQueueOwnerTranscriptDirective,
-  CodexQueueOwnerUpdateRejectionReason,
-  CodexQueueOwnerUpdateRequest,
-  CodexQueueOwnerUpdateResult,
 } from "./codex-queued-follow-up-state";
 export type {
   WorkbenchPanelLayout,
@@ -140,11 +121,11 @@ export type {
   CodexCanonicalHydrationContext,
   CodexCanonicalHydratedAttachment,
   CodexCanonicalHydratedPermissionContext,
+  CodexCanonicalPermissionContext,
   CodexCanonicalHydratedProfileTurnParams,
   CodexCanonicalHydratedSandboxTurnParams,
   CodexCanonicalHydratedThreadSettings,
   CodexCanonicalItem,
-  CodexCanonicalLiveTurnParams,
   CodexCanonicalMcpElicitation,
   CodexCanonicalMcpToolParamDisplay,
   CodexCanonicalOptionPickerRequest,
@@ -159,10 +140,11 @@ export type {
   CodexCanonicalSetupContextPickerRequest,
   CodexCanonicalSetupContextPickerResponse,
   CodexCanonicalSetupCodexStepResponse,
-  CodexCanonicalThreadProtocol,
-  CodexCanonicalTurnSidecar,
+  CodexCanonicalConversationMetadata,
+  CodexCanonicalTurnContext,
   CodexCanonicalTurnParams,
-  CodexCanonicalTurnProtocol,
+  CodexCanonicalLiveTurnParams,
+  CodexCanonicalTurnHeader,
   CodexCanonicalTurnState,
   CodexCanonicalUserInputAnswers,
   CodexCanonicalUserInputOption,
@@ -1987,8 +1969,18 @@ export type CodexThreadRuntimeStatus = CodexAppServerThreadStatus;
 export interface CodexConnectionState {
   status: "starting" | "connected" | "disconnected" | "missingBinary" | "error";
   message?: string;
+  /** Business-level connection failure independent of the physical endpoint transport. */
+  error?: {
+    readonly code: "login-required";
+  };
   retries: number;
   lastConnectedAt?: number;
+  /** Physical connection identity, present on native endpoint projections. */
+  native?: {
+    readonly sourceEpoch: string;
+    readonly transportKind: "stdio" | "websocket";
+    readonly generation: number;
+  };
 }
 
 export interface CodexRateLimitWindow {
@@ -2072,6 +2064,8 @@ export type CodexConversationImageAssetResolveResult =
 export interface CodexThreadSummary {
   threadId: string;
   projectId: string | null;
+  /** Durable execution host for routing the first resume before renderer ownership is hydrated. */
+  executionHostId?: string;
   forkedFromId?: string | null;
   source: CodexConversationSource | null;
   ephemeral?: boolean;
@@ -2330,9 +2324,12 @@ export type CodexReasoningEffort = CodexAppServerReasoningEffort;
 export type CodexThreadDetailLevel = "STEPS_PROSE" | "STEPS_COMMANDS" | "STEPS_EXECUTION";
 export interface CodexDeveloperInstructionSettings {
   detailLevel: CodexThreadDetailLevel;
+  /** Local preference may suppress the remotely enabled default-mode question tool. */
+  defaultModeRequestUserInput: boolean;
 }
 export interface UpdateCodexDeveloperInstructionSettingsInput {
-  detailLevel: CodexThreadDetailLevel;
+  detailLevel?: CodexThreadDetailLevel;
+  defaultModeRequestUserInput?: boolean;
 }
 export interface CodexGitSettings {
   branchPrefix: string;
@@ -2483,6 +2480,8 @@ export interface CodexProjectlessThreadCwdInput {
 export interface CodexThreadStartForSessionInput {
   presentationTicket?: CodexTurnPresentationTicket;
   firstSubmission: ConversationFirstSubmissionIdentity;
+  /** Execution host selected by the owning caller for Thread creation and pending worktree setup. */
+  executionHostId?: string;
   projectId: string | null;
   sessionId: string;
   prompt: string;
@@ -2519,10 +2518,6 @@ export interface CodexFreshThreadLaunch {
   readonly launchId: string;
   readonly threadId: string;
   readonly clientUserMessageId: string;
-  readonly canonicalParams: CodexCanonicalLiveTurnParams<
-    CodexLiveFileAttachment,
-    CodexReviewDiffCommentAttachment
-  >;
 }
 
 export type CodexThreadStartForSessionResult =
@@ -2817,10 +2812,8 @@ export interface CodexSteeringRestoreMessage {
   summary?: CodexAppServerReasoningSummary | null;
 }
 
-/** Host delivery evidence supplements the generated response; an unknown outcome is not acceptance. */
-export type CodexSteerTurnResult = CodexAppServerTurnSteerResponse & {
-  readonly outcome?: "unknown";
-};
+/** Only accepted steering returns a native response; uncertain delivery rejects. */
+export type CodexSteerTurnResult = CodexAppServerTurnSteerResponse;
 
 export interface CodexSteerTurnInput {
   presentationTicket?: CodexTurnPresentationTicket;
@@ -2831,6 +2824,8 @@ export interface CodexSteerTurnInput {
   collaborationMode?: CodexCollaborationModeKind | null;
   serviceTier?: CodexServiceTier;
   summary?: CodexAppServerReasoningSummary | null;
+  /** Visible-renderer submission identity allocated at the user-submit boundary. */
+  clientUserMessageId?: string;
   /** Stable semantic identity allocated by the visible owner before Main admits the steer. */
   intent?: CodexSteerIntent;
 }
@@ -2856,85 +2851,6 @@ export interface CodexThreadActionResult {
   threadId: string;
   composerIntent?: CodexComposerIntent;
   streamRevision?: number;
-}
-
-/** Bounded resident history returned after editing the latest user Turn. */
-export interface CodexThreadHistoryEditResult {
-  thread: CodexAppServerThread;
-  turnPagination: CodexConversationTurnPagination;
-  turnItemsPaginationById?: Readonly<
-    Record<
-      string,
-      import("./codex-conversation-state/codex-history-topology").CodexHistoryTurnItemsPagination
-    >
-  >;
-}
-
-export type CodexOwnerAppServerRequest =
-  | {
-      method: "thread/revert";
-      params: { threadId: string; beforeTurnId: string };
-    }
-  | {
-      method: "thread/fork";
-      params: { threadId: string; turnId: string; message: string };
-    }
-  | {
-      method: "turn/start";
-      params: {
-        presentationTicket?: CodexTurnPresentationTicket;
-        threadId: string;
-        prompt: string;
-        opts?: CodexTurnStartOptions;
-        clientUserMessageId: string;
-        preparedPrompt: CodexPreparedPrompt;
-      };
-    }
-  | {
-      method: "turn/resume-interrupted";
-      params: {
-        presentationTicket?: CodexTurnPresentationTicket;
-        threadId: string;
-        opts?: CodexTurnStartOptions;
-        clientUserMessageId: string;
-      };
-    }
-  | {
-      method: "thread/session-first-turn/start";
-      params: {
-        threadId: string;
-        launchId: string;
-      };
-    }
-  | {
-      method: "turn/interrupt";
-      params: { threadId: string; turnId?: string };
-    }
-  | {
-      method: "thread/settings/update";
-      params: {
-        threadId: string;
-        patch: CodexConversationThreadSettingsPatch;
-      };
-    }
-  | { method: "thread/goal/set"; params: CodexAppServerThreadGoalSetParams }
-  | { method: "thread/goal/clear"; params: CodexAppServerThreadGoalClearParams }
-  | { method: "thread/memoryMode/set"; params: CodexAppServerThreadMemoryModeSetParams }
-  | { method: "thread/compact/start"; params: CodexAppServerThreadCompactStartParams }
-  | {
-      method: "thread/backgroundTerminals/list";
-      params: CodexAppServerThreadBackgroundTerminalsListParams;
-    }
-  | {
-      method: "thread/backgroundTerminals/terminate";
-      params: CodexAppServerThreadBackgroundTerminalsTerminateParams;
-    };
-
-export type CodexOwnerAppServerRequestMethod = CodexOwnerAppServerRequest["method"];
-
-export interface CodexOwnerAppServerRequestInput {
-  conversationId: string;
-  request: CodexOwnerAppServerRequest;
 }
 
 export type CodexPermissionPreset = "read-only" | "auto" | "guardian-approvals" | "full-access";
@@ -2978,6 +2894,8 @@ export type CodexSafetyBufferingState = Pick<
 export interface CodexTurnSummary {
   threadId: string;
   turnId: string | null;
+  /** Renderer submission identity used to correlate latency/visibility telemetry with this turn. */
+  clientUserMessageId?: string | null;
   /** Stable local occurrence identity while a nullable optimistic Turn binds to a server id. */
   entityKey?: string;
   status: CodexTurnStatus;
@@ -4546,17 +4464,10 @@ export interface CodexConversationSnapshot extends CodexThreadSummary {
   historyRows?: readonly import("./codex-conversation-state/codex-history-topology").CodexHistoryRow[];
   /** Main-owned Conversation Entity generation; prevents delayed renderer writes from ABA reuse. */
   conversationEntityGeneration?: number;
-  /** Fences viewport residency pins against replacement history topology. */
+  /** Fences page requests against replacement history topology. */
   historyTopologyGeneration?: number;
   /** Monotonic acknowledgement fence for bounded history mutations within one topology. */
   historyMutationRevision?: number;
-  /** Bounded per-Turn item segments. Ordinary item paging mutates this without replaying history. */
-  historyItemWindowsByTurnId?: Readonly<
-    Record<
-      string,
-      import("./codex-conversation-history-page").CodexConversationHistoryItemWindowSnapshot
-    >
-  >;
   turns: CodexConversationTurn[];
   /** Lossless event document for owner/no-owner canonical reducer handoff. */
   canonicalState?: CodexCanonicalConversationState | null;
@@ -4680,6 +4591,8 @@ export type CodexThreadStartProgressPhase =
 export type CodexThreadStartProgressStream = "info" | "stdout" | "stderr";
 
 export type CodexEvent =
+  | { type: "queuedMessageStateChanged" }
+  | { type: "executionAssignmentsChanged" }
   | { type: "connection"; connection: CodexConnectionState }
   | { type: "account"; account: CodexAccountSnapshot }
   | { type: "dictationState"; state: CodexDictationStateSnapshot }
@@ -4775,52 +4688,6 @@ export type CodexSharedObject =
       };
     };
 
-export type CodexThreadStreamStateChange =
-  | {
-      type: "snapshot";
-      revision: number;
-      conversationState: CodexConversationSnapshot;
-    }
-  | {
-      type: "patches";
-      baseRevision: number;
-      revision: number;
-      patches: CodexConversationStateUpdate[];
-    };
-
-/** Owner identity and ordering for the shared stream; transcript content is never hashed. */
-export interface CodexThreadStreamCheckpoint {
-  protocolVersion: 1;
-  ownerEpoch: number;
-  revision: number;
-}
-
-export type CodexThreadStreamPublishRejectionReason =
-  | "archived"
-  | "not-owner"
-  | "owner-epoch-mismatch"
-  | "missing-base"
-  | "base-checkpoint-mismatch"
-  | "revision-gap"
-  | "checkpoint-mismatch"
-  | "owner-notification-sequence-mismatch"
-  | "patch-apply-failed"
-  | "followers-present";
-
-export type CodexThreadOwnerStreamStatePublishResult =
-  | {
-      accepted: true;
-      checkpoint: CodexThreadStreamCheckpoint;
-    }
-  | {
-      accepted: false;
-      reason: CodexThreadStreamPublishRejectionReason;
-      recovery: {
-        checkpoint: CodexThreadStreamCheckpoint;
-        conversationState: CodexConversationSnapshot;
-      } | null;
-    };
-
 export interface CodexRendererClientRequestMessage {
   requestId: string;
   method: string;
@@ -4838,246 +4705,6 @@ export type CodexRendererClientResponseMessage =
       requestId: string;
       error: string;
     };
-
-export type CodexRendererThreadRole = "owner" | "follower";
-
-export interface CodexRendererThreadRoleRequest {
-  conversationId: string;
-}
-
-export type CodexThreadOwnerActionRequest =
-  | {
-      type: "startTurn";
-      presentationTicket?: CodexTurnPresentationTicket;
-      threadId: string;
-      prompt: string;
-      opts?: CodexTurnStartOptions;
-    }
-  | {
-      type: "steerTurn";
-      input: CodexSteerTurnInput;
-    }
-  | {
-      type: "resumeInterruptedTurn";
-      presentationTicket?: CodexTurnPresentationTicket;
-      threadId: string;
-      opts?: CodexTurnStartOptions;
-    }
-  | {
-      type: "interruptTurn";
-      threadId: string;
-      turnId?: string;
-    }
-  | {
-      type: "updateThreadSettings";
-      threadId: string;
-      patch: CodexConversationThreadSettingsPatch;
-    }
-  | {
-      type: "compactThread";
-      threadId: string;
-    }
-  | ({
-      type: "setThreadGoal";
-    } & CodexThreadGoalSetActionInput)
-  | {
-      type: "clearThreadGoal";
-      threadId: string;
-    }
-  | {
-      type: "dismissThreadGoalResumeConfirmation";
-      threadId: string;
-    }
-  | {
-      type: "setThreadMemoryMode";
-      threadId: string;
-      mode: CodexAppServerThreadMemoryMode;
-    }
-  | {
-      type: "editLastUserTurn";
-      presentationTicket?: CodexTurnPresentationTicket;
-      threadId: string;
-      turnId: string;
-      message: string;
-      opts?: { serviceTier?: CodexServiceTier };
-    }
-  | {
-      type: "forkConversationFromTurn";
-      threadId: string;
-      turnId: string;
-      message: string;
-    }
-  | {
-      type: "loadHistoryPage";
-      request: import("./codex-conversation-history-page").CodexConversationHistoryPageRequest;
-    }
-  | {
-      type: "publishHistoryMutation";
-      threadId: string;
-      mutation: import("./codex-conversation-history-page").CodexConversationHistoryMutation;
-    }
-  | {
-      type: "hydratePersistedHistoryOccurrence";
-      input: CodexPersistedHistoryOccurrenceHydrateRequest;
-    }
-  | {
-      type: "enqueueQueuedFollowUp";
-      presentationTicket?: CodexTurnPresentationTicket;
-      threadId: string;
-      prompt: string;
-      opts?: CodexTurnStartOptions;
-    }
-  | {
-      type: "removeQueuedFollowUp";
-      threadId: string;
-      followUpId: string;
-    }
-  | {
-      type: "replaceQueuedFollowUp";
-      presentationTicket?: CodexTurnPresentationTicket;
-      threadId: string;
-      followUpId: string;
-      expectedLedgerRevision: number;
-      prompt: string;
-      opts?: CodexTurnStartOptions;
-    }
-  | {
-      type: "reorderQueuedFollowUps";
-      threadId: string;
-      orderedFollowUpIds: string[];
-    }
-  | {
-      type: "resumeQueuedFollowUps";
-      threadId: string;
-    }
-  | {
-      type: "resolveQueuedFollowUpsAfterFreshStart";
-      threadId: string;
-      expectedLedgerRevision: number;
-      resolution: import("./codex-queued-follow-up-state").CodexQueuedFollowUpFreshStartResolution;
-    }
-  | {
-      type: "sendQueuedFollowUpNow";
-      threadId: string;
-      followUpId: string;
-    }
-  | {
-      type: "respondApproval";
-      conversationId: string;
-      requestId: CodexAppServerRequestId;
-      response: CodexApprovalResponse;
-    }
-  | {
-      type: "respondUserInput";
-      conversationId: string;
-      requestId: CodexAppServerRequestId;
-      answers: Record<string, string[]>;
-    }
-  | {
-      type: "respondMcpElicitation";
-      conversationId: string;
-      requestId: CodexAppServerRequestId;
-      response: CodexMcpServerElicitationResponse;
-    }
-  | {
-      type: "respondPermissionRequest";
-      conversationId: string;
-      requestId: CodexAppServerRequestId;
-      response: CodexPermissionRequestResponse;
-    }
-  | {
-      type: "respondOptionPicker";
-      conversationId: string;
-      requestId: CodexAppServerRequestId;
-      response: CodexCanonicalOptionPickerResponse;
-    }
-  | {
-      type: "respondSetupCodexStep";
-      conversationId: string;
-      requestId: CodexAppServerRequestId;
-      response: CodexCanonicalSetupCodexStepResponse;
-    }
-  | {
-      type: "removePlanImplementationRequest";
-      threadId: string;
-      turnId: string;
-    };
-
-export interface CodexThreadFollowerActionInput {
-  conversationId: string;
-  action: CodexThreadOwnerActionRequest;
-}
-
-export interface CodexThreadOwnerHistoryMutationResult {
-  revision: number;
-  page: import("./codex-conversation-history-page").CodexConversationHistoryPageResult;
-}
-
-export interface CodexThreadOwnerStreamStatePublishInput {
-  /** Refreshes dormant recovery without advancing or broadcasting the follower stream. */
-  recoveryOnly?: true;
-  conversationId: string;
-  change: CodexThreadStreamStateChange;
-  /** Exact compare-and-swap base; null is valid only for a first snapshot. */
-  baseCheckpoint: CodexThreadStreamCheckpoint | null;
-  /** Owner epoch and revision after applying `change`. */
-  checkpoint: CodexThreadStreamCheckpoint;
-  ownerNotificationSequence?: number;
-}
-
-export interface CodexThreadOwnerNotificationAckInput {
-  conversationId: string;
-  sequence: number;
-}
-
-export interface CodexThreadFollowerSnapshotAppliedInput {
-  conversationId: string;
-  ownerClientId: string;
-  checkpoint: CodexThreadStreamCheckpoint;
-}
-
-export interface CodexThreadStreamResyncRequestInput {
-  conversationId: string;
-  ownerClientId: string;
-  observedCheckpoint: CodexThreadStreamCheckpoint | null;
-  reason:
-    | "missing-snapshot"
-    | "owner-mismatch"
-    | "owner-epoch-mismatch"
-    | "revision-gap"
-    | "base-checkpoint-mismatch"
-    | "patch-apply-failed"
-    | "transport-reset";
-}
-
-export type CodexRendererConversationResumeResult =
-  | {
-      role: "owner";
-      conversation: CodexConversationSnapshot;
-      threadGeneration: number;
-      revision: number;
-      checkpoint: CodexThreadStreamCheckpoint;
-    }
-  | {
-      role: "follower";
-      conversation: CodexConversationSnapshot;
-      threadGeneration: number;
-      revision: number;
-      ownerClientId: string;
-      checkpoint: CodexThreadStreamCheckpoint;
-    };
-
-export type CodexThreadOwnerServerRequest =
-  | CodexProtocolServerRequestOf<
-      | "item/commandExecution/requestApproval"
-      | "item/fileChange/requestApproval"
-      | "item/permissions/requestApproval"
-      | "item/tool/requestUserInput"
-      | "item/tool/call"
-      | "mcpServer/elicitation/request"
-    >
-  | CodexCanonicalOptionPickerRequest
-  | CodexCanonicalSetupContextPickerRequest;
 
 export const CODEX_THREAD_OWNER_NOTIFICATION_METHODS = [
   "thread/started",
@@ -5148,66 +4775,32 @@ export type CodexMcpNotificationMessage = {
   >;
 };
 
+export interface CodexNativeIngressIdentity {
+  readonly hostId: string;
+  readonly generation: number;
+  readonly occurrenceId: string;
+  readonly occurrenceToken: number;
+}
+export type CodexNativeNotificationMessage = CodexNativeIngressIdentity & {
+  readonly type: "nativeNotification";
+  readonly receivedAtMs?: number;
+  readonly trace?: import("./codex-request-lifecycle").CodexRequestTraceContext | null;
+  readonly notification: CodexAppServerServerNotification;
+};
+export type CodexNativeRequestMessage = CodexNativeIngressIdentity & {
+  readonly type: "nativeRequest";
+  readonly request: CodexCanonicalServerRequest;
+};
+
 export type CodexHostMessage =
+  | CodexNativeNotificationMessage
+  | CodexNativeRequestMessage
+  | import("./codex-native-request-outcome").CodexNativeResponseMessage
+  | import("./codex-native-request-outcome").CodexNativeDeliveryMessage
   | {
       type: "sharedObjectUpdated";
       hostId: string;
       object: CodexSharedObject;
-    }
-  | {
-      type: "threadStreamStateChanged";
-      hostId: string;
-      conversationId: string;
-      change: CodexThreadStreamStateChange;
-      version: number;
-      sourceClientId?: string | null;
-      checkpoint: CodexThreadStreamCheckpoint;
-      /** Null only when the accepted state has no previous checkpoint. */
-      baseCheckpoint: CodexThreadStreamCheckpoint | null;
-    }
-  | {
-      type: "threadStreamFollowingStatusRequested";
-      hostId: string;
-      conversationId: string;
-      ownerClientId: string;
-    }
-  | {
-      type: "threadStreamSnapshotRequested";
-      hostId: string;
-      conversationId: string;
-      ownerClientId: string;
-      ownerEpoch: number;
-    }
-  | {
-      type: "threadStreamFollowersChanged";
-      hostId: string;
-      conversationId: string;
-      ownerClientId: string;
-      followerClientIds: string[];
-      membershipEpoch: number;
-    }
-  | {
-      type: "threadStreamTransportReset";
-      hostId: string;
-      conversationIds: string[];
-    }
-  | {
-      type: "threadOwnerNotification";
-      hostId: string;
-      sequence: number;
-      notification: CodexThreadOwnerNotification;
-    }
-  | {
-      type: "threadOwnerRequest";
-      hostId: string;
-      request: CodexThreadOwnerServerRequest;
-      sequence: number;
-    }
-  | {
-      type: "threadOwnerUnavailable";
-      hostId: string;
-      ownerClientId: string;
-      conversationIds: string[];
     }
   | {
       type: "threadTitleUpdated";

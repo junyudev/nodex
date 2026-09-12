@@ -1235,6 +1235,7 @@ function ScopedLocalConversationComposerShell({
       {showThreadGoalStatusRow ? (
         <ThreadGoalStatusRow
           goal={threadGoal}
+          hostId={model.hostId}
           actions={actions}
           showRoundedTop={resolveRoundedTop()}
         />

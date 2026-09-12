@@ -7,6 +7,19 @@ export interface CodexGitCommandResult {
 
 export type CodexGitCommandOutputStream = "stdout" | "stderr" | "info";
 
+const NON_GIT_REPOSITORY_MESSAGES = [
+  "not a git repository",
+  "cannot use bare repository",
+  "invalid gitfile format",
+  "no path in gitfile",
+  "invalid gitdir",
+] as const;
+
+export function isCodexNonGitRepositoryMessage(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return NON_GIT_REPOSITORY_MESSAGES.some((candidate) => normalized.includes(candidate));
+}
+
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const KILL_ESCALATION_MS = 250;
 

@@ -1,3 +1,4 @@
+import { areStructurallyEqual } from "./structural-equality";
 import {
   expandCodexAsyncQuestions,
   decodeCodexAsyncQuestionReplies,
@@ -137,7 +138,12 @@ function resolveCanonicalItemStatus(
 }
 
 function resolveWebSearchCompleted(
-  item: Extract<CodexCanonicalItem, { type: "webSearch" }>,
+  item: Extract<
+    CodexCanonicalItem,
+    {
+      type: "webSearch";
+    }
+  >,
   context: ItemProjectionContext,
 ): boolean {
   const lifecycleStatus = context.lifecycleStatusByItemId?.[item.id];
@@ -149,7 +155,7 @@ function resolveWebSearchCompleted(
 /**
  * Reports the non-positional turn-status dependencies owned by individual
  * projector branches. Item lifecycle status is carried by the canonical
- * sidecar instead of inferred from sibling position.
+ * Turn context instead of inferred from sibling position.
  */
 export function doesCodexCanonicalItemProjectionChangeWithTurnStatus(
   item: CodexCanonicalItem,
@@ -184,11 +190,38 @@ export function doesCodexCanonicalItemProjectionChangeWithTurnStatus(
   }
 }
 
-function projectAssistantText(text: string, streaming: boolean): string | null {
-  const withoutMemoryCitations = text.replace(
-    /<oai-mem-citation>.*?(?:<\/oai-mem-citation>|$)/gs,
+const MEMORY_CITATION_MARKERS = ["<oai-mem-citation>", "[oai-mem-citation]"];
+function nextMemoryCitation(text: string, start = 0): number {
+  const offsets = MEMORY_CITATION_MARKERS.map((marker) => text.indexOf(marker, start)).filter((offset) => offset >= 0);
+  return offsets.length ? Math.min(...offsets) : -1;
+}
+function stripUnclosedMemoryCitation(text: string): string {
+  let citation = nextMemoryCitation(text);
+  if (citation < 0) return text;
+  let position = 0;
+  while (position < text.length) {
+    const opening = text.indexOf("`", position);
+    if (opening < 0) break;
+    let escapes = 0;
+    while (text[opening - escapes - 1] === "\\") escapes += 1;
+    if (escapes % 2 === 1) { position = opening + 1; continue; }
+    let content = opening + 1;
+    while (text[content] === "`") content += 1;
+    const marker = text.slice(opening, content);
+    let closing = text.indexOf(marker, content);
+    while (closing >= 0 && (text[closing - 1] === "`" || text[closing + marker.length] === "`")) closing = text.indexOf(marker, closing + marker.length);
+    if (closing < 0) { position = content; continue; }
+    if (citation >= content && citation < closing && MEMORY_CITATION_MARKERS.includes(text.slice(content, closing).trim())) citation = nextMemoryCitation(text, citation + 1);
+    position = closing + marker.length;
+  }
+  return citation < 0 ? text : text.slice(0, citation);
+}
+
+export function projectAssistantText(text: string, streaming: boolean): string | null {
+  const withoutMemoryCitations = stripUnclosedMemoryCitation(text.replace(
+    /(?:<oai-mem-citation>|\[oai-mem-citation\])(?:(?!(?:<oai-mem-citation>|\[oai-mem-citation\])).)*?<\/oai-mem-citation>/gs,
     "",
-  );
+  ));
   const partialCitationIndex = streaming ? withoutMemoryCitations.lastIndexOf("<") : -1;
   const withoutPartialCitation =
     partialCitationIndex >= 0 &&
@@ -237,29 +270,6 @@ function projectUserMessageText(content: readonly CodexSteeringUserInput[]): str
   return content.flatMap((input) => (input.type === "text" ? [input.text] : [])).join("\n");
 }
 
-function areStructurallyEqual(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) return true;
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right)) return false;
-    if (left.length !== right.length) return false;
-    return left.every((entry, index) => areStructurallyEqual(entry, right[index]));
-  }
-  if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) {
-    return false;
-  }
-
-  const leftRecord = left as Readonly<Record<string, unknown>>;
-  const rightRecord = right as Readonly<Record<string, unknown>>;
-  const leftKeys = Object.keys(leftRecord);
-  const rightKeys = Object.keys(rightRecord);
-  if (leftKeys.length !== rightKeys.length) return false;
-  return leftKeys.every(
-    (key) =>
-      Object.prototype.hasOwnProperty.call(rightRecord, key) &&
-      areStructurallyEqual(leftRecord[key], rightRecord[key]),
-  );
-}
-
 export function areCodexCanonicalTurnParamsEqual(
   left: CodexCanonicalTurnParams,
   right: CodexCanonicalTurnParams,
@@ -285,7 +295,12 @@ function isUserMessageDuplicatePreludeItem(item: CodexCanonicalItem): boolean {
 function isDuplicateServerUserMessage(input: {
   readonly items: readonly CodexCanonicalItem[];
   readonly itemIndex: number;
-  readonly item: Extract<CodexCanonicalItem, { type: "userMessage" }>;
+  readonly item: Extract<
+    CodexCanonicalItem,
+    {
+      type: "userMessage";
+    }
+  >;
   readonly params: CodexCanonicalTurnParams;
 }): boolean {
   const matchesClientId =
@@ -346,7 +361,7 @@ export function collectCodexCanonicalUserMessageVisibilityChangedOwnerIds(input:
   ]);
 }
 
-function isReviewDiffCommentAttachment(value: unknown): value is CodexReviewDiffCommentAttachment {
+export function isReviewDiffCommentAttachment(value: unknown): value is CodexReviewDiffCommentAttachment {
   const attachment = asJsonObject(value);
   const position = asJsonObject(attachment?.position);
   if (
@@ -462,7 +477,12 @@ function projectSteeringUserMessage(
 }
 
 function projectCommandActions(
-  item: Extract<CodexCanonicalItem, { type: "commandExecution" }>,
+  item: Extract<
+    CodexCanonicalItem,
+    {
+      type: "commandExecution";
+    }
+  >,
   context: ItemProjectionContext,
 ): CodexItemView[] {
   const actions: readonly CodexCommandAction[] =
@@ -505,13 +525,23 @@ function projectCommandActions(
 }
 
 function resolveFileChangeKind(
-  change: Extract<CodexCanonicalItem, { type: "fileChange" }>["changes"][number],
+  change: Extract<
+    CodexCanonicalItem,
+    {
+      type: "fileChange";
+    }
+  >["changes"][number],
 ): "add" | "delete" | "update" {
   return change.kind.type;
 }
 
 function projectFileChange(
-  item: Extract<CodexCanonicalItem, { type: "fileChange" }>,
+  item: Extract<
+    CodexCanonicalItem,
+    {
+      type: "fileChange";
+    }
+  >,
   context: ItemProjectionContext,
 ): CodexItemView[] {
   const ordinaryChanges: CodexFileChange[] = [];
@@ -575,7 +605,12 @@ function asJsonObject(value: unknown): Record<string, unknown> | null {
 }
 
 function parseAutomationResult(
-  contentItems: Extract<CodexCanonicalItem, { type: "dynamicToolCall" }>["contentItems"],
+  contentItems: Extract<
+    CodexCanonicalItem,
+    {
+      type: "dynamicToolCall";
+    }
+  >["contentItems"],
 ): CodexAutomationUpdateView["result"] {
   for (const contentItem of contentItems ?? []) {
     if (contentItem.type !== "inputText") continue;
@@ -620,7 +655,12 @@ function parseAutomationResult(
 }
 
 function projectAutomationUpdate(
-  item: Extract<CodexCanonicalItem, { type: "dynamicToolCall" }>,
+  item: Extract<
+    CodexCanonicalItem,
+    {
+      type: "dynamicToolCall";
+    }
+  >,
   context: ItemProjectionContext,
 ): CodexItemView[] {
   if (item.status !== "completed" || item.success !== true) return [];
@@ -652,7 +692,12 @@ function projectAutomationUpdate(
 }
 
 function projectDynamicToolCall(
-  item: Extract<CodexCanonicalItem, { type: "dynamicToolCall" }>,
+  item: Extract<
+    CodexCanonicalItem,
+    {
+      type: "dynamicToolCall";
+    }
+  >,
   context: ItemProjectionContext,
 ): CodexItemView[] {
   if (item.tool === "automation_update") return projectAutomationUpdate(item, context);
@@ -693,7 +738,12 @@ function projectSubagentDisplayName(agentPath: string): string | null {
 }
 
 function projectSubagentDisplayStatus(
-  kind: Extract<CodexCanonicalItem, { type: "subAgentActivity" }>["kind"],
+  kind: Extract<
+    CodexCanonicalItem,
+    {
+      type: "subAgentActivity";
+    }
+  >["kind"],
 ): "active" | "updated" | "interrupted" {
   if (kind === "started") return "active";
   if (kind === "interacted") return "updated";
@@ -715,8 +765,14 @@ function projectErrorMessage(message: string, willRetry: boolean): string {
   const reconnect = /^Reconnecting(?:\.\.\.)?\s+(\d+)\/(\d+)$/.exec(message.trim());
   return reconnect ? `Reconnecting ${reconnect[1]}/${reconnect[2]}` : message;
 }
-
-function shouldHidePolicyError(item: Extract<CodexCanonicalItem, { type: "error" }>): boolean {
+function shouldHidePolicyError(
+  item: Extract<
+    CodexCanonicalItem,
+    {
+      type: "error";
+    }
+  >,
+): boolean {
   if (item.errorInfo === "cyberPolicy") return true;
   try {
     const parsed = asJsonObject(JSON.parse(item.message));
@@ -1231,7 +1287,7 @@ export function projectCodexCanonicalVisibleTurnItemViews(
 
 export function isCodexCanonicalTurnPromptBlocked(turn: CodexCanonicalTurnState): boolean {
   return (
-    turn.sidecar.hookRuns?.some(
+    turn.hookRuns?.some(
       ({ run }) => run.eventName === "userPromptSubmit" && run.status === "blocked",
     ) === true
   );
@@ -1245,7 +1301,7 @@ export function isCodexCanonicalTurnPromptBlocked(turn: CodexCanonicalTurnState)
 export function projectCodexCanonicalTurnViews(
   input: ProjectCodexCanonicalTurnViewsInput,
 ): CodexCanonicalTurnView[] {
-  const turnId = input.turn.protocol.id;
+  const turnId = input.turn.turnId;
   const turnKey = input.turnKey ?? turnId;
   if (turnKey === null) {
     throw new Error("A null-id canonical turn requires its occurrence key");
@@ -1256,7 +1312,7 @@ export function projectCodexCanonicalTurnViews(
     threadId: input.threadId,
     turnId,
     turnKey,
-    params: input.turn.sidecar.params,
+    params: input.turn.params,
     blocked,
     observedAtMs: input.observedAtMs,
     goalProjection: readCodexCanonicalThreadGoalTranscriptProjection(input.turn),
@@ -1265,14 +1321,14 @@ export function projectCodexCanonicalTurnViews(
     threadId: input.threadId,
     turnId,
     items: input.turn.items,
-    params: input.turn.sidecar.params,
+    params: input.turn.params,
     hasVisibleTurnParamsUserMessage: paramsView !== null,
     preserveServerUserMessages: input.preserveServerUserMessages,
     observedAtMs: input.observedAtMs,
-    turnStatus: input.turn.protocol.status,
-    commandExecutionStartedAtMsById: input.turn.sidecar.commandExecutionStartedAtMsById,
-    lifecycleStatusByItemId: input.turn.sidecar.lifecycleStatusByItemId,
-    interruptedCommandExecutionItemIds: input.turn.sidecar.interruptedCommandExecutionItemIds,
+    turnStatus: input.turn.status,
+    commandExecutionStartedAtMsById: input.turn.commandExecutionStartedAtMsById,
+    lifecycleStatusByItemId: input.turn.lifecycleStatusByItemId,
+    interruptedCommandExecutionItemIds: input.turn.interruptedCommandExecutionItemIds,
     isBackgroundSubagentsEnabled: input.isBackgroundSubagentsEnabled,
   });
 

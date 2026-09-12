@@ -6,6 +6,22 @@ let bridgeRefCount = 0;
 let unsubscribeHostMessages: (() => void) | null = null;
 
 function applyHostMessage(message: CodexHostMessage): void {
+  if (message.type === "mcp-request-delivery") {
+    dispatchCodexAppServerMessage("mcp-request-delivery", message);
+    return;
+  }
+  if (message.type === "mcp-response") {
+    dispatchCodexAppServerMessage("mcp-response", message);
+    return;
+  }
+  if (message.type === "nativeNotification") {
+    dispatchCodexAppServerMessage("native-notification", message);
+    return;
+  }
+  if (message.type === "nativeRequest") {
+    dispatchCodexAppServerMessage("native-request", message);
+    return;
+  }
   if (message.type === "sharedObjectUpdated") {
     dispatchCodexAppServerMessage("shared-object-updated", {
       hostId: message.hostId,
@@ -18,79 +34,6 @@ function applyHostMessage(message: CodexHostMessage): void {
         status: message.object.value.status,
       });
     }
-    return;
-  }
-
-  if (message.type === "threadStreamStateChanged") {
-    dispatchCodexAppServerMessage("thread-stream-state-changed", {
-      hostId: message.hostId,
-      conversationId: message.conversationId,
-      change: message.change,
-      version: message.version,
-      sourceClientId: message.sourceClientId ?? null,
-      checkpoint: message.checkpoint,
-      baseCheckpoint: message.baseCheckpoint ?? null,
-    });
-    return;
-  }
-
-  if (message.type === "threadStreamFollowingStatusRequested") {
-    dispatchCodexAppServerMessage("thread-stream-following-status-requested", {
-      hostId: message.hostId,
-      conversationId: message.conversationId,
-      ownerClientId: message.ownerClientId,
-    });
-    return;
-  }
-
-  if (message.type === "threadStreamFollowersChanged") {
-    dispatchCodexAppServerMessage("thread-stream-followers-changed", {
-      hostId: message.hostId,
-      conversationId: message.conversationId,
-      ownerClientId: message.ownerClientId,
-      followerClientIds: message.followerClientIds,
-      membershipEpoch: message.membershipEpoch,
-    });
-    return;
-  }
-
-  if (message.type === "threadStreamSnapshotRequested") {
-    dispatchCodexAppServerMessage("thread-stream-snapshot-requested", message);
-    return;
-  }
-
-  if (message.type === "threadStreamTransportReset") {
-    dispatchCodexAppServerMessage("thread-stream-transport-reset", {
-      hostId: message.hostId,
-      conversationIds: message.conversationIds,
-    });
-    return;
-  }
-
-  if (message.type === "threadOwnerNotification") {
-    dispatchCodexAppServerMessage("thread-owner-notification", {
-      hostId: message.hostId,
-      sequence: message.sequence,
-      notification: message.notification,
-    });
-    return;
-  }
-
-  if (message.type === "threadOwnerRequest") {
-    dispatchCodexAppServerMessage("thread-owner-request", {
-      hostId: message.hostId,
-      request: message.request,
-      sequence: message.sequence,
-    });
-    return;
-  }
-
-  if (message.type === "threadOwnerUnavailable") {
-    dispatchCodexAppServerMessage("thread-owner-unavailable", {
-      hostId: message.hostId,
-      ownerClientId: message.ownerClientId,
-      conversationIds: message.conversationIds,
-    });
     return;
   }
 

@@ -18,6 +18,7 @@ import { CodexShimmerText } from "./shared/codex-shimmer-text";
 import { ThreadBlockRenderer } from "./blocks/local-conversation-block-renderer";
 import { ThreadMcpAppsProvider } from "./shared/tools/mcp-apps-context";
 import { projectAgentBodyCollapsePresentation } from "../projection/agent-body-collapse-presentation";
+import { CodexFirstResponseVisibilityMarker } from "../codex-turn-first-response-view";
 
 const EMPTY_THREAD_LIVE_ACTIVITY: ThreadTurnModel["liveActivity"] = {
   global: {
@@ -215,6 +216,19 @@ function ThreadTurnBody({
       : null,
     durationMs: turn.workedDurationMs,
   });
+  const clientUserMessageId = turn.turn?.clientUserMessageId?.trim() || null;
+  const firstResponseSection =
+    agentBodyUnits.length > 0
+      ? "agent"
+      : turn.trailingBlocks.length > 0
+        ? "trailing"
+        : turn.liveActivity.fallback.owner === "standalone"
+          ? "fallback"
+          : null;
+  const firstResponseMarker =
+    clientUserMessageId === null ? null : (
+      <CodexFirstResponseVisibilityMarker clientUserMessageId={clientUserMessageId} />
+    );
 
   const renderBlock = (block: ThreadBlockModel) => (
     <ThreadBlockRenderer
@@ -273,6 +287,7 @@ function ThreadTurnBody({
         {agentBodyUnits.length > 0 ? (
           <>
             {turn.leadingBlocks.length > 0 ? <ThreadGap /> : null}
+            {firstResponseSection === "agent" ? firstResponseMarker : null}
             <div className="flex flex-col">
               {shouldAllowAgentBodyCollapse ? (
                 <AgentBodyToggleRow
@@ -322,6 +337,7 @@ function ThreadTurnBody({
         {turn.trailingBlocks.length > 0 ? (
           <>
             {turn.leadingBlocks.length > 0 || agentBodyUnits.length > 0 ? <ThreadGap /> : null}
+            {firstResponseSection === "trailing" ? firstResponseMarker : null}
             <div className="flex flex-col">
               {renderSpacedBlocks(turn.trailingBlocks, renderBlock)}
             </div>
@@ -335,6 +351,7 @@ function ThreadTurnBody({
             turn.trailingBlocks.length > 0 ? (
               <ThreadGap />
             ) : null}
+            {firstResponseSection === "fallback" ? firstResponseMarker : null}
             <ThreadLiveActivityFallbackForTurn turn={turn} />
           </>
         ) : null}

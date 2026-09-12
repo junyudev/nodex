@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
-import { encodeRendererDelivery } from "../../shared/renderer-delivery-transport";
+import { codexHostMessageParts } from "../../shared/codex-host-chunked-message";
 import type { CodexConversationSnapshot } from "../../shared/types";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import type { ProjectWorkspaceReadSnapshot } from "../core-client/types";
@@ -29,6 +29,7 @@ const coreThread = (
   threadId: string,
   name: string,
   backendKind: "codex" | "acp" = "codex",
+  executionHostId = "local",
 ): CoreThread =>
   ({
     thread_id: threadId,
@@ -54,7 +55,7 @@ const coreThread = (
     model_id: "gpt-test",
     reasoning_effort: "high",
     service_tier: null,
-    execution_host_id: "local",
+    execution_host_id: executionHostId,
     cwd: "/repo",
     writable_roots: ["/repo"],
     managed_worktree_path: null,
@@ -96,6 +97,7 @@ const harness = (input: {
   readonly onProject?: (threadId: string, name: string) => void;
   readonly onCoreApply?: (threadId: string, name: string) => void;
   readonly backendKind?: "codex" | "acp";
+  readonly executionHostId?: string;
   readonly committedTitle?: string;
   readonly publish?: (event: CodexApplicationEvent) => void;
 }) => {
@@ -113,7 +115,7 @@ const harness = (input: {
           threadId,
           threadName: names.get(threadId) ?? null,
           ephemeral: false,
-          canonicalState: { turns: [{ sidecar: { params: undefined } }] },
+          canonicalState: { turns: [{ params: undefined }] },
         } as unknown as CodexConversationSnapshot,
       }),
   } as unknown as CodexConversationProjectionService);
@@ -131,7 +133,12 @@ const harness = (input: {
       return Effect.succeed({
         value: {
           kind: "thread",
-          thread: coreThread(id, input.committedTitle ?? names.get(id) ?? "", input.backendKind),
+          thread: coreThread(
+            id,
+            input.committedTitle ?? names.get(id) ?? "",
+            input.backendKind,
+            input.executionHostId,
+          ),
         },
       } as ProjectWorkspaceReadSnapshot);
     },
@@ -372,11 +379,7 @@ it.effect("delivers titles and durable summaries without exporting conversation 
     const persistence = yield* harness({
       request: (() => Effect.succeed({})) as CodexGateway["Service"]["requestForThread"],
       publish: (event) => {
-        encodeRendererDelivery({
-          target: { targetId: "renderer", generation: 1 },
-          transferId: `title-${delivered.length}`,
-          payload: event,
-        });
+        Array.from(codexHostMessageParts(event, { transferId: `title-${delivered.length}` }));
         delivered.push(event);
       },
     });
@@ -401,5 +404,32 @@ it.effect("delivers titles and durable summaries without exporting conversation 
     if (summary?.kind !== "codex" || summary.value.type !== "threadSummary") return;
     assert.strictEqual(summary.value.thread.threadName, "Research (2)");
     assert.notProperty(summary.value.thread, "canonicalState");
+  }),
+);
+
+it.effect("routes remote title updates to the Thread execution host", () =>
+  Effect.gen(function* () {
+    const delivered: CodexApplicationEvent[] = [];
+    const persistence = yield* harness({
+      executionHostId: "ssh:builder",
+      request: (() => Effect.succeed({})) as CodexGateway["Service"]["requestForThread"],
+      publish: (event) => delivered.push(event),
+    });
+
+    yield* persistence.setRequired({
+      threadId: "remote-thread",
+      name: "Remote title",
+      normalization: "manual",
+    });
+
+    assert.deepInclude(delivered, {
+      kind: "hostMessage",
+      value: {
+        type: "threadTitleUpdated",
+        hostId: "ssh:builder",
+        conversationId: "remote-thread",
+        title: "Remote title",
+      },
+    });
   }),
 );

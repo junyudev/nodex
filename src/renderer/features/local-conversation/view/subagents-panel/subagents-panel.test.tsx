@@ -162,6 +162,60 @@ describe("SubagentsPanelOverview", () => {
     await waitFor(() => expect(overviewMocks.read).toHaveBeenCalledTimes(2));
     expect(await screen.findByText("Done · 1")).toBeTruthy();
   });
+
+  test("serializes invalidation refreshes behind an in-flight overview read", async () => {
+    vi.useFakeTimers();
+    let resolveInitial: ((value: CodexSubagentOverviewWindow) => void) | null = null;
+    const initial = buildOverview({ active: [buildRow(1, "unknown")], done: [] });
+    const refreshed = {
+      ...buildOverview({ active: [], done: [buildRow(1, "done")] }),
+      revision: initial.revision + 1,
+    };
+    overviewMocks.read
+      .mockImplementationOnce(
+        () =>
+          new Promise<CodexSubagentOverviewWindow>((resolve) => {
+            resolveInitial = resolve;
+          }),
+      )
+      .mockResolvedValue(refreshed);
+
+    let onEvent: ((event: CodexEvent) => void) | null = null;
+    overviewMocks.subscribe.mockImplementation((listener) => {
+      onEvent = listener;
+      return () => undefined;
+    });
+
+    try {
+      render(
+        <SubagentsPanelOverview
+          projectId="project"
+          rootThreadId="root"
+          onError={() => undefined}
+          onSelect={() => undefined}
+        />,
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(overviewMocks.read).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        onEvent?.({ type: "subagentOverviewInvalidated", rootThreadId: "root" });
+        await vi.runOnlyPendingTimersAsync();
+      });
+      expect(overviewMocks.read).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        resolveInitial?.(initial);
+        await Promise.resolve();
+      });
+      expect(overviewMocks.read).toHaveBeenCalledTimes(2);
+      expect(screen.getByText("Done · 1")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("SubagentsPanelOverviewContent", () => {

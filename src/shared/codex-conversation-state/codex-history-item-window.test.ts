@@ -82,7 +82,7 @@ describe("Codex history item window", () => {
     });
   });
 
-  it("fails closed on foreign, duplicate, mismatched, stalled, and empty advancing pages", () => {
+  it("fails closed on foreign, duplicate, mismatched, and stalled pages", () => {
     const before = createWindow({ seedSegments: [segment("seed", ["resident"])] });
     const cases = [
       prependCodexHistoryItemPage(before, {
@@ -116,10 +116,6 @@ describe("Codex history item window", () => {
         ...segment("stalled", ["new"]),
         olderCursorAfter: "cursor:before",
       }),
-      prependCodexHistoryItemPage(before, {
-        ...segment("empty", []),
-        olderCursorAfter: "cursor:next",
-      }),
     ];
 
     expect(cases.map((result) => (result.ok ? "ok" : result.error.code))).toEqual([
@@ -129,10 +125,22 @@ describe("Codex history item window", () => {
       "duplicateItem",
       "malformedIdentity",
       "cursorStalled",
-      "emptyPageContinuation",
     ]);
     expect(materializeCodexHistoryItemWindow(before).itemIds).toEqual(["resident"]);
     expect(before.olderBoundary).toEqual(available("cursor:before"));
+  });
+
+  it("advances an empty page cursor without adding a resident segment", () => {
+    const before = createWindow({ seedSegments: [segment("seed", ["resident"])] });
+    const result = prependCodexHistoryItemPage(before, {
+      ...segment("empty", []),
+      olderCursorAfter: "cursor:next",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.window.olderBoundary).toEqual(available("cursor:next"));
+    expect(result.window.residency).toEqual(before.residency);
+    expect(materializeCodexHistoryItemWindow(result.window).itemIds).toEqual(["resident"]);
   });
 
   it("serializes only the admitted page without reading unchanged resident item payloads", () => {

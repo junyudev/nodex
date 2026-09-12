@@ -12,7 +12,10 @@ import type {
   ThreadForkParams,
   ThreadForkResponse,
 } from "@nodex/codex-app-server-protocol/v2";
-import type { CodexConversationSnapshot } from "../../shared/types";
+import type {
+  CodexCanonicalConversationState,
+  CodexConversationSnapshot,
+} from "../../shared/types";
 import { createCodexCanonicalHydratedConversationState } from "../../shared/codex-conversation-state/codex-conversation-state";
 import { CodexGateway, CodexThreadHostResolver } from "../codex-runtime/CodexGateway";
 import {
@@ -24,8 +27,13 @@ import {
   live as codexEphemeralThreadRoutingLive,
 } from "../codex-runtime/CodexEphemeralThreadRouting";
 import { codexRuntimeError, type CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
+import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
 import { CodexTurnCommands, type CodexTurnCommandsService } from "./CodexTurnCommands";
 import { CodexConversationProjection } from "./CodexConversationProjection";
+import { CodexExecutionAssignments } from "./CodexExecutionAssignments";
+import { makeReadyCodexExecutionAssignments } from "./CodexExecutionAssignments.test-support";
+import { CodexGitProbe } from "./CodexGitProbe";
+import { makeTestCodexGitProbe } from "./CodexGitProbe.test-support";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
 import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
 import { transparentThreadCreationRuntime } from "./ThreadCreationRuntime.test-support";
@@ -112,12 +120,15 @@ interface SideChatHarnessOptions {
   readonly inject?: Effect.Effect<unknown, CodexRuntimeError>;
   readonly initialTurn?: Effect.Effect<void, CodexRuntimeError>;
   readonly unsubscribe?: Effect.Effect<unknown, CodexRuntimeError>;
-  readonly parentProjection?: "materialized" | "released";
+  readonly parentProjection?: "materialized" | "released" | "canonical";
+  readonly parentCanonical?: Partial<CodexCanonicalConversationState>;
+  readonly directoryRead?: Effect.Effect<void>;
   readonly parentBackend?: "codex" | "acp";
   readonly parentSideConversation?: boolean;
   readonly capabilityCurrent?: boolean;
   readonly capabilityVersion?: string;
   readonly forkResponse?: ThreadForkResponse;
+  readonly forkResponseGate?: Effect.Effect<void>;
 }
 
 interface PhysicalRequest {
@@ -143,6 +154,7 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
     const events: string[] = [];
     const requests: PhysicalRequest[] = [];
     const directoryFidelities: string[] = [];
+    const startedTurns: Array<Parameters<CodexTurnCommandsService["start"]>> = [];
 
     const gateway = CodexGateway.of({
       localHostId: options.localHostId ?? "local",
@@ -161,7 +173,14 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
             scheduling,
           });
           events.push(`request:${hostId}:${method}:${params.threadId ?? parentThreadId}`);
-          if (method === "thread/fork") return Effect.succeed(options.forkResponse ?? forkResponse);
+          if (method === "experimentalFeature/list") {
+            return Effect.succeed({ data: [], nextCursor: null });
+          }
+          if (method === "thread/fork") {
+            return (options.forkResponseGate ?? Effect.void).pipe(
+              Effect.as(options.forkResponse ?? forkResponse),
+            );
+          }
           if (method === "thread/inject_items") {
             const boundaryText = (
               params as {
@@ -186,18 +205,27 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
         ),
     });
     const turns = CodexTurnCommands.of({
-      start: (threadId) =>
+      prepareNativeToolMessage: () => Effect.die("unused"),
+      injectPreparedNativeStart: () => Effect.die("unused"),
+      prepareNativeQueuedMessage: () => Effect.die("unused"),
+      prepareNativeStart: () => Effect.die("unused"),
+      inspectPreparedNativeStart: () => Effect.die("unused"),
+      executePreparedNativeStart: () => Effect.die("unused"),
+      releasePreparedNativeStart: () => {},
+      prepareNativeSteer: () => Effect.die("unused"),
+      inspectPreparedNativeSteer: () => Effect.die("unused"),
+      executePreparedNativeSteer: () => Effect.die("unused"),
+      releasePreparedNativeSteer: () => {},
+      start: (threadId, prompt, overrides) =>
         Effect.gen(function* () {
+          startedTurns.push([threadId, prompt, overrides]);
           const hostId = yield* routing.resolve(threadId);
           events.push(`turn:${threadId}:${hostId ?? "unrouted"}`);
           yield* options.initialTurn ?? Effect.void;
           return null;
         }),
       startAutomation: () => Effect.die("unused"),
-      startRendererOwned: () => Effect.die("unused"),
-      acceptPreparedRendererTurn: () => Effect.die("unused"),
       steer: () => Effect.die("unused"),
-      continueGoal: () => Effect.die("unused"),
     } satisfies CodexTurnCommandsService);
     const parentSnapshot = {
       threadId: parentThreadId,
@@ -219,26 +247,33 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
         error: null,
       },
     } as unknown as CodexConversationSnapshot;
-    const parentCanonical = createCodexCanonicalHydratedConversationState(
-      protocolThread(parentThreadId),
-      {
-        model: "gpt-parent",
-        reasoningEffort: "high",
-        cwd: "/workspace",
-        approvalPolicy: "on-request",
-        approvalsReviewer: "user",
-        sandboxPolicy: {
-          type: "workspaceWrite",
-          writableRoots: ["/workspace", "/shared"],
-          networkAccess: false,
-          excludeTmpdirEnvVar: false,
-          excludeSlashTmp: false,
+    const parentCanonical = {
+      ...createCodexCanonicalHydratedConversationState(protocolThread(parentThreadId), {
+        hostId: "local",
+        ...{
+          model: "gpt-parent",
+          reasoningEffort: "high",
+          cwd: "/workspace",
+          approvalPolicy: "on-request",
+          approvalsReviewer: "user",
+          sandboxPolicy: {
+            type: "workspaceWrite",
+            writableRoots: ["/workspace", "/shared"],
+            networkAccess: false,
+            excludeTmpdirEnvVar: false,
+            excludeSlashTmp: false,
+          },
+          activePermissionProfile: { id: ":workspace", extends: null },
+          runtimeWorkspaceRoots: ["/workspace", "/shared"],
         },
-        activePermissionProfile: { id: ":workspace", extends: null },
-        runtimeWorkspaceRoots: ["/workspace", "/shared"],
-      },
-    );
-    const parentIsMaterialized = options.parentProjection !== "released";
+      }),
+      ...options.parentCanonical,
+    };
+    const parentIsMaterialized =
+      options.parentProjection === undefined || options.parentProjection === "materialized";
+    if (options.parentProjection === "canonical") {
+      conversations.entity(parentThreadId).installFollowerCanonicalState(parentCanonical);
+    }
     if (options.parentSideConversation && parentIsMaterialized) {
       conversations.entity(parentThreadId).installSnapshot({
         ...parentSnapshot,
@@ -267,16 +302,22 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
         executionHostId: remoteHostId,
       },
       summary: durableSummary,
-      canonical: parentIsMaterialized ? parentCanonical : null,
+      canonical: options.parentProjection === "released" ? null : parentCanonical,
       snapshot: parentIsMaterialized ? parentSnapshot : null,
     } as never;
     const directory = CodexThreadDirectory.of({
+      prepareResume: () => Effect.die("unused"),
+      prepareHistoryHydration: () => Effect.die("unused"),
+      acceptRendererResume: () => Effect.die("unused"),
       materializeInCurrentLane: () => Effect.die("unused"),
+      refreshMetadataInCurrentLane: () => Effect.die("unused"),
       // The canonical directory serializes remote materialization in the Thread lane.
       // Side-chat admission must therefore never hold that same non-reentrant lane.
       resolve: (input) => {
         directoryFidelities.push(input.fidelity);
-        return conversations.runCommand(parentThreadId, Effect.succeed(directoryEntry));
+        return (options.directoryRead ?? Effect.void).pipe(
+          Effect.andThen(conversations.runCommand(parentThreadId, Effect.succeed(directoryEntry))),
+        );
       },
       acceptRollbackResult: () => Effect.die("unused"),
       acceptImportResult: () => Effect.die("unused"),
@@ -323,6 +364,7 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
                 hostId: remoteHostId,
                 generation: 1,
                 userAgent: options.capabilityVersion ?? "codex-app-server/0.147.0",
+                nativeAppTools: (options.localHostId ?? "local") === remoteHostId,
               }),
             ),
           forThread: () => Effect.die("unused"),
@@ -330,6 +372,15 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
         }),
       ),
       Effect.provideService(CodexGateway, gateway),
+      Effect.provideService(
+        DesktopToolRuntime,
+        DesktopToolRuntime.of({
+          threadConfig: () =>
+            Effect.succeed({ "mcp_servers.node_repl": { command: "/runtime/node" } }),
+        } as unknown as DesktopToolRuntime["Service"]),
+      ),
+      Effect.provideService(CodexExecutionAssignments, makeReadyCodexExecutionAssignments()),
+      Effect.provideService(CodexGitProbe, makeTestCodexGitProbe()),
       Effect.provideService(CodexThreadHostResolver, hostResolver),
       Effect.provideService(CodexEphemeralThreadRouting, routing),
       Effect.provideService(CodexThreadDirectory, directory),
@@ -343,6 +394,8 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
       conversations,
       directoryFidelities,
       events,
+      parentCanonical,
+      startedTurns,
       markExisting: () => {
         conversations.entity(sideThreadId).installSnapshot({
           ...parentSnapshot,
@@ -360,6 +413,69 @@ const makeHarness = (scope: Scope.Scope, options: SideChatHarnessOptions = {}) =
       routing,
     };
   });
+
+it.effect("cleans up a returned fork when its parent generation retired during dispatch", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const entered = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    const harness = yield* makeHarness(scope, {
+      parentProjection: "canonical",
+      forkResponseGate: Deferred.succeed(entered, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+      ),
+    });
+    const pending = yield* harness.commands.start({ parentThreadId }).pipe(Effect.forkIn(scope));
+    yield* Deferred.await(entered);
+    yield* harness.conversations.retire(parentThreadId);
+    harness.conversations.entity(parentThreadId).installFollowerCanonicalState({
+      ...harness.parentCanonical,
+      cwd: "/workspace/successor",
+    });
+    yield* Deferred.succeed(release, undefined);
+
+    const failure = yield* Fiber.join(pending).pipe(Effect.flip);
+    assert.strictEqual(failure._tag, "CodexSideChatProjectionError");
+    assert.deepEqual(
+      harness.requests.map((request) => request.method),
+      ["experimentalFeature/list", "thread/fork", "thread/unsubscribe"],
+    );
+    assert.deepEqual(harness.requests[2]?.scheduling, {
+      expectedHostId: remoteHostId,
+      expectedGeneration: 1,
+    });
+    assert.isNull(yield* harness.routing.resolve(sideThreadId));
+    assert.isNull(harness.conversations.current(sideThreadId));
+    assert.notInclude(harness.events, "commit");
+    assert.strictEqual(
+      harness.conversations.current(parentThreadId)?.readCanonicalState()?.cwd,
+      "/workspace/successor",
+    );
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect(
+  "preserves the presentation claim and submitted message identity for the first Turn",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const harness = yield* makeHarness(scope);
+      const presentationClaim = { ticketId: "side-ticket", submissionId: "side-submission" };
+      yield* harness.commands.start(
+        { parentThreadId, prompt: "question" },
+        { presentationClaim, clientUserMessageId: "side-message" },
+      );
+
+      assert.lengthOf(harness.startedTurns, 1);
+      const [threadId, prompt, overrides] = harness.startedTurns[0]!;
+      assert.strictEqual(threadId, sideThreadId);
+      assert.strictEqual(prompt, "question");
+      assert.strictEqual(overrides?.presentationClaim, presentationClaim);
+      assert.strictEqual(overrides?.clientUserMessageId, "side-message");
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
 
 it.effect.each([true, false])(
   "forks from durable parent context without requesting history (native bridge: %s)",
@@ -381,33 +497,36 @@ it.effect.each([true, false])(
       assert.strictEqual(fork.hostId, remoteHostId);
       assert.strictEqual(params.threadId, parentThreadId);
       assert.strictEqual(params.cwd, "/workspace");
-      assert.strictEqual(params.model, "gpt-parent");
+      assert.isUndefined(params.model);
       assert.isUndefined(params.modelProvider);
-      assert.strictEqual(params.serviceTier, "priority");
+      assert.isUndefined(params.serviceTier);
       assert.strictEqual(params.ephemeral, true);
       assert.strictEqual(params.excludeTurns, true);
       assert.deepEqual(params.runtimeWorkspaceRoots, ["/workspace", "/shared"]);
-      assert.strictEqual(params.approvalPolicy, "on-request");
-      assert.strictEqual(params.approvalsReviewer, "user");
-      assert.strictEqual(params.permissions, ":workspace");
+      assert.isUndefined(params.approvalPolicy);
+      assert.isUndefined(params.approvalsReviewer);
+      assert.isUndefined(params.permissions);
       assert.isUndefined(params.sandbox);
-      assert.strictEqual(params.developerInstructions, SIDE_CHAT_DEVELOPER_INSTRUCTIONS);
-      assert.deepEqual(params.config, {
-        model_reasoning_effort: "high",
-        "features.apply_patch_streaming_events": true,
-        "features.concurrent_reasoning_summaries": true,
-        "features.thread_tools": true,
-        ...(nativeMcp
-          ? { "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name) }
-          : {}),
-      });
+      assert.include(params.developerInstructions ?? "", "<app-context>");
+      assert.isTrue(
+        (params.developerInstructions ?? "").endsWith(`\n\n${SIDE_CHAT_DEVELOPER_INSTRUCTIONS}`),
+      );
+      if (nativeMcp) {
+        assert.deepEqual(params.config, {
+          "mcp_servers.node_repl": { command: "/runtime/node" },
+          "mcp_servers.nodex_app.enabled_tools": appToolCatalog.map((tool) => tool.name),
+        });
+      } else {
+        assert.isUndefined(params.config);
+      }
       assert.deepEqual(
         harness.requests.map((request) => request.method),
-        ["thread/fork", "thread/inject_items"],
+        ["experimentalFeature/list", "thread/fork", "thread/inject_items"],
       );
       assert.deepEqual(
         harness.requests.map((request) => request.scheduling),
         [
+          { expectedHostId: remoteHostId, expectedGeneration: 1 },
           { expectedHostId: remoteHostId, expectedGeneration: 1 },
           { expectedHostId: remoteHostId, expectedGeneration: 1 },
         ],
@@ -440,11 +559,171 @@ it.effect("uses durable execution metadata when the bounded parent projection wa
     assert.strictEqual(result.threadId, sideThreadId);
     assert.strictEqual(harness.parentHistoryRequestCount(), 0);
     assert.strictEqual(params.cwd, "/workspace");
-    assert.strictEqual(params.model, "gpt-parent");
-    assert.isUndefined(params.runtimeWorkspaceRoots);
+    assert.isUndefined(params.model);
+    assert.deepEqual(params.runtimeWorkspaceRoots, ["/workspace"]);
     assert.isUndefined(params.permissions);
     yield* Scope.close(scope, Exit.void);
   }),
+);
+
+it.effect(
+  "forks from canonical-only workspace and settings while preserving explicit defaults",
+  () =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const harness = yield* makeHarness(scope, {
+        parentProjection: "canonical",
+        parentCanonical: {
+          cwd: "/workspace/live",
+          workspaceKind: "projectless",
+          latestThreadSettings: {
+            model: "gpt-live",
+            effort: null,
+            serviceTier: null,
+            collaborationMode: {
+              mode: "default",
+              settings: {
+                model: "gpt-live",
+                reasoning_effort: null,
+                developer_instructions: null,
+              },
+            },
+          },
+        },
+        forkResponse: {
+          ...forkResponse,
+          cwd: "/workspace/live",
+          model: "gpt-live",
+          reasoningEffort: null,
+          serviceTier: null,
+        },
+      });
+
+      const result = yield* harness.commands.start({ parentThreadId });
+      const fork = harness.requests.find((request) => request.method === "thread/fork");
+      assert.isDefined(fork);
+      assert.strictEqual(fork.params.cwd, "/workspace/live");
+      assert.isUndefined(fork.params.model);
+      assert.isUndefined(fork.params.serviceTier);
+      assert.isUndefined(fork.params.config);
+      assert.strictEqual(harness.parentHistoryRequestCount(), 0);
+      assert.isNull(harness.conversations.current(parentThreadId)?.readSnapshot());
+      const side = harness.conversations.current(result.threadId)?.readCanonicalState();
+      assert.isDefined(side);
+      assert.strictEqual(side?.ephemeral, true);
+      assert.strictEqual(side?.sideConversation, true);
+      assert.strictEqual(side?.workspaceKind, "projectless");
+      assert.strictEqual(side?.forkedFromId, parentThreadId);
+      assert.strictEqual(side?.source, "appServer");
+      assert.isNull(result.conversation.projectId);
+      yield* Scope.close(scope, Exit.void);
+    }),
+);
+
+it.effect("rejects a canonical-only nested side chat before resolving the directory", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const harness = yield* makeHarness(scope, {
+      parentProjection: "canonical",
+      parentCanonical: { ephemeral: true, sideConversation: true, forkedFromId: "root-a" },
+    });
+
+    const result = yield* Effect.exit(harness.commands.start({ parentThreadId }));
+    assert.isTrue(Exit.isFailure(result));
+    assert.deepEqual(harness.directoryFidelities, []);
+    assert.deepEqual(harness.requests, []);
+    assert.isNull(harness.conversations.current(parentThreadId)?.readSnapshot());
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("rechecks the current canonical side-chat marker after the directory read", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const entered = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    const harness = yield* makeHarness(scope, {
+      parentProjection: "canonical",
+      directoryRead: Deferred.succeed(entered, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+      ),
+    });
+    const pending = yield* harness.commands.start({ parentThreadId }).pipe(Effect.forkIn(scope));
+    yield* Deferred.await(entered);
+    harness.conversations.entity(parentThreadId).installFollowerCanonicalState({
+      ...harness.parentCanonical,
+      ephemeral: true,
+      sideConversation: true,
+      forkedFromId: "root-a",
+    });
+    yield* Deferred.succeed(release, undefined);
+
+    assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
+    assert.deepEqual(harness.requests, []);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("rejects a parent generation retired while resolving side-chat context", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const entered = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    const harness = yield* makeHarness(scope, {
+      parentProjection: "canonical",
+      directoryRead: Deferred.succeed(entered, undefined).pipe(
+        Effect.andThen(Deferred.await(release)),
+      ),
+    });
+    const pending = yield* harness.commands.start({ parentThreadId }).pipe(Effect.forkIn(scope));
+    yield* Deferred.await(entered);
+    yield* harness.conversations.retire(parentThreadId);
+    harness.conversations.entity(parentThreadId).installFollowerCanonicalState({
+      ...harness.parentCanonical,
+      cwd: "/workspace/successor",
+    });
+    yield* Deferred.succeed(release, undefined);
+
+    assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
+    assert.deepEqual(harness.requests, []);
+    assert.strictEqual(
+      harness.conversations.current(parentThreadId)?.readCanonicalState()?.cwd,
+      "/workspace/successor",
+    );
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect.each([true, false])(
+  "discards only a canonical side conversation, not an ordinary fork (side: %s)",
+  (sideConversation) =>
+    Effect.gen(function* () {
+      const scope = yield* Scope.make();
+      const harness = yield* makeHarness(scope);
+      harness.conversations.entity(sideThreadId).installFollowerCanonicalState({
+        ...harness.parentCanonical,
+        id: sideThreadId,
+        ephemeral: true,
+        sideConversation,
+        forkedFromId: parentThreadId,
+      });
+      yield* harness.routing.register(sideThreadId, remoteHostId);
+
+      assert.strictEqual(yield* harness.commands.discard(sideThreadId), sideConversation);
+      if (sideConversation) {
+        assert.isNull(harness.conversations.current(sideThreadId));
+        assert.isNull(yield* harness.routing.resolve(sideThreadId));
+        assert.deepEqual(
+          harness.requests.map((request) => request.method),
+          ["thread/unsubscribe"],
+        );
+      } else {
+        assert.isNotNull(harness.conversations.current(sideThreadId)?.readCanonicalState());
+        assert.isNull(harness.conversations.current(sideThreadId)?.readSnapshot());
+        assert.deepEqual(harness.requests, []);
+      }
+      yield* Scope.close(scope, Exit.void);
+    }),
 );
 
 it.effect("fails closed before forking when the host cannot prove bounded side-chat support", () =>
@@ -492,27 +771,32 @@ it.effect("rejects stale generations and fork responses containing inline histor
     assert.isTrue(Exit.isFailure(yield* Effect.exit(inline.commands.start({ parentThreadId }))));
     assert.deepEqual(
       inline.requests.map((request) => request.method),
-      ["thread/fork"],
+      ["experimentalFeature/list", "thread/fork", "thread/unsubscribe"],
     );
     assert.isNull(yield* inline.routing.resolve(sideThreadId));
     yield* Scope.close(inlineScope, Exit.void);
   }),
 );
 
-it.effect("rejects and compensates a fork whose runtime profile was substituted", () =>
+it.effect("accepts the runtime profile selected by the fork response", () =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
     const harness = yield* makeHarness(scope, {
       forkResponse: { ...forkResponse, model: "gpt-substituted" },
     });
 
-    const exit = yield* Effect.exit(harness.commands.start({ parentThreadId }));
+    const result = yield* harness.commands.start({ parentThreadId });
 
-    assert.isTrue(Exit.isFailure(exit));
-    assert.isNull(yield* harness.routing.resolve(sideThreadId));
+    assert.strictEqual(result.threadId, sideThreadId);
+    assert.strictEqual(yield* harness.routing.resolve(sideThreadId), remoteHostId);
+    assert.strictEqual(
+      harness.conversations.current(sideThreadId)?.readCanonicalState()?.hydrationContext
+        ?.latestModel,
+      "gpt-substituted",
+    );
     assert.deepEqual(
       harness.requests.map((request) => request.method),
-      ["thread/fork", "thread/unsubscribe"],
+      ["experimentalFeature/list", "thread/fork", "thread/inject_items"],
     );
     yield* Scope.close(scope, Exit.void);
   }),
@@ -562,6 +846,7 @@ it.effect("keeps a remote side chat on its parent's host through the initial Tur
     assert.strictEqual(yield* harness.routing.resolve(sideThreadId), remoteHostId);
     assert.deepEqual(harness.events, [
       `resolve:${parentThreadId}`,
+      `request:${remoteHostId}:experimentalFeature/list:${parentThreadId}`,
       `request:${remoteHostId}:thread/fork:${parentThreadId}`,
       `request:${remoteHostId}:thread/inject_items:${sideThreadId}`,
       "commit",

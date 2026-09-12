@@ -1,56 +1,51 @@
-import type {
-  CodexCanonicalConversationState,
-  CodexCanonicalTurnState,
-} from "./codex-conversation-state";
-
-function interruptRunningCommands(turn: CodexCanonicalTurnState): CodexCanonicalTurnState {
-  const runningIds = turn.items.flatMap((item) =>
-    item.type === "commandExecution" && item.status === "inProgress" ? [item.id] : [],
-  );
-  if (runningIds.length === 0) return turn;
-  const interrupted = new Set(turn.sidecar.interruptedCommandExecutionItemIds ?? []);
-  const previousSize = interrupted.size;
-  for (const itemId of runningIds) interrupted.add(itemId);
-  if (interrupted.size === previousSize) return turn;
-  return {
-    ...turn,
-    sidecar: {
-      ...turn.sidecar,
-      interruptedCommandExecutionItemIds: [...interrupted],
-    },
-  };
-}
+import { produce, type Draft } from "immer";
+import {
+  residentConversationTurns,
+  residentConversationTurnEntries,
+  conversationTurnDraft,
+} from "./codex-turn-mutation";
+import type { CodexCanonicalConversationState } from "./codex-conversation-state";
 
 export function listCodexBackgroundTerminalTurnIds(
   state: CodexCanonicalConversationState,
 ): readonly string[] {
-  const latestTurnIndex = state.turns.length - 1;
+  const latestTurnIndex = residentConversationTurns(state).length - 1;
   return [
     ...new Set(
-      state.turns.flatMap((turn, index) =>
-        !(index === latestTurnIndex && turn.protocol.status === "inProgress") &&
-        turn.protocol.id !== null &&
+      residentConversationTurns(state).flatMap((turn, index) =>
+        !(index === latestTurnIndex && turn.status === "inProgress") &&
+        turn.turnId !== null &&
         turn.items.some(
           (item) =>
             item.type === "commandExecution" &&
             item.status === "inProgress" &&
-            !(turn.sidecar.interruptedCommandExecutionItemIds ?? []).includes(item.id),
+            !(turn.interruptedCommandExecutionItemIds ?? []).includes(item.id),
         )
-          ? [turn.protocol.id]
+          ? [turn.turnId]
           : [],
       ),
     ),
   ];
 }
 
+export function mutateCodexBackgroundTerminalCleanup(
+  state: Draft<CodexCanonicalConversationState>,
+): void {
+  const entries = residentConversationTurnEntries(state);
+  for (const entry of entries) {
+    const turn = conversationTurnDraft(state, entry.address)!;
+    const running = turn.items.filter(
+      (item) => item.type === "commandExecution" && item.status === "inProgress",
+    );
+    for (const item of running) {
+      turn.interruptedCommandExecutionItemIds ??= [];
+      if (!turn.interruptedCommandExecutionItemIds.includes(item.id))
+        turn.interruptedCommandExecutionItemIds.push(item.id);
+    }
+  }
+}
 export function reduceCodexBackgroundTerminalCleanup(
   state: CodexCanonicalConversationState,
 ): CodexCanonicalConversationState {
-  const latestTurnIndex = state.turns.length - 1;
-  const turns = state.turns.map((turn, index) =>
-    index === latestTurnIndex && turn.protocol.status === "inProgress"
-      ? turn
-      : interruptRunningCommands(turn),
-  );
-  return turns.some((turn, index) => turn !== state.turns[index]) ? { ...state, turns } : state;
+  return produce(state, mutateCodexBackgroundTerminalCleanup);
 }

@@ -2,9 +2,11 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Logger from "effect/Logger";
 import * as Stream from "effect/Stream";
+import { CoreModuleResponseError } from "../core-client/core-client";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { CoreModules } from "../core-runtime/CoreModules";
+import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
 import { CodexThreadCatalog } from "./CodexThreadCatalog";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
@@ -23,11 +25,11 @@ const section = {
   has_unread: false,
 };
 
-const sectionWindow = () => ({
+const sectionWindow = (current = section) => ({
   value: {
     kind: "sidebar_section_window" as const,
     sections: {
-      items: [section],
+      items: [current],
       next_cursor: null,
       authority: { projection_revision: 1 },
     },
@@ -64,7 +66,7 @@ const task = {
 };
 
 const harness = (
-  mode: "unsupported" | "supported" | "persistent-failure",
+  mode: "unsupported" | "supported" | "persistent-failure" | "concurrent-revision",
   backendKind: "codex" | "acp" = "codex",
 ) => {
   let links: Array<{
@@ -75,15 +77,34 @@ const harness = (
     observed_generation: number;
     last_error?: string | null;
     updated_at: string;
-  }> = [];
+  }> =
+    mode === "concurrent-revision"
+      ? [
+          {
+            section_id: section.section_id,
+            host_id: "local",
+            remote_section_id: "remote:work",
+            sync_state: "ready",
+            observed_generation: 7,
+            last_error: null,
+            updated_at: "2026-01-01T00:00:00.000Z",
+          },
+        ]
+      : [];
   const applied: unknown[] = [];
   const requests: Array<{ method: string; params: unknown }> = [];
-  let remoteCreated = false;
+  let currentSection = section;
+  let sectionReads = 0;
+  let revisionConflictPending = mode === "concurrent-revision";
+  let remoteCreated = mode === "concurrent-revision";
   let persistentFailure = mode === "persistent-failure";
   const workspace = {
     read: (request: { readonly kind: string }) =>
       Effect.sync(() => {
-        if (request.kind === "sidebar_section_window") return sectionWindow() as never;
+        if (request.kind === "sidebar_section_window") {
+          sectionReads += 1;
+          return sectionWindow(currentSection) as never;
+        }
         if (request.kind === "sidebar_section_host_link_window") {
           return {
             value: {
@@ -149,8 +170,28 @@ const harness = (
         readonly host_id?: string;
       };
     }) =>
-      Effect.sync(() => {
+      Effect.suspend(() => {
         applied.push(request);
+        if (
+          request.intent.kind === "rename_sidebar_section" &&
+          mode === "concurrent-revision" &&
+          revisionConflictPending
+        ) {
+          revisionConflictPending = false;
+          currentSection = { ...currentSection, name: "Concurrent Work", revision: 2 };
+          return Effect.fail(
+            coreRuntimeError({
+              operation: "workspace.apply",
+              reason: "operation",
+              retryable: false,
+              cause: new CoreModuleResponseError({
+                code: "revision_conflict",
+                message: "Sidebar Section revision changed",
+                retryable: true,
+              } as never),
+            }),
+          );
+        }
         if (request.intent.kind === "upsert_sidebar_section_host_link" && request.intent.link) {
           links = [
             ...links.filter(
@@ -168,11 +209,11 @@ const harness = (
               link.host_id !== request.intent.host_id,
           );
         }
-        return {
+        return Effect.succeed({
           status: "committed",
           commit: { commit_seq: applied.length, store_epoch: "epoch:test" },
           outcome: { affected_project_ids: [], affected_thread_ids: [] },
-        } as never;
+        } as never);
       }),
   };
   const gateway = CodexGateway.of({
@@ -195,7 +236,15 @@ const harness = (
           );
         }
         return Effect.succeed({
-          data: remoteCreated ? [{ id: "remote:work", name: "Work", appearance: null }] : [],
+          data: remoteCreated
+            ? [
+                {
+                  id: "remote:work",
+                  name: mode === "concurrent-revision" ? "Remote Work" : "Work",
+                  appearance: null,
+                },
+              ]
+            : [],
           nextCursor: null,
         });
       }
@@ -284,6 +333,7 @@ const harness = (
     requests,
     runtime,
     readLinks: () => links,
+    readSectionReads: () => sectionReads,
     setPersistentFailure: (value: boolean) => {
       persistentFailure = value;
     },
@@ -300,6 +350,28 @@ it.effect("keeps Core Sections available when a host lacks Thread Section suppor
       assert.strictEqual(result.capability, "unsupported");
       assert.strictEqual(test.readLinks()[0]?.sync_state, "unsupported");
       assert.strictEqual(test.readLinks()[0]?.remote_section_id ?? null, null);
+    }),
+  ),
+);
+
+it.effect("restarts reconciliation from fresh Core state after a Section revision conflict", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const test = harness("concurrent-revision");
+      const service = yield* test.runtime;
+
+      const result = yield* service.syncHost("local", "local-mutation");
+
+      assert.strictEqual(result.capability, "supported");
+      assert.isAtLeast(test.readSectionReads(), 2);
+      const renameIntents = test.applied.flatMap((entry) => {
+        const intent = (entry as { intent?: Record<string, unknown> }).intent;
+        return intent?.kind === "rename_sidebar_section" ? [intent] : [];
+      });
+      assert.deepEqual(
+        renameIntents.map((intent) => intent.expected_revision),
+        [1, 2],
+      );
     }),
   ),
 );

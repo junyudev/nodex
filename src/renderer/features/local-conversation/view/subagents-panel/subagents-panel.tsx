@@ -249,13 +249,15 @@ export function SubagentsPanelOverview({
   projectId: string;
   rootThreadId: string;
 }) {
-  const codexControl = useCodexAppServerControl(projectId);
+  const codexControl = useCodexAppServerControl(projectId, rootThreadId);
   const readSubagentOverview = codexControl.readSubagentOverview;
   const [overview, setOverview] = useState<CodexSubagentOverviewWindow | null>(null);
   const [expandedSections, setExpandedSections] = useState<ReadonlySet<SubagentSectionId>>(
     () => new Set(),
   );
   const requestSequenceRef = useRef(0);
+  const overviewLoadInFlightRef = useRef(false);
+  const pendingOverviewReloadRef = useRef(false);
   const expandedSectionsRef = useRef(expandedSections);
   const onErrorRef = useRef(onError);
   const overviewRef = useRef(overview);
@@ -265,6 +267,11 @@ export function SubagentsPanelOverview({
 
   const loadOverview = useCallback(
     async (mode: "initial" | "expanded", showFailure: boolean): Promise<boolean> => {
+      if (overviewLoadInFlightRef.current) {
+        pendingOverviewReloadRef.current = true;
+        return false;
+      }
+      overviewLoadInFlightRef.current = true;
       const requestSequence = ++requestSequenceRef.current;
       try {
         const next = await readSubagentOverview({ rootThreadId, mode });
@@ -295,6 +302,12 @@ export function SubagentsPanelOverview({
           onErrorRef.current("Unable to load subagents");
         }
         return false;
+      } finally {
+        overviewLoadInFlightRef.current = false;
+        if (pendingOverviewReloadRef.current) {
+          pendingOverviewReloadRef.current = false;
+          void loadOverview(expandedSectionsRef.current.size > 0 ? "expanded" : "initial", false);
+        }
       }
     },
     [readSubagentOverview, rootThreadId],

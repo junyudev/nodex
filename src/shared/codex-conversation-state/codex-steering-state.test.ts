@@ -1,3 +1,5 @@
+import { mergeCodexResumedHistory } from "./codex-history-resume";
+import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import { describe, expect, test } from "vite-plus/test";
 import { createCodexQueuedFollowUp } from "../codex-queued-follow-up-state";
 import type {
@@ -5,11 +7,10 @@ import type {
   CodexCanonicalSteeringUserMessageItem,
 } from "./codex-conversation-state";
 import {
-  removeCodexCanonicalSteeringItem,
-  retargetCodexCanonicalSteeringItem,
-  upsertCodexCanonicalSteeringItem,
-} from "./codex-steering-state";
-import { createCodexCanonicalHydratedConversationState } from "./codex-conversation-state";
+  mergeCodexCanonicalTurnState,
+  mergeCodexCanonicalTurnStates,
+  createCodexCanonicalHydratedConversationState,
+} from "./codex-conversation-state";
 
 function buildState(): CodexCanonicalConversationState {
   return createCodexCanonicalHydratedConversationState(
@@ -56,14 +57,17 @@ function buildState(): CodexCanonicalConversationState {
       ],
     },
     {
-      model: "gpt-test",
-      reasoningEffort: null,
-      cwd: "/workspace",
-      approvalPolicy: "on-request",
-      approvalsReviewer: "user",
-      sandboxPolicy: { type: "readOnly", networkAccess: false },
-      activePermissionProfile: null,
-      runtimeWorkspaceRoots: [],
+      hostId: "local",
+      ...{
+        model: "gpt-test",
+        reasoningEffort: null,
+        cwd: "/workspace",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        sandboxPolicy: { type: "readOnly", networkAccess: false },
+        activePermissionProfile: null,
+        runtimeWorkspaceRoots: [],
+      },
     },
   );
 }
@@ -92,94 +96,211 @@ function buildSteer(id = "steer-a"): CodexCanonicalSteeringUserMessageItem {
   };
 }
 
-describe("canonical steering state", () => {
-  test("upserts the pending steer into the target raw turn", () => {
-    const state = buildState();
-    const next = upsertCodexCanonicalSteeringItem(state, "turn-a", buildSteer());
-
-    expect(next.turns[0]?.items[0]?.type).toBe("steeringUserMessage");
-    expect(next.turns[0]?.items[0]?.id).toBe("steer-a");
-    expect(next.turns[0]?.items[0] === buildSteer()).toBe(false);
+describe("hydrated steering reconciliation", () => {
+  test("retains pending steering beside a longer history snapshot and refreshes existing assistant text", () => {
+    const base = buildState().turns[0]!;
+    const answer = {
+      type: "agentMessage",
+      id: "answer",
+      text: "old",
+      phase: "final_answer",
+      memoryCitation: null,
+      questions: null,
+      delivery: null,
+    } as const;
+    const result = mergeCodexCanonicalTurnState(
+      { ...base, items: [answer, buildSteer()] },
+      {
+        ...base,
+        items: [
+          { ...answer, text: "complete" },
+          { type: "plan", id: "plan-a", text: "a" },
+          { type: "plan", id: "plan-b", text: "b" },
+        ],
+      },
+    );
+    expect(result.items.map((item) => item.id)).toEqual(["answer", "steer-a", "plan-a", "plan-b"]);
+    expect(result.items[0]).toMatchObject({ text: "complete" });
   });
 
-  test("removes only the failed pending steer", () => {
-    const first = upsertCodexCanonicalSteeringItem(buildState(), "turn-a", buildSteer());
-    const second = upsertCodexCanonicalSteeringItem(first, "turn-a", buildSteer("steer-b"));
-    const next = removeCodexCanonicalSteeringItem(second, "turn-a", "steer-a");
-
-    expect(next.turns[0]?.items.length).toBe(1);
-    expect(next.turns[0]?.items[0]?.id).toBe("steer-b");
+  test("accepts a persisted correlated echo and places its local row before the echo marker", () => {
+    const base = buildState().turns[0]!;
+    const steer = buildSteer();
+    const echo = {
+      type: "userMessage",
+      id: "echo",
+      clientId: steer.clientUserMessageId,
+      content: [...steer.input],
+    } satisfies ThreadItem;
+    const result = mergeCodexCanonicalTurnState(
+      { ...base, items: [echo, steer] },
+      { ...base, items: [echo] },
+    );
+    expect(result.items).toEqual([
+      { ...steer, status: "accepted", serverUserMessageId: "echo" },
+      { type: "steered", id: "echo" },
+    ]);
   });
 
-  test("retargets the same steer identity to a newer active turn", () => {
-    const initial = buildState();
-    const withTarget = {
-      ...initial,
-      turns: [
-        initial.turns[0]!,
+  test("keeps the opening message distinct from a pending steer with the same correlation", () => {
+    const base = buildState().turns[0]!;
+    const steer = buildSteer();
+    const echo = {
+      type: "userMessage",
+      id: "opening",
+      clientId: steer.clientUserMessageId,
+      content: [...steer.input],
+    } satisfies ThreadItem;
+    const turn = {
+      ...base,
+      params: {
+        ...base.params,
+        clientUserMessageId: steer.clientUserMessageId,
+        input: [...steer.input],
+      },
+    };
+    const result = mergeCodexCanonicalTurnState(
+      { ...turn, items: [steer] },
+      { ...turn, items: [echo] },
+    );
+    expect(result.items).toEqual([steer, echo]);
+  });
+
+  test("moves steering to a newly loaded target and reconciles its server echo", () => {
+    const base = buildState().turns[0]!;
+    const steer = { ...buildSteer(), targetTurnId: "turn-b" };
+    const target = {
+      ...base,
+      turnId: "turn-b",
+      items: [
         {
-          ...initial.turns[0]!,
-          protocol: { ...initial.turns[0]!.protocol, id: "turn-b" },
-          items: [],
-          sidecar: { ...initial.turns[0]!.sidecar, turnStartedAtMs: 20 },
-        },
+          type: "userMessage",
+          id: "echo",
+          clientId: steer.clientUserMessageId,
+          content: [...steer.input],
+        } satisfies ThreadItem,
       ],
     };
-    const pending = upsertCodexCanonicalSteeringItem(withTarget, "turn-a", buildSteer());
-    const next = retargetCodexCanonicalSteeringItem(pending, "turn-a", "turn-b", "steer-a");
+    const result = mergeCodexCanonicalTurnStates([{ ...base, items: [steer] }], [target]);
+    expect(result[0]!.items).toEqual([]);
+    expect(result[1]!.items).toEqual([
+      { ...steer, status: "accepted", serverUserMessageId: "echo" },
+      { type: "steered", id: "echo" },
+    ]);
+  });
 
-    expect(next.turns[0]?.items).toEqual([]);
-    expect(next.turns[1]?.items[0]).toMatchObject({
-      id: "steer-a",
-      clientUserMessageId: "steer-a",
-      targetTurnId: "turn-b",
-      targetTurnStartedAtMs: 20,
-    });
+  test("preserves correlated nonempty input when hydration has no input", () => {
+    const base = buildState().turns[0]!;
+    const params = {
+      ...base.params,
+      clientUserMessageId: "opening",
+      input: [...buildSteer().input],
+    };
+    const result = mergeCodexCanonicalTurnState({ ...base, params }, base);
+    expect(result.params).toBe(params);
+  });
+
+  test("retains a completed heartbeat Turn until its pending steer has a server echo", () => {
+    const base = buildState().turns[0]!;
+    const turn = {
+      ...base,
+      status: "completed" as const,
+      items: [
+        {
+          type: "agentMessage",
+          id: "decision",
+          text: "<heartbeat><decision>DONT_NOTIFY</decision></heartbeat>",
+          phase: "final_answer",
+          memoryCitation: null,
+          questions: null,
+          delivery: null,
+        } as const,
+        buildSteer(),
+      ],
+    };
+    expect(mergeCodexCanonicalTurnStates([turn], [])).toEqual([turn]);
+    expect(
+      mergeCodexCanonicalTurnStates(
+        [{ ...turn, items: [turn.items[0]!, { ...buildSteer(), serverUserMessageId: "echo" }] }],
+        [],
+      ),
+    ).toEqual([]);
   });
 });
 
-test("corrects an unknown active Turn ID without losing its items or timestamps", () => {
-  const pending = upsertCodexCanonicalSteeringItem(buildState(), "turn-a", buildSteer());
-  const next = retargetCodexCanonicalSteeringItem(pending, "turn-a", "corrected", "steer-a");
-  expect(next.turns).toHaveLength(1);
-  expect(next.turns[0]?.protocol.id).toBe("corrected");
-  expect(next.turns[0]?.sidecar).toEqual({ ...pending.turns[0]?.sidecar, entityKey: "turn-a" });
-  expect(next.turns[0]?.items[0]).toMatchObject({ id: "steer-a", targetTurnId: "corrected" });
-});
-
-test("removes a failed reply after the active Turn ID has been corrected", () => {
-  const pending = upsertCodexCanonicalSteeringItem(buildState(), "turn-a", buildSteer());
-  const corrected = retargetCodexCanonicalSteeringItem(pending, "turn-a", "corrected", "steer-a");
-  expect(removeCodexCanonicalSteeringItem(corrected, "turn-a", "steer-a").turns[0]?.items).toEqual(
-    [],
+describe("paginated steering opening authority", () => {
+  test.each(["echo", "different-opening", null, undefined])(
+    "uses opening identity %s when reconciling a resumed echo",
+    (openingUserMessageId) => {
+      const state = buildState();
+      const base = state.turns[0]!;
+      const steer = buildSteer();
+      const turn = {
+        ...base,
+        params: {
+          ...base.params,
+          clientUserMessageId: steer.clientUserMessageId,
+          input: [...steer.input],
+        },
+      };
+      const echo = {
+        type: "userMessage",
+        id: "echo",
+        clientId: steer.clientUserMessageId,
+        content: [...steer.input],
+      } satisfies ThreadItem;
+      const pagination = {
+        olderCursor: "older",
+        isLoadingOlder: false,
+        hasLoadedOldest: false,
+        itemsView: "summary" as const,
+        openingUserMessageId,
+      };
+      const result = mergeCodexResumedHistory({
+        existing: { ...state, turns: [{ ...turn, items: [steer] }] },
+        incoming: { ...state, turns: [{ ...turn, items: [echo] }] },
+        existingPagination: { "turn-a": pagination },
+        incomingPagination: { "turn-a": pagination },
+      });
+      const accepted =
+        openingUserMessageId === null || openingUserMessageId === "different-opening";
+      expect(result.canonical.turns[0]!.items).toEqual(
+        accepted
+          ? [
+              { ...steer, status: "accepted", serverUserMessageId: "echo" },
+              { type: "steered", id: "echo" },
+            ]
+          : [steer, echo],
+      );
+    },
   );
-  expect(
-    removeCodexCanonicalSteeringItem(corrected, "corrected", "steer-a").turns[0]?.items,
-  ).toEqual([]);
 });
 
-test("retains a display Turn identity while targeting its protocol Turn", () => {
-  const initial = buildState();
-  const display = {
-    ...initial,
-    turns: initial.turns.map((turn) => ({
-      ...turn,
-      protocol: { ...turn.protocol, id: "turn-a-berry-display-1" },
-    })),
-  };
-  const pending = upsertCodexCanonicalSteeringItem(display, "turn-a-berry-display-1", {
-    ...buildSteer(),
-    targetTurnId: "turn-a-berry-display-1",
+test("relocates steering without consuming the target Turn's known opening message", () => {
+  const state = buildState();
+  const base = state.turns[0]!;
+  const steer = { ...buildSteer(), targetTurnId: "turn-b" };
+  const echo = {
+    type: "userMessage",
+    id: "opening-b",
+    clientId: steer.clientUserMessageId,
+    content: [...steer.input],
+  } satisfies ThreadItem;
+  const target = { ...base, turnId: "turn-b", items: [echo] };
+  const result = mergeCodexResumedHistory({
+    existing: { ...state, turns: [{ ...base, items: [steer] }] },
+    incoming: { ...state, turns: [target] },
+    existingPagination: {},
+    incomingPagination: {
+      "turn-b": {
+        olderCursor: "older",
+        isLoadingOlder: false,
+        hasLoadedOldest: false,
+        itemsView: "summary",
+        openingUserMessageId: "opening-b",
+      },
+    },
   });
-  const corrected = retargetCodexCanonicalSteeringItem(
-    pending,
-    "turn-a-berry-display-1",
-    "turn-a",
-    "steer-a",
-  );
-  expect(corrected.turns[0]?.protocol.id).toBe("turn-a-berry-display-1");
-  expect(corrected.turns[0]?.items[0]).toMatchObject({ targetTurnId: "turn-a" });
-  expect(removeCodexCanonicalSteeringItem(corrected, "turn-a", "steer-a").turns[0]?.items).toEqual(
-    [],
-  );
+  expect(result.canonical.turns[0]!.items).toEqual([]);
+  expect(result.canonical.turns[1]!.items).toEqual([echo, steer]);
 });

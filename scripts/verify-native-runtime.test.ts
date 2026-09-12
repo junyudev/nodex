@@ -93,9 +93,12 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       })),
     });
     const codeObjects = resolveNodexNativeCodeObjects(appPath, manifest);
-    expect(codeObjects).toHaveLength(manifest.binaries.length + 1);
+    expect(codeObjects).toHaveLength(manifest.binaries.length + 2);
     expect(codeObjects).toContain(
       path.join(appPath, "Contents/Resources/native/nodex-clipboard.node"),
+    );
+    expect(codeObjects).toContain(
+      path.join(appPath, "Contents/Resources/native/nodex-devicecheck.node"),
     );
     for (const artifactPath of codeObjects) {
       expect(isPreservedCodexRuntimeVendorCode(appPath, artifactPath)).toBe(false);

@@ -1,21 +1,70 @@
 import {
   cleanCodexAutoTitlePrompt,
-  CODEX_THREAD_DESCRIPTION_MAX_CHARS,
   CODEX_THREAD_TITLE_PROMPT_MAX_CHARS,
   normalizeCodexGeneratedThreadDescription,
   normalizeCodexGeneratedThreadTitle,
 } from "../../shared/codex-thread-title";
 import { z } from "zod";
 
-export const CODEX_THREAD_TITLE_MODEL = "gpt-5.4-mini";
+export const CODEX_THREAD_TITLE_MODEL = "gpt-5.6-luna";
 export const CODEX_THREAD_TITLE_REASONING_EFFORT = "low";
 export const CODEX_THREAD_TITLE_TIMEOUT_MS = 30_000;
 
 export const CODEX_THREAD_TITLE_CONFIG = {
-  web_search: "disabled",
+  "features.enable_fanout": false,
   "features.hooks": false,
-  model_reasoning_effort: CODEX_THREAD_TITLE_REASONING_EFFORT,
+  "features.multi_agent": false,
+  "features.multi_agent_v2": false,
+  "features.plugins": false,
+  "features.shell_snapshot": false,
+  "features.tool_suggest": false,
+  web_search: "disabled",
 } satisfies Record<string, string | boolean>;
+
+export interface CodexThreadTitleReadOnlyAppTool {
+  readonly appId: string;
+  readonly toolNames: readonly string[];
+}
+
+/** Exact title-helper app sandbox: deny every app/tool except the matched read-only tools. */
+export function buildCodexThreadTitleAppConfig(
+  allowlist: readonly CodexThreadTitleReadOnlyAppTool[] = [],
+): Record<string, unknown> {
+  const apps = Object.fromEntries(
+    allowlist.map(({ appId, toolNames }) => [
+      appId,
+      {
+        enabled: true,
+        destructive_enabled: false,
+        open_world_enabled: false,
+        default_tools_enabled: false,
+        tools: Object.fromEntries(toolNames.map((toolName) => [toolName, { enabled: true }])),
+      },
+    ]),
+  );
+  return {
+    "features.apps": allowlist.length > 0,
+    apps: {
+      ...apps,
+      _default: {
+        enabled: false,
+        destructive_enabled: false,
+        open_world_enabled: false,
+      },
+    },
+  };
+}
+
+export function buildCodexThreadTitleThreadConfig(
+  allowlist: readonly CodexThreadTitleReadOnlyAppTool[] = [],
+): Record<string, unknown> {
+  return {
+    ...CODEX_THREAD_TITLE_CONFIG,
+    ...buildCodexThreadTitleAppConfig(allowlist),
+    "mcp_servers.codex_app": { enabled: false, command: "" },
+    model_reasoning_effort: CODEX_THREAD_TITLE_REASONING_EFFORT,
+  };
+}
 
 export const CODEX_THREAD_TITLE_OUTPUT_SCHEMA = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -28,21 +77,66 @@ export const CODEX_THREAD_TITLE_OUTPUT_SCHEMA = {
     },
     description: {
       type: "string",
-      maxLength: CODEX_THREAD_DESCRIPTION_MAX_CHARS,
+      minLength: 1,
     },
   },
-  required: ["title"],
+  required: ["title", "description"],
   additionalProperties: false,
 };
 
 const ThreadTitleResponseSchema = z.object({
   title: z.string().min(1).max(36),
-  description: z.string().max(CODEX_THREAD_DESCRIPTION_MAX_CHARS).optional(),
+  description: z.string().min(1),
 });
+
+export const CODEX_THREAD_TITLE_RECONSIDERATION_OUTPUT_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  anyOf: [
+    {
+      type: "object",
+      properties: {
+        title: { type: "null" },
+        description: { type: "null" },
+      },
+      required: ["title", "description"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: {
+        title: { type: "string", minLength: 1, maxLength: 36 },
+        description: { type: "string", minLength: 1 },
+      },
+      required: ["title", "description"],
+      additionalProperties: false,
+    },
+  ],
+};
+
+const ThreadTitleReconsiderationResponseSchema = z.union([
+  z.object({ title: z.null(), description: z.null() }),
+  ThreadTitleResponseSchema,
+]);
 
 export interface CodexGeneratedThreadMetadata {
   readonly title: string;
   readonly description: string | null;
+}
+
+export function buildThreadTitleReconsiderationPrompt(currentTitle: string): string {
+  return [
+    "You are in a fork of an existing Codex thread at a possible durable title checkpoint.",
+    `The current UI title is: ${currentTitle}`,
+    "Decide whether the thread's main durable purpose has changed so substantially that the current title is now misleading.",
+    "Be extremely conservative. Keep the title for ordinary follow-ups, implementation details, debugging discoveries, corrections, progress updates, temporary detours, and changes in depth or work mode.",
+    "Replace it only when the recent conversation has firmly established a different main task or topic and the old title would cause someone scanning the task list to open the wrong conversation.",
+    "When the evidence is ambiguous, keep the current title.",
+    "If the current title still represents the thread, set title and description to null.",
+    "Otherwise, set title to a concise replacement of at most 36 characters and description to a compact search-oriented summary of at most 100 characters.",
+    "Preserve stable ticket IDs, project names, and other useful anchors when they remain relevant.",
+    "Write in the user's locale. Do not include quotes, markdown, formatting characters, or trailing punctuation.",
+    "Do not respond to the user or do any other work; only fill the structured fields.",
+  ].join("\n");
 }
 
 export function buildThreadTitleGenerationPrompt(userPrompt: string): string {
@@ -129,4 +223,27 @@ export function parseGeneratedThreadMetadataResponse(
   if (!title) return null;
   const description = normalizeCodexGeneratedThreadDescription(result.data.description);
   return { title, description };
+}
+
+export function parseThreadTitleReconsiderationResponse(
+  raw: string | null | undefined,
+): CodexGeneratedThreadMetadata | null {
+  const normalized = raw?.trim() ?? "";
+  if (!normalized) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(normalized);
+  } catch {
+    return null;
+  }
+
+  const result = ThreadTitleReconsiderationResponseSchema.safeParse(parsed);
+  if (!result.success || result.data.title === null) return null;
+  const title = normalizeCodexGeneratedThreadTitle(result.data.title);
+  if (!title) return null;
+  return {
+    title,
+    description: normalizeCodexGeneratedThreadDescription(result.data.description),
+  };
 }

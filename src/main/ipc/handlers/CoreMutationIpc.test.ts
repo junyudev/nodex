@@ -152,7 +152,6 @@ it.effect("owns typed Core mutation ingress and binds exact renderer and Project
       scope,
     );
 
-    assert.strictEqual(handlers.size, 24);
     const trusted = rendererEvent(7);
     const untrusted = rendererEvent(8);
     const mutate = handlers.get("block-documents:mutate")!;

@@ -77,6 +77,7 @@ const settings = (
     Effect.die("Unexpected settings update"),
 ): CodexThreadSettingsRuntime["Service"] =>
   CodexThreadSettingsRuntime.of({
+    prepareExecutionProfile: () => Effect.die("unused"),
     readExecutionProfile: () => Effect.succeed(null),
     update,
     awaitCurrent: () => Effect.void,
@@ -177,6 +178,93 @@ it.effect("completes next-turn settings before sending the goal command", () =>
     yield* Deferred.succeed(releaseSettings, undefined);
     yield* Fiber.join(fiber);
     assert.isTrue(goalRequested);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("waits for existing settings before activating a goal without a patch", () =>
+  Effect.gen(function* () {
+    const releaseSettings = yield* Deferred.make<void>();
+    const calls: string[] = [];
+    const scope = yield* Scope.make();
+    const runtime = yield* build(
+      CodexConversationProjection.of({
+        acceptThreadGoal: () => Effect.void,
+      } as unknown as CodexConversationProjectionService),
+      {
+        ...settings(),
+        awaitCurrent: () =>
+          Effect.sync(() => void calls.push("await-settings")).pipe(
+            Effect.andThen(Deferred.await(releaseSettings)),
+          ),
+      },
+      (() =>
+        Effect.sync(() => {
+          calls.push("set-goal");
+          return { goal: goal() };
+        })) as CodexGateway["Service"]["requestForThread"],
+      scope,
+    );
+    const fiber = yield* Effect.forkChild(runtime.set({ threadId, status: "active" }), {
+      startImmediately: true,
+    });
+    assert.deepEqual(calls, ["await-settings"]);
+    yield* Deferred.succeed(releaseSettings, undefined);
+    yield* Fiber.join(fiber);
+    assert.deepEqual(calls, ["await-settings", "set-goal"]);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("pauses goals without changing next-turn settings and dismisses confirmation", () =>
+  Effect.gen(function* () {
+    const accepted: Array<Parameters<CodexConversationProjectionService["acceptThreadGoal"]>[0]> =
+      [];
+    const scope = yield* Scope.make();
+    const runtime = yield* build(
+      CodexConversationProjection.of({
+        acceptThreadGoal: (
+          input: Parameters<CodexConversationProjectionService["acceptThreadGoal"]>[0],
+        ) => Effect.sync(() => void accepted.push(input)),
+      } as unknown as CodexConversationProjectionService),
+      settings(),
+      (() =>
+        Effect.succeed({
+          goal: goal({ status: "paused" }),
+        })) as CodexGateway["Service"]["requestForThread"],
+      scope,
+    );
+    yield* runtime.set({ threadId, status: "paused", threadSettings: { model: "unused" } });
+    assert.strictEqual(accepted.length, 1);
+    assert.isTrue(accepted[0]?.dismissResumeConfirmation);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("projects an accepted empty goal instead of retaining the prior value", () =>
+  Effect.gen(function* () {
+    const accepted: Array<Parameters<CodexConversationProjectionService["acceptThreadGoal"]>[0]> =
+      [];
+    const scope = yield* Scope.make();
+    const runtime = yield* build(
+      CodexConversationProjection.of({
+        acceptThreadGoal: (
+          input: Parameters<CodexConversationProjectionService["acceptThreadGoal"]>[0],
+        ) => Effect.sync(() => void accepted.push(input)),
+      } as unknown as CodexConversationProjectionService),
+      settings(),
+      (() => Effect.succeed({ goal: null })) as CodexGateway["Service"]["requestForThread"],
+      scope,
+    );
+    assert.strictEqual(yield* runtime.set({ threadId, status: "paused" }), null);
+    assert.deepEqual(accepted, [
+      {
+        threadId,
+        goal: null,
+        appendTranscriptItem: false,
+        dismissResumeConfirmation: true,
+      },
+    ]);
     yield* Scope.close(scope, Exit.void);
   }),
 );

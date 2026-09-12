@@ -194,15 +194,21 @@ const capability: CodexAppServerCapabilitySnapshot = {
   sourceEpoch: SOURCE_EPOCH,
   userAgent: "codex-app-server/0.152.0",
   version: "0.152.0",
+  nativeAppTools: false,
   flags: {
+    turnApprovalsReviewer: false,
+
+    turnToolOutput: false,
     ephemeralFork: true,
     forkLastTurnId: true,
+    paginatedFork: true,
     multiAgentV2Protocol: true,
     paginatedHistory: true,
     searchOccurrences: true,
     sideConversation: true,
     subagentAncestorFilter: true,
     threadRevert: true,
+    threadQueue: true,
   },
 };
 

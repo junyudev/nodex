@@ -11,7 +11,24 @@ import {
   make,
 } from "./CodexThreadCatalog";
 import { CodexThreadDirectory } from "./CodexThreadDirectory";
-import { CodexThreadExecution } from "./CodexThreadExecution";
+
+const coreProject = (id: string, root: string) => ({
+  id,
+  library_id: `library-${id}`,
+  database_id: `database-${id}`,
+  default_database_view_id: null,
+  lifecycle: "active",
+  binding_revision: 1,
+  name: id,
+  description: "",
+  appearance: null,
+  sources: [{ root, order: 0 }],
+  primary_workspace_root: root,
+  pinned: false,
+  pinned_order: null,
+  created_at: "2026-09-02T00:00:00.000Z",
+  updated_at: "2026-09-02T00:00:00.000Z",
+});
 
 const emptyCoreWindow = (kind: "project_window" | "sidebar_overview" | "task_window") =>
   kind === "project_window"
@@ -44,53 +61,52 @@ const coreTask = (
         readonly agent_definition_id: string;
         readonly instance_config_id: string | null;
       },
-) =>
-  ({
-    session: {
-      id: `session-${threadId}`,
-      project_id: "project-a",
-      no_thread_fallback_title: threadId,
-      display_title: threadId,
-      order: 0,
-      pinned: true,
-      pinned_order: 0,
-      archived: false,
-      archived_at: null,
-      unread: false,
-      thread_id: threadId,
-      created_at: "2026-09-02T00:00:00.000Z",
-      updated_at: "2026-09-02T00:00:00.000Z",
-    },
-    thread: {
-      thread_id: threadId,
-      session_id: `session-${threadId}`,
-      project_id: "project-a",
-      forked_from_id: null,
-      parent_thread_id: null,
-      thread_source: null,
-      service_name: null,
-      agent_nickname: null,
-      agent_role: null,
-      agent_path: null,
-      thread_name: threadId,
-      thread_preview: `${threadId} preview`,
-      backend_binding: backendBinding,
-      model_id: "gpt-test",
-      reasoning_effort: "high",
-      service_tier: null,
-      execution_host_id: "local",
-      cwd: "/repo",
-      managed_worktree_path: null,
-      projectless_output_directory: null,
-      projectless_workspace_browser_root: null,
-      status: { status_type: "idle", active_flags: [] },
-      archived: false,
-      created_at: 100,
-      updated_at: 200,
-      recency_at: 200,
-      linked_at: "2026-09-02T00:00:00.000Z",
-    },
-  }) as never;
+) => ({
+  session: {
+    id: `session-${threadId}`,
+    project_id: "project-a",
+    no_thread_fallback_title: threadId,
+    display_title: threadId,
+    order: 0,
+    pinned: true,
+    pinned_order: 0,
+    archived: false,
+    archived_at: null,
+    unread: false,
+    thread_id: threadId,
+    created_at: "2026-09-02T00:00:00.000Z",
+    updated_at: "2026-09-02T00:00:00.000Z",
+  },
+  thread: {
+    thread_id: threadId,
+    session_id: `session-${threadId}`,
+    project_id: "project-a",
+    forked_from_id: null,
+    parent_thread_id: null,
+    thread_source: null,
+    service_name: null,
+    agent_nickname: null,
+    agent_role: null,
+    agent_path: null,
+    thread_name: threadId,
+    thread_preview: `${threadId} preview`,
+    backend_binding: backendBinding,
+    model_id: "gpt-test",
+    reasoning_effort: "high",
+    service_tier: null,
+    execution_host_id: "local",
+    cwd: "/repo",
+    managed_worktree_path: null,
+    projectless_output_directory: null,
+    projectless_workspace_browser_root: null,
+    status: { status_type: "idle", active_flags: [] },
+    archived: false,
+    created_at: 100,
+    updated_at: 200,
+    recency_at: 200,
+    linked_at: "2026-09-02T00:00:00.000Z",
+  },
+});
 
 const mixedBackendWindow = (kind: "sidebar_overview" | "task_window") => {
   const tasks = {
@@ -145,16 +161,99 @@ const catalog = (input: {
       CodexThreadDirectory.of({} as CodexThreadDirectory["Service"]),
     ),
     Effect.provideService(
-      CodexThreadExecution,
-      CodexThreadExecution.of({} as CodexThreadExecution["Service"]),
-    ),
-    Effect.provideService(
       CoreModules,
       CoreModules.of({
         workspace: { read: input.read, apply: input.apply },
       } as unknown as CoreModuleClients),
     ),
   );
+
+it.effect("stages a cross-Project workspace without relocating the live Thread", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const applied: Array<{ intent: Record<string, unknown> }> = [];
+      let moved = false;
+      const sourceThread = {
+        ...coreTask("thread-move", { kind: "codex" }).thread,
+        project_id: "project-a",
+        cwd: "/workspace/a",
+        pinned_order: null,
+        has_unread_turn: false,
+      };
+      const targetThread = { ...sourceThread, project_id: "project-b" } as never;
+      const service = yield* catalog({
+        read: ({ kind }) => {
+          if (kind === "thread") {
+            return Effect.succeed({
+              value: { kind: "thread", thread: moved ? targetThread : sourceThread },
+            });
+          }
+          if (kind === "project_window") {
+            return Effect.succeed({
+              value: {
+                kind: "project_window",
+                projects: {
+                  items: [
+                    coreProject("project-a", "/workspace/a"),
+                    coreProject("project-b", "/workspace"),
+                  ],
+                  next_cursor: null,
+                  authority: { projection_revision: 1 },
+                },
+              },
+            });
+          }
+          return Effect.succeed(emptyCoreWindow(kind as never));
+        },
+        apply: (request) =>
+          Effect.sync(() => {
+            const value = request as { intent: Record<string, unknown> };
+            applied.push(value);
+            if (value.intent.kind === "move_thread") moved = true;
+            return {
+              status: "committed",
+              commit: { commit_seq: 19, store_epoch: "epoch:test" },
+              outcome: { affected_project_ids: [], affected_thread_ids: [] },
+            } as never;
+          }),
+        sidebar: {
+          ensureSession: () => Effect.succeed({ id: "session-thread-move" } as never),
+          changed: () => Effect.succeed({ snapshot: {} } as never),
+        },
+      });
+
+      const result = yield* service.move({
+        hostId: "local",
+        threadId: "thread-move",
+        sourceContainerId: "project:project-a",
+        targetContainerId: "project:project-b",
+        beforeThreadId: null,
+      });
+
+      assert.strictEqual(result.status, "moved");
+      const moveIntent = applied[0]?.intent as {
+        metadata?: unknown;
+        runtime_workspace_roots?: unknown;
+        workspace_transition?: {
+          revision: string;
+          pending: {
+            project_sources: string[];
+            cwd: string;
+            runtime_workspace_roots: string[];
+          };
+        };
+      };
+      assert.deepEqual(moveIntent.metadata, {});
+      assert.isUndefined(moveIntent.runtime_workspace_roots);
+      assert.match(moveIntent.workspace_transition?.revision ?? "", /^[0-9a-f-]{36}$/);
+      assert.deepEqual(moveIntent.workspace_transition?.pending, {
+        project_sources: ["/workspace"],
+        cwd: "/workspace",
+        runtime_workspace_roots: ["/workspace"],
+      });
+    }),
+  ),
+);
 
 it.effect("materializes the Session before pinning a discovered Thread", () =>
   Effect.scoped(

@@ -1,3 +1,4 @@
+import type { CodexNativeUserResponseInput } from "../../shared/codex-native-server-response";
 import type { RequestId } from "@nodex/codex-app-server-protocol";
 import type { DynamicToolCallResponse } from "@nodex/codex-app-server-protocol/v2/DynamicToolCallResponse";
 import { CodexAppServerNoResponse } from "@nodex/effect-codex-app-server/protocol";
@@ -36,16 +37,15 @@ import { normalizeCodexMcpServerElicitationResponse } from "../../shared/codex-m
 import type {
   CodexMcpServerElicitationAction,
   CodexMcpServerElicitationResponse,
-  CodexHostMessage,
   CodexPermissionRequestResponse,
 } from "../../shared/types";
-import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import { buildCodexAppDynamicToolSuccess } from "../codex/codex-app-meta-thread-tools";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
-import { CodexOwnerNotificationDrainRuntime } from "./CodexOwnerNotificationDrainRuntime";
-import { CodexPendingServerRequestRuntime } from "./CodexPendingServerRequestRuntime";
-import { CodexRendererConversationRegistry } from "./CodexRendererConversationRegistry";
+import {
+  CodexPendingServerRequestRuntime,
+  type CodexPendingServerRequest,
+} from "./CodexPendingServerRequestRuntime";
 import { CodexThreadReadState } from "./CodexThreadReadState";
 import { CodexUserInputAutoResolution } from "./CodexUserInputAutoResolution";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
@@ -100,6 +100,9 @@ export interface CodexSetupCodexStepResponseInput {
 }
 
 export interface CodexServerRequestResponsesService {
+  readonly native: (
+    input: CodexNativeUserResponseInput,
+  ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
   readonly approval: (
     input: CodexApprovalResponseInput,
   ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
@@ -120,10 +123,6 @@ export interface CodexServerRequestResponsesService {
   ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
   readonly setupCodexStep: (
     input: CodexSetupCodexStepResponseInput,
-  ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
-  readonly planImplementation: (
-    threadId: string,
-    turnId: string,
   ) => Effect.Effect<boolean, CodexServerRequestResponseProjectionError>;
   readonly declineAll: (
     threadId: string,
@@ -168,9 +167,7 @@ export const make: Effect.Effect<
   never,
   | CodexApplicationEventHub
   | CodexGateway
-  | CodexOwnerNotificationDrainRuntime
   | CodexPendingServerRequestRuntime
-  | CodexRendererConversationRegistry
   | CodexThreadReadState
   | CodexUserInputAutoResolution
   | ConversationEntityMap
@@ -178,9 +175,7 @@ export const make: Effect.Effect<
 > = Effect.gen(function* () {
   const conversations = yield* ConversationEntityMap;
   const gateway = yield* CodexGateway;
-  const ownerNotificationDrain = yield* CodexOwnerNotificationDrainRuntime;
   const inbox = yield* CodexPendingServerRequestRuntime;
-  const rendererConversations = yield* CodexRendererConversationRegistry;
   const readState = yield* CodexThreadReadState;
   const autoResolution = yield* CodexUserInputAutoResolution;
   const events = yield* CodexApplicationEventHub;
@@ -215,7 +210,6 @@ export const make: Effect.Effect<
           return conversation.commitServerRequestLifecycle({
             ...input,
             observedAtMs,
-            projectReplica: !rendererConversations.hasOwner(threadId),
           });
         }),
       ),
@@ -246,25 +240,108 @@ export const make: Effect.Effect<
       value: { type: "userInputResolved", requestId: event.requestId },
     });
   };
-  const notifyRendererOwnerResolved = (threadId: string, requestId: RequestId) =>
+  const native: CodexServerRequestResponsesService["native"] = (input) =>
     sync(() => {
-      const targetClientId = rendererConversations.getOwnerClientId(threadId);
-      if (!targetClientId) return;
-      events.publish({
-        kind: "rendererOwnerHostMessage",
-        value: {
-          targetClientId,
-          message: {
-            type: "threadOwnerNotification",
-            hostId: DEFAULT_CODEX_HOST_ID,
-            sequence: ownerNotificationDrain.next(threadId),
-            notification: {
-              method: "serverRequest/resolved",
-              params: { threadId, requestId },
-            },
-          } satisfies CodexHostMessage,
-        },
-      });
+      const sameConnection = (entry: {
+        readonly threadId: string;
+        readonly hostId: string;
+        readonly generation: number;
+      }) =>
+        entry.threadId === input.threadId &&
+        entry.hostId === input.hostId &&
+        entry.generation === input.generation;
+      const matches = (entry: { readonly occurrenceToken: number }) =>
+        entry.occurrenceToken === input.occurrenceToken;
+      switch (input.method) {
+        case "item/commandExecution/requestApproval":
+        case "item/fileChange/requestApproval": {
+          const first = inbox.find("approval", input.requestId, sameConnection);
+          const kind =
+            input.method === "item/commandExecution/requestApproval" ? "command" : "file";
+          if (!first || !matches(first) || first.request.kind !== kind) return false;
+          const selected = inbox.takeAll("approval", input.requestId, sameConnection);
+          selected.forEach((entry, index) =>
+            inbox.complete(
+              entry,
+              index === 0 ? input.response : CodexAppServerNoResponse,
+              index === 0 ? input.trace : undefined,
+            ),
+          );
+          publishResolved({
+            type: "approval",
+            requestId: input.requestId,
+            decision: input.response.decision,
+          });
+          break;
+        }
+        case "item/tool/requestUserInput": {
+          const first = inbox.find("user-input", input.requestId, sameConnection);
+          if (!first || !matches(first)) return false;
+          inbox.takeAll("user-input", input.requestId, sameConnection).forEach((entry, index) =>
+            inbox.complete(
+              entry,
+              index === 0
+                ? {
+                    answers: Object.fromEntries(
+                      Object.entries(input.response.answers).filter(
+                        (entry): entry is [string, NonNullable<(typeof entry)[1]>] =>
+                          entry[1] !== undefined,
+                      ),
+                    ),
+                  }
+                : CodexAppServerNoResponse,
+              index === 0 ? input.trace : undefined,
+            ),
+          );
+          publishResolved({ type: "user-input", requestId: input.requestId });
+          break;
+        }
+        case "item/permissions/requestApproval": {
+          const first = inbox.find("permission", input.requestId, sameConnection);
+          if (!first || !matches(first)) return false;
+          inbox
+            .takeAll("permission", input.requestId, sameConnection)
+            .forEach((entry, index) =>
+              inbox.complete(
+                entry,
+                index === 0 ? input.response : CodexAppServerNoResponse,
+                index === 0 ? input.trace : undefined,
+              ),
+            );
+          break;
+        }
+        case "mcpServer/elicitation/request": {
+          const first = inbox.find("mcp-elicitation", input.requestId, sameConnection);
+          if (!first || !matches(first)) return false;
+          inbox
+            .takeAll("mcp-elicitation", input.requestId, sameConnection)
+            .forEach((entry, index) =>
+              inbox.complete(
+                entry,
+                index === 0 ? input.response : CodexAppServerNoResponse,
+                index === 0 ? input.trace : undefined,
+              ),
+            );
+          break;
+        }
+        case "item/tool/requestOptionPicker":
+        case "item/tool/requestSetupCodexContextPicker": {
+          const first = inbox.find("private", input.requestId, sameConnection);
+          if (!first || !matches(first) || first.request.method !== input.method) return false;
+          inbox
+            .takeAll("private", input.requestId, sameConnection)
+            .forEach((entry, index) =>
+              inbox.complete(
+                entry,
+                index === 0 ? input.response : CodexAppServerNoResponse,
+                index === 0 ? input.trace : undefined,
+              ),
+            );
+          break;
+        }
+      }
+      inbox.abandonIdentity(input.threadId, input.requestId, input);
+      return true;
     });
 
   const approvalInTransaction = (input: CodexApprovalResponseInput) =>
@@ -351,12 +428,19 @@ export const make: Effect.Effect<
   const approval: CodexServerRequestResponsesService["approval"] = (input) =>
     runSerial(input.threadId, approvalInTransaction(input));
 
-  const userInputInTransaction = (input: CodexUserInputResponseInput) =>
+  const userInputInTransaction = (
+    input: CodexUserInputResponseInput,
+    connection?: Pick<CodexPendingServerRequest, "hostId" | "generation">,
+  ) =>
     syncAtCurrentTime((observedAtMs) => {
       const conversation = aggregate(input.threadId);
       const before = conversation?.readCanonicalState();
       if (!conversation || !before) return null;
       const normalized = normalizeUserInputAnswers(input.answers);
+      const matches = (entry: CodexPendingServerRequest) =>
+        entry.threadId === input.threadId &&
+        (!connection ||
+          (entry.hostId === connection.hostId && entry.generation === connection.generation));
       const canonicalRequest = before.requests.find(
         (candidate) => candidate.id === input.requestId,
       );
@@ -372,7 +456,7 @@ export const make: Effect.Effect<
           input.requestId,
           (candidate) =>
             candidate.disposition === "stored" &&
-            candidate.threadId === input.threadId &&
+            matches(candidate) &&
             hasCodexDynamicToolIdentity(candidate.request.params, {
               namespace: CODEX_APP_TOOL_NAMESPACE,
               tool: "request_onboarding_input",
@@ -382,13 +466,9 @@ export const make: Effect.Effect<
         const lifecycle = reduceCodexConversationOnboardingInputResponse(before, input.requestId);
         return lifecycle.selectedRequests.length === 0
           ? null
-          : { before, lifecycle, normalized, onboarding: true as const };
+          : { before, lifecycle, normalized, pending, onboarding: true as const };
       }
-      const pending = inbox.find(
-        "user-input",
-        input.requestId,
-        (candidate) => candidate.threadId === input.threadId,
-      );
+      const pending = inbox.find("user-input", input.requestId, matches);
       if (!pending) return null;
       const lifecycle = reduceCodexConversationUserInputResponse(
         before,
@@ -398,17 +478,20 @@ export const make: Effect.Effect<
       );
       return lifecycle.selectedRequests.length === 0
         ? null
-        : { before, lifecycle, normalized, onboarding: false as const };
+        : { before, lifecycle, normalized, pending, onboarding: false as const };
     }).pipe(
       Effect.flatMap((prepared) => {
         if (!prepared) return Effect.succeed(false);
         return sync(() => {
+          const matches = (entry: CodexPendingServerRequest) =>
+            entry.threadId === input.threadId &&
+            entry.hostId === prepared.pending.hostId &&
+            entry.generation === prepared.pending.generation;
           if (prepared.onboarding) {
             const selected = inbox.takeAll(
               "dynamic-tool",
               input.requestId,
-              (candidate) =>
-                candidate.disposition === "stored" && candidate.threadId === input.threadId,
+              (candidate) => candidate.disposition === "stored" && matches(candidate),
             );
             let completed = false;
             for (const entry of selected) {
@@ -425,11 +508,7 @@ export const make: Effect.Effect<
               completed ||= matches;
             }
           } else {
-            const selected = inbox.takeAll(
-              "user-input",
-              input.requestId,
-              (candidate) => candidate.threadId === input.threadId,
-            );
+            const selected = inbox.takeAll("user-input", input.requestId, matches);
             for (const [index, entry] of selected.entries()) {
               inbox.complete(
                 entry,
@@ -437,7 +516,7 @@ export const make: Effect.Effect<
               );
             }
           }
-          inbox.abandonIdentity(input.threadId, input.requestId);
+          inbox.abandonIdentity(input.threadId, input.requestId, prepared.pending);
           publishResolved({ type: "user-input", requestId: input.requestId });
         }).pipe(
           Effect.andThen(
@@ -450,7 +529,7 @@ export const make: Effect.Effect<
           Effect.andThen(
             prepared.onboarding
               ? Effect.void
-              : autoResolution.observeResponse(input.threadId, input.requestId),
+              : autoResolution.observeResponse(input.threadId, input.requestId, prepared.pending),
           ),
           Effect.as(true),
         );
@@ -459,7 +538,10 @@ export const make: Effect.Effect<
   const userInput: CodexServerRequestResponsesService["userInput"] = (input) =>
     runSerial(input.threadId, userInputInTransaction(input));
 
-  const mcpElicitationInTransaction = (input: CodexMcpElicitationResponseInput) =>
+  const mcpElicitationInTransaction = (
+    input: CodexMcpElicitationResponseInput,
+    connection?: Pick<CodexPendingServerRequest, "hostId" | "generation">,
+  ) =>
     syncAtCurrentTime((observedAtMs) => {
       const conversation = aggregate(input.threadId);
       const before = conversation?.readCanonicalState();
@@ -467,7 +549,11 @@ export const make: Effect.Effect<
       const pending = inbox.find(
         "mcp-elicitation",
         input.requestId,
-        (candidate) => candidate.threadId === input.threadId,
+        (candidate) =>
+          candidate.threadId === input.threadId &&
+          (!connection ||
+            (candidate.hostId === connection.hostId &&
+              candidate.generation === connection.generation)),
       );
       if (!pending) return null;
       const response = normalizeCodexMcpServerElicitationResponse(input.response);
@@ -482,14 +568,17 @@ export const make: Effect.Effect<
         const entry = inbox.takeFirst(
           "mcp-elicitation",
           request.id,
-          (candidate) => candidate.threadId === input.threadId,
+          (candidate) =>
+            candidate.threadId === input.threadId &&
+            candidate.hostId === pending.hostId &&
+            candidate.generation === pending.generation,
         );
         if (entry) inbox.complete(entry, response);
       }
       for (const requestId of new Set(lifecycle.selectedRequests.map((request) => request.id))) {
-        inbox.abandonIdentity(input.threadId, requestId);
+        inbox.abandonIdentity(input.threadId, requestId, pending);
       }
-      return { before, lifecycle };
+      return { before, lifecycle, pending };
     }).pipe(
       Effect.flatMap((prepared) =>
         prepared
@@ -497,7 +586,12 @@ export const make: Effect.Effect<
               kind: "canonical",
               before: prepared.before,
               lifecycle: prepared.lifecycle,
-            }).pipe(Effect.as(true))
+            }).pipe(
+              Effect.andThen(
+                autoResolution.observeResponse(input.threadId, input.requestId, prepared.pending),
+              ),
+              Effect.as(true),
+            )
           : Effect.succeed(false),
       ),
     );
@@ -751,25 +845,46 @@ export const make: Effect.Effect<
     );
 
   yield* autoResolution.timeouts.pipe(
-    Stream.runForEach(({ conversationId, requestId }) =>
-      userInput({ threadId: conversationId, requestId, answers: {} }).pipe(
+    Stream.runForEach(({ conversationId, requestId, connection, responseKind }) =>
+      runSerial(
+        conversationId,
+        Effect.gen(function* () {
+          // Timeout delivery may wait behind another command while the native process reconnects.
+          const current = yield* gateway
+            .connection(connection.hostId)
+            .pipe(Effect.mapError(transactionError));
+          if (current.kind !== "ready" || current.generation !== connection.generation) return true;
+          if (responseKind === "declineMcpElicitation") {
+            return yield* mcpElicitationInTransaction(
+              { threadId: conversationId, requestId, response: "decline" },
+              connection,
+            );
+          }
+          return yield* userInputInTransaction(
+            { threadId: conversationId, requestId, answers: {} },
+            connection,
+          );
+        }),
+      ).pipe(
         Effect.flatMap((accepted) =>
           accepted
-            ? notifyRendererOwnerResolved(conversationId, requestId)
-            : Effect.logWarning("Could not auto-resolve Codex user input").pipe(
+            ? Effect.void
+            : Effect.logWarning("Could not auto-resolve Codex request").pipe(
                 Effect.annotateLogs({
                   cause: "request-not-pending",
                   conversationId,
                   requestId: String(requestId),
+                  responseKind,
                 }),
               ),
         ),
         Effect.catch((error) =>
-          Effect.logWarning("Could not auto-resolve Codex user input").pipe(
+          Effect.logWarning("Could not auto-resolve Codex request").pipe(
             Effect.annotateLogs({
               cause: String(error.cause),
               conversationId,
               requestId: String(requestId),
+              responseKind,
             }),
           ),
         ),
@@ -779,6 +894,7 @@ export const make: Effect.Effect<
   );
 
   return CodexServerRequestResponses.of({
+    native,
     approval,
     userInput,
     mcpElicitation,
@@ -786,18 +902,6 @@ export const make: Effect.Effect<
     optionPicker,
     setupContextPicker,
     setupCodexStep,
-    planImplementation: (threadId, turnId) =>
-      runSerial(
-        threadId,
-        sync(() => {
-          const conversation = aggregate(threadId);
-          if (!conversation) return false;
-          return conversation.completePlanImplementation(
-            turnId,
-            !rendererConversations.hasOwner(threadId),
-          );
-        }),
-      ),
     declineAll: (threadId) => runSerial(threadId, declineAllInTransaction(threadId)),
     declineAllInTransaction,
   });

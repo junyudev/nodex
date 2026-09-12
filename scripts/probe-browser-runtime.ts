@@ -21,6 +21,13 @@ import {
   makeBrowserPluginReconciler,
 } from "../src/main/codex/browser-plugin-reconciler";
 import { BrowserUseThreadConfigBuilder } from "../src/main/codex/browser-use-thread-config";
+import { resolveBrowserRuntimeBundle } from "../src/main/codex/browser-runtime-bundle";
+import { createBrowserRuntimePlatformArtifactVerifier } from "../src/main/codex/browser-runtime-platform-verifier";
+import {
+  projectBundledAppServerRuntimeIdentity,
+  type TestedBrowserAppServerPair,
+} from "../src/shared/browser-app-server-compatibility";
+import { parseBundledAgentRuntimeMetadata } from "../src/shared/codex-runtime-metadata";
 import { resolveCodexRuntime } from "../src/main/codex/codex-runtime";
 import { makeBrowserUseNativePipeServer } from "../src/main/browser-use/browser-use-native-pipe-server";
 import { createBrowserUsePeerAuthorizer } from "../src/main/browser-use/browser-use-peer-authorizer";
@@ -90,22 +97,46 @@ export type BrowserRuntimeProbeReport =
 
 export interface BrowserRuntimeProbeOptions {
   readonly resourcesPath?: string;
+  /** Explicit tooling-only artifact pair under conformance; never used for product admission. */
+  readonly conformanceCandidatePair?: TestedBrowserAppServerPair;
+  readonly scratchRoot?: string;
 }
 
 function resolveProbeRuntime(projectRoot: string, options: BrowserRuntimeProbeOptions) {
   const resourcesPath = options.resourcesPath?.trim();
-  return resolveCodexRuntime({
+  const runtime = resolveCodexRuntime({
     isPackaged: Boolean(resourcesPath),
     ...(resourcesPath
       ? { resourcesPath: path.resolve(resourcesPath) }
       : { projectRootPath: projectRoot }),
   });
+  if (!options.conformanceCandidatePair) return runtime;
+  if (!runtime.metadataPath) throw new Error("Conformance candidate is missing runtime metadata");
+  const metadata = parseBundledAgentRuntimeMetadata(
+    JSON.parse(fs.readFileSync(runtime.metadataPath, "utf8")) as unknown,
+  );
+  if (!metadata) throw new Error("Conformance candidate metadata is invalid");
+  return {
+    ...runtime,
+    browserRuntime: resolveBrowserRuntimeBundle({
+      appServerIdentity: projectBundledAppServerRuntimeIdentity(metadata),
+      runtimeRoot: runtime.rootPath,
+      targetArch: metadata.targetArch as NodeJS.Architecture,
+      targetPlatform: metadata.targetPlatform as NodeJS.Platform,
+      platformArtifactVerifier: createBrowserRuntimePlatformArtifactVerifier({
+        platform: metadata.targetPlatform as NodeJS.Platform,
+      }),
+      testedPairs: [options.conformanceCandidatePair],
+    }),
+  };
 }
 
 export function inspectBrowserRuntime(
   projectRoot: string,
   options: BrowserRuntimeProbeOptions = {},
 ): BrowserRuntimeStaticInspectionReport {
+  if (options.conformanceCandidatePair)
+    throw new Error("Candidate runtime pairs require the live conformance probe");
   const runtime = resolveProbeRuntime(projectRoot, options);
   if (runtime.browserRuntime.status === "unavailable") {
     throw new Error(runtime.browserRuntime.message);
@@ -315,7 +346,9 @@ async function probeBrowserRuntimePromise(
   const appServerRuntimeVersion = runtime.appServerRuntimeVersion;
 
   const bundle = runtime.browserRuntime.bundle;
-  const stateHome = fs.mkdtempSync(path.join(projectRoot, ".generated", "browser-runtime-probe-"));
+  const scratchRoot = options.scratchRoot ?? path.join(projectRoot, ".generated");
+  fs.mkdirSync(scratchRoot, { recursive: true });
+  const stateHome = fs.mkdtempSync(path.join(scratchRoot, "browser-runtime-probe-"));
   const sessionId = randomUUID();
   const turnId = randomUUID();
   const nativePipeMethods: string[] = [];

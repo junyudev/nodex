@@ -1,5 +1,3 @@
-import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
-
 export const CODEX_REQUEST_SCHEDULER_LIMITS = {
   totalInFlight: 6,
   nonCriticalInFlight: 5,
@@ -17,18 +15,6 @@ export const CODEX_REQUEST_SCHEDULER_LIMITS = {
   },
   coalescedWaiters: 128,
   interactiveDispatchesBeforeBackground: 4,
-} as const;
-
-/**
- * Byte limits complement the source-confirmed count limits. They bound the retained request
- * parameters even when a queue contains only a few unusually large requests. Runtime pressure
- * evidence can tune these values without changing the scheduling policy.
- */
-export const CODEX_REQUEST_SCHEDULER_BYTE_LIMITS = {
-  request: 16 * 1024 * 1024,
-  hostQueue: 32 * 1024 * 1024,
-  priorityQueue: 16 * 1024 * 1024,
-  groupQueue: 8 * 1024 * 1024,
 } as const;
 
 export const CODEX_REQUEST_QUEUE_EXPIRY_MS = {
@@ -79,13 +65,10 @@ const COALESCIBLE_METHODS = new Set<string>([
   "thread/loaded/list",
   "thread/read",
   "thread/turns/list",
-  // Exact tuple identity keeps cursor ownership isolated while avoiding duplicate physical reads.
-  "thread/items/list",
 ]);
 
 const THREAD_BACKGROUND_SOURCES = new Set<CodexRequestSchedulingSource>([
   "collab_hydration",
-  "history_export",
   "recent_threads",
   "tail_history",
   "thread_catalog",
@@ -139,12 +122,8 @@ export interface CodexRequestSelection {
 
 export type CodexRequestAdmissionRejectionReason =
   | "invalid-request-bytes"
-  | "request-too-large"
-  | "host-queue-bytes-full"
   | "priority-queue-full"
-  | "priority-queue-bytes-full"
-  | "group-queue-full"
-  | "group-queue-bytes-full";
+  | "group-queue-full";
 
 export interface CodexRequestAdmissionRejection {
   readonly reason: CodexRequestAdmissionRejectionReason;
@@ -214,7 +193,7 @@ export const codexRequestQueueExpiryMs = (input: {
       input.timeoutMs !== undefined &&
       input.timeoutMs !== null &&
       Number.isFinite(input.timeoutMs) &&
-      input.timeoutMs >= 0
+      input.timeoutMs > 0
     ) {
       return input.timeoutMs;
     }
@@ -271,10 +250,6 @@ const encodeCodexRequestParams = (
 
 /** Returns the deterministic JSON bytes retained by the scheduler, or null for non-JSON input. */
 export const codexScheduledRequestBytes = (method: string, params: unknown): number | null => {
-  const maximumBytes = CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request;
-  if (cappedApproximateValueBytes({ method, params }, maximumBytes) > maximumBytes) {
-    return maximumBytes + 1;
-  }
   const encodedParams = encodeCodexRequestParams(params);
   if (encodedParams === null) return null;
   const encodedRequest =
@@ -287,40 +262,22 @@ export const codexScheduledRequestBytes = (method: string, params: unknown): num
 export const codexRequestCoalescingKey = (
   request: Pick<
     CodexScheduledRequestDescriptor,
-    | "hostId"
-    | "generation"
-    | "method"
-    | "params"
-    | "priority"
-    | "source"
-    | "conversationId"
-    | "widgetId"
-    | "timeoutMs"
+    "method" | "params" | "priority" | "source" | "timeoutMs"
   >,
   options: { readonly coalesce?: boolean } = {},
 ): string | null => {
   if (options.coalesce === false || !isCodexRequestCoalescible(request.method)) return null;
-  if (
-    cappedApproximateValueBytes(
-      { method: request.method, params: request.params },
-      CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request,
-    ) > CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request
-  ) {
+  try {
+    return JSON.stringify([
+      request.method,
+      request.params,
+      request.priority,
+      request.source,
+      request.timeoutMs ?? 0,
+    ]);
+  } catch {
     return null;
   }
-  const params = encodeCodexRequestParams(request.params);
-  if (params === null) return null;
-  return JSON.stringify([
-    request.hostId,
-    request.generation,
-    request.method,
-    params.kind === "omitted" ? ["omitted"] : ["encoded", params.json],
-    request.priority,
-    request.source,
-    request.conversationId,
-    request.widgetId,
-    request.timeoutMs ?? 0,
-  ]);
 };
 
 const queueGroupKey = (
@@ -355,6 +312,7 @@ const rejection = (input: {
 export const admitCodexScheduledRequest = (input: {
   readonly request: CodexScheduledRequestDescriptor;
   readonly queued: readonly CodexScheduledRequestDescriptor[];
+  readonly inFlightCount: number;
 }): CodexRequestAdmission => {
   const { request, queued } = input;
   if (!Number.isSafeInteger(request.queuedBytes) || request.queuedBytes < 0) {
@@ -363,28 +321,14 @@ export const admitCodexScheduledRequest = (input: {
       request,
       queuedCount: queued.length,
       queuedBytes: request.queuedBytes,
-      limit: CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request,
+      limit: 0,
     });
   }
-  if (request.queuedBytes > CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request) {
-    return rejection({
-      reason: "request-too-large",
-      request,
-      queuedCount: queued.length,
-      queuedBytes: request.queuedBytes,
-      limit: CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.request,
-    });
-  }
-
-  const hostBytes = queued.reduce((total, item) => total + item.queuedBytes, 0);
-  if (hostBytes + request.queuedBytes > CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.hostQueue) {
-    return rejection({
-      reason: "host-queue-bytes-full",
-      request,
-      queuedCount: queued.length,
-      queuedBytes: hostBytes,
-      limit: CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.hostQueue,
-    });
+  if (
+    request.priority === "critical" &&
+    input.inFlightCount < CODEX_REQUEST_SCHEDULER_LIMITS.totalInFlight
+  ) {
+    return { accepted: true };
   }
 
   const samePriority = queued.filter((item) => item.priority === request.priority);
@@ -397,37 +341,18 @@ export const admitCodexScheduledRequest = (input: {
       limit: CODEX_REQUEST_SCHEDULER_LIMITS.queuedByPriority[request.priority],
     });
   }
-  const priorityBytes = samePriority.reduce((total, item) => total + item.queuedBytes, 0);
-  if (priorityBytes + request.queuedBytes > CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.priorityQueue) {
-    return rejection({
-      reason: "priority-queue-bytes-full",
-      request,
-      queuedCount: samePriority.length,
-      queuedBytes: priorityBytes,
-      limit: CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.priorityQueue,
-    });
-  }
-
   const groupKey = queueGroupKey(request);
   const sameGroup = queued.filter((item) => queueGroupKey(item) === groupKey);
-  if (sameGroup.length >= CODEX_REQUEST_SCHEDULER_LIMITS.queuedPerGroup) {
+  if (
+    request.conversationId !== null &&
+    sameGroup.length >= CODEX_REQUEST_SCHEDULER_LIMITS.queuedPerGroup
+  ) {
     return rejection({
       reason: "group-queue-full",
       request,
       queuedCount: sameGroup.length,
       queuedBytes: sameGroup.reduce((total, item) => total + item.queuedBytes, 0),
       limit: CODEX_REQUEST_SCHEDULER_LIMITS.queuedPerGroup,
-      groupKey,
-    });
-  }
-  const groupBytes = sameGroup.reduce((total, item) => total + item.queuedBytes, 0);
-  if (groupBytes + request.queuedBytes > CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.groupQueue) {
-    return rejection({
-      reason: "group-queue-bytes-full",
-      request,
-      queuedCount: sameGroup.length,
-      queuedBytes: groupBytes,
-      limit: CODEX_REQUEST_SCHEDULER_BYTE_LIMITS.groupQueue,
       groupKey,
     });
   }

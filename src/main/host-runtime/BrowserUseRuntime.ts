@@ -49,7 +49,8 @@ export class BrowserUseRuntime extends Context.Service<
       readonly projectId: string | null;
     }) => Effect.Effect<void, BrowserUseRuntimeError>;
     readonly releaseSession: (sessionId: string) => Effect.Effect<void, BrowserUseRuntimeError>;
-    readonly turnEnded: (input: {
+    readonly endSessionActivity: (sessionId: string) => Effect.Effect<void, BrowserUseRuntimeError>;
+  readonly turnEnded: (input: {
       readonly sessionId: string;
       readonly turnId: string;
     }) => Effect.Effect<void, BrowserUseRuntimeError>;
@@ -76,6 +77,7 @@ interface BrowserUseRegistryPort {
     ownerWebContentsId: number,
   ) => Effect.Effect<void, BrowserUseRuntimeError>;
   readonly releaseSession: (sessionId: string) => Effect.Effect<void, BrowserUseRuntimeError>;
+  readonly endSessionActivity: (sessionId: string) => Effect.Effect<void, BrowserUseRuntimeError>;
   readonly turnEnded: (input: {
     sessionId: string;
     turnId: string;
@@ -105,6 +107,7 @@ const adaptSessionRuntime = (runtime: BrowserUseSessionRuntime): BrowserUseRegis
     notifyCursorArrived: (input) => adapt(runtime.notifyCursorArrived(input)),
     releaseOwner: (ownerWebContentsId) => adapt(runtime.releaseOwner(ownerWebContentsId)),
     releaseSession: (sessionId) => adapt(runtime.releaseSession(sessionId)),
+    endSessionActivity: (sessionId) => adapt(runtime.endSessionActivity(sessionId)),
     turnEnded: (input) => adapt(runtime.turnEnded(input)),
     turnStarted: (input) => adapt(runtime.turnStarted(input)),
   };
@@ -209,6 +212,7 @@ const make = (
       focusPresentation: registry.focusPresentation,
       promoteRoute,
       releaseSession: registry.releaseSession,
+      endSessionActivity: registry.endSessionActivity,
       turnEnded: registry.turnEnded,
       turnStarted: registry.turnStarted,
     });

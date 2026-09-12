@@ -1,6 +1,6 @@
 # Codex app-server runtime
 
-Nodex embeds the unmodified, officially published Codex app-server package for
+Nodex embeds the unmodified, officially published full Codex CLI package for
 each supported macOS architecture. The canonical inputs and all expected
 digests live in [`codex-app-server.lock.json`](codex-app-server.lock.json).
 
@@ -8,8 +8,8 @@ digests live in [`codex-app-server.lock.json`](codex-app-server.lock.json).
 
 The lock identifies one exact `openai/codex` release by version, annotated tag,
 peeled source commit, and official `codex-package_SHA256SUMS` asset. Each target
-then binds the matching official `codex-app-server-package-*.tar.gz` URL, byte
-length, archive SHA-256, app-server SHA-256, staged metadata SHA-256, target
+then binds the matching official `codex-package-*.tar.gz` URL, byte
+length, archive SHA-256, CLI entrypoint SHA-256, staged metadata SHA-256, target
 triple, and package manifest.
 
 Nodex does not patch or compile `codex-rs`, mirror the package into a second
@@ -17,10 +17,12 @@ release, or silently fall back to another runtime. A missing official full
 package makes that Codex version ineligible for Nodex. A replaced or corrupted
 asset fails its locked size or digest before extraction.
 
+The bundled CLI runs the native app-server command and supports daemon discovery without a second executable or an external PATH dependency. Local daemon selection is opt-in, requires an already-running compatible daemon, and is disabled when launch configuration overrides or bundled Git require a dedicated process.
+
 The current package closure is exactly:
 
 - `codex-package.json`
-- `bin/codex-app-server`
+- `bin/codex`
 - `bin/codex-code-mode-host`
 - `codex-path/rg`
 - `codex-resources/zsh/bin/zsh`
@@ -77,7 +79,7 @@ Upgrade runtime provenance separately from protocol or product changes:
 1. Select one reviewed `rust-v<version>` tag and verify its peeled source
    commit.
 2. Require official arm64 and x64
-   `codex-app-server-package-<target>.tar.gz` assets plus
+   `codex-package-<target>.tar.gz` assets plus
    `codex-package_SHA256SUMS`.
 3. Compare the checksum-manifest entry, GitHub asset digest, downloaded archive
    digest, and byte length for both targets.

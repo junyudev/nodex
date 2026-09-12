@@ -63,6 +63,11 @@ export type CodexThreadSettingsError = CodexRuntimeError | CodexThreadSettingsOp
 export class CodexThreadSettingsRuntime extends Context.Service<
   CodexThreadSettingsRuntime,
   {
+    readonly prepareExecutionProfile: (
+      threadId: string,
+      requested: CodexExecutionProfile,
+      change: CodexConversationThreadSettingsPatch["executionProfileChange"],
+    ) => Effect.Effect<CodexExecutionProfile, CodexThreadSettingsOperationError>;
     readonly readExecutionProfile: (
       threadId: string,
     ) => Effect.Effect<CodexExecutionProfile | null, CodexThreadSettingsOperationError>;
@@ -277,7 +282,7 @@ export const make: Effect.Effect<
         currentSettings?.collaborationMode ??
         null,
     });
-    const permissions = currentProjection.canonical.sidecar.hydrationContext?.currentPermissions;
+    const permissions = currentProjection.canonical.currentPermissions;
     if (!permissions) {
       return yield* operationError(
         input.threadId,
@@ -340,6 +345,7 @@ export const make: Effect.Effect<
   });
 
   return CodexThreadSettingsRuntime.of({
+    prepareExecutionProfile: validateAndPersistExecutionProfile,
     readExecutionProfile,
     update,
     awaitCurrent: (threadId) => runMutation(threadId, Effect.void),

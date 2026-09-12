@@ -1,3 +1,9 @@
+import { current, produce, type Draft } from "immer";
+import {
+  residentConversationTurns,
+  residentConversationTurnEntries,
+  conversationTurnDraft,
+} from "./codex-turn-mutation";
 import type {
   RequestId,
   ServerNotification,
@@ -20,9 +26,9 @@ import type {
   CodexCanonicalRequestSyntheticItem,
   CodexCanonicalServerRequest,
   CodexCanonicalServerRequestExtension,
+  CodexCanonicalSetupContextPickerResponse,
   CodexCanonicalSetupCodexStepResponse,
   CodexCanonicalConversationState,
-  CodexCanonicalTurnState,
 } from "./codex-conversation-state";
 import type { CodexApprovalRequestMethod } from "../codex-approval";
 import {
@@ -34,19 +40,34 @@ type JsonValue = McpServerElicitationRequestResponse["content"];
 
 export type CodexServerRequestResolvedNotification = Extract<
   ServerNotification,
-  { method: "serverRequest/resolved" }
+  {
+    method: "serverRequest/resolved";
+  }
 >;
-
-type DynamicToolCallRequest = Extract<ServerRequest, { method: "item/tool/call" }>;
-type McpElicitationRequest = Extract<ServerRequest, { method: "mcpServer/elicitation/request" }>;
+type DynamicToolCallRequest = Extract<
+  ServerRequest,
+  {
+    method: "item/tool/call";
+  }
+>;
+type McpElicitationRequest = Extract<
+  ServerRequest,
+  {
+    method: "mcpServer/elicitation/request";
+  }
+>;
 type ApprovalRequest = Extract<
   ServerRequest,
   {
     method: "item/commandExecution/requestApproval" | "item/fileChange/requestApproval";
   }
 >;
-type UserInputRequest = Extract<ServerRequest, { method: "item/tool/requestUserInput" }>;
-
+type UserInputRequest = Extract<
+  ServerRequest,
+  {
+    method: "item/tool/requestUserInput";
+  }
+>;
 export interface CodexServerRequestLifecycleContext {
   readonly now: () => number;
   readonly isOpenAIFormElicitationsEnabled?: boolean;
@@ -70,6 +91,12 @@ export type CodexServerRequestAutoResponseEffect =
       readonly method: "item/tool/call";
       readonly requestId: RequestId;
       readonly response: DynamicToolCallResponse;
+    }
+  | {
+      readonly type: "respond";
+      readonly method: "item/tool/requestSetupCodexContextPicker";
+      readonly requestId: RequestId;
+      readonly response: CodexCanonicalSetupContextPickerResponse;
     };
 
 export type CodexServerRequestLifecycleEffect =
@@ -260,10 +287,14 @@ function normalizeToolParamsDisplay(value: unknown): Array<{
   }
   return normalized;
 }
-
-function normalizeConnectorAuthFailure(
-  value: JsonValue | null,
-): Extract<CodexCanonicalMcpElicitation, { kind: "connectorAuth" }>["connector"] | null {
+function normalizeConnectorAuthFailure(value: JsonValue | null):
+  | Extract<
+      CodexCanonicalMcpElicitation,
+      {
+        kind: "connectorAuth";
+      }
+    >["connector"]
+  | null {
   const meta = toJsonObject(value);
   const codexApps = toJsonObject(meta?._codex_apps);
   const failure = toJsonObject(codexApps?.connector_auth_failure);
@@ -298,10 +329,14 @@ function normalizeConnectorAuthFailure(
       : {}),
   };
 }
-
-function normalizeToolSuggestion(
-  value: JsonValue | null,
-): Extract<CodexCanonicalMcpElicitation, { kind: "toolSuggestion" }>["suggestion"] | null {
+function normalizeToolSuggestion(value: JsonValue | null):
+  | Extract<
+      CodexCanonicalMcpElicitation,
+      {
+        kind: "toolSuggestion";
+      }
+    >["suggestion"]
+  | null {
   const meta = toJsonObject(value);
   if (
     meta?.codex_approval_kind !== "tool_suggestion" ||
@@ -336,12 +371,21 @@ function normalizeToolSuggestion(
     ...(meta.tool_type === "plugin" && typeof meta.remote_plugin_id === "string"
       ? { remote_plugin_id: meta.remote_plugin_id.trim() }
       : {}),
-  } as Extract<CodexCanonicalMcpElicitation, { kind: "toolSuggestion" }>["suggestion"];
+  } as Extract<
+    CodexCanonicalMcpElicitation,
+    {
+      kind: "toolSuggestion";
+    }
+  >["suggestion"];
 }
-
-function normalizeMcpToolCallApproval(
-  value: JsonValue | null,
-): Extract<CodexCanonicalMcpElicitation, { kind: "mcpToolCall" }>["approval"] | null {
+function normalizeMcpToolCallApproval(value: JsonValue | null):
+  | Extract<
+      CodexCanonicalMcpElicitation,
+      {
+        kind: "mcpToolCall";
+      }
+    >["approval"]
+  | null {
   const meta = toJsonObject(value);
   const toolParams = toJsonObject(meta?.tool_params);
   const persist = normalizePersist(meta?.persist);
@@ -363,7 +407,12 @@ function normalizeMcpToolCallApproval(
     connector_id: meta.connector_id,
     tool_params: toolParams,
     ...(persist === undefined ? {} : { persist }),
-  } as Extract<CodexCanonicalMcpElicitation, { kind: "mcpToolCall" }>["approval"];
+  } as Extract<
+    CodexCanonicalMcpElicitation,
+    {
+      kind: "mcpToolCall";
+    }
+  >["approval"];
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -432,7 +481,10 @@ function normalizeOpenAIPrimitiveSchema(value: unknown): JsonValue | null {
     if (items.type === "string" && isStringArray(items.enum)) {
       output.items = { type: "string", enum: [...items.enum] };
     } else if (Array.isArray(items.anyOf)) {
-      const anyOf: Array<{ const: string; title: string }> = [];
+      const anyOf: Array<{
+        const: string;
+        title: string;
+      }> = [];
       for (const entry of items.anyOf) {
         if (
           !isRecord(entry) ||
@@ -460,7 +512,10 @@ function normalizeOpenAIPrimitiveSchema(value: unknown): JsonValue | null {
     return output;
   }
   if (Array.isArray(value.oneOf)) {
-    const oneOf: Array<{ const: string; title: string }> = [];
+    const oneOf: Array<{
+      const: string;
+      title: string;
+    }> = [];
     for (const entry of value.oneOf) {
       if (!isRecord(entry) || typeof entry.const !== "string" || typeof entry.title !== "string") {
         break;
@@ -506,7 +561,11 @@ function normalizeOpenAIImagePickerSchema(value: unknown): JsonValue | null {
     return null;
   }
   const ids = new Set<string>();
-  const items: Array<{ id: string; title: string; image: string }> = [];
+  const items: Array<{
+    id: string;
+    title: string;
+    image: string;
+  }> = [];
   const dataImagePattern = /^data:image\/[a-zA-Z0-9.+-]+;base64,[a-zA-Z0-9+/]+={0,2}$/;
   for (const entry of value.items) {
     if (
@@ -573,7 +632,12 @@ function withoutGenericMcpControlFields(value: JsonValue | null): JsonValue {
 }
 
 function isGenericMcpApproval(
-  params: Extract<McpServerElicitationRequestParams, { mode: "form" }>,
+  params: Extract<
+    McpServerElicitationRequestParams,
+    {
+      mode: "form";
+    }
+  >,
 ): boolean {
   const meta = toJsonObject(params._meta);
   if (meta?.codex_approval_kind === "mcp_tool_call") return true;
@@ -705,6 +769,46 @@ export function normalizeCodexCanonicalMcpElicitation(
   };
 }
 
+export function shouldAutomaticallyAcceptCodexMcpElicitation(
+  state: CodexCanonicalConversationState,
+  request: McpElicitationRequest,
+): boolean {
+  const elicitation = normalizeCodexCanonicalMcpElicitation(request.params, true);
+  if (!elicitation) return false;
+  const turn = request.params.turnId
+    ? residentConversationTurns(state).find(
+        (candidate) => candidate.turnId === request.params.turnId,
+      )
+    : null;
+  if (!turn) return false;
+
+  const browserOriginAccess =
+    (request.params.serverName === "browser" || request.params.serverName === "browser-use") &&
+    elicitation.kind === "mcpToolCall" &&
+    elicitation.approval.connector_id === "browser-use" &&
+    (elicitation.approval.tool_name === "access_browser_origin" ||
+      elicitation.approval.tool_name === "access_browser_origin_with_raw_cdp") &&
+    turn.params.approvalPolicy === "never" &&
+    turn.params.sandboxPolicy?.type === "dangerFullAccess";
+  if (browserOriginAccess) return true;
+
+  return (
+    request.params.serverName === "messages" &&
+    elicitation.kind === "generic" &&
+    request.params.mode === "form" &&
+    Object.keys(request.params.requestedSchema.properties).length === 0 &&
+    turn.params.approvalsReviewer === "user" &&
+    turn.items.some(
+      (item) =>
+        item.type === "mcpToolCall" &&
+        item.pluginId === "messages@openai-bundled" &&
+        item.server === "messages" &&
+        item.tool === "send_message" &&
+        item.status === "inProgress",
+    )
+  );
+}
+
 export function isCodexCanonicalPrivateServerRequest(
   request: CodexCanonicalServerRequest,
 ): request is CodexCanonicalServerRequestExtension {
@@ -746,7 +850,12 @@ function buildPermissionSynthetic(
   params: PermissionsRequestApprovalParams,
   completed: boolean,
   response: PermissionsRequestApprovalResponse | null = null,
-): Extract<CodexCanonicalRequestSyntheticItem, { type: "permissionRequest" }> {
+): Extract<
+  CodexCanonicalRequestSyntheticItem,
+  {
+    type: "permissionRequest";
+  }
+> {
   return {
     id: `permission-request-${requestId}`,
     type: "permissionRequest",
@@ -764,7 +873,12 @@ function buildUserInputSynthetic(
   params: ToolRequestUserInputParams,
   completed: boolean,
   answers: CodexCanonicalUserInputAnswers = {},
-): Extract<CodexCanonicalRequestSyntheticItem, { type: "userInputResponse" }> {
+): Extract<
+  CodexCanonicalRequestSyntheticItem,
+  {
+    type: "userInputResponse";
+  }
+> {
   return {
     id: `user-input-response-${requestId}`,
     type: "userInputResponse",
@@ -790,7 +904,12 @@ function buildMcpSynthetic(
   completed: boolean,
   elicitation: CodexCanonicalMcpElicitation,
   action: McpServerElicitationAction | null = null,
-): Extract<CodexCanonicalRequestSyntheticItem, { type: "mcpServerElicitation" }> {
+): Extract<
+  CodexCanonicalRequestSyntheticItem,
+  {
+    type: "mcpServerElicitation";
+  }
+> {
   return {
     id: `mcp-server-elicitation-${requestId}`,
     type: "mcpServerElicitation",
@@ -948,7 +1067,10 @@ function resolveRawSyntheticTurn(
   turns: readonly CodexServerRequestRawTurnState[],
   turnId: string,
   context: CodexServerRequestLifecycleContext,
-): { readonly turns: readonly CodexServerRequestRawTurnState[]; readonly index: number } | null {
+): {
+  readonly turns: readonly CodexServerRequestRawTurnState[];
+  readonly index: number;
+} | null {
   const latestIndex = turns.length - 1;
   const latest = turns[latestIndex];
   if (!latest) return null;
@@ -1135,9 +1257,17 @@ export function reduceCodexServerRequestRawState(
       });
     }
     case "item/tool/requestOptionPicker":
-    case "item/tool/requestSetupCodexContextPicker":
     case "item/plan/requestImplementation":
       return changedRawResult(appendRawStoredRequest(state, request), "stored");
+    case "item/tool/requestSetupCodexContextPicker":
+      return emptyRawResult(state, "responded", [
+        {
+          type: "respond",
+          method: request.method,
+          requestId: request.id,
+          response: { action: "dismiss", selectedSources: [] },
+        },
+      ]);
     case "item/tool/call":
       return reduceRawDynamicToolCallRequest(state, request);
     case "mcpServer/elicitation/request": {
@@ -1173,7 +1303,7 @@ export function reduceCodexServerRequestRawState(
           type: "respond",
           method: request.method,
           requestId: request.id,
-          response: { currentTimeAt: Math.floor(context.now() / 1_000) },
+          response: { currentTimeAt: Math.floor(context.now() / 1000) },
         },
       ]);
     case "account/chatgptAuthTokens/refresh":
@@ -1521,79 +1651,62 @@ function buildCanonicalRawRequestState(
   state: CodexCanonicalConversationState,
 ): CodexServerRequestRawState {
   return {
-    threadId: state.protocol.id,
-    turns: state.turns.map((turn) => ({
-      turnId: turn.protocol.id,
-      status: turn.protocol.status,
-      hasError: turn.protocol.error !== null,
+    threadId: state.id,
+    turns: residentConversationTurns(state).map((turn) => ({
+      turnId: turn.turnId,
+      status: turn.status,
+      hasError: turn.error !== null,
       items: turn.items,
-      hookRuns: turn.sidecar.hookRuns,
-      turnStartedAtMs: turn.sidecar.turnStartedAtMs,
+      hookRuns: turn.hookRuns,
+      turnStartedAtMs: turn.turnStartedAtMs,
     })),
     requests: state.requests,
-    hasUnreadTurn: state.sidecar.hasUnreadTurn,
+    hasUnreadTurn: state.hasUnreadTurn,
   };
 }
 
-function applyCanonicalRawRequestState(
-  state: CodexCanonicalConversationState,
-  source: CodexServerRequestRawState,
-  next: CodexServerRequestRawState,
-): CodexCanonicalConversationState {
-  if (source === next) return state;
-  const turns = state.turns.map((turn, index): CodexCanonicalTurnState => {
-    const sourceRawTurn = source.turns[index];
-    const nextRawTurn = next.turns[index];
-    if (!sourceRawTurn || !nextRawTurn || sourceRawTurn === nextRawTurn) return turn;
-    return {
-      ...turn,
-      protocol: {
-        ...turn.protocol,
-        id: nextRawTurn.turnId,
-        status: nextRawTurn.status,
-      },
-      items: nextRawTurn.items as CodexCanonicalTurnState["items"],
-      sidecar: {
-        ...turn.sidecar,
-        turnStartedAtMs: nextRawTurn.turnStartedAtMs ?? null,
-        ...(nextRawTurn.hookRuns === undefined
-          ? {}
-          : {
-              hookRuns: nextRawTurn.hookRuns as CodexCanonicalTurnState["sidecar"]["hookRuns"],
-            }),
-      },
-    };
-  });
+type RequestMutation = Omit<CodexServerRequestLifecycleResult, "state" | "stateChanged">;
+
+function mutateCanonicalViaRaw(
+  state: Draft<CodexCanonicalConversationState>,
+  plan: (raw: CodexServerRequestRawState) => CodexServerRequestRawLifecycleResult,
+): RequestMutation {
+  const source = buildCanonicalRawRequestState(current(state));
+  const operation = plan(source);
+  for (const mutation of operation.turnMutations) {
+    const entry = residentConversationTurnEntries(state)[mutation.turnIndex];
+    const turn = entry ? conversationTurnDraft(state, entry.address) : null;
+    if (!turn) continue;
+    turn.turnId = mutation.turn.turnId;
+    turn.status = mutation.turn.status;
+    turn.turnStartedAtMs = mutation.turn.turnStartedAtMs ?? null;
+    turn.hookRuns ??= [];
+    const index = turn.items.findIndex((item) => item.id === mutation.syntheticItem.id);
+    if (index < 0)
+      turn.items.push(mutation.syntheticItem as Draft<CodexCanonicalRequestSyntheticItem>);
+    else turn.items[index] = mutation.syntheticItem as Draft<CodexCanonicalRequestSyntheticItem>;
+  }
+  if (source.requests !== operation.state.requests) {
+    Object.assign(state, { requests: operation.state.requests });
+  }
+  state.hasUnreadTurn = operation.state.hasUnreadTurn;
   return {
-    ...state,
-    turns,
-    requests: next.requests,
-    sidecar: { ...state.sidecar, hasUnreadTurn: next.hasUnreadTurn },
+    effects: operation.effects,
+    disposition: operation.disposition,
+    turnMutations: operation.turnMutations,
+    selectedRequests: operation.selectedRequests,
+    selectedRequestIds: operation.selectedRequestIds,
   };
 }
 
-function wrapCanonicalRawResult(
-  state: CodexCanonicalConversationState,
-  source: CodexServerRequestRawState,
-  result: CodexServerRequestRawLifecycleResult,
-): CodexServerRequestLifecycleResult {
-  return {
-    state: result.stateChanged ? applyCanonicalRawRequestState(state, source, result.state) : state,
-    effects: result.effects,
-    disposition: result.disposition,
-    stateChanged: result.stateChanged,
-    turnMutations: result.turnMutations,
-    selectedRequests: result.selectedRequests,
-    selectedRequestIds: result.selectedRequestIds,
-  };
-}
-
-function reduceCanonicalViaRaw(
-  state: CodexCanonicalConversationState,
-  reduce: (raw: CodexServerRequestRawState) => CodexServerRequestRawLifecycleResult,
-): CodexServerRequestLifecycleResult {
-  const source = buildCanonicalRawRequestState(state);
-  return wrapCanonicalRawResult(state, source, reduce(source));
+export function mutateCodexConversationServerRequest(
+  state: Draft<CodexCanonicalConversationState>,
+  request: CodexCanonicalServerRequest,
+  context: CodexServerRequestLifecycleContext,
+): RequestMutation {
+  return mutateCanonicalViaRaw(state, (raw) =>
+    reduceCodexServerRequestRawState(raw, request, context),
+  );
 }
 
 export function reduceCodexConversationServerRequest(
@@ -1601,8 +1714,20 @@ export function reduceCodexConversationServerRequest(
   request: CodexCanonicalServerRequest,
   context: CodexServerRequestLifecycleContext,
 ): CodexServerRequestLifecycleResult {
-  return reduceCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestRawState(raw, request, context),
+  let operation!: RequestMutation;
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationServerRequest(draft, request, context);
+  });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+
+export function mutateCodexConversationServerRequestResolved(
+  state: Draft<CodexCanonicalConversationState>,
+  notification: CodexServerRequestResolvedNotification,
+  context: CodexServerRequestLifecycleContext,
+): RequestMutation {
+  return mutateCanonicalViaRaw(state, (raw) =>
+    reduceCodexServerRequestResolvedRawState(raw, notification, context),
   );
 }
 
@@ -1611,8 +1736,20 @@ export function reduceCodexConversationServerRequestResolved(
   notification: CodexServerRequestResolvedNotification,
   context: CodexServerRequestLifecycleContext,
 ): CodexServerRequestLifecycleResult {
-  return reduceCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestResolvedRawState(raw, notification, context),
+  let operation!: RequestMutation;
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationServerRequestResolved(draft, notification, context);
+  });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+
+export function mutateCodexConversationApprovalResponse(
+  state: Draft<CodexCanonicalConversationState>,
+  requestId: RequestId,
+  expectedMethod: CodexApprovalRequestMethod,
+): RequestMutation {
+  return mutateCanonicalViaRaw(state, (raw) =>
+    reduceCodexServerRequestApprovalResponseRawState(raw, requestId, expectedMethod),
   );
 }
 
@@ -1621,8 +1758,21 @@ export function reduceCodexConversationApprovalResponse(
   requestId: RequestId,
   expectedMethod: CodexApprovalRequestMethod,
 ): CodexServerRequestLifecycleResult {
-  return reduceCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestApprovalResponseRawState(raw, requestId, expectedMethod),
+  let operation!: RequestMutation;
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationApprovalResponse(draft, requestId, expectedMethod);
+  });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+
+export function mutateCodexConversationPermissionResponse(
+  state: Draft<CodexCanonicalConversationState>,
+  requestId: RequestId,
+  response: PermissionsRequestApprovalResponse,
+  context: CodexServerRequestLifecycleContext,
+): RequestMutation {
+  return mutateCanonicalViaRaw(state, (raw) =>
+    reduceCodexServerRequestPermissionResponseRawState(raw, requestId, response, context),
   );
 }
 
@@ -1632,8 +1782,21 @@ export function reduceCodexConversationPermissionResponse(
   response: PermissionsRequestApprovalResponse,
   context: CodexServerRequestLifecycleContext,
 ): CodexServerRequestLifecycleResult {
-  return reduceCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestPermissionResponseRawState(raw, requestId, response, context),
+  let operation!: RequestMutation;
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationPermissionResponse(draft, requestId, response, context);
+  });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+
+export function mutateCodexConversationUserInputResponse(
+  state: Draft<CodexCanonicalConversationState>,
+  requestId: RequestId,
+  answers: Readonly<Record<string, readonly string[] | undefined>>,
+  context: CodexServerRequestLifecycleContext,
+): RequestMutation {
+  return mutateCanonicalViaRaw(state, (raw) =>
+    reduceCodexServerRequestUserInputResponseRawState(raw, requestId, answers, context),
   );
 }
 
@@ -1643,8 +1806,21 @@ export function reduceCodexConversationUserInputResponse(
   answers: Readonly<Record<string, readonly string[] | undefined>>,
   context: CodexServerRequestLifecycleContext,
 ): CodexServerRequestLifecycleResult {
-  return reduceCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestUserInputResponseRawState(raw, requestId, answers, context),
+  let operation!: RequestMutation;
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationUserInputResponse(draft, requestId, answers, context);
+  });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+
+export function mutateCodexConversationMcpElicitationResponse(
+  state: Draft<CodexCanonicalConversationState>,
+  requestId: RequestId,
+  response: McpServerElicitationRequestResponse,
+  context: CodexServerRequestLifecycleContext,
+): RequestMutation {
+  return mutateCanonicalViaRaw(state, (raw) =>
+    reduceCodexServerRequestMcpElicitationResponseRawState(raw, requestId, response, context),
   );
 }
 
@@ -1654,8 +1830,19 @@ export function reduceCodexConversationMcpElicitationResponse(
   response: McpServerElicitationRequestResponse,
   context: CodexServerRequestLifecycleContext,
 ): CodexServerRequestLifecycleResult {
-  return reduceCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestMcpElicitationResponseRawState(raw, requestId, response, context),
+  let operation!: RequestMutation;
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationMcpElicitationResponse(draft, requestId, response, context);
+  });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+
+export function mutateCodexConversationOnboardingInputResponse(
+  state: Draft<CodexCanonicalConversationState>,
+  requestId: RequestId,
+): RequestMutation {
+  return mutateCanonicalViaRaw(state, (raw) =>
+    reduceCodexServerRequestOnboardingInputResponseRawState(raw, requestId),
   );
 }
 
@@ -1663,8 +1850,20 @@ export function reduceCodexConversationOnboardingInputResponse(
   state: CodexCanonicalConversationState,
   requestId: RequestId,
 ): CodexServerRequestLifecycleResult {
-  return reduceCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestOnboardingInputResponseRawState(raw, requestId),
+  let operation!: RequestMutation;
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationOnboardingInputResponse(draft, requestId);
+  });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+
+export function mutateCodexConversationSetupCodexStepResponse(
+  state: Draft<CodexCanonicalConversationState>,
+  requestId: RequestId,
+  response: CodexCanonicalSetupCodexStepResponse,
+): RequestMutation {
+  return mutateCanonicalViaRaw(state, (raw) =>
+    reduceCodexServerRequestSetupCodexStepResponseRawState(raw, requestId, response),
   );
 }
 
@@ -1673,8 +1872,19 @@ export function reduceCodexConversationSetupCodexStepResponse(
   requestId: RequestId,
   response: CodexCanonicalSetupCodexStepResponse,
 ): CodexServerRequestLifecycleResult {
-  return reduceCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestSetupCodexStepResponseRawState(raw, requestId, response),
+  let operation!: RequestMutation;
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationSetupCodexStepResponse(draft, requestId, response);
+  });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+
+export function mutateCodexConversationOptionPickerResponse(
+  state: Draft<CodexCanonicalConversationState>,
+  requestId: RequestId,
+): RequestMutation {
+  return mutateCanonicalViaRaw(state, (raw) =>
+    reduceCodexServerRequestOptionPickerResponseRawState(raw, requestId),
   );
 }
 
@@ -1682,8 +1892,19 @@ export function reduceCodexConversationOptionPickerResponse(
   state: CodexCanonicalConversationState,
   requestId: RequestId,
 ): CodexServerRequestLifecycleResult {
-  return reduceCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestOptionPickerResponseRawState(raw, requestId),
+  let operation!: RequestMutation;
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationOptionPickerResponse(draft, requestId);
+  });
+  return { ...operation, state: next, stateChanged: next !== state };
+}
+
+export function mutateCodexConversationSetupContextPickerResponse(
+  state: Draft<CodexCanonicalConversationState>,
+  requestId: RequestId,
+): RequestMutation {
+  return mutateCanonicalViaRaw(state, (raw) =>
+    reduceCodexServerRequestSetupContextPickerResponseRawState(raw, requestId),
   );
 }
 
@@ -1691,9 +1912,11 @@ export function reduceCodexConversationSetupContextPickerResponse(
   state: CodexCanonicalConversationState,
   requestId: RequestId,
 ): CodexServerRequestLifecycleResult {
-  return reduceCanonicalViaRaw(state, (raw) =>
-    reduceCodexServerRequestSetupContextPickerResponseRawState(raw, requestId),
-  );
+  let operation!: RequestMutation;
+  const next = produce(state, (draft) => {
+    operation = mutateCodexConversationSetupContextPickerResponse(draft, requestId);
+  });
+  return { ...operation, state: next, stateChanged: next !== state };
 }
 
 /** Exact local `B4e` request half for adapters without canonical snapshots. */
@@ -1726,46 +1949,57 @@ export function applyCodexPlanImplementationTurnStartedRawState(
 }
 
 /** Exact local `B4e` request half; plan-item completion stays with its owner. */
+export function mutateCodexCanonicalPlanImplementationRequestCompletion(
+  state: Draft<CodexCanonicalConversationState>,
+  turnId: string,
+): void {
+  state.requests = state.requests.filter(
+    (request) =>
+      request.method !== "item/plan/requestImplementation" || request.params.turnId !== turnId,
+  );
+}
 export function completeCodexCanonicalPlanImplementationRequest(
   state: CodexCanonicalConversationState,
   turnId: string,
 ): CodexCanonicalConversationState {
-  const source = buildCanonicalRawRequestState(state);
-  return applyCanonicalRawRequestState(
-    state,
-    source,
-    completeCodexPlanImplementationRequestRawState(source, turnId),
+  return produce(state, (draft) =>
+    mutateCodexCanonicalPlanImplementationRequestCompletion(draft, turnId),
   );
 }
-
+export function mutateCodexCanonicalPlanImplementationCompletion(
+  state: Draft<CodexCanonicalConversationState>,
+  turnId: string,
+): void {
+  mutateCodexCanonicalPlanImplementationRequestCompletion(state, turnId);
+  for (const entry of residentConversationTurnEntries(state)) {
+    if (entry.turn.turnId !== turnId) continue;
+    for (const item of conversationTurnDraft(state, entry.address)!.items) {
+      if (item.type === "planImplementation" && "isCompleted" in item) item.isCompleted = true;
+    }
+  }
+}
 export function completeCodexCanonicalPlanImplementationState(
   state: CodexCanonicalConversationState,
   turnId: string,
 ): CodexCanonicalConversationState {
-  const withoutRequest = completeCodexCanonicalPlanImplementationRequest(state, turnId);
-  let changed = false;
-  const turns = withoutRequest.turns.map((turn) => {
-    if (turn.protocol.id !== turnId) return turn;
-    const items = turn.items.map((item) => {
-      if (item.type !== "planImplementation" || item.isCompleted) return item;
-      changed = true;
-      return { ...item, isCompleted: true };
-    });
-    return changed ? { ...turn, items } : turn;
-  });
-  return changed ? { ...withoutRequest, turns } : withoutRequest;
+  return produce(state, (draft) => mutateCodexCanonicalPlanImplementationCompletion(draft, turnId));
 }
-
-/** Exact turn-start request half: retain only the active turn's private plan request. */
+export function mutateCodexCanonicalPlanImplementationTurnStarted(
+  state: Draft<CodexCanonicalConversationState>,
+  activeTurnId: string,
+): void {
+  state.requests = state.requests.filter(
+    (request) =>
+      request.method !== "item/plan/requestImplementation" ||
+      request.params.turnId === activeTurnId,
+  );
+}
 export function applyCodexCanonicalPlanImplementationTurnStartedState(
   state: CodexCanonicalConversationState,
   activeTurnId: string,
 ): CodexCanonicalConversationState {
-  const source = buildCanonicalRawRequestState(state);
-  return applyCanonicalRawRequestState(
-    state,
-    source,
-    applyCodexPlanImplementationTurnStartedRawState(source, activeTurnId),
+  return produce(state, (draft) =>
+    mutateCodexCanonicalPlanImplementationTurnStarted(draft, activeTurnId),
   );
 }
 

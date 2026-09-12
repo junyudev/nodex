@@ -5,6 +5,7 @@ import type { WorktreeStartMode } from "../../shared/types";
 import type { CodexExecutionHostFileDescriptor } from "./codex-execution-host-file-transfer";
 
 export const CODEX_WORKTREE_WORKER_OPERATIONS = [
+  "git-root",
   "create",
   "list",
   "inspect",
@@ -54,6 +55,14 @@ export type CodexManagedWorktreeSnapshotPolicy = "required" | "best-effort" | "e
 interface CodexWorktreeWorkerRequestIdentity {
   readonly requestId: string;
   readonly hostId: string;
+}
+
+export interface CodexWorktreeWorkerGitRootInput extends CodexWorktreeWorkerRequestIdentity {
+  readonly cwd: string;
+}
+
+export interface CodexWorktreeWorkerGitRootResult {
+  readonly root: string | null;
 }
 
 export interface CodexWorktreeWorkerCreateInput extends CodexWorktreeWorkerRequestIdentity {
@@ -323,6 +332,7 @@ export interface CodexWorktreeWorkerCleanupTransferHandoffResult {
 }
 
 export type CodexWorktreeWorkerRequest =
+  | { readonly operation: "git-root"; readonly input: CodexWorktreeWorkerGitRootInput }
   | {
       readonly operation: "create";
       readonly input: CodexWorktreeWorkerCreateInput;
@@ -359,6 +369,7 @@ export type CodexWorktreeWorkerRequest =
     };
 
 export type CodexWorktreeWorkerSuccess =
+  | { readonly operation: "git-root"; readonly value: CodexWorktreeWorkerGitRootResult }
   | { readonly operation: "create"; readonly value: CodexWorktreeWorkerCreateResult }
   | { readonly operation: "list"; readonly value: CodexWorktreeWorkerListResult }
   | { readonly operation: "inspect"; readonly value: CodexWorktreeWorkerInspectResult }

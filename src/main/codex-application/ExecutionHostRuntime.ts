@@ -49,6 +49,7 @@ import {
 } from "./ExecutionHostConfiguration";
 
 const WORKTREE_CAPABILITIES = [
+  "git-root",
   "create",
   "list",
   "inspect",

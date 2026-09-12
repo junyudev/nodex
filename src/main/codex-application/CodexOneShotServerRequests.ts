@@ -15,7 +15,6 @@ export type CodexOneShotServerRequest = Extract<
     readonly method:
       | "account/chatgptAuthTokens/refresh"
       | "applyPatchApproval"
-      | "attestation/generate"
       | "currentTime/read"
       | "execCommandApproval";
   }
@@ -24,7 +23,6 @@ export type CodexOneShotServerRequest = Extract<
 const methods: ReadonlySet<CodexOneShotServerRequest["method"]> = new Set([
   "account/chatgptAuthTokens/refresh",
   "applyPatchApproval",
-  "attestation/generate",
   "currentTime/read",
   "execCommandApproval",
 ]);

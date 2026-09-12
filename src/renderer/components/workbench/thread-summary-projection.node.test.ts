@@ -3,7 +3,7 @@ import type { ProjectSessionThreadLink } from "@/lib/types";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
 
 describe("projectSessionThreadLinkToSummary", () => {
-  test("preserves the durable execution profile used by the active thread", () => {
+  test("preserves durable execution identity used by the active thread", () => {
     const executionProfile = {
       modelId: "gpt-5.5",
       reasoningEffort: "high",
@@ -15,7 +15,7 @@ describe("projectSessionThreadLinkToSummary", () => {
       threadId: "thread_1",
       threadPreview: "Keep the thread-owned profile.",
       backendBinding: { kind: "codex" },
-      executionHostId: "local",
+      executionHostId: "ssh:builder",
       executionProfile,
       statusType: "idle",
       statusActiveFlags: [],
@@ -25,6 +25,9 @@ describe("projectSessionThreadLinkToSummary", () => {
       linkedAt: "2026-07-28T00:00:00.000Z",
     };
 
-    expect(projectSessionThreadLinkToSummary(link).executionProfile).toEqual(executionProfile);
+    expect(projectSessionThreadLinkToSummary(link)).toMatchObject({
+      executionHostId: "ssh:builder",
+      executionProfile,
+    });
   });
 });

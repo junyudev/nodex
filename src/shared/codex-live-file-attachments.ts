@@ -24,3 +24,12 @@ export function dedupeCodexLiveFileAttachments<T extends CodexLiveFileAttachment
   }
   return result;
 }
+
+export function isCodexLiveFileAttachment(value: unknown): value is CodexLiveFileAttachment {
+  if (value === null || typeof value !== "object") return false;
+  return (
+    typeof Reflect.get(value, "label") === "string" &&
+    typeof Reflect.get(value, "path") === "string" &&
+    typeof Reflect.get(value, "fsPath") === "string"
+  );
+}

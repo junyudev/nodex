@@ -96,6 +96,8 @@ it.effect("commits interruption without waking queued work before terminal compl
       const runCommand: ConversationEntityMap["Service"]["runCommand"] = (threadId, operation) =>
         Effect.sync(() => events.push(`lane:${threadId}`)).pipe(Effect.andThen(operation));
       const runtimes = ConversationEntityMap.of({
+        registerThreadMetadata: () => {},
+        readThreadMetadata: () => null,
         runCommand,
       } as unknown as ConversationEntityMap["Service"]);
       const context = yield* Layer.build(
@@ -239,6 +241,8 @@ it.effect("shares one absolute deadline across the root interrupt and Subagent s
               Layer.succeed(
                 ConversationEntityMap,
                 ConversationEntityMap.of({
+                  registerThreadMetadata: () => {},
+                  readThreadMetadata: () => null,
                   runCommand,
                 } as unknown as ConversationEntityMap["Service"]),
               ),

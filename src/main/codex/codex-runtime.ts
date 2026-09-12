@@ -24,7 +24,7 @@ export type ResolvedCodexRuntime = {
   metadataPath: string | null;
   missingBinaryMessage: string;
   rootPath: string;
-  runtimeFamily: "codex-app-server";
+  runtimeFamily: "codex";
   source: CodexRuntimeSource;
   version: string | null;
 };

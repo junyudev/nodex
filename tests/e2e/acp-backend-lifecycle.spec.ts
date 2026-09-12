@@ -179,6 +179,10 @@ test("persists an ACP backend and resumes its protocol session after restart", a
       sessionId,
       instanceConfigId,
       prompt: "Start the ACP lifecycle scenario",
+      firstSubmission: {
+        launchId: createUuidV7(),
+        clientUserMessageId: createUuidV7(),
+      },
     });
     const threadId = started.thread.threadId;
     expect(started.thread.backendBinding).toEqual({

@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import type { DiagnosticsSettings } from "../../shared/types";
-import { captureMainException, initializeMainSentry, resetMainSentryForTests } from "./sentry-main";
+import {
+  captureMainException,
+  initializeMainSentry,
+  resetMainSentryForTests,
+  runMainTraceSpan,
+} from "./sentry-main";
 
 function buildSettings(overrides: Partial<DiagnosticsSettings> = {}): DiagnosticsSettings {
   return {
@@ -117,5 +122,15 @@ describe("main Sentry diagnostics", () => {
     expect(hint.tags?.channel).toBe("settings:diagnostics:update");
     expect(hint.extra?.prompt).toBe("[REDACTED]");
     expect(hint.extra?.cwd).toBe("/Users/[user]/project");
+  });
+
+  test("preserves an incoming W3C trace when tracing is inactive", () => {
+    const trace = {
+      traceparent: "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+      tracestate: "vendor=value",
+    };
+    expect(
+      runMainTraceSpan({ name: "test", op: "test", trace }, (activeTrace) => activeTrace),
+    ).toEqual(trace);
   });
 });

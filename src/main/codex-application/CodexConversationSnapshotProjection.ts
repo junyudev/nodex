@@ -1,3 +1,4 @@
+import { residentConversationTurns } from "../../shared/codex-conversation-state/codex-turn-mutation";
 import type {
   CodexCanonicalConversationState,
   CodexCanonicalTurnState,
@@ -18,13 +19,12 @@ const asCurrentView = (item: CodexConversationTurn["items"][number]): CodexItemV
 export const projectCodexConversationThreadSettings = (
   state: CodexCanonicalConversationState,
 ): CodexConversationThreadSettings | null => {
-  const hydration = state.sidecar.hydrationContext;
-  const settings = state.sidecar.latestThreadSettings ?? hydration?.latestThreadSettings;
+  const hydration = state.hydrationContext;
+  const settings = state.latestThreadSettings ?? hydration?.latestThreadSettings;
   if (!settings) return null;
   return {
     model: settings.model ?? hydration?.latestModel ?? hydration?.model ?? "",
-    modelProvider:
-      "modelProvider" in settings ? settings.modelProvider : state.protocol.modelProvider,
+    modelProvider: "modelProvider" in settings ? settings.modelProvider : state.modelProvider,
     serviceTier: settings.serviceTier ?? null,
     reasoningEffort: settings.effort ?? null,
     summary: settings.summary ?? null,
@@ -38,26 +38,24 @@ export const projectCodexConversationMetadataSnapshot = (input: {
   readonly conversation: CodexConversationSnapshot;
   readonly state: CodexCanonicalConversationState;
 }): CodexConversationSnapshot => {
-  const settings = input.state.sidecar.latestThreadSettings;
-  const hydration = input.state.sidecar.hydrationContext;
-  const permissions = settings ?? hydration?.currentPermissions ?? null;
-  const status = parseThreadStatus(input.state.protocol.status);
+  const settings = input.state.latestThreadSettings;
+  const permissions = input.state.currentPermissions ?? settings ?? null;
+  const status = parseThreadStatus(input.state.threadRuntimeStatus);
   const projectedSettings = projectCodexConversationThreadSettings(input.state);
   return {
     ...input.conversation,
-    threadName: input.state.protocol.name?.trim() || input.conversation.threadName,
-    threadPreview: input.state.protocol.preview,
-    cwd: input.state.protocol.cwd,
+    threadName: input.state.title?.trim() || input.conversation.threadName,
+    cwd: input.state.cwd,
     approvalPolicy: permissions?.approvalPolicy ?? input.conversation.approvalPolicy ?? null,
     approvalsReviewer:
       permissions?.approvalsReviewer ?? input.conversation.approvalsReviewer ?? null,
     sandbox: permissions?.sandboxPolicy ?? input.conversation.sandbox ?? null,
-    latestCollaborationMode: projectedSettings?.collaborationMode ?? undefined,
+    latestCollaborationMode: input.state.latestCollaborationMode,
     latestThreadSettings: projectedSettings,
-    latestTokenUsageInfo: input.state.sidecar.latestTokenUsageInfo ?? null,
-    threadGoal: input.state.sidecar.threadGoal ?? null,
-    completedThreadGoal: input.state.sidecar.completedThreadGoal ?? null,
-    threadGoalResumeConfirmation: input.state.sidecar.threadGoalResumeConfirmation ?? null,
+    latestTokenUsageInfo: input.state.latestTokenUsageInfo ?? null,
+    threadGoal: input.state.threadGoal ?? null,
+    completedThreadGoal: input.state.completedThreadGoal ?? null,
+    threadGoalResumeConfirmation: input.state.threadGoalResumeConfirmation ?? null,
     statusType: status.statusType,
     statusActiveFlags: status.statusActiveFlags,
     threadRuntimeStatus: status.threadRuntimeStatus,
@@ -72,14 +70,10 @@ export const projectCodexConversationTurn = (input: {
   readonly current: CodexConversationTurn | null;
   readonly observedAtMs: number;
 }): CodexConversationTurn => {
-  const turnId = input.afterTurn.protocol.id;
+  const turnId = input.afterTurn.turnId;
   const projection = applyCodexLifecycleProjectionDiff({
     threadId: input.threadId,
-    turnKey: buildCodexTurnOccurrenceKey(
-      turnId,
-      input.turnIndex,
-      input.afterTurn.sidecar.entityKey,
-    ),
+    turnKey: buildCodexTurnOccurrenceKey(turnId, input.turnIndex, input.afterTurn.entityKey),
     beforeTurn: input.beforeTurn,
     afterTurn: input.afterTurn,
     currentViews: input.current?.items.map(asCurrentView) ?? [],
@@ -89,50 +83,47 @@ export const projectCodexConversationTurn = (input: {
     preserveExistingUpdatedAt: true,
   });
 
-  return {
+  const result: CodexConversationTurn = {
     ...input.current,
     threadId: input.threadId,
     turnId,
-    ...(input.afterTurn.sidecar.entityKey === undefined
-      ? {}
-      : { entityKey: input.afterTurn.sidecar.entityKey }),
-    status: input.afterTurn.protocol.status,
-    errorMessage: input.afterTurn.protocol.error?.message ?? undefined,
-    ...(input.afterTurn.sidecar.diff === null
-      ? { diff: undefined }
-      : { diff: input.afterTurn.sidecar.diff }),
+    ...(input.afterTurn.entityKey === undefined ? {} : { entityKey: input.afterTurn.entityKey }),
+    status: input.afterTurn.status,
+    errorMessage: input.afterTurn.error?.message ?? undefined,
+    ...(input.afterTurn.diff === null ? { diff: undefined } : { diff: input.afterTurn.diff }),
     itemIds:
       turnId === null
         ? [...new Set(projection.transcript.map((entry) => entry.itemId))]
         : [...projection.itemIds],
-    turnStartedAtMs: input.afterTurn.sidecar.turnStartedAtMs,
-    firstTurnWorkItemStartedAtMs: input.afterTurn.sidecar.firstTurnWorkItemStartedAtMs,
-    finalAssistantStartedAtMs: input.afterTurn.sidecar.finalAssistantStartedAtMs,
-    startedAt: input.afterTurn.sidecar.turnStartedAtMs,
-    completedAt: input.afterTurn.sidecar.completedAtMs ?? null,
-    durationMs: input.afterTurn.protocol.durationMs,
+    turnStartedAtMs: input.afterTurn.turnStartedAtMs,
+    firstTurnWorkItemStartedAtMs: input.afterTurn.firstTurnWorkItemStartedAtMs,
+    finalAssistantStartedAtMs: input.afterTurn.finalAssistantStartedAtMs,
+    startedAt: input.afterTurn.turnStartedAtMs,
+    completedAt: input.afterTurn.completedAtMs ?? null,
+    durationMs: input.afterTurn.durationMs,
     commandExecutionStartedAtMsById:
-      input.afterTurn.sidecar.commandExecutionStartedAtMsById === undefined
+      input.afterTurn.commandExecutionStartedAtMsById === undefined
         ? undefined
-        : { ...input.afterTurn.sidecar.commandExecutionStartedAtMsById },
+        : { ...input.afterTurn.commandExecutionStartedAtMsById },
     interruptedCommandExecutionItemIds:
-      input.afterTurn.sidecar.interruptedCommandExecutionItemIds === undefined
+      input.afterTurn.interruptedCommandExecutionItemIds === undefined
         ? undefined
-        : [...input.afterTurn.sidecar.interruptedCommandExecutionItemIds],
-    hookRuns:
-      input.afterTurn.sidecar.hookRuns === undefined
-        ? undefined
-        : [...input.afterTurn.sidecar.hookRuns],
+        : [...input.afterTurn.interruptedCommandExecutionItemIds],
+    hookRuns: input.afterTurn.hookRuns === undefined ? undefined : [...input.afterTurn.hookRuns],
     safetyBuffering:
-      input.afterTurn.sidecar.safetyBuffering === undefined
+      input.afterTurn.safetyBuffering === undefined
         ? undefined
         : {
-            ...input.afterTurn.sidecar.safetyBuffering,
-            useCases: [...input.afterTurn.sidecar.safetyBuffering.useCases],
-            reasons: [...input.afterTurn.sidecar.safetyBuffering.reasons],
+            ...input.afterTurn.safetyBuffering,
+            useCases: [...input.afterTurn.safetyBuffering.useCases],
+            reasons: [...input.afterTurn.safetyBuffering.reasons],
           },
     items: projection.transcript.map((entry) => ({ ...entry })),
   };
+  // Clear absent optional fields, including values retained from the previous Turn view.
+  return Object.fromEntries(
+    Object.entries(result).filter(([, value]) => value !== undefined),
+  ) as CodexConversationTurn;
 };
 
 /**
@@ -153,16 +144,17 @@ export const projectCodexConversationSnapshot = (input: {
     ...conversation,
     canonicalState: input.after,
     canonicalRequests: [...input.after.requests],
-    hasUnreadTurn: input.after.sidecar.hasUnreadTurn,
-    turns: input.after.turns.map((afterTurn, turnIndex) => {
-      const turnId = afterTurn.protocol.id;
-      const beforeAtIndex = input.before?.turns[turnIndex] ?? null;
+    hasUnreadTurn: input.after.hasUnreadTurn,
+    turns: residentConversationTurns(input.after).map((afterTurn, turnIndex) => {
+      const turnId = afterTurn.turnId;
+      const beforeAtIndex = residentConversationTurns(input.before)[turnIndex] ?? null;
       const beforeTurn =
-        beforeAtIndex?.protocol.id === turnId
+        beforeAtIndex?.turnId === turnId
           ? beforeAtIndex
-          : (input.before?.turns.find((turn) => turn.protocol.id === turnId) ?? null);
+          : (residentConversationTurns(input.before).find((turn) => turn.turnId === turnId) ??
+            null);
       const currentAtIndex = conversation.turns[turnIndex] ?? null;
-      const entityKey = afterTurn.sidecar.entityKey;
+      const entityKey = afterTurn.entityKey;
       const current =
         (entityKey !== undefined && currentAtIndex?.entityKey === entityKey) ||
         currentAtIndex?.turnId === turnId

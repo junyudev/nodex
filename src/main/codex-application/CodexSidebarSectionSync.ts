@@ -13,6 +13,7 @@ import * as Semaphore from "effect/Semaphore";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { createUuidV7 } from "../../shared/uuid-v7";
+import { CoreModuleResponseError } from "../core-client/core-client";
 import type { ProjectWorkspaceIntent, ProjectWorkspaceReadSnapshot } from "../core-client/types";
 import { CoreModules } from "../core-runtime/CoreModules";
 import { createOperationId } from "../core-runtime/operation-identity";
@@ -93,6 +94,23 @@ const isUnsupportedSectionCapability = (cause: unknown): boolean =>
   cause.reason === "request" &&
   !cause.retryable;
 
+const findCoreModuleResponseError = (
+  cause: unknown,
+  seen: ReadonlySet<unknown> = new Set(),
+): CoreModuleResponseError | null => {
+  if (cause instanceof CoreModuleResponseError) return cause;
+  if (cause === null || typeof cause !== "object" || seen.has(cause) || !("cause" in cause)) {
+    return null;
+  }
+  return findCoreModuleResponseError(cause.cause, new Set([...seen, cause]));
+};
+
+/** A stale Core snapshot invalidates the whole reconciliation plan, so rebuild it from scratch. */
+const isCoreReconciliationInvalidation = (cause: unknown): boolean => {
+  const error = findCoreModuleResponseError(cause);
+  return error?.coreError.code === "revision_conflict" || error?.coreError.code === "not_found";
+};
+
 const normalizedRemoteName = (name: string): string => {
   const normalized = name.trim().slice(0, 120);
   return normalized || "Imported section";
@@ -118,6 +136,7 @@ const hostLink = (input: {
 const retrySchedule = Schedule.max([Schedule.exponential("250 millis"), Schedule.recurs(3)]).pipe(
   Schedule.jittered,
 );
+const CORE_RECONCILIATION_RESTART_LIMIT = 3;
 
 interface HostedTask {
   readonly threadId: string;
@@ -925,11 +944,26 @@ export const make: Effect.Effect<
     };
   });
 
+  const reconcileHostFromFreshCore = Effect.fn(
+    "CodexSidebarSectionSync.reconcileHostFromFreshCore",
+  )(function* (hostId: string, reason: SyncReason) {
+    for (let restart = 0; ; restart += 1) {
+      const attempt = yield* Effect.result(reconcileHost(hostId, reason));
+      if (attempt._tag === "Success") return attempt.success;
+      if (
+        restart >= CORE_RECONCILIATION_RESTART_LIMIT ||
+        !isCoreReconciliationInvalidation(attempt.failure)
+      ) {
+        return yield* attempt.failure;
+      }
+    }
+  });
+
   const syncHost = (hostId: string, reason: SyncReason = "manual") =>
     Effect.scoped(
       Effect.gen(function* () {
         const lane = yield* RcMap.get(lanes, hostId);
-        return yield* lane.withPermit(reconcileHost(hostId, reason));
+        return yield* lane.withPermit(reconcileHostFromFreshCore(hostId, reason));
       }),
     ).pipe(
       Effect.retry({

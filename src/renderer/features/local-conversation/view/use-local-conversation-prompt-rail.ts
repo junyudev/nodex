@@ -10,7 +10,10 @@ import type {
   CodexPromptRailRevealTarget,
 } from "../../../../shared/codex-prompt-rail-history";
 import type { CodexThreadHistoryFeatureUnavailable } from "../../../../shared/codex-thread-history-features";
-import { loadCodexPromptRailIndex, revealCodexPromptRailTurn } from "../../../lib/api";
+import {
+  loadLocalConversationPromptRailIndex,
+  revealLocalConversationPromptRailTurn,
+} from "../local-conversation-store";
 import type { ThreadUserMessageNavigationItem } from "../thread-stage-types";
 import {
   buildLocalConversationPromptRailItems,
@@ -39,24 +42,20 @@ export interface LocalConversationPromptRailClient {
   ) => Promise<CodexPromptRailRevealCommandResult>;
 }
 
-const defaultClient: LocalConversationPromptRailClient = {
-  loadIndex: loadCodexPromptRailIndex,
-  reveal: revealCodexPromptRailTurn,
-};
-
 export interface UseLocalConversationPromptRailInput {
   readonly enabled: boolean;
+  readonly hostId?: string | null;
   readonly threadId: string | null;
   readonly topologyGeneration: number | null;
   readonly residentItems: readonly ThreadUserMessageNavigationItem[];
   readonly client?: LocalConversationPromptRailClient;
-  /** The owner publishes the bounded Main-authored mutation; renderer never constructs history. */
+  /** The owner hydrates the selected native match only when navigating. */
   readonly publishReveal: (reveal: CodexPromptRailReveal) => Promise<void>;
   readonly revealResidentItem?: (
     item: ThreadUserMessageNavigationItem,
     mode: ThreadUserMessageNavigationRevealMode,
   ) => HTMLElement | null | Promise<HTMLElement | null>;
-  /** Resolves the real resident navigation item after the reveal mutation has rendered. */
+  /** Resolves the real resident navigation item after the selected history window has rendered. */
   readonly revealInstalledTurn?: (
     reveal: CodexPromptRailReveal,
     mode: ThreadUserMessageNavigationRevealMode,
@@ -156,12 +155,7 @@ const currentRevealResult = (input: {
     reveal.hostId !== input.hostId ||
     reveal.generation !== input.generation ||
     reveal.turnId !== input.turnId ||
-    reveal.mutation.threadId !== input.threadId ||
-    reveal.mutation.topologyGeneration !== reveal.topologyGeneration ||
-    reveal.mutation.origin.kind !== "island" ||
-    reveal.mutation.origin.threadId !== input.threadId ||
-    reveal.mutation.origin.mutationId !== input.requestId ||
-    reveal.mutation.origin.expectedTopologyGeneration !== input.topologyGeneration
+    reveal.topologyGeneration !== input.topologyGeneration
   ) {
     return null;
   }
@@ -173,6 +167,7 @@ export function useLocalConversationPromptRail(
 ): LocalConversationPromptRailController {
   const {
     enabled,
+    hostId,
     publishReveal,
     residentItems,
     revealInstalledTurn,
@@ -180,7 +175,14 @@ export function useLocalConversationPromptRail(
     threadId,
     topologyGeneration,
   } = input;
-  const client = input.client ?? defaultClient;
+  const client = useMemo<LocalConversationPromptRailClient>(
+    () =>
+      input.client ?? {
+        loadIndex: (request) => loadLocalConversationPromptRailIndex(request, hostId),
+        reveal: revealLocalConversationPromptRailTurn,
+      },
+    [hostId, input.client],
+  );
   const [index, setIndex] = useState<CodexPromptRailIndex | null>(null);
   const [previewsByTurnId, setPreviewsByTurnId] = useState<
     ReadonlyMap<string, readonly CodexPromptRailPreview[]>
@@ -331,7 +333,6 @@ export function useLocalConversationPromptRail(
           };
           // A completed response means Main already committed the island. Publication must win
           // over a late UI abort so owner and followers cannot diverge from Main.
-          await publishReveal(reveal);
           const activeContext = activeContextRef.current;
           const isCurrentContext =
             activeContext === contextKey ||
@@ -365,7 +366,7 @@ export function useLocalConversationPromptRail(
       revealRequestRef.current = { contextKey, requestId, targetTurnId, controller, promise };
       return promise;
     },
-    [client, contextKey, effectiveIndex, publishReveal, threadId, topologyGeneration],
+    [client, contextKey, effectiveIndex, threadId, topologyGeneration],
   );
 
   const previewItem = useCallback(
@@ -382,8 +383,7 @@ export function useLocalConversationPromptRail(
       target: CodexPromptRailRevealTarget,
       mode: ThreadUserMessageNavigationRevealMode,
     ): Promise<HTMLElement | null> => {
-      // A preview mutation may have been evicted before the user clicks. A click is an exact
-      // navigation command, so it never trusts a completed hover cache.
+      // Navigation revalidates the native locator before loading its resident window.
       const reveal = await loadReveal(target, { reuseCompleted: false });
       const activeContext = activeContextRef.current;
       const isCurrentContext =
@@ -404,9 +404,11 @@ export function useLocalConversationPromptRail(
       ) {
         return null;
       }
+      await publishReveal(reveal);
+      if (controller.signal.aborted) return null;
       return (await revealInstalledTurn?.(reveal, mode, controller.signal)) ?? null;
     },
-    [contextKey, loadReveal, revealInstalledTurn, topologyGeneration],
+    [contextKey, loadReveal, publishReveal, revealInstalledTurn, topologyGeneration],
   );
 
   const revealItem = useCallback(

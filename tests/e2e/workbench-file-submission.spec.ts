@@ -15,7 +15,6 @@ import {
   waitForCompletedAgentTurn,
   waitForFinalMarker,
 } from "./support/agent-smoke-harness";
-import { workbenchScriptedTitle } from "./support/workbench-scripted-title";
 
 const finalResponse = (id: string, text: string) =>
   responses.stream([
@@ -30,7 +29,6 @@ test("long file paths retain exact submission context before and after pinning",
   await withScriptedModelServer(
     {
       exchanges: [
-        workbenchScriptedTitle,
         {
           name: "show a file reference",
           expectedCalls: 1,

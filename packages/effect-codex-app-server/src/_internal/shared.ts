@@ -17,6 +17,25 @@ export const JsonRpcResponseEnvelope = Schema.Struct({
   error: Schema.optional(JsonRpcError),
 });
 
+/**
+ * Match JSON object serialization before schema encoding. JavaScript request builders commonly
+ * retain optional keys with an `undefined` value; those keys do not exist on the JSON wire. Keep
+ * undefined array entries intact so schemas still reject values that JSON would otherwise coerce.
+ */
+const omitUndefinedObjectProperties = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(omitUndefinedObjectProperties);
+  if (value === null || typeof value !== "object") return value;
+
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return value;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, entry]) => entry !== undefined)
+      .map(([key, entry]) => [key, omitUndefinedObjectProperties(entry)]),
+  );
+};
+
 export const decodeOptionalPayload = <A, I>(
   method: string,
   schema: Schema.Codec<A, I> | undefined,
@@ -31,7 +50,7 @@ export const decodeOptionalPayload = <A, I>(
     );
   }
 
-  return Schema.decodeUnknownEffect(schema)(raw).pipe(
+  return Schema.decodeUnknownEffect(schema, { onExcessProperty: "preserve" })(raw).pipe(
     Effect.mapError((error) =>
       CodexError.CodexAppServerRequestError.invalidPayload(method, "decode-payload", error),
     ),
@@ -52,7 +71,8 @@ export const encodeOptionalPayload = <A, I>(
     );
   }
 
-  return Schema.encodeEffect(schema)(payload).pipe(
+  const wirePayload = omitUndefinedObjectProperties(payload) as A;
+  return Schema.encodeEffect(schema, { onExcessProperty: "preserve" })(wirePayload).pipe(
     Effect.mapError((error) =>
       CodexError.CodexAppServerRequestError.invalidPayload(method, "encode-payload", error),
     ),

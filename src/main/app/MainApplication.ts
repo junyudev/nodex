@@ -13,6 +13,8 @@ export class MainApplication extends Context.Service<
     readonly handleBootstrapEvent: (
       event: BootstrapRuntimeEvent,
     ) => Effect.Effect<void, MainApplicationError>;
+    /** Finish renderer persistence while its application services are still admitted. */
+    readonly prepareShutdown: Effect.Effect<void>;
     readonly readiness: "ready" | "startup-failed";
   }
 >()("nodex/main/app/MainApplication") {}
