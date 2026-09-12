@@ -1,0 +1,27 @@
+docs/RELIABILITY.md
+  s_a5eaa05fd0049d::t_c64b6e2a464bee 426-432
+src/main/codex-runtime/CodexRequestScheduler.node.test.ts
+  s_a5eaa05fd0049d::t_546d90f8453b22 79-95,97-106,108-118,286-331
+src/main/codex-runtime/CodexRequestScheduler.ts
+  s_a5eaa05fd0049d::t_a0959a1aab8efc 128,318,527,550-552,584
+src/main/codex-runtime/CodexRequestSchedulerPolicy.node.test.ts
+  s_a5eaa05fd0049d::t_e25a6ab079905c 90,123,135,137,152,158-162,172,175,195,215
+src/main/codex-runtime/CodexRequestSchedulerPolicy.ts
+  s_a5eaa05fd0049d::t_2c10bf7979aea2 196,265,270-280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a8f18a440d48e0749639958e12cea5fe0a374e84",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
