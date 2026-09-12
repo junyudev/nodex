@@ -1,0 +1,36 @@
+docs/product-specs/codex-thread-owner-follower-streaming.md
+  s_a5eaa05fd0049d::t_63bcee106b4199 4,19,61,82,92,94
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_a5eaa05fd0049d::t_f08d231f95026a 4111-4112,4116,4135
+  s_a5eaa05fd0049d::t_c9307b41546bba 4113-4115,4119-4121
+  s_a5eaa05fd0049d::t_231a04670250e7 10526,10528,10554,10561,10563,10611-10615
+src/renderer/features/local-conversation/local-conversation-stream-state.node.test.ts
+  s_a5eaa05fd0049d::t_9bf095739224e2 51-53,61,67-72,84-89
+  s_a5eaa05fd0049d::t_231a04670250e7 123,131
+  s_a5eaa05fd0049d::t_ede8ed4171452f 54-60,62-66,73-83
+src/renderer/features/local-conversation/local-conversation-stream-state.ts
+  s_a5eaa05fd0049d::t_231a04670250e7 9-11,159,161-162
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_a5eaa05fd0049d::t_0e27579dfcb4b4 3767,3771
+  s_a5eaa05fd0049d::t_9bf095739224e2 3675,3736-3737
+  s_a5eaa05fd0049d::t_40705c51f51865 3745-3754,3759,3769-3770,3772-3778
+  s_a5eaa05fd0049d::t_fe6d0326d08114 430
+  s_a5eaa05fd0049d::t_c9307b41546bba 2819-2820,3173-3174
+  s_a5eaa05fd0049d::t_27b182c709a12d 3755-3758,3760-3766,3768
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5a321e81dea551a7d8afeceb5174671aed6a1ff1",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
