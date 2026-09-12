@@ -314,7 +314,7 @@ describe("CanvasSceneOutbox", () => {
     expect(await second.list(projectAccessContext, "document-1")).toEqual([sharedIntent]);
   });
 
-  test("migrates valid v1 requests to access-scoped v4 intents", async () => {
+  test("retains v1 requests for review without guessing their Library", async () => {
     const factory = new IDBFactory();
     await openVersionOneDatabase(factory, [
       versionOneRequest("mutation-1", 1),
@@ -324,13 +324,19 @@ describe("CanvasSceneOutbox", () => {
     const outbox = new IndexedDbCanvasSceneOutbox(factory, libraryId);
     const migrated = await outbox.list(projectAccessContext, "document-1");
 
-    expect(migrated.map((entry) => entry.mutationId)).toEqual(["mutation-1", "mutation-2"]);
-    expect(migrated).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ clientSessionId: "dead-window" })]),
+    expect(migrated).toEqual([]);
+    const page = await outbox.staging.listSummaries(
+      { libraryId, accessContext: { kind: "library" } },
+      null,
+      null,
     );
+    expect(page.entries).toHaveLength(2);
+    expect(page.entries.every((entry) => entry.scope === null)).toBe(true);
+    const bytes = await outbox.staging.export(page.entries[0]);
+    expect(new TextDecoder().decode(bytes)).toContain("dead-window");
   });
 
-  test("migrates active and quarantined v3 rows without losing order or metadata", async () => {
+  test("retains all v3 sources without authorizing their replay", async () => {
     const factory = new IDBFactory();
     const first = legacyProjectMutationIntent("mutation-1", 1);
     const second = legacyProjectMutationIntent("mutation-2", 2);
@@ -355,30 +361,35 @@ describe("CanvasSceneOutbox", () => {
     );
 
     const outbox = new IndexedDbCanvasSceneOutbox(factory, libraryId);
-    expect(
-      (await outbox.list(projectAccessContext, "document-1")).map((entry) => entry.mutationId),
-    ).toEqual(["mutation-1", "mutation-2"]);
-    expect(await outbox.listQuarantined(projectAccessContext, "document-1")).toEqual([
-      {
-        intent: {
-          ...intent("mutation-rejected", 3),
-        },
-        error: rejection,
-        rejectedAt: 456,
-      },
-    ]);
-    const foreignLibraryOutbox = new IndexedDbCanvasSceneOutbox(factory, "library-foreign");
-    expect(await foreignLibraryOutbox.list(projectAccessContext, "document-1")).toEqual([]);
+    expect(await outbox.list(projectAccessContext, "document-1")).toEqual([]);
+    expect(await outbox.listQuarantined(projectAccessContext, "document-1")).toEqual([]);
+    const page = await outbox.staging.listSummaries(
+      { libraryId, accessContext: { kind: "library" } },
+      null,
+      null,
+    );
+    expect(page.entries).toHaveLength(3);
+    expect(page.entries.every((entry) => entry.scope === null)).toBe(true);
+    const retained = await outbox.staging.export(page.entries[2]);
+    expect(new TextDecoder().decode(retained)).toContain("invalid legacy image assertion");
   });
 
-  test("fails a v1 upgrade visibly when a row is invalid", async () => {
+  test("keeps a malformed v1 source exportable without blocking the directory", async () => {
     const factory = new IDBFactory();
     await openVersionOneDatabase(factory, [
       { ...versionOneRequest("mutation-1", 1), elementCandidates: null },
     ]);
 
-    await expect(
-      new IndexedDbCanvasSceneOutbox(factory, libraryId).list(projectAccessContext, "document-1"),
-    ).rejects.toThrow();
+    const outbox = new IndexedDbCanvasSceneOutbox(factory, libraryId);
+    expect(await outbox.list(projectAccessContext, "document-1")).toEqual([]);
+    const page = await outbox.staging.listSummaries(
+      { libraryId, accessContext: { kind: "library" } },
+      null,
+      null,
+    );
+    expect(page.entries).toHaveLength(1);
+    expect(new TextDecoder().decode(await outbox.staging.export(page.entries[0]))).toContain(
+      '"elementCandidates":null',
+    );
   });
 });

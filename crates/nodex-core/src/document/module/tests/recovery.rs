@@ -53,6 +53,42 @@ fn inspect_draft(seeded: &SeededModule) -> RecoveryDraftInspection {
     };
     *inspection
 }
+fn preview_draft(
+    seeded: &SeededModule,
+    inspection: &RecoveryDraftInspection,
+    view: RecoveryPreviewView,
+) -> Option<RecoveryPreview> {
+    let result = seeded
+        .module
+        .read(
+            &context(),
+            ModuleReadRequest {
+                contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
+                read: OwnedDocumentRead::Recovery {
+                    read: RecoveryRead::Preview {
+                        request: RecoveryPreviewRequest {
+                            draft_id: inspection.summary.draft_id.clone(),
+                            revision: inspection.summary.revision,
+                            expected_generation: inspection.current_generation,
+                            expected_head_seq: inspection.current_head_seq,
+                            view,
+                        },
+                    },
+                },
+            },
+        )
+        .expect("preview");
+    let OwnedDocumentReadValue::Recovery {
+        value: RecoveryReadValue::Preview { result },
+    } = result.value
+    else {
+        panic!("preview result");
+    };
+    match result {
+        RecoveryPreviewResult::Complete { preview } => Some(preview),
+        _ => None,
+    }
+}
 fn resolve(inspection: &RecoveryDraftInspection, choice: RecoveryChoice) -> OwnedDocumentIntent {
     OwnedDocumentIntent::ResolveRecovery {
         resolve: RecoveryDraftResolve {
@@ -243,7 +279,7 @@ fn restore_and_resolution_survive_lost_ack_without_applying_twice() {
     );
     let after = inspect_draft(&seeded);
     assert!(
-        matches!(after.current, Some(RecoveryPreview::Document { ref title, .. }) if title == "Retained edits")
+        matches!(preview_draft(&seeded, &after, RecoveryPreviewView::Current), Some(RecoveryPreview::Document { ref title, .. }) if title == "Retained edits")
     );
     assert_eq!(after.current_head_seq, Some(2));
 }
@@ -412,7 +448,9 @@ fn canvas_draft_restores_only_its_elements_and_preserves_the_other_scene_content
         .expect("restore Canvas");
     let after = inspect_draft(&seeded);
     assert_eq!(after.summary.resolution, Some(RecoveryResolution::Restored));
-    let Some(RecoveryPreview::Canvas { scene, .. }) = after.current else {
+    let Some(RecoveryPreview::Canvas { scene, .. }) =
+        preview_draft(&seeded, &after, RecoveryPreviewView::Current)
+    else {
         panic!("Canvas preview");
     };
     assert_eq!(scene["elements"].as_array().unwrap().len(), 2);
@@ -542,6 +580,38 @@ fn pending_count_includes_drafts_beyond_the_summary_page_and_corrupt_bytes_remai
     assert_eq!(page.drafts.len(), 1);
     assert_eq!(page.pending_count, 1);
     assert!(page.next_cursor.is_some());
+    let exported = seeded
+        .module
+        .export_recovery(&context(), "draft:zzz")
+        .unwrap();
+    assert_eq!(&exported[..4], b"NDRE");
+    let original_header_length = u32::from_le_bytes(exported[8..12].try_into().unwrap()) as usize;
+    let original_manifest: RecoveryExportManifest =
+        serde_json::from_slice(&exported[12..12 + original_header_length]).unwrap();
+    // Damaged storage remains diagnostic evidence; export reports both recorded and actual digests.
+    seeded.kernel.writer().call(|connection| {
+        connection.execute("UPDATE document_recovery_drafts SET payload = x'00ff01' WHERE draft_id = 'draft:zzz'", [])?;
+        Ok(())
+    }).unwrap();
+    let exported = seeded
+        .module
+        .export_recovery(&context(), "draft:zzz")
+        .unwrap();
+    let header_length = u32::from_le_bytes(exported[8..12].try_into().unwrap()) as usize;
+    let manifest: RecoveryExportManifest =
+        serde_json::from_slice(&exported[12..12 + header_length]).unwrap();
+    assert_eq!(
+        manifest.expected_payload_sha256,
+        Some(original_manifest.payload_sha256)
+    );
+    assert_eq!(
+        manifest.payload_sha256,
+        hex::encode(<sha2::Sha256 as sha2::Digest>::digest([0, 255, 1]))
+    );
+    assert_eq!(
+        &exported[12 + header_length..15 + header_length],
+        &[0, 255, 1]
+    );
 }
 
 #[test]
@@ -597,7 +667,9 @@ fn conflicting_canvas_draft_copies_the_retained_intent_without_overwriting_the_c
     assert!(!inspection.can_restore);
     assert!(inspection.can_copy);
     assert!(!inspection.already_saved);
-    let Some(RecoveryPreview::Canvas { scene, .. }) = &inspection.retained else {
+    let Some(RecoveryPreview::Canvas { scene, .. }) =
+        preview_draft(&seeded, &inspection, RecoveryPreviewView::Retained)
+    else {
         panic!("retained scene");
     };
     assert_eq!(scene["elements"][0]["x"], 20);
@@ -1072,4 +1144,106 @@ fn canvas_recovery_rebuilds_missing_slots_but_never_reuses_a_changed_binding() {
             })
             .unwrap();
     }
+}
+
+#[test]
+fn legacy_receipt_equivalence_preserves_bytes_and_reconcile_does_not_grow_receipts() {
+    let seeded = seeded_module();
+    let mut value = capture(changed_state(&seeded));
+    value.source = json!({"submission": {"id": "original", "bytes": [0, 255, 1]}, "note": "原始"});
+    seeded
+        .module
+        .apply(
+            &context(),
+            request(
+                "initial",
+                OwnedDocumentIntent::CaptureRecovery {
+                    capture: Box::new(value.clone()),
+                },
+            ),
+        )
+        .unwrap();
+    let original = serde_json::to_vec_pretty(&value).unwrap();
+    let original_hash = hex::encode(<sha2::Sha256 as sha2::Digest>::digest(&original));
+    let bytes = original.clone();
+    let hash = original_hash.clone();
+    seeded.kernel.writer().call(move |connection| {
+        connection.execute("UPDATE document_recovery_drafts SET payload_encoding = 'legacy_json', payload = ?1, payload_hash = ?2, byte_length = ?3", rusqlite::params![bytes, hash, bytes.len() as i64])?;
+        Ok(())
+    }).unwrap();
+    let bundle =
+        nodex_core_contracts::document::recovery_bundle::encode(&value, "frozen-source").unwrap();
+    let submitted_hash = hex::encode(<sha2::Sha256 as sha2::Digest>::digest(&bundle));
+    let result = seeded
+        .module
+        .capture_recovery_bundle(
+            &context(),
+            "after-upgrade".into(),
+            StoreEpoch(STORE_EPOCH.into()),
+            bundle,
+        )
+        .unwrap();
+    let receipt = result.committed.value.recovery_capture.unwrap();
+    assert_eq!(receipt.source_revision, "frozen-source");
+    assert_eq!(receipt.submitted_payload_hash, submitted_hash);
+    assert_eq!(receipt.stored_payload_hash, original_hash);
+    assert_eq!(receipt.stored_encoding, "legacy_json");
+    seeded
+        .kernel
+        .readers()
+        .read_default(move |connection| {
+            let stored: Vec<u8> = connection.query_row(
+                "SELECT payload FROM document_recovery_drafts",
+                [],
+                |row| row.get(0),
+            )?;
+            assert_eq!(stored, original);
+            Ok(())
+        })
+        .unwrap();
+    let count = || {
+        seeded
+            .kernel
+            .readers()
+            .read_default(|connection| {
+                Ok(connection.query_row(
+                    "SELECT count(*) FROM core_module_receipts",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )?)
+            })
+            .unwrap()
+    };
+    let before = count();
+    for index in 0..3 {
+        let inspection = inspect_draft(&seeded);
+        seeded
+            .module
+            .apply(
+                &context(),
+                request(
+                    &format!("reconcile:{index}"),
+                    resolve(&inspection, RecoveryChoice::Reconcile),
+                ),
+            )
+            .unwrap();
+    }
+    assert_eq!(count(), before);
+    value.source = json!({"submission": {"id": "different"}});
+    assert_eq!(
+        seeded
+            .module
+            .apply(
+                &context(),
+                request(
+                    "different-source",
+                    OwnedDocumentIntent::CaptureRecovery {
+                        capture: Box::new(value)
+                    }
+                )
+            )
+            .unwrap_err()
+            .code,
+        CoreErrorCode::IdempotencyKeyReused
+    );
 }

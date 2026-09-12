@@ -163,7 +163,10 @@ nor content-retention roots. See [ADR 0059](adr/0059-complete-view-order-and-sem
 
 Retained document edits and their resolution belong to Core's Owned Document Module.
 Renderer IndexedDB stages unacknowledged packages, while the semantic DocumentRecovery
-owner coordinates capture and review through typed Main/Core Adapters. Recovery
+owner coordinates capture and review through typed Main/Core Adapters. Full Document
+content and recovery evidence cross named bounded binary Adapters; capability metadata
+and requested previews remain separate projections. Main owns scoped local export
+output; export never changes recovery authority or acknowledgement. Recovery
 resolution and any restored/copied content share one LocalCommit. Product actions
 and retention are specified in [Document Sync and Recovery](product-specs/document-sync-and-recovery-behavior.md).
 

@@ -120,6 +120,11 @@ export interface CoreModuleClients {
     ) => CoreEffect<StoreAdministrationApplyResult>;
   };
   readonly document: {
+    readonly captureRecovery: (
+      input: import("../core-client/types").RecoveryCaptureInput,
+      projectId?: string | null,
+    ) => CoreEffect<OwnedDocumentApplyResult>;
+    readonly exportRecovery: (draftId: string, projectId?: string | null) => CoreEffect<Uint8Array>;
     readonly read: (
       clientSessionId: string,
       read: OwnedDocumentRead,
@@ -294,6 +299,20 @@ export const live: Layer.Layer<CoreModules, never, CoreSessionAccess> = Layer.ef
         ),
       },
       document: {
+        captureRecovery: Effect.fn("CoreModules.document.captureRecovery")((input, projectId) =>
+          access.use(
+            "document.captureRecovery",
+            (client, signal) => client.documentCaptureRecovery(input, { signal }),
+            { projectId },
+          ),
+        ),
+        exportRecovery: Effect.fn("CoreModules.document.exportRecovery")((draftId, projectId) =>
+          access.use(
+            "document.exportRecovery",
+            (client, signal) => client.documentExportRecovery(draftId, { signal }),
+            { projectId },
+          ),
+        ),
         read: Effect.fn("CoreModules.document.read")((clientSessionId, read, options, projectId) =>
           access.use(
             "document.read",

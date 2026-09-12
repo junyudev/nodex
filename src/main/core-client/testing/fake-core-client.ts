@@ -487,6 +487,15 @@ export class FakeCoreClient implements CoreClientPort {
     return result;
   }
 
+  async documentCaptureRecovery(): Promise<OwnedDocumentApplyResult> {
+    const result = this.#documentApplyResults.shift();
+    if (!result) throw new Error("Fake Core client has no queued recovery capture");
+    return result;
+  }
+  async documentExportRecovery(): Promise<Uint8Array> {
+    throw new Error("Fake Core client has no queued recovery export");
+  }
+
   async documentApply(
     input: OwnedDocumentApplyInput,
     options?: CoreRequestOptions,

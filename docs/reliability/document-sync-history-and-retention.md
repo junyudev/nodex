@@ -402,3 +402,37 @@ maintenance.
 
 Incremental vacuum may reclaim freed SQLite pages gradually. Retention and
 compaction are storage maintenance, never user-visible undo.
+
+## Recovery transport and local staging
+
+Recovery capture uses a versioned binary bundle with a bounded manifest and
+hash-checked sections. Repeated engine bytes share a section; evidence retains
+original submission identities, ordering, boundaries and bytes. Ordinary JSON
+metadata retains its structural limits. Document Module byte reads and writes
+use named binary transport and preserve subscription authorization and mutation
+identity. Canvas mutation events and owned Document receipts accommodate the
+complete permitted mutation independently of ordinary metadata budgets.
+
+Core stores the exact accepted payload and encoding. Legacy payloads retain their
+original bytes and digest. A retry in another encoding requires complete decoded
+equality before acknowledging the submitted digest; it cannot replace stored
+evidence. Package and captured File companion sizes are charged together.
+
+Each local package freezes its source revision, capture identity, bundle and
+digest before transmission. Retries reuse that identity. Only an exact durable
+receipt followed by a compare-and-delete retires the source. Discovery does not
+require Core availability; a persistent bounded cursor gives later packages a
+turn despite earlier permanent failures. Invalid historical rows remain visible
+and exportable. Unverifiable Library provenance prevents automatic submission.
+User resolution intents are validated and scoped by Library, access and epoch;
+late acknowledgements cannot delete a newer intent. An unsuccessful containment
+check does not create another receipt or content commit.
+
+Inspection returns capability metadata independently of display content. Preview
+requests name one view and fence the draft revision and current document boundary.
+Oversized views return a limited result without disabling complete-content
+analysis. Export reads original payload bytes independently of engine decoding or
+preview availability, retaining integrity evidence even for corrupt payloads.
+Main binds sequential export handles to the requesting window and access scope,
+checks length and digest, syncs temporary output and renames it to the selected
+path. Cancellation or failure removes incomplete output, never the retained source.

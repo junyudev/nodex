@@ -108,6 +108,9 @@ pub struct DocumentRecoveryArtifactReference {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CoreErrorRecovery {
+    RecoveryPackage {
+        failure: Box<document::RecoveryPackageFailure>,
+    },
     None,
     CurrentStoreEpoch {
         store_epoch: StoreEpoch,

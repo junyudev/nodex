@@ -28,12 +28,21 @@ pub(crate) const BOUNDED_STREAM_HEADER: &str = "x-nodex-bounded-stream";
 #[derive(Serialize)]
 struct TransportError<'a> {
     error: &'a str,
+    failure: nodex_core_contracts::document::RecoveryPackageFailure,
 }
 
 pub(crate) async fn enforce(mut request: Request, next: Next) -> Response {
     let document_json =
         request.uri().path().starts_with(DOCUMENT_ROUTE_PREFIX) && is_json(request.headers());
-    let request_limit = if document_json {
+    let request_limit = if request.uri().path() == "/core/v1/modules/document/recovery/capture"
+        && request
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            == Some("application/vnd.nodex.recovery-bundle.v1+octet-stream")
+    {
+        nodex_core_contracts::document::MAX_RECOVERY_BUNDLE_BYTES
+    } else if document_json {
         MAX_DOCUMENT_REQUEST_BYTES
     } else if request.uri().path().starts_with(DOCUMENT_ROUTE_PREFIX) {
         document_wire::MAX_DOCUMENT_FRAME_BYTES
@@ -45,9 +54,15 @@ pub(crate) async fn enforce(mut request: Request, next: Next) -> Response {
         MAX_JSON_REQUEST_BYTES
     };
     if content_length_exceeds(request.headers(), request_limit) {
-        return error_response(
+        return bounded_error_response(
             StatusCode::PAYLOAD_TOO_LARGE,
             "request body exceeds its bound",
+            request
+                .headers()
+                .get(CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse().ok()),
+            Some(request_limit),
         );
     }
 
@@ -86,9 +101,15 @@ pub(crate) async fn enforce(mut request: Request, next: Next) -> Response {
         return response;
     };
     if content_length_exceeds(response.headers(), limit) {
-        return error_response(
+        return bounded_error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Core response exceeds its bound",
+            response
+                .headers()
+                .get(CONTENT_LENGTH)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse().ok()),
+            Some(limit),
         );
     }
     let (parts, body) = response.into_parts();
@@ -176,6 +197,9 @@ fn response_limit(headers: &axum::http::HeaderMap) -> Option<usize> {
     if content_type.eq_ignore_ascii_case(document_wire::CONTENT_TYPE) {
         return Some(MAX_DOCUMENT_RESPONSE_BYTES);
     }
+    if content_type.eq_ignore_ascii_case("application/vnd.nodex.recovery-export.v1+octet-stream") {
+        return Some(nodex_core_contracts::document::MAX_RECOVERY_EXPORT_BYTES);
+    }
     if content_type.eq_ignore_ascii_case("application/json") {
         return Some(MAX_JSON_RESPONSE_BYTES);
     }
@@ -191,7 +215,42 @@ fn content_length_exceeds(headers: &axum::http::HeaderMap, limit: usize) -> bool
 }
 
 fn error_response(status: StatusCode, message: &'static str) -> Response {
-    let mut response = (status, Json(TransportError { error: message })).into_response();
+    bounded_error_response(status, message, None, None)
+}
+fn bounded_error_response(
+    status: StatusCode,
+    message: &'static str,
+    actual: Option<usize>,
+    limit: Option<usize>,
+) -> Response {
+    use nodex_core_contracts::document::{
+        RecoveryFailureEffect, RecoveryFailureReason, RecoveryPackageFailure,
+    };
+    let reason = if status == StatusCode::PAYLOAD_TOO_LARGE {
+        RecoveryFailureReason::RequestTooLarge
+    } else if status == StatusCode::BAD_REQUEST {
+        RecoveryFailureReason::InvalidJson
+    } else {
+        RecoveryFailureReason::ResponseTooLarge
+    };
+    let effect = if status.is_server_error() {
+        RecoveryFailureEffect::Unknown
+    } else {
+        RecoveryFailureEffect::NotApplied
+    };
+    let mut response = (
+        status,
+        Json(TransportError {
+            error: message,
+            failure: RecoveryPackageFailure {
+                reason,
+                effect,
+                actual: actual.map(|value| value as u64),
+                limit: limit.map(|value| value as u64),
+            },
+        }),
+    )
+        .into_response();
     response.headers_mut().insert(
         header::CONNECTION,
         header::HeaderValue::from_static("close"),

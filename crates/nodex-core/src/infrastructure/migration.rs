@@ -236,6 +236,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 165,
         apply: migrate_v164_to_v165,
     },
+    MigrationStep {
+        from_revision: 165,
+        to_revision: 166,
+        apply: migrate_v165_to_v166,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2182,6 +2187,21 @@ fn migrate_v164_to_v165(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"optional_actor_attribution":true,"relocation_library_coordinate":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v165_to_v166(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v165_to_v166.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"retained_payload_bytes_preserved":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -4227,6 +4247,77 @@ mod tests {
                 .expect("legacy queue GC schema query")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn recovery_bundle_migration_preserves_exact_legacy_bytes_and_resource_roots() {
+        let mut connection = Connection::open_in_memory().expect("fixture");
+        connection
+            .execute_batch(include_str!("../../schema/published/v164.sql"))
+            .unwrap();
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            transaction.execute_batch(include_str!("../../schema/migrations/v164_to_v165.sql"))?;
+            Ok(())
+        })
+        .unwrap();
+        crate::infrastructure::visibility_delta_journal::install_test_maintenance_context(
+            &connection,
+        )
+        .unwrap();
+        connection.execute_batch("INSERT INTO profiles(id,created_at,updated_at) VALUES ('profile','today','today'); INSERT INTO libraries(id,profile_id,created_at,updated_at) VALUES ('library','profile','today','today');").unwrap();
+        let payload = "{ \"source\": \"保留\", \"bytes\": [0,255] }";
+        let hash =
+            nodex_core_contracts::document::recovery_bundle::payload_hash(payload.as_bytes());
+        connection.execute("INSERT INTO document_recovery_drafts(library_id,draft_id,document_id,source_store_epoch,generation,created_at,received_at,payload_json,payload_hash,byte_length) VALUES ('library','draft','document','epoch',1,'today','today',?1,?2,?3)", params![payload,hash,payload.len() as i64]).unwrap();
+        connection
+            .execute(
+                "INSERT INTO document_recovery_asset_roots VALUES ('library','draft',?1)",
+                ["a".repeat(64)],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO document_recovery_file_snapshots VALUES ('library','draft','{}',?1)",
+                ["b".repeat(64)],
+            )
+            .unwrap();
+        with_schema_rebuild_transaction(&mut connection, |transaction| {
+            migrate_v165_to_v166(
+                transaction,
+                &MigrationContext {
+                    source_revision: 165,
+                    target_revision: 166,
+                    source_schema_fingerprint: published_format(165)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(166)?.schema_fingerprint,
+                    backup_name: "fixture".into(),
+                    completed_at_unix_ms: 1,
+                },
+            )
+        })
+        .unwrap();
+        validate_schema_identity(&connection, 166).unwrap();
+        let stored = connection.query_row("SELECT payload_encoding,payload,payload_hash,byte_length FROM document_recovery_drafts", [], |row| Ok((row.get::<_,String>(0)?,row.get::<_,Vec<u8>>(1)?,row.get::<_,String>(2)?,row.get::<_,i64>(3)?))).unwrap();
+        assert_eq!(
+            stored,
+            (
+                "legacy_json".into(),
+                payload.as_bytes().to_vec(),
+                hash,
+                payload.len() as i64
+            )
+        );
+        for table in [
+            "document_recovery_asset_roots",
+            "document_recovery_file_snapshots",
+        ] {
+            assert_eq!(
+                connection
+                    .query_row(&format!("SELECT count(*) FROM {table}"), [], |row| row
+                        .get::<_, i64>(0))
+                    .unwrap(),
+                1
+            );
+        }
     }
 
     #[test]

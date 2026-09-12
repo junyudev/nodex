@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod document_module_wire;
+
 use nodex_core_contracts::{
     AddressReset, AddressResetReason, ApplyResponse, AuthorizedDeliveryPacket, AuthorizedReadStamp,
     AuthorizedRecipientLease, CORE_EVENT_VERSION, CoreError, DeliveryAddress,
@@ -39,14 +41,15 @@ pub use nodex_store_format::{
     STORE_LINEAGE,
 };
 
-pub const TRANSPORT_PROTOCOL_MIN: u32 = 12;
-pub const TRANSPORT_PROTOCOL_MAX: u32 = 12;
+pub const TRANSPORT_PROTOCOL_MIN: u32 = 13;
+pub const TRANSPORT_PROTOCOL_MAX: u32 = 13;
 pub const MAX_FILE_BLOB_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_MANAGED_BLOB_BYTES: usize = nodex_core_contracts::MAX_MANAGED_BLOB_BYTES as usize;
 pub const COMPATIBILITY_MANIFEST_VERSION: u32 = 1;
 pub const MAX_ORDINARY_JSON_REQUEST_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_ORDINARY_JSON_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
-pub const MAX_EVENT_FRAME_BYTES: usize = (2 * 1024 * 1024) + (256 * 1024);
+pub const MAX_EVENT_FRAME_BYTES: usize =
+    nodex_core_contracts::document::MAX_CANVAS_MUTATION_EVENT_BYTES;
 /// Maximum decoded UTF-8 size of one JSON string on the Document transport.
 ///
 /// This is also the public Page body input bound: JSON escaping may make the
@@ -80,6 +83,17 @@ pub struct ReadFileBlobQuery {
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct CoreTransportBudgets {
+    pub document_metadata_bytes: u64,
+    pub document_content_bytes: u64,
+    pub document_state_vector_bytes: u64,
+    pub document_update_bytes: u64,
+    pub recovery_bundle_bytes: u64,
+    pub recovery_manifest_bytes: u64,
+    pub recovery_manifest_depth: u64,
+    pub recovery_manifest_nodes: u64,
+    pub recovery_sections: u64,
+    pub recovery_export_bytes: u64,
+    pub recovery_preview_bytes: u64,
     pub ordinary_json_request_bytes: u64,
     pub ordinary_json_response_bytes: u64,
     pub event_frame_bytes: u64,
@@ -95,6 +109,17 @@ pub struct CoreTransportBudgets {
 }
 
 pub const CORE_TRANSPORT_BUDGETS: CoreTransportBudgets = CoreTransportBudgets {
+    document_metadata_bytes: document_module_wire::METADATA_BYTES as u64,
+    document_content_bytes: document_module_wire::CONTENT_BYTES as u64,
+    document_state_vector_bytes: document_module_wire::STATE_VECTOR_BYTES as u64,
+    document_update_bytes: document_module_wire::UPDATE_BYTES as u64,
+    recovery_bundle_bytes: nodex_core_contracts::document::MAX_RECOVERY_BUNDLE_BYTES as u64,
+    recovery_manifest_bytes: nodex_core_contracts::document::MAX_RECOVERY_MANIFEST_BYTES as u64,
+    recovery_manifest_depth: nodex_core_contracts::document::MAX_RECOVERY_MANIFEST_DEPTH as u64,
+    recovery_manifest_nodes: nodex_core_contracts::document::MAX_RECOVERY_MANIFEST_NODES as u64,
+    recovery_sections: nodex_core_contracts::document::MAX_RECOVERY_SECTIONS as u64,
+    recovery_export_bytes: nodex_core_contracts::document::MAX_RECOVERY_EXPORT_BYTES as u64,
+    recovery_preview_bytes: nodex_core_contracts::document::MAX_RECOVERY_PREVIEW_BYTES as u64,
     ordinary_json_request_bytes: MAX_ORDINARY_JSON_REQUEST_BYTES as u64,
     ordinary_json_response_bytes: MAX_ORDINARY_JSON_RESPONSE_BYTES as u64,
     event_frame_bytes: MAX_EVENT_FRAME_BYTES as u64,
@@ -1063,6 +1088,31 @@ mod api {
     )]
     pub(super) fn prepare_file_blob() {}
 
+    #[utoipa::path(
+        post, path = "/core/v1/modules/document/recovery/capture",
+        params(
+            ("x-nodex-operation-id" = String, Header), ("x-nodex-store-epoch" = String, Header),
+            ("x-nodex-contract-version" = u32, Header), ("x-nodex-payload-hash" = String, Header),
+            ("x-nodex-request-id" = Option<String>, Header), ("x-nodex-request-class" = Option<CoreRequestClass>, Header),
+            ("x-nodex-request-deadline-ms" = Option<u64>, Header)
+        ),
+        request_body(content = Vec<u8>, content_type = "application/vnd.nodex.recovery-bundle.v1+octet-stream"),
+        responses((status = 200, body = OwnedDocumentApplyResponse))
+    )]
+    pub(super) fn recovery_capture() {}
+
+    #[utoipa::path(
+        post, path = "/core/v1/modules/document/recovery/export",
+        params(
+            ("x-nodex-request-id" = Option<String>, Header),
+            ("x-nodex-request-class" = Option<CoreRequestClass>, Header),
+            ("x-nodex-request-deadline-ms" = Option<u64>, Header)
+        ),
+        request_body = nodex_core_contracts::document::RecoveryExportRequest,
+        responses((status = 200, body = Vec<u8>, content_type = "application/vnd.nodex.recovery-export.v1+octet-stream"))
+    )]
+    pub(super) fn recovery_export() {}
+
     macro_rules! module_paths {
         ($read_fn:ident, $apply_fn:ident, $path:literal, $read:ty, $read_response:ty, $apply:ty, $apply_response:ty) => {
             #[utoipa::path(
@@ -1180,6 +1230,8 @@ mod api {
         api::database_read,
         api::query_read,
         api::database_apply,
+        api::recovery_capture,
+        api::recovery_export,
         api::document_read,
         api::document_apply,
         api::workspace_read,
@@ -1190,6 +1242,10 @@ mod api {
         api::administration_apply,
     ),
     components(schemas(
+        document_module_wire::DocumentModuleFrameMetadata,
+        nodex_core_contracts::document::RecoveryBundleManifest,
+        nodex_core_contracts::document::RecoveryExportRequest,
+        nodex_core_contracts::document::RecoveryExportManifest,
         ProjectWorkspaceIntent,
         AutomationIntent,
         RuntimeDescriptor,
@@ -1295,6 +1351,8 @@ mod tests {
             "/core/v1/modules/database/read",
             "/core/v1/modules/document/apply",
             "/core/v1/modules/document/read",
+            "/core/v1/modules/document/recovery/capture",
+            "/core/v1/modules/document/recovery/export",
             "/core/v1/modules/library/apply",
             "/core/v1/modules/library/read",
             "/core/v1/modules/query/read",
@@ -1330,8 +1388,16 @@ mod tests {
             let parameters = json["paths"][path]["post"]["parameters"]
                 .as_array()
                 .expect("module execution headers");
-            assert_eq!(parameters.len(), 3);
-            assert!(parameters.iter().all(|parameter| {
+            let execution = parameters
+                .iter()
+                .filter(|parameter| {
+                    parameter["name"]
+                        .as_str()
+                        .is_some_and(|name| name.starts_with("x-nodex-request-"))
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(execution.len(), 3);
+            assert!(execution.iter().all(|parameter| {
                 parameter["in"] == "header" && parameter["required"] == false
             }));
         }

@@ -66,7 +66,12 @@ pub(crate) fn reconstruct_document_event(
     connection: &Connection,
     row: &ChangeLogRow,
 ) -> Result<Option<CommittedCoreModuleEvent>, StoreError> {
-    if row.payload_json.len() > MAX_EVENT_PAYLOAD_BYTES {
+    let maximum = if row.kind == "owned_document.canvas_scene_updated" {
+        nodex_core_contracts::document::MAX_CANVAS_MUTATION_EVENT_BYTES
+    } else {
+        MAX_EVENT_PAYLOAD_BYTES
+    };
+    if row.payload_json.len() > maximum {
         return Err(corrupt("Owned Document event payload exceeds its bound"));
     }
     let metadata = serde_json::from_str::<DocumentEventMetadata>(&row.payload_json)

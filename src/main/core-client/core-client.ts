@@ -1,3 +1,12 @@
+import {
+  isBinaryDocumentRead,
+  isBinaryDocumentIntent,
+  encodeDocumentModuleRead,
+  encodeDocumentModuleApply,
+  decodeDocumentModuleRead,
+  decodeDocumentModuleApply,
+} from "../../shared/block-documents/module-http-contract";
+import { encodeRecoveryBundle } from "../../shared/block-documents/recovery-bundle";
 import type { ReadFileBytesInput } from "../../shared/library-files";
 import { readFileBytesSchema } from "../../shared/library-files-transport";
 import { randomUUID } from "node:crypto";
@@ -534,6 +543,23 @@ export class CoreClient implements CoreClientPort {
     read: OwnedDocumentRead,
     options: CoreRequestOptions = {},
   ): Promise<OwnedDocumentReadSnapshot> {
+    if (isBinaryDocumentRead(read)) {
+      const frame = await this.#transport.requestDocumentFrame<OwnedDocumentReadResponse>(
+        "/core/v1/modules/document/read",
+        encodeDocumentModuleRead({
+          contract_version: MODULE_CONTRACT_VERSIONS.ownedDocument,
+          read,
+        }),
+        this.#documentHeaders(clientSessionId, read.document_id),
+        CORE_TRANSPORT_BUDGETS.document_response_bytes,
+        options,
+      );
+      const response =
+        frame.kind === "binary" ? decodeDocumentModuleRead(frame.bytes) : frame.value;
+      if (response.status === "error") throw new CoreModuleResponseError(response.payload);
+      if (frame.kind !== "binary") throw new Error("Core returned JSON for a Document byte read");
+      return response.payload;
+    }
     const response = await this.#transport.requestJson<OwnedDocumentReadResponse>(
       "POST",
       "/core/v1/modules/document/read",
@@ -545,10 +571,95 @@ export class CoreClient implements CoreClientPort {
     throw new CoreModuleResponseError(response.payload);
   }
 
+  async documentCaptureRecovery(
+    input: import("./types").RecoveryCaptureInput,
+    options: CoreRequestOptions = {},
+  ): Promise<OwnedDocumentApplyResult> {
+    const { bundle } = input;
+    const result = await this.#transport.requestBoundedBytes(
+      "POST",
+      "/core/v1/modules/document/recovery/capture",
+      bundle.bytes,
+      {
+        ...this.#documentHeaders(input.clientSessionId),
+        "content-type": "application/vnd.nodex.recovery-bundle.v1+octet-stream",
+        "x-nodex-contract-version": String(MODULE_CONTRACT_VERSIONS.ownedDocument),
+        "x-nodex-operation-id": input.operationId,
+        "x-nodex-store-epoch": this.handshake.store_epoch,
+        "x-nodex-payload-hash": bundle.payloadHash,
+      },
+      CORE_TRANSPORT_BUDGETS.ordinary_json_response_bytes,
+      options,
+    );
+    const response = decodeBoundedJson<OwnedDocumentApplyResponse>(
+      result.bytes,
+      CORE_TRANSPORT_BUDGETS.ordinary_json_response_bytes,
+      "Core recovery capture response",
+    );
+    if (response.status === "ok") return response.payload;
+    throw new CoreModuleResponseError(response.payload);
+  }
+
+  async documentExportRecovery(
+    draftId: string,
+    options: CoreRequestOptions = {},
+  ): Promise<Uint8Array> {
+    const result = await this.#transport.requestBoundedBytes(
+      "POST",
+      "/core/v1/modules/document/recovery/export",
+      new TextEncoder().encode(JSON.stringify({ draft_id: draftId })),
+      { ...this.#documentHeaders("document-recovery"), "content-type": "application/json" },
+      CORE_TRANSPORT_BUDGETS.recovery_export_bytes,
+      options,
+    );
+    if (
+      result.contentType?.split(";", 1)[0] ===
+      "application/vnd.nodex.recovery-export.v1+octet-stream"
+    )
+      return result.bytes;
+    const response = decodeBoundedJson<OwnedDocumentReadResponse>(
+      result.bytes,
+      CORE_TRANSPORT_BUDGETS.ordinary_json_response_bytes,
+      "Core recovery export response",
+    );
+    if (response.status === "error") throw new CoreModuleResponseError(response.payload);
+    throw new Error("Unexpected recovery export response");
+  }
+
   async documentApply(
     input: OwnedDocumentApplyInput,
     options: CoreRequestOptions = {},
   ): Promise<OwnedDocumentApplyResult> {
+    if (input.intent.kind === "capture_recovery") {
+      const bundle = await encodeRecoveryBundle(
+        input.intent.capture,
+        input.intent.capture.draft_id,
+      );
+      return this.documentCaptureRecovery(
+        { operationId: input.operationId, clientSessionId: input.clientSessionId, bundle },
+        options,
+      );
+    }
+    if (isBinaryDocumentIntent(input.intent)) {
+      const frame = await this.#transport.requestDocumentFrame<OwnedDocumentApplyResponse>(
+        "/core/v1/modules/document/apply",
+        encodeDocumentModuleApply({
+          contract_version: MODULE_CONTRACT_VERSIONS.ownedDocument,
+          operation_id: input.operationId,
+          store_epoch: this.handshake.store_epoch,
+          intent: input.intent,
+        }),
+        this.#documentHeaders(input.clientSessionId, input.intent.document_id),
+        CORE_TRANSPORT_BUDGETS.document_response_bytes,
+        options,
+      );
+      const response =
+        frame.kind === "binary" ? decodeDocumentModuleApply(frame.bytes) : frame.value;
+      if (response.status === "error") throw new CoreModuleResponseError(response.payload);
+      if (frame.kind !== "binary")
+        throw new Error("Core returned JSON for a Document byte command");
+      return response.payload;
+    }
     const response = await this.#transport.requestJson<OwnedDocumentApplyResponse>(
       "POST",
       "/core/v1/modules/document/apply",

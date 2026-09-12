@@ -2,8 +2,8 @@ import type { components } from "./generated";
 
 export const CORE_CLIENT_REQUIREMENTS = {
   "transport": {
-    "min": 12,
-    "max": 12
+    "min": 13,
+    "max": 13
   },
   "event_version": 10,
   "modules": [
@@ -17,7 +17,7 @@ export const CORE_CLIENT_REQUIREMENTS = {
     },
     {
       "module": "owned_document",
-      "contract_version": 14
+      "contract_version": 15
     },
     {
       "module": "project_workspace",
@@ -39,13 +39,24 @@ export const CORE_CLIENT_REQUIREMENTS = {
   "accepted_store_formats": [
     {
       "lineage": "nodex-rust-core",
-      "version": 165,
-      "schema_fingerprint": "460130364dab6853a08a49891f016fce7a93a824baebf8ac6e4f9ad5ac9e7c7e"
+      "version": 166,
+      "schema_fingerprint": "83551e9ed841ed25a03efa57284d7d70bc12a17502320ac2c2c1c4a00181cc3d"
     }
   ]
 } as const satisfies components["schemas"]["CoreClientRequirements"];
 
 export const CORE_TRANSPORT_BUDGETS = {
+  "document_metadata_bytes": 8388608,
+  "document_content_bytes": 16777216,
+  "document_state_vector_bytes": 65536,
+  "document_update_bytes": 2097152,
+  "recovery_bundle_bytes": 33554432,
+  "recovery_manifest_bytes": 262144,
+  "recovery_manifest_depth": 32,
+  "recovery_manifest_nodes": 100000,
+  "recovery_sections": 4096,
+  "recovery_export_bytes": 33816588,
+  "recovery_preview_bytes": 524288,
   "ordinary_json_request_bytes": 2097152,
   "ordinary_json_response_bytes": 16777216,
   "event_frame_bytes": 2359296,

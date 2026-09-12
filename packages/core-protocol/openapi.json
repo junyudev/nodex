@@ -1055,6 +1055,192 @@
         }
       }
     },
+    "/core/v1/modules/document/recovery/capture": {
+      "post": {
+        "tags": [
+          "api"
+        ],
+        "operationId": "recovery_capture",
+        "parameters": [
+          {
+            "name": "x-nodex-operation-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-nodex-store-epoch",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-nodex-contract-version",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "x-nodex-payload-hash",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-nodex-request-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-nodex-request-class",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/CoreRequestClass"
+                }
+              ]
+            }
+          },
+          {
+            "name": "x-nodex-request-deadline-ms",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/vnd.nodex.recovery-bundle.v1+octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnedDocumentApplyResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/core/v1/modules/document/recovery/export": {
+      "post": {
+        "tags": [
+          "api"
+        ],
+        "operationId": "recovery_export",
+        "parameters": [
+          {
+            "name": "x-nodex-request-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "x-nodex-request-class",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/CoreRequestClass"
+                }
+              ]
+            }
+          },
+          {
+            "name": "x-nodex-request-deadline-ms",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/vnd.nodex.recovery-export.v1+octet-stream": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "int32",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/core/v1/modules/library/apply": {
       "post": {
         "tags": [
@@ -2994,6 +3180,16 @@
                       }
                     ]
                   },
+                  "recovery_capture": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/RecoveryCaptureReceipt"
+                      }
+                    ]
+                  },
                   "semantic_block_etags": {
                     "type": [
                       "object",
@@ -3154,6 +3350,16 @@
                       },
                       {
                         "$ref": "#/components/schemas/RecoveryDraftSummary"
+                      }
+                    ]
+                  },
+                  "recovery_capture": {
+                    "oneOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "$ref": "#/components/schemas/RecoveryCaptureReceipt"
                       }
                     ]
                   },
@@ -8211,6 +8417,24 @@
           {
             "type": "object",
             "required": [
+              "failure",
+              "kind"
+            ],
+            "properties": {
+              "failure": {
+                "$ref": "#/components/schemas/RecoveryPackageFailure"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "recovery_package"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "kind"
             ],
             "properties": {
@@ -8847,6 +9071,17 @@
       "CoreTransportBudgets": {
         "type": "object",
         "required": [
+          "document_metadata_bytes",
+          "document_content_bytes",
+          "document_state_vector_bytes",
+          "document_update_bytes",
+          "recovery_bundle_bytes",
+          "recovery_manifest_bytes",
+          "recovery_manifest_depth",
+          "recovery_manifest_nodes",
+          "recovery_sections",
+          "recovery_export_bytes",
+          "recovery_preview_bytes",
           "ordinary_json_request_bytes",
           "ordinary_json_response_bytes",
           "event_frame_bytes",
@@ -8866,12 +9101,32 @@
             "format": "int64",
             "minimum": 0
           },
+          "document_content_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
           "document_json_request_bytes": {
             "type": "integer",
             "format": "int64",
             "minimum": 0
           },
+          "document_metadata_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
           "document_response_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "document_state_vector_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "document_update_bytes": {
             "type": "integer",
             "format": "int64",
             "minimum": 0
@@ -8907,6 +9162,41 @@
             "minimum": 0
           },
           "ordinary_json_response_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "recovery_bundle_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "recovery_export_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "recovery_manifest_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "recovery_manifest_depth": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "recovery_manifest_nodes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "recovery_preview_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "recovery_sections": {
             "type": "integer",
             "format": "int64",
             "minimum": 0
@@ -14814,6 +15104,92 @@
           "access_changed",
           "generation_changed",
           "restored"
+        ]
+      },
+      "DocumentModuleFrameMetadata": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "request",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "module_read"
+                ]
+              },
+              "request": {
+                "$ref": "#/components/schemas/OwnedDocumentReadRequest"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "request",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "module_apply"
+                ]
+              },
+              "request": {
+                "$ref": "#/components/schemas/OwnedDocumentApplyRequest"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "response",
+              "state_vector_bytes",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "module_read_response"
+                ]
+              },
+              "response": {
+                "$ref": "#/components/schemas/OwnedDocumentReadResponse"
+              },
+              "state_vector_bytes": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "response",
+              "has_canvas",
+              "kind"
+            ],
+            "properties": {
+              "has_canvas": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "module_apply_response"
+                ]
+              },
+              "response": {
+                "$ref": "#/components/schemas/OwnedDocumentApplyResponse"
+              }
+            }
+          }
         ]
       },
       "DocumentMutationCoordination": {
@@ -40875,6 +41251,196 @@
           }
         ]
       },
+      "RecoveryBundleContent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "state",
+              "unintegrated_updates",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "yjs"
+                ]
+              },
+              "state": {
+                "type": "string"
+              },
+              "unintegrated_updates": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "mutations",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "canvas"
+                ]
+              },
+              "mutations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scene": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "RecoveryBundleManifest": {
+        "type": "object",
+        "description": "NDRB v1 has a 12-byte header followed by this manifest and ordered sections.",
+        "required": [
+          "format_version",
+          "draft_id",
+          "document_id",
+          "source_store_epoch",
+          "source_revision",
+          "generation",
+          "base_head_seq",
+          "created_at",
+          "schema_key",
+          "schema_version",
+          "content",
+          "source",
+          "source_references",
+          "sections"
+        ],
+        "properties": {
+          "base_head_seq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "content": {
+            "$ref": "#/components/schemas/RecoveryBundleContent"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "draft_id": {
+            "type": "string"
+          },
+          "format_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "schema_key": {
+            "type": "string"
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecoveryBundleSection"
+            }
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecoveryEvidenceReference"
+            }
+          },
+          "source_revision": {
+            "type": "string"
+          },
+          "source_store_epoch": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryBundleSection": {
+        "type": "object",
+        "required": [
+          "id",
+          "encoding",
+          "byte_length",
+          "sha256"
+        ],
+        "properties": {
+          "byte_length": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "encoding": {
+            "$ref": "#/components/schemas/RecoverySectionEncoding"
+          },
+          "id": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryCaptureReceipt": {
+        "type": "object",
+        "required": [
+          "draft_id",
+          "source_revision",
+          "submitted_payload_hash",
+          "stored_payload_hash",
+          "stored_encoding",
+          "stored_byte_length"
+        ],
+        "properties": {
+          "draft_id": {
+            "type": "string"
+          },
+          "source_revision": {
+            "type": "string"
+          },
+          "stored_byte_length": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "stored_encoding": {
+            "type": "string"
+          },
+          "stored_payload_hash": {
+            "type": "string"
+          },
+          "submitted_payload_hash": {
+            "type": "string"
+          }
+        }
+      },
       "RecoveryChoice": {
         "oneOf": [
           {
@@ -41062,7 +41628,11 @@
         "type": "object",
         "required": [
           "summary",
-          "capture",
+          "source_store_epoch",
+          "source_generation",
+          "current",
+          "retained",
+          "restored",
           "already_saved",
           "can_restore",
           "can_copy"
@@ -41077,18 +41647,8 @@
           "can_restore": {
             "type": "boolean"
           },
-          "capture": {
-            "$ref": "#/components/schemas/RecoveryDraftCapture"
-          },
           "current": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/RecoveryPreview"
-              }
-            ]
+            "type": "boolean"
           },
           "current_generation": {
             "type": [
@@ -41111,24 +41671,17 @@
             ]
           },
           "restored": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/RecoveryPreview"
-              }
-            ]
+            "type": "boolean"
           },
           "retained": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/RecoveryPreview"
-              }
-            ]
+            "type": "boolean"
+          },
+          "source_generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "source_store_epoch": {
+            "type": "string"
           },
           "summary": {
             "$ref": "#/components/schemas/RecoveryDraftSummary"
@@ -41266,6 +41819,161 @@
           }
         }
       },
+      "RecoveryEvidenceReference": {
+        "type": "object",
+        "description": "References live outside source JSON, so arbitrary user fields remain unambiguous.",
+        "required": [
+          "pointer",
+          "section_id"
+        ],
+        "properties": {
+          "pointer": {
+            "type": "string"
+          },
+          "representation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecoveryEvidenceRepresentation"
+              }
+            ]
+          },
+          "section_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryEvidenceRepresentation": {
+        "type": "string",
+        "enum": [
+          "uint8_array",
+          "array_buffer"
+        ]
+      },
+      "RecoveryExportManifest": {
+        "type": "object",
+        "required": [
+          "format_version",
+          "draft_id",
+          "document_id",
+          "payload_encoding",
+          "payload_byte_length",
+          "payload_sha256",
+          "companion_byte_length",
+          "companion_sha256",
+          "external_files"
+        ],
+        "properties": {
+          "companion_byte_length": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "companion_sha256": {
+            "type": "string"
+          },
+          "document_id": {
+            "type": "string"
+          },
+          "draft_id": {
+            "type": "string"
+          },
+          "expected_payload_sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Original recorded digest, retained for diagnosing damaged payloads."
+          },
+          "external_files": {
+            "type": "boolean",
+            "description": "File contents are external dependencies, not embedded backups."
+          },
+          "format_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "payload_byte_length": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "payload_encoding": {
+            "type": "string"
+          },
+          "payload_sha256": {
+            "type": "string"
+          }
+        }
+      },
+      "RecoveryExportRequest": {
+        "type": "object",
+        "description": "Export preserves payload bytes and the File dependency snapshot without decoding content.",
+        "required": [
+          "draft_id"
+        ],
+        "properties": {
+          "draft_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecoveryFailureEffect": {
+        "type": "string",
+        "enum": [
+          "not_applied",
+          "unknown"
+        ]
+      },
+      "RecoveryFailureReason": {
+        "type": "string",
+        "enum": [
+          "request_too_large",
+          "response_too_large",
+          "manifest_too_large",
+          "invalid_manifest",
+          "invalid_json",
+          "unsupported_format",
+          "unsupported_transport",
+          "invalid_digest",
+          "capacity_exhausted",
+          "source_unverified"
+        ]
+      },
+      "RecoveryPackageFailure": {
+        "type": "object",
+        "required": [
+          "reason",
+          "effect"
+        ],
+        "properties": {
+          "actual": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "effect": {
+            "$ref": "#/components/schemas/RecoveryFailureEffect"
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "reason": {
+            "$ref": "#/components/schemas/RecoveryFailureReason"
+          }
+        }
+      },
       "RecoveryPreview": {
         "oneOf": [
           {
@@ -41330,8 +42038,131 @@
           }
         ]
       },
+      "RecoveryPreviewRequest": {
+        "type": "object",
+        "required": [
+          "draft_id",
+          "revision",
+          "view"
+        ],
+        "properties": {
+          "draft_id": {
+            "type": "string"
+          },
+          "expected_generation": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "expected_head_seq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "view": {
+            "$ref": "#/components/schemas/RecoveryPreviewView"
+          }
+        }
+      },
+      "RecoveryPreviewResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "preview",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "complete"
+                ]
+              },
+              "preview": {
+                "$ref": "#/components/schemas/RecoveryPreview"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "byte_length",
+              "explanation",
+              "kind"
+            ],
+            "properties": {
+              "byte_length": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "explanation": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "limited"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "explanation",
+              "kind"
+            ],
+            "properties": {
+              "explanation": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "unavailable"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "RecoveryPreviewView": {
+        "type": "string",
+        "enum": [
+          "current",
+          "retained",
+          "restored"
+        ]
+      },
       "RecoveryRead": {
         "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "request",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "preview"
+                ]
+              },
+              "request": {
+                "$ref": "#/components/schemas/RecoveryPreviewRequest"
+              }
+            }
+          },
           {
             "type": "object",
             "required": [
@@ -41393,6 +42224,24 @@
           {
             "type": "object",
             "required": [
+              "result",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "preview"
+                ]
+              },
+              "result": {
+                "$ref": "#/components/schemas/RecoveryPreviewResult"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "page",
               "kind"
             ],
@@ -41435,6 +42284,13 @@
           "restored",
           "copied",
           "discarded"
+        ]
+      },
+      "RecoverySectionEncoding": {
+        "type": "string",
+        "enum": [
+          "bytes",
+          "json"
         ]
       },
       "ReminderLease": {
@@ -43064,6 +43920,16 @@
                               }
                             ]
                           },
+                          "recovery_capture": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/components/schemas/RecoveryCaptureReceipt"
+                              }
+                            ]
+                          },
                           "semantic_block_etags": {
                             "type": [
                               "object",
@@ -43224,6 +44090,16 @@
                               },
                               {
                                 "$ref": "#/components/schemas/RecoveryDraftSummary"
+                              }
+                            ]
+                          },
+                          "recovery_capture": {
+                            "oneOf": [
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "$ref": "#/components/schemas/RecoveryCaptureReceipt"
                               }
                             ]
                           },

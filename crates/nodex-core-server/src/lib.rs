@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+use nodex_core_protocol::document_module_wire;
 
 mod connections;
 mod document_live;
@@ -521,6 +522,14 @@ fn route_observability(path: &str) -> (&'static str, &'static str) {
         "/core/v1/modules/administration/apply" => (
             "/core/v1/modules/administration/apply",
             "store_administration",
+        ),
+        "/core/v1/modules/document/recovery/capture" => (
+            "/core/v1/modules/document/recovery/capture",
+            "owned_document",
+        ),
+        "/core/v1/modules/document/recovery/export" => (
+            "/core/v1/modules/document/recovery/export",
+            "owned_document",
         ),
         "/core/v1/modules/document/read" => ("/core/v1/modules/document/read", "owned_document"),
         "/core/v1/modules/document/apply" => ("/core/v1/modules/document/apply", "owned_document"),
@@ -1653,6 +1662,174 @@ async fn administration_apply(
     )))
 }
 
+fn recovery_rejected(
+    reason: nodex_core_contracts::document::RecoveryFailureReason,
+    message: &str,
+    actual: Option<usize>,
+    limit: Option<usize>,
+) -> CoreError {
+    use nodex_core_contracts::document::{RecoveryFailureEffect, RecoveryPackageFailure};
+    CoreError {
+        code: CoreErrorCode::InvalidInput,
+        message: message.into(),
+        retryable: false,
+        recovery: CoreErrorRecovery::RecoveryPackage {
+            failure: Box::new(RecoveryPackageFailure {
+                reason,
+                effect: RecoveryFailureEffect::NotApplied,
+                actual: actual.map(|n| n as u64),
+                limit: limit.map(|n| n as u64),
+            }),
+        },
+    }
+}
+
+async fn recovery_export(State(state): State<Arc<ServerState>>, request: Request) -> Response {
+    let (parts, body) = request.into_parts();
+    let headers = parts.headers;
+    let bound = parts
+        .extensions
+        .get::<BoundConnection>()
+        .cloned()
+        .expect("bound recovery connection");
+    let bytes = match to_bytes(body, 4096).await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return json_document_read_error(invalid("Recovery export request exceeds its bound"));
+        }
+    };
+    let request: nodex_core_contracts::document::RecoveryExportRequest =
+        match serde_json::from_slice(&bytes) {
+            Ok(request) => request,
+            Err(_) => return json_document_read_error(invalid("Invalid recovery export request")),
+        };
+    let request_state = Arc::clone(&state);
+    let request_headers = headers.clone();
+    let request_bound = bound.clone();
+    let response = state
+        .request_executor
+        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
+            let context = document_context(&request_state, &request_headers, &request_bound)?;
+            request_state
+                .document
+                .export_recovery(&context, &request.draft_id)
+        })
+        .await;
+    match response {
+        Ok(bytes) => (
+            [(
+                axum::http::header::CONTENT_TYPE,
+                "application/vnd.nodex.recovery-export.v1+octet-stream",
+            )],
+            bytes,
+        )
+            .into_response(),
+        Err(error) => json_document_read_error(error),
+    }
+}
+
+async fn recovery_capture(State(state): State<Arc<ServerState>>, request: Request) -> Response {
+    let (parts, body) = request.into_parts();
+    let headers = parts.headers;
+    let bound = parts
+        .extensions
+        .get::<BoundConnection>()
+        .cloned()
+        .expect("bound recovery connection");
+    let bytes = match to_bytes(
+        body,
+        nodex_core_contracts::document::MAX_RECOVERY_BUNDLE_BYTES,
+    )
+    .await
+    {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return json_document_apply_error(recovery_rejected(
+                nodex_core_contracts::document::RecoveryFailureReason::RequestTooLarge,
+                "Recovery bundle exceeds its bound",
+                None,
+                Some(nodex_core_contracts::document::MAX_RECOVERY_BUNDLE_BYTES),
+            ));
+        }
+    };
+    let request_state = Arc::clone(&state);
+    let request_headers = headers.clone();
+    let request_bound = bound.clone();
+    let response = state
+        .request_executor
+        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
+            let context = document_context(&request_state, &request_headers, &request_bound)?;
+            if required_header(&request_headers, "content-type", "Recovery content type")?
+                != "application/vnd.nodex.recovery-bundle.v1+octet-stream"
+            {
+                return Err(recovery_rejected(
+                    nodex_core_contracts::document::RecoveryFailureReason::UnsupportedTransport,
+                    "Unsupported recovery content type",
+                    None,
+                    None,
+                ));
+            }
+            let version = required_header(
+                &request_headers,
+                "x-nodex-contract-version",
+                "Recovery contract version",
+            )?;
+            if version
+                != nodex_core_contracts::document::OWNED_DOCUMENT_CONTRACT_VERSION.to_string()
+            {
+                return Err(recovery_rejected(
+                    nodex_core_contracts::document::RecoveryFailureReason::UnsupportedFormat,
+                    "Unsupported recovery contract version",
+                    None,
+                    None,
+                ));
+            }
+            let operation_id = required_header(
+                &request_headers,
+                "x-nodex-operation-id",
+                "Recovery operation",
+            )?;
+            let epoch = required_header(
+                &request_headers,
+                "x-nodex-store-epoch",
+                "Recovery Store epoch",
+            )?;
+            let expected_hash = required_header(
+                &request_headers,
+                "x-nodex-payload-hash",
+                "Recovery payload digest",
+            )?;
+            if nodex_core_contracts::document::recovery_bundle::payload_hash(&bytes)
+                != expected_hash
+            {
+                return Err(recovery_rejected(
+                    nodex_core_contracts::document::RecoveryFailureReason::InvalidDigest,
+                    "Recovery payload digest does not match",
+                    None,
+                    None,
+                ));
+            }
+            let outcome = request_state.document.capture_recovery_bundle(
+                &context,
+                operation_id.clone(),
+                nodex_core_contracts::StoreEpoch(epoch),
+                bytes.to_vec(),
+            )?;
+            let committed = outcome.committed;
+            let duplicate = committed.receipt.mutation.duplicate;
+            build_authorized_apply_response(
+                &request_state,
+                ModuleName::OwnedDocument,
+                &operation_id,
+                &context,
+                duplicate,
+                committed,
+            )
+        })
+        .await;
+    Json(OwnedDocumentApplyResponse(response_envelope(response))).into_response()
+}
+
 async fn document_read(State(state): State<Arc<ServerState>>, request: Request) -> Response {
     let (parts, body) = request.into_parts();
     let headers = parts.headers;
@@ -1689,6 +1866,19 @@ async fn document_read(State(state): State<Arc<ServerState>>, request: Request) 
         Ok(request) => request,
         Err(_) => return json_document_read_error(invalid("Document read request is invalid")),
     };
+    if matches!(
+        &request.read,
+        OwnedDocumentRead::SyncYjs { .. }
+            | OwnedDocumentRead::FetchUpdate { .. }
+            | OwnedDocumentRead::RecoveryArtifact { .. }
+    ) {
+        return json_document_read_error(recovery_rejected(
+            nodex_core_contracts::document::RecoveryFailureReason::UnsupportedTransport,
+            "This Document read requires its binary transport",
+            None,
+            None,
+        ));
+    }
     if let OwnedDocumentRead::PrepareAgentSemanticMutation { operation_id, .. } = &request.read {
         record_operation("owned_document", operation_id);
     }
@@ -1698,45 +1888,12 @@ async fn document_read(State(state): State<Arc<ServerState>>, request: Request) 
             return Json(OwnedDocumentReadResponse(response_envelope(Err(error)))).into_response();
         }
     };
-    let client_session_id = if matches!(&request.read, OwnedDocumentRead::SyncYjs { .. }) {
-        match required_header(&headers, CLIENT_SESSION_HEADER, "Document client session") {
-            Ok(value) => Some(value),
-            Err(error) => {
-                return Json(OwnedDocumentReadResponse(response_envelope(Err(error))))
-                    .into_response();
-            }
-        }
-    } else {
-        None
-    };
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
-        .execute(
-            &bound.id,
-            &headers,
-            RequestClass::Interactive,
-            move || match request.read {
-                OwnedDocumentRead::SyncYjs {
-                    document_id,
-                    state_vector,
-                    history_after_head_seq,
-                } => request_state.document_realtime.sync_yjs(
-                    &context,
-                    client_session_id.as_deref().expect("validated session"),
-                    document_id,
-                    state_vector,
-                    history_after_head_seq,
-                ),
-                read => request_state.document.read(
-                    &context,
-                    nodex_core_contracts::ModuleReadRequest {
-                        contract_version: request.contract_version,
-                        read,
-                    },
-                ),
-            },
-        )
+        .execute(&bound.id, &headers, RequestClass::Interactive, move || {
+            request_state.document.read(&context, request)
+        })
         .await;
     Json(OwnedDocumentReadResponse(response_envelope(response))).into_response()
 }
@@ -1779,6 +1936,19 @@ async fn document_apply(State(state): State<Arc<ServerState>>, request: Request)
         Ok(request) => request,
         Err(_) => return json_document_apply_error(invalid("Document apply request is invalid")),
     };
+    if matches!(
+        &request.intent,
+        OwnedDocumentIntent::CaptureRecovery { .. }
+            | OwnedDocumentIntent::ApplyYjsUpdate { .. }
+            | OwnedDocumentIntent::ApplyCanvasMutation { .. }
+    ) {
+        return json_document_apply_error(recovery_rejected(
+            nodex_core_contracts::document::RecoveryFailureReason::UnsupportedTransport,
+            "This Document command requires its binary transport",
+            None,
+            None,
+        ));
+    }
     record_operation("owned_document", &request.operation_id);
     let operation_id = request.operation_id.clone();
     let context = match document_context(&state, &headers, &bound) {
@@ -1787,36 +1957,16 @@ async fn document_apply(State(state): State<Arc<ServerState>>, request: Request)
             return Json(OwnedDocumentApplyResponse(response_envelope(Err(error)))).into_response();
         }
     };
-    let realtime_bound = matches!(
-        &request.intent,
-        OwnedDocumentIntent::ApplyYjsUpdate { .. }
-            | OwnedDocumentIntent::ApplyCanvasMutation { .. }
-    );
-    let client_session_id = if realtime_bound {
-        match required_header(&headers, CLIENT_SESSION_HEADER, "Document client session") {
-            Ok(value) => Some(value),
-            Err(error) => {
-                return Json(OwnedDocumentApplyResponse(response_envelope(Err(error))))
-                    .into_response();
-            }
-        }
-    } else {
-        None
-    };
     let request_state = Arc::clone(&state);
     let response = state
         .request_executor
         .execute(&bound.id, &headers, RequestClass::Interactive, move || {
-            let outcome = if realtime_bound {
-                request_state.document_realtime.apply(
-                    &context,
-                    client_session_id.as_deref().expect("validated session"),
-                    request,
-                )?
-            } else {
-                request_state.document.apply(&context, request)?
-            };
+            let reconcile = matches!(&request.intent, OwnedDocumentIntent::ResolveRecovery { resolve } if resolve.choice == nodex_core_contracts::document::RecoveryChoice::Reconcile);
+            let outcome = request_state.document.apply(&context, request)?;
             let committed = outcome.committed;
+            if reconcile && committed.value.recovery.as_ref().is_some_and(|draft| draft.resolution.is_none()) {
+                return Ok(ApplyResponse::NoOp { outcome: committed.value, receipt: committed.receipt, observed: nodex_core_contracts::StoreObservation { store_epoch: committed.store_epoch, commit_head: committed.commit_seq } });
+            }
             let duplicate = committed.receipt.mutation.duplicate;
             build_authorized_apply_response(
                 &request_state,
@@ -1831,12 +1981,116 @@ async fn document_apply(State(state): State<Arc<ServerState>>, request: Request)
     Json(OwnedDocumentApplyResponse(response_envelope(response))).into_response()
 }
 
+fn binary_module_read(
+    state: &ServerState,
+    headers: &HeaderMap,
+    bound: &BoundConnection,
+    bytes: &[u8],
+) -> Response {
+    let result = (|| {
+        let context = document_context(state, headers, bound)?;
+        let OwnedDocumentReadRequest(request) = document_module_wire::decode_read(bytes)?;
+        if request.contract_version
+            != nodex_core_contracts::document::OWNED_DOCUMENT_CONTRACT_VERSION
+        {
+            return Err(invalid("Unsupported Document contract version"));
+        }
+        let document = required_header(headers, DOCUMENT_HEADER, "Document")?;
+        let snapshot = match request.read {
+            OwnedDocumentRead::SyncYjs {
+                document_id,
+                state_vector,
+                history_after_head_seq,
+            } => {
+                require_same_identity(&document, &document_id, "Document")?;
+                let session =
+                    required_header(headers, CLIENT_SESSION_HEADER, "Document client session")?;
+                state.document_realtime.sync_yjs(
+                    &context,
+                    &session,
+                    document_id,
+                    state_vector,
+                    history_after_head_seq,
+                )?
+            }
+            read @ (OwnedDocumentRead::FetchUpdate { .. }
+            | OwnedDocumentRead::RecoveryArtifact { .. }) => {
+                let id = match &read {
+                    OwnedDocumentRead::FetchUpdate { document_id, .. }
+                    | OwnedDocumentRead::RecoveryArtifact { document_id, .. } => document_id,
+                    _ => unreachable!(),
+                };
+                require_same_identity(&document, id, "Document")?;
+                state.document.read(
+                    &context,
+                    nodex_core_contracts::ModuleReadRequest {
+                        contract_version: request.contract_version,
+                        read,
+                    },
+                )?
+            }
+            _ => return Err(invalid("Unsupported Document binary read")),
+        };
+        document_module_wire::encode_read_response(OwnedDocumentReadResponse(response_envelope(
+            Ok(snapshot),
+        )))
+    })();
+    match result {
+        Ok(bytes) => binary_response(bytes),
+        Err(error) => json_document_read_error(error),
+    }
+}
+
+fn binary_module_apply(
+    state: &ServerState,
+    headers: &HeaderMap,
+    bound: &BoundConnection,
+    bytes: &[u8],
+) -> Response {
+    let result = (|| {
+        let context = document_context(state, headers, bound)?;
+        let OwnedDocumentApplyRequest(request) = document_module_wire::decode_apply(bytes)?;
+        let document = required_header(headers, DOCUMENT_HEADER, "Document")?;
+        let id = match &request.intent {
+            OwnedDocumentIntent::ApplyYjsUpdate { document_id, .. }
+            | OwnedDocumentIntent::ApplyCanvasMutation { document_id, .. } => document_id,
+            _ => return Err(invalid("Unsupported Document binary command")),
+        };
+        require_same_identity(&document, id, "Document")?;
+        let session = required_header(headers, CLIENT_SESSION_HEADER, "Document client session")?;
+        let operation_id = request.operation_id.clone();
+        record_operation("owned_document", &operation_id);
+        let outcome = state.document_realtime.apply(&context, &session, request)?;
+        let duplicate = outcome.committed.receipt.mutation.duplicate;
+        let response = build_authorized_apply_response(
+            state,
+            ModuleName::OwnedDocument,
+            &operation_id,
+            &context,
+            duplicate,
+            outcome.committed,
+        )?;
+        document_module_wire::encode_apply_response(OwnedDocumentApplyResponse(response_envelope(
+            Ok(response),
+        )))
+    })();
+    match result {
+        Ok(bytes) => binary_response(bytes),
+        Err(error) => json_document_apply_error(error),
+    }
+}
+
 fn binary_document_read(
     state: &ServerState,
     headers: &HeaderMap,
     bound: &BoundConnection,
     bytes: &[u8],
 ) -> Response {
+    match document_module_wire::is_module_frame(bytes) {
+        Ok(true) => return binary_module_read(state, headers, bound, bytes),
+        Err(error) => return json_document_read_error(error),
+        Ok(false) => {}
+    }
     let result = (|| {
         if bytes.len() > document_wire::MAX_SYNC_FRAME_BYTES {
             return Err(invalid("Document sync frame exceeds its bound"));
@@ -1928,6 +2182,11 @@ fn binary_document_apply(
     bound: &BoundConnection,
     bytes: &[u8],
 ) -> Response {
+    match document_module_wire::is_module_frame(bytes) {
+        Ok(true) => return binary_module_apply(state, headers, bound, bytes),
+        Err(error) => return json_document_apply_error(error),
+        Ok(false) => {}
+    }
     let result = (|| {
         let context = document_context(state, headers, bound)?;
         let document_id = required_header(headers, DOCUMENT_HEADER, "Document")?;
@@ -2846,6 +3105,14 @@ fn router(state: Arc<ServerState>) -> Router {
     let document_routes = Router::new()
         .route("/core/v1/modules/document/read", post(document_read))
         .route("/core/v1/modules/document/apply", post(document_apply))
+        .route(
+            "/core/v1/modules/document/recovery/capture",
+            post(recovery_capture),
+        )
+        .route(
+            "/core/v1/modules/document/recovery/export",
+            post(recovery_export),
+        )
         .route("/core/v1/modules/document/live", get(document_live_events))
         .layer(middleware::from_fn_with_state(
             Arc::clone(&state),

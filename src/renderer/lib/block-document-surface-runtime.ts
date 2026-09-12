@@ -1,3 +1,4 @@
+import { exportRecoveryEnvelope } from "./document-recovery-export";
 import * as Y from "yjs";
 import { registerBlockDocumentStructuralMutationParticipant } from "./block-document-mutation-registry";
 import { writeTextToClipboardStrict } from "./clipboard";
@@ -270,7 +271,10 @@ export class BlockDocumentSurfaceRuntime {
 
     const checkpointDelegate =
       options.localCheckpointStore === undefined
-        ? createDefaultDocumentLocalCheckpointStore()
+        ? createDefaultDocumentLocalCheckpointStore({
+            libraryId: this.descriptor.libraryId,
+            accessContext: this.descriptor.accessContext,
+          })
         : options.localCheckpointStore;
     this.provider = (options.createProvider ?? createProvider)({
       documentId: this.descriptor.documentId,
@@ -502,12 +506,11 @@ export class BlockDocumentSurfaceRuntime {
 
   exportRecovery = async (): Promise<void> => {
     const data = await this.provider.exportRecovery();
-    const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
-    const link = globalThis.document.createElement("a");
-    link.href = url;
-    link.download = `nodex-recovery-${this.descriptor.documentId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`;
-    link.click();
-    globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+    await exportRecoveryEnvelope(
+      { libraryId: this.descriptor.libraryId, accessContext: this.descriptor.accessContext },
+      this.descriptor.documentId,
+      data,
+    );
   };
 
   reload = (): Promise<void> => {

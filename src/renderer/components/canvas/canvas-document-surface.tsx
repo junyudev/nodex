@@ -506,7 +506,7 @@ function CanvasEditor({
       });
     };
     const exportRecovery = async (): Promise<void> => {
-      await exportCanvasRecovery(provider);
+      await exportCanvasRecovery(provider, descriptor);
     };
     exportRecoveryRef.current = exportRecovery;
     retrySceneRef.current = retry;

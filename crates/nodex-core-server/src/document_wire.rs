@@ -25,7 +25,7 @@ pub(crate) const MAX_APPLY_FRAME_BYTES: usize =
     MAX_METADATA_BYTES + MAX_TRANSPORT_UPDATE_BYTES + HEADER_BYTES;
 pub(crate) const MAX_AWARENESS_FRAME_BYTES: usize =
     MAX_METADATA_BYTES + MAX_TRANSPORT_AWARENESS_BYTES + HEADER_BYTES;
-pub(crate) const MAX_DOCUMENT_FRAME_BYTES: usize = MAX_APPLY_FRAME_BYTES;
+pub(crate) const MAX_DOCUMENT_FRAME_BYTES: usize = nodex_core_protocol::MAX_DOCUMENT_RESPONSE_BYTES;
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]

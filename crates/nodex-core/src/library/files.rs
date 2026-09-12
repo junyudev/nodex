@@ -1766,11 +1766,52 @@ mod tests {
             let inspection = inspect();
             assert!(inspection.can_restore && inspection.can_copy && !inspection.already_saved);
             for (preview, expected_version, expected_bytes) in [
-                (&inspection.current, 2, b"beta".as_slice()),
-                (&inspection.retained, 1, b"alpha".as_slice()),
-                (&inspection.restored, 1, b"alpha".as_slice()),
+                (
+                    nodex_core_contracts::document::RecoveryPreviewView::Current,
+                    2,
+                    b"beta".as_slice(),
+                ),
+                (
+                    nodex_core_contracts::document::RecoveryPreviewView::Retained,
+                    1,
+                    b"alpha".as_slice(),
+                ),
+                (
+                    nodex_core_contracts::document::RecoveryPreviewView::Restored,
+                    1,
+                    b"alpha".as_slice(),
+                ),
             ] {
-                let Some(RecoveryPreview::Document { files, .. }) = preview else {
+                let result = documents
+                    .read(
+                        &context,
+                        ModuleReadRequest {
+                            contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
+                            read: OwnedDocumentRead::Recovery {
+                                read: RecoveryRead::Preview {
+                                    request:
+                                        nodex_core_contracts::document::RecoveryPreviewRequest {
+                                            draft_id: inspection.summary.draft_id.clone(),
+                                            revision: inspection.summary.revision,
+                                            expected_generation: inspection.current_generation,
+                                            expected_head_seq: inspection.current_head_seq,
+                                            view: preview,
+                                        },
+                                },
+                            },
+                        },
+                    )
+                    .unwrap();
+                let OwnedDocumentReadValue::Recovery {
+                    value:
+                        RecoveryReadValue::Preview {
+                            result:
+                                nodex_core_contracts::document::RecoveryPreviewResult::Complete {
+                                    preview: RecoveryPreview::Document { files, .. },
+                                },
+                        },
+                } = result.value
+                else {
                     panic!("body preview");
                 };
                 let binding = files.get("file-a").expect("explicit preview binding");

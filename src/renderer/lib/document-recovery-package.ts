@@ -1,3 +1,4 @@
+import type { RecoveryBundleInput } from "../../shared/block-documents/recovery-bundle";
 import type { RecoveryDraftCapture } from "../../shared/block-documents/document-recovery";
 import type { DocumentRecoverySnapshot } from "./document-local-checkpoint";
 import type { QuarantinedCanvasSceneMutation } from "./canvas-scene-outbox";
@@ -60,4 +61,48 @@ export const captureCanvasRecovery = (
     ],
   },
   source: JSON.parse(encodeRecoveryEnvelope(snapshot)) as unknown,
+});
+
+/** The production freeze path retains native bytes all the way through IndexedDB and IPC. */
+export const documentRecoveryBundleInput = (
+  snapshot: DocumentRecoverySnapshot,
+): RecoveryBundleInput => ({
+  draft_id: snapshot.recoveryId,
+  document_id: snapshot.documentId,
+  source_store_epoch: snapshot.storeEpoch,
+  generation: snapshot.generation,
+  base_head_seq: snapshot.headSeq,
+  created_at: snapshot.updatedAt,
+  schema_key: snapshot.schema.schemaKey,
+  schema_version: snapshot.schema.schemaVersion,
+  content: {
+    kind: "yjs",
+    state: snapshot.state,
+    unintegrated_updates: snapshot.unintegratedUpdates ?? [],
+  },
+  source: snapshot,
+});
+export const canvasRecoveryBundleInput = (
+  snapshot: QuarantinedCanvasSceneMutation,
+): RecoveryBundleInput => ({
+  draft_id: `canvas:${snapshot.intent.documentId}:${snapshot.intent.mutationId}`,
+  document_id: snapshot.intent.documentId,
+  source_store_epoch: snapshot.intent.storeEpoch,
+  generation: snapshot.intent.generation,
+  base_head_seq: snapshot.intent.baseHeadSeq,
+  created_at: new Date(snapshot.rejectedAt).toISOString(),
+  schema_key: CANVAS_DOCUMENT_SCHEMA_KEY,
+  schema_version: CANVAS_DOCUMENT_SCHEMA_VERSION,
+  content: {
+    kind: "canvas",
+    scene: snapshot.scene ?? null,
+    mutations: [
+      {
+        elementCandidates: snapshot.intent.elementCandidates,
+        appStateIntents: snapshot.intent.appStateIntents,
+        fileAdditions: snapshot.intent.fileAdditions,
+      },
+    ],
+  },
+  source: snapshot,
 });

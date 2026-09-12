@@ -37,6 +37,7 @@ const coreCodes = {
 
 const recoveryKinds = {
   none: true,
+  recovery_package: true,
   reconnect_document_subscription: true,
   document_recovery_artifact: true,
   current_store_epoch: true,
@@ -45,6 +46,19 @@ const recoveryKinds = {
   supported_schema: true,
   database_view_order_preparation: true,
 } satisfies Record<CoreRecovery["kind"], true>;
+
+const recoveryReasons = {
+  request_too_large: true,
+  response_too_large: true,
+  manifest_too_large: true,
+  invalid_manifest: true,
+  invalid_json: true,
+  unsupported_format: true,
+  unsupported_transport: true,
+  invalid_digest: true,
+  capacity_exhausted: true,
+  source_unverified: true,
+} satisfies Record<components["schemas"]["RecoveryFailureReason"], true>;
 
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -67,6 +81,27 @@ const parseRecovery = (value: unknown): CoreRecovery => {
     case "none":
     case "reconnect_document_subscription":
       return { kind: value.kind };
+    case "recovery_package": {
+      const failure = value.failure;
+      if (
+        record(failure) &&
+        typeof failure.reason === "string" &&
+        Object.hasOwn(recoveryReasons, failure.reason) &&
+        (failure.effect === "not_applied" || failure.effect === "unknown") &&
+        (failure.actual == null || uint(failure.actual)) &&
+        (failure.limit == null || uint(failure.limit))
+      )
+        return {
+          kind: value.kind,
+          failure: {
+            reason: failure.reason as components["schemas"]["RecoveryFailureReason"],
+            effect: failure.effect,
+            actual: failure.actual as number | null | undefined,
+            limit: failure.limit as number | null | undefined,
+          },
+        };
+      break;
+    }
     case "document_recovery_artifact":
       if (
         typeof value.artifact_id === "string" &&
