@@ -7,6 +7,14 @@ use super::local_commit::{self, CommitContext};
 use super::sqlite::{StoreError, StoreErrorCode};
 
 const MAX_RECEIPT_JSON_BYTES: usize = 1024 * 1024;
+// Canvas results include their complete accepted delta; other Modules retain the small-result bound.
+fn maximum_receipt_bytes(module_name: &str) -> usize {
+    if module_name == "owned_document" {
+        nodex_core_contracts::document::MAX_CANVAS_MUTATION_EVENT_BYTES
+    } else {
+        MAX_RECEIPT_JSON_BYTES
+    }
+}
 pub(crate) const RECEIPT_RETENTION_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
 const MAX_OPERATION_CLOCK_SKEW_MS: i64 = 5 * 60 * 1_000;
 
@@ -145,7 +153,7 @@ pub fn read_module_receipt(
     if !is_sha256(&request_hash) {
         return Err(corrupt("Core Module receipt request hash is invalid"));
     }
-    if result_json.len() > MAX_RECEIPT_JSON_BYTES {
+    if result_json.len() > maximum_receipt_bytes(module_name) {
         return Err(corrupt("Core Module receipt result exceeds its bound"));
     }
     let result = serde_json::from_str::<Value>(&result_json)
@@ -228,7 +236,7 @@ pub(crate) fn insert_module_receipt(
             false,
         )
     })?;
-    if result_json.len() > MAX_RECEIPT_JSON_BYTES {
+    if result_json.len() > maximum_receipt_bytes(receipt.module_name) {
         return Err(StoreError::new(
             StoreErrorCode::Internal,
             "Core Module receipt result exceeds its bound",

@@ -783,6 +783,10 @@ export interface IpcApi {
     args: [projectId: string, documentId: string, request: CreateDocumentVersionCheckpoint];
     result: DocumentHistoryCommandResult<CreatedDocumentVersionSummary>;
   };
+  "document-recovery:export": {
+    args: [request: import("./block-documents/document-recovery").RecoveryExportCommand];
+    result: import("./block-documents/document-recovery").RecoveryExportResult;
+  };
   "document-recovery:read": {
     args: [request: import("./block-documents/document-recovery").DocumentRecoveryReadRequest];
     result: import("./block-documents/document-recovery").DocumentRecoveryReadResult;

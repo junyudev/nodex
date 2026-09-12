@@ -13,16 +13,19 @@ export function useOpenDocumentRecoveryReview() {
     scope,
     documentId,
     draftId,
+    sourceKey,
     exportLocal,
   }: {
     readonly scope: DocumentRecoveryScope;
     readonly documentId: string | null;
     readonly draftId?: string;
+    readonly sourceKey?: string;
     readonly exportLocal?: () => Promise<void>;
   }) =>
     openModal(appHandle, RecoveryReview, {
       module: getDocumentRecovery(scope, documentId),
       initialDraftId: draftId,
+      initialSourceKey: sourceKey,
       exportLocal,
     });
 }
@@ -62,18 +65,27 @@ export function RecoveryEntry({
     if (refreshKey) void recovery.module.refresh();
   }, [recovery.module, refreshKey]);
   const pending = recovery.state.pendingCount;
-  if (!alwaysVisible && pending === 0 && !recovery.state.error) return null;
+  if (
+    !alwaysVisible &&
+    pending === 0 &&
+    recovery.state.stagedCount === 0 &&
+    !recovery.state.error &&
+    !recovery.state.localError
+  )
+    return null;
   return (
     <button
       type="button"
       className="no-drag inline-flex items-center gap-1.5 text-xs text-token-text-secondary hover:text-token-text-primary"
       onClick={() => recovery.review(exportLocal)}
     >
-      {pending > 0
-        ? `Unsaved edits${pending > 1 ? ` (${pending})` : ""}`
-        : recovery.state.error
-          ? "Couldn’t load drafts"
-          : "Unsaved edits"}
+      {recovery.state.stagedCount > 0
+        ? `Unsaved edits · ${recovery.state.stagedCount} on this device`
+        : pending > 0
+          ? `Unsaved edits${pending > 1 ? ` (${pending})` : ""}`
+          : recovery.state.error
+            ? "Couldn’t load drafts"
+            : "Unsaved edits"}
       <span aria-hidden="true">·</span>
       <span className="font-medium">Review</span>
     </button>

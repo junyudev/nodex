@@ -13,9 +13,12 @@ use crate::{
 
 mod recovery;
 pub use recovery::*;
+pub mod recovery_bundle;
 
-pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 14;
+pub const OWNED_DOCUMENT_CONTRACT_VERSION: u32 = 15;
 pub const OWNED_DOCUMENT_DESCRIPTOR_VERSION: u32 = 3;
+/// A complete 2 MiB Canvas mutation plus bounded identity and File metadata.
+pub const MAX_CANVAS_MUTATION_EVENT_BYTES: usize = 2 * 1024 * 1024 + 256 * 1024;
 
 /// A bounded local edit group addressed by stable Block identity. Unchanged
 /// fields are observations, not overwrite authority; the compiler guards and
@@ -649,6 +652,8 @@ pub struct DocumentOwnerEffect {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct OwnedDocumentCommitValue {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recovery_capture: Option<RecoveryCaptureReceipt>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub recovery: Option<RecoveryDraftSummary>,
     pub document_id: String,

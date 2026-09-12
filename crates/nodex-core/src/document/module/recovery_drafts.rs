@@ -27,7 +27,88 @@ pub(super) struct RecoveryCommit {
     pub resolution: RecoveryResolution,
 }
 
+/// Full analysis remains private; public inspection never returns retained source bytes.
+#[derive(Clone, Copy)]
+enum PreviewSelection {
+    None,
+    One(RecoveryPreviewView),
+}
+impl PreviewSelection {
+    fn includes(self, view: RecoveryPreviewView) -> bool {
+        matches!(self, Self::One(selected) if selected == view)
+    }
+}
+
+struct RecoveryAnalysis {
+    selection: PreviewSelection,
+    available: [bool; 3],
+    summary: RecoveryDraftSummary,
+    capture: RecoveryDraftCapture,
+    current: Option<RecoveryPreview>,
+    retained: Option<RecoveryPreview>,
+    restored: Option<RecoveryPreview>,
+    current_generation: Option<i64>,
+    current_head_seq: Option<i64>,
+    already_saved: bool,
+    can_restore: bool,
+    can_copy: bool,
+    explanation: Option<String>,
+}
+
+impl RecoveryAnalysis {
+    fn metadata(self) -> RecoveryDraftInspection {
+        RecoveryDraftInspection {
+            summary: self.summary,
+            source_store_epoch: self.capture.source_store_epoch,
+            source_generation: self.capture.generation,
+            current: self.available[0],
+            retained: self.available[1],
+            restored: self.available[2],
+            current_generation: self.current_generation,
+            current_head_seq: self.current_head_seq,
+            already_saved: self.already_saved,
+            can_restore: self.can_restore,
+            can_copy: self.can_copy,
+            explanation: self
+                .explanation
+                .map(|message| message.chars().take(2048).collect()),
+        }
+    }
+}
+
 impl OwnedDocumentModule {
+    pub fn export_recovery(
+        &self,
+        context: &BoundModuleContext,
+        draft_id: &str,
+    ) -> Result<Vec<u8>, CoreError> {
+        self.validate_context(context)?;
+        self.readers.read_default(|connection| {
+            let (summary, encoding, payload) = load_raw_payload(connection, context, &self.library_id, draft_id)?;
+            let companion: Option<String> = connection.query_row(
+                "SELECT snapshot_json FROM document_recovery_file_snapshots WHERE library_id = ?1 AND draft_id = ?2",
+                params![self.library_id, draft_id], |row| row.get(0),
+            ).optional()?;
+            let companion = companion.unwrap_or_else(|| "null".into()).into_bytes();
+            let manifest = RecoveryExportManifest {
+                format_version: 1, draft_id: summary.draft_id, document_id: summary.document_id,
+                payload_encoding: encoding, payload_byte_length: payload.len(), payload_sha256: sha256(&payload), expected_payload_sha256: Some(summary.payload_hash),
+                companion_byte_length: companion.len(), companion_sha256: sha256(&companion), external_files: true,
+            };
+            let metadata = serde_json::to_vec(&manifest).map_err(|_| internal("Recovery export manifest cannot be encoded"))?;
+            let length = 12 + metadata.len() + payload.len() + companion.len();
+            if metadata.len() > MAX_RECOVERY_MANIFEST_BYTES || length > MAX_RECOVERY_EXPORT_BYTES { return Err(invalid_store("Recovery export exceeds its bound")); }
+            let mut output = Vec::with_capacity(length);
+            output.extend_from_slice(b"NDRE");
+            output.extend_from_slice(&1_u32.to_le_bytes());
+            output.extend_from_slice(&(metadata.len() as u32).to_le_bytes());
+            output.extend_from_slice(&metadata);
+            output.extend_from_slice(&payload);
+            output.extend_from_slice(&companion);
+            Ok(output)
+        }).map_err(core_error)
+    }
+
     pub(super) fn read_recovery(
         &self,
         context: &BoundModuleContext,
@@ -47,9 +128,27 @@ impl OwnedDocumentModule {
                     let pending_count = pending_documents.iter().filter(|id| authorize_source(connection, context, &self.library_id, id).is_ok()).count() as u32;
                     RecoveryReadValue::List { page: RecoveryDraftPage { drafts, next_cursor, pending_count } }
                 },
+                RecoveryRead::Preview { ref request } => {
+                    let (summary, capture) = load_draft(connection, context, &self.library_id, &request.draft_id)?;
+                    let analysis = inspect_selected(connection, context, summary, capture, PreviewSelection::One(request.view))?;
+                    if analysis.summary.revision != request.revision || analysis.current_generation != request.expected_generation || analysis.current_head_seq != request.expected_head_seq {
+                        return Err(conflict("The recovery preview changed. Refresh before continuing."));
+                    }
+                    let selected = match request.view { RecoveryPreviewView::Current => analysis.current, RecoveryPreviewView::Retained => analysis.retained, RecoveryPreviewView::Restored => analysis.restored };
+                    let result = match selected {
+                        None => RecoveryPreviewResult::Unavailable { explanation: analysis.explanation.unwrap_or_else(|| "A preview is unavailable. You can still export the original package.".into()) },
+                        Some(preview) => {
+                            let byte_length = serde_json::to_vec(&preview).map_err(|_| internal("Recovery preview cannot be encoded"))?.len();
+                            if byte_length > MAX_RECOVERY_PREVIEW_BYTES {
+                                RecoveryPreviewResult::Limited { byte_length, explanation: "This preview exceeds the display limit. Export the complete original package to inspect all retained content.".into() }
+                            } else { RecoveryPreviewResult::Complete { preview } }
+                        }
+                    };
+                    RecoveryReadValue::Preview { result }
+                },
                 RecoveryRead::Inspect { ref draft_id } => {
                     let (summary, capture) = load_draft(connection, context, &self.library_id, draft_id)?;
-                    RecoveryReadValue::Inspect { inspection: Box::new(inspect(connection, context, summary, capture)?) }
+                    RecoveryReadValue::Inspect { inspection: Box::new(inspect_selected(connection, context, summary, capture, PreviewSelection::None)?.metadata()) }
                 },
             };
             Ok(ModuleReadSnapshot { contract_version: OWNED_DOCUMENT_CONTRACT_VERSION, store_epoch: StoreEpoch(read_store_epoch(connection)?), commit_head: read_local_commit_head(connection)?, authorization: None, value: OwnedDocumentReadValue::Recovery { value } })
@@ -63,12 +162,48 @@ impl OwnedDocumentModule {
         epoch: StoreEpoch,
         capture: RecoveryDraftCapture,
     ) -> Result<OwnedDocumentApplyOutcome, CoreError> {
-        let payload =
-            serde_json::to_string(&capture).map_err(|_| invalid("Invalid recovery package"))?;
+        let bytes = recovery_bundle::encode(&capture, &capture.draft_id)
+            .map_err(|error| invalid(&error))?;
+        self.capture_recovery_bundle(context, operation_id, epoch, bytes)
+    }
+
+    /// Named binary Adapter: persist and acknowledge the exact validated submission bytes.
+    pub fn capture_recovery_bundle(
+        &self,
+        context: &BoundModuleContext,
+        operation_id: String,
+        epoch: StoreEpoch,
+        payload: Vec<u8>,
+    ) -> Result<OwnedDocumentApplyOutcome, CoreError> {
+        self.validate_context(context)?;
+        if operation_id.is_empty()
+            || operation_id.len() > 512
+            || operation_id.trim() != operation_id
+            || epoch.0.is_empty()
+            || epoch.0.len() > 512
+        {
+            return Err(invalid("Recovery operation identity is invalid"));
+        }
+        let decoded = recovery_bundle::decode_content(&payload).map_err(|error| CoreError {
+            code: CoreErrorCode::InvalidInput,
+            message: error.message,
+            retryable: false,
+            recovery: CoreErrorRecovery::RecoveryPackage {
+                failure: Box::new(error.failure),
+            },
+        })?;
+        let source_revision = decoded.manifest.source_revision;
+        let capture = decoded.capture;
         if payload.len() > MAX_DRAFT_BYTES
             || capture.draft_id.is_empty()
             || capture.draft_id.len() > 512
             || capture.document_id.is_empty()
+            || capture.document_id.len() > 512
+            || capture.source_store_epoch.is_empty()
+            || capture.source_store_epoch.len() > 512
+            || source_revision.is_empty()
+            || source_revision.len() > 512
+            || capture.schema_key.len() > 512
             || capture.generation < 1
             || capture.base_head_seq < 0
             || capture.created_at.len() > 64
@@ -77,7 +212,7 @@ impl OwnedDocumentModule {
                 "Recovery package exceeds its bounds or has an invalid identity",
             ));
         }
-        let payload_hash = sha256(payload.as_bytes());
+        let payload_hash = decoded.payload_hash;
         let context = context.clone();
         let library_id = self.library_id.clone();
         let fail_after_commit = self.fail_after_commit.clone();
@@ -90,24 +225,30 @@ impl OwnedDocumentModule {
             }
             if let Some(result) = replay(&tx, &operation_id, &payload_hash)? { return Ok(result); }
             if let Some(existing) = find_summary(&tx, &library_id, &capture.draft_id)? {
-                if existing.payload_hash != payload_hash { return Err(StoreError::new(StoreErrorCode::IdempotencyKeyReused, "This recovery identity already contains different edits", false)); }
+                if existing.payload_hash != payload_hash {
+                    let encoding: String = tx.query_row("SELECT payload_encoding FROM document_recovery_drafts WHERE library_id = ?1 AND draft_id = ?2", params![library_id, capture.draft_id], |row| row.get(0))?;
+                    if encoding != "legacy_json" { return Err(StoreError::new(StoreErrorCode::IdempotencyKeyReused, "This recovery identity already contains different bytes", false)); }
+                    let (_, stored) = load_draft(&tx, &context, &library_id, &capture.draft_id)?;
+                    if stored != recovery_bundle::decode(&payload).map_err(|error| invalid_store(error.message))?.capture { return Err(StoreError::new(StoreErrorCode::IdempotencyKeyReused, "This recovery identity already contains different edits", false)); }
+                }
                 let mut result = metadata_result(&tx, &operation_id, &epoch.0, &capture, existing)?;
+                attach_capture_receipt(&tx, &library_id, &source_revision, &payload_hash, &mut result.committed.value)?;
                 insert_typed_receipt(&tx, &context, &operation_id, &payload_hash, &epoch.0, "capture_recovery", &mut result.committed, None)?;
                 tx.commit()?;
                 return Ok(result);
             }
             prune_resolved(&tx, &library_id)?;
             let (count, bytes): (i64, i64) = tx.query_row("SELECT count(*), COALESCE(sum(byte_length), 0) + COALESCE((SELECT sum(length(CAST(snapshot_json AS BLOB))) FROM document_recovery_file_snapshots WHERE library_id = ?1), 0) FROM document_recovery_drafts WHERE library_id = ?1", [&library_id], |row| Ok((row.get(0)?, row.get(1)?)))?;
-            if count >= MAX_LIBRARY_DRAFTS || bytes + payload.len() as i64 > MAX_LIBRARY_DRAFT_BYTES { return Err(invalid_store("Recovery storage is full. Keep or export the local draft before continuing.")); }
+            if count >= MAX_LIBRARY_DRAFTS { return Err(recovery_rejection(RecoveryFailureReason::CapacityExhausted, "Recovery storage is full. Export or handle retained drafts before continuing.", count as usize + 1, MAX_LIBRARY_DRAFTS as usize)); }
+            if bytes + payload.len() as i64 > MAX_LIBRARY_DRAFT_BYTES { return Err(recovery_rejection(RecoveryFailureReason::CapacityExhausted, "Recovery storage is full. Export or handle retained drafts before continuing.", bytes as usize + payload.len(), MAX_LIBRARY_DRAFT_BYTES as usize)); }
             let now = sqlite_now(&tx)?;
             let result = durable_mutation::run(&tx, OperationIdentity { module: ModuleName::OwnedDocument, module_name: MODULE_NAME, operation_id: &operation_id, intent_hash: &payload_hash, store_epoch: &epoch.0, committed_at: &now, context: &context }, |scope| {
-                tx.execute("INSERT INTO document_recovery_drafts(library_id, draft_id, document_id, source_store_epoch, generation, created_at, received_at, payload_json, payload_hash, byte_length) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)", params![library_id, capture.draft_id, capture.document_id, capture.source_store_epoch, capture.generation, capture.created_at, now, payload, payload_hash, payload.len() as i64])?;
+                tx.execute("INSERT INTO document_recovery_drafts(library_id, draft_id, document_id, source_store_epoch, generation, created_at, received_at, payload_encoding, payload, payload_hash, byte_length) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'bundle_v1', ?8, ?9, ?10)", params![library_id, capture.draft_id, capture.document_id, capture.source_store_epoch, capture.generation, capture.created_at, now, payload, payload_hash, payload.len() as i64])?;
                 let retained_file_ids = retained_file_uses(&tx, &capture);
                 let companion_bytes = super::super::recovery_files::capture(&tx, &context, &capture.document_id, &capture.draft_id, retained_file_ids)?;
                 let total_bytes = payload.len().checked_add(companion_bytes).ok_or_else(|| invalid_store("Recovery package is too large"))?;
-                if total_bytes > MAX_DRAFT_BYTES || bytes + total_bytes as i64 > MAX_LIBRARY_DRAFT_BYTES {
-                    return Err(invalid_store("Recovery storage is full. Keep or export the local draft before continuing."));
-                }
+                if total_bytes > MAX_DRAFT_BYTES { return Err(recovery_rejection(RecoveryFailureReason::RequestTooLarge, "This package and its File dependency snapshot exceed the recovery limit.", total_bytes, MAX_DRAFT_BYTES)); }
+                if bytes + total_bytes as i64 > MAX_LIBRARY_DRAFT_BYTES { return Err(recovery_rejection(RecoveryFailureReason::CapacityExhausted, "Recovery storage is full. Export or handle retained drafts before continuing.", bytes as usize + total_bytes, MAX_LIBRARY_DRAFT_BYTES as usize)); }
                 let summary = find_summary(&tx, &library_id, &capture.draft_id)?.ok_or_else(|| internal("Recovery draft disappeared"))?;
                 let analysis = inspect(&tx, &context, summary.clone(), capture.clone())?;
                 let summary = if analysis.already_saved { set_resolution(&tx, &library_id, &capture.draft_id, summary.revision, Some(RecoveryResolution::AlreadySaved), &operation_id, None)? } else { summary };
@@ -115,6 +256,7 @@ impl OwnedDocumentModule {
                 let event = record_change(scope, &context, &library_id, &capture.document_id, capture.generation)?;
                 let mut result = metadata_result(&tx, &operation_id, &epoch.0, &capture, summary)?.committed;
                 result.event_sequence = event;
+                attach_capture_receipt(&tx, &library_id, &source_revision, &payload_hash, &mut result.value)?;
                 seal_typed_receipt(scope, "capture_recovery", result, Some(event))
             })?;
             let committed = resolve_typed_commit(result);
@@ -163,18 +305,8 @@ impl OwnedDocumentModule {
                     RecoveryChoice::Reconcile if summary.resolution.is_none() => {
                         if !inspect(&tx, &context, summary.clone(), capture.clone())?.already_saved
                         {
-                            let mut result =
+                            let result =
                                 metadata_result(&tx, &operation_id, &epoch.0, &capture, summary)?;
-                            insert_typed_receipt(
-                                &tx,
-                                &context,
-                                &operation_id,
-                                &request_hash,
-                                &epoch.0,
-                                "reconcile_recovery",
-                                &mut result.committed,
-                                None,
-                            )?;
                             tx.commit()?;
                             return Ok(result);
                         }
@@ -231,6 +363,47 @@ impl OwnedDocumentModule {
             })
             .map_err(core_error)
     }
+}
+
+fn recovery_rejection(
+    reason: RecoveryFailureReason,
+    message: &str,
+    actual: usize,
+    limit: usize,
+) -> StoreError {
+    StoreError::new(StoreErrorCode::ResourceExhausted, message, false).with_recovery(
+        CoreErrorRecovery::RecoveryPackage {
+            failure: Box::new(RecoveryPackageFailure {
+                reason,
+                effect: RecoveryFailureEffect::NotApplied,
+                actual: Some(actual as u64),
+                limit: Some(limit as u64),
+            }),
+        },
+    )
+}
+
+fn attach_capture_receipt(
+    connection: &Connection,
+    library_id: &str,
+    source_revision: &str,
+    submitted_hash: &str,
+    value: &mut OwnedDocumentCommitValue,
+) -> Result<(), StoreError> {
+    let summary = value
+        .recovery
+        .as_ref()
+        .ok_or_else(|| internal("Missing recovery capture result"))?;
+    let encoding = connection.query_row("SELECT payload_encoding FROM document_recovery_drafts WHERE library_id = ?1 AND draft_id = ?2", params![library_id, summary.draft_id], |row| row.get(0))?;
+    value.recovery_capture = Some(RecoveryCaptureReceipt {
+        draft_id: summary.draft_id.clone(),
+        source_revision: source_revision.into(),
+        submitted_payload_hash: submitted_hash.into(),
+        stored_payload_hash: summary.payload_hash.clone(),
+        stored_encoding: encoding,
+        stored_byte_length: summary.byte_length,
+    });
+    Ok(())
 }
 
 fn require_epoch(connection: &Connection, epoch: &StoreEpoch) -> Result<(), StoreError> {
@@ -326,7 +499,13 @@ fn read_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<RecoveryDraftSummar
         resolved_at: row.get(8)?,
         target_owner_id: row.get(9)?,
         target_document_id: row.get(10)?,
-        source_title: row.get(11)?,
+        source_title: row.get::<_, Option<String>>(11)?.map(|title| {
+            let mut end = title.len().min(512);
+            while !title.is_char_boundary(end) {
+                end -= 1;
+            }
+            title[..end].to_owned()
+        }),
     })
 }
 
@@ -344,24 +523,53 @@ fn load_draft(
     library_id: &str,
     draft_id: &str,
 ) -> Result<(RecoveryDraftSummary, RecoveryDraftCapture), StoreError> {
-    let summary = find_summary(connection, library_id, draft_id)?
-        .ok_or_else(|| not_found("Recovery draft was not found"))?;
-    authorize_source(connection, context, library_id, &summary.document_id)?;
-    let payload: String = connection.query_row(
-        "SELECT payload_json FROM document_recovery_drafts WHERE library_id = ?1 AND draft_id = ?2",
-        params![library_id, draft_id],
-        |row| row.get(0),
-    )?;
-    if sha256(payload.as_bytes()) != summary.payload_hash {
+    let (summary, encoding, payload) =
+        load_verified_payload(connection, context, library_id, draft_id)?;
+    let capture = match encoding.as_str() {
+        "legacy_json" => serde_json::from_slice(&payload)
+            .map_err(|_| internal("Stored recovery package is invalid"))?,
+        "bundle_v1" => {
+            recovery_bundle::decode_content(&payload)
+                .map_err(|error| internal(&error))?
+                .capture
+        }
+        _ => return Err(internal("Unsupported retained payload encoding")),
+    };
+    Ok((summary, capture))
+}
+
+fn load_verified_payload(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    draft_id: &str,
+) -> Result<(RecoveryDraftSummary, String, Vec<u8>), StoreError> {
+    let (summary, encoding, payload) = load_raw_payload(connection, context, library_id, draft_id)?;
+    if sha256(&payload) != summary.payload_hash {
         return Err(StoreError::new(
             StoreErrorCode::StoreCorrupt,
             "Recovery draft failed its integrity check",
             false,
         ));
     }
-    let capture = serde_json::from_str(&payload)
-        .map_err(|_| internal("Stored recovery package is invalid"))?;
-    Ok((summary, capture))
+    Ok((summary, encoding, payload))
+}
+
+fn load_raw_payload(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    draft_id: &str,
+) -> Result<(RecoveryDraftSummary, String, Vec<u8>), StoreError> {
+    let summary = find_summary(connection, library_id, draft_id)?
+        .ok_or_else(|| not_found("Recovery draft was not found"))?;
+    authorize_source(connection, context, library_id, &summary.document_id)?;
+    let (encoding, payload): (String, Vec<u8>) = connection.query_row(
+        "SELECT payload_encoding, payload FROM document_recovery_drafts WHERE library_id = ?1 AND draft_id = ?2",
+        params![library_id, draft_id], |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+
+    Ok((summary, encoding, payload))
 }
 
 fn require_revision(
@@ -415,6 +623,7 @@ fn metadata_result(
     Ok(OwnedDocumentApplyOutcome {
         committed: crate::ModuleWriterResult {
             value: OwnedDocumentCommitValue {
+                recovery_capture: None,
                 recovery: Some(summary),
                 document_id: capture.document_id.clone(),
                 generation: capture.generation,
@@ -517,9 +726,27 @@ fn inspect(
     context: &BoundModuleContext,
     summary: RecoveryDraftSummary,
     capture: RecoveryDraftCapture,
-) -> Result<RecoveryDraftInspection, StoreError> {
+) -> Result<RecoveryAnalysis, StoreError> {
+    inspect_selected(
+        connection,
+        context,
+        summary,
+        capture,
+        PreviewSelection::None,
+    )
+}
+
+fn inspect_selected(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    summary: RecoveryDraftSummary,
+    capture: RecoveryDraftCapture,
+    selection: PreviewSelection,
+) -> Result<RecoveryAnalysis, StoreError> {
     let authority = read_document_authority(connection, &capture.document_id)?;
-    let mut result = RecoveryDraftInspection {
+    let mut result = RecoveryAnalysis {
+        selection,
+        available: [false; 3],
         summary,
         capture,
         current: None,
@@ -555,7 +782,7 @@ fn analyse_content(
     connection: &Connection,
     context: &BoundModuleContext,
     authority: Option<&DocumentAuthorityRow>,
-    result: &mut RecoveryDraftInspection,
+    result: &mut RecoveryAnalysis,
 ) -> Result<(), StoreError> {
     let capture = &result.capture;
     let same_boundary = authority.is_some_and(|a| {
@@ -575,9 +802,12 @@ fn analyse_content(
             let retained_materialization = materialize_engine(&retained, schema)?;
             let retained_bindings =
                 retained_body_bindings(connection, context, capture, &retained_materialization)?;
-            let mut retained_preview = preview(&retained_materialization);
-            set_preview_files(&mut retained_preview, retained_bindings.clone());
-            result.retained = Some(retained_preview);
+            result.available[1] = true;
+            if result.selection.includes(RecoveryPreviewView::Retained) {
+                let mut retained_preview = preview(&retained_materialization);
+                set_preview_files(&mut retained_preview, retained_bindings.clone());
+                result.retained = Some(retained_preview);
+            }
             let file_snapshot = retained_file_snapshot(
                 connection,
                 &context.library_id.0,
@@ -604,9 +834,12 @@ fn analyse_content(
             let current_materialization = materialize_engine(&engine, current_schema)?;
             let current_bindings =
                 current_body_bindings(connection, context, authority, &current_materialization)?;
-            let mut current_preview = preview(&current_materialization);
-            set_preview_files(&mut current_preview, current_bindings.clone());
-            result.current = Some(current_preview);
+            result.available[0] = true;
+            if result.selection.includes(RecoveryPreviewView::Current) {
+                let mut current_preview = preview(&current_materialization);
+                set_preview_files(&mut current_preview, current_bindings.clone());
+                result.current = Some(current_preview);
+            }
             if !same_boundary {
                 if result.can_copy {
                     result.explanation = Some("This draft belongs to an earlier document. Save a copy to keep the current content.".to_owned());
@@ -639,9 +872,12 @@ fn analyse_content(
                 &retained_bindings,
                 &current_bindings,
             );
-            let mut restored_preview = preview(&materialization);
-            set_preview_files(&mut restored_preview, restored_bindings);
-            result.restored = Some(restored_preview);
+            result.available[2] = true;
+            if result.selection.includes(RecoveryPreviewView::Restored) {
+                let mut restored_preview = preview(&materialization);
+                set_preview_files(&mut restored_preview, restored_bindings);
+                result.restored = Some(restored_preview);
+            }
             let barrier: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM document_structural_barriers WHERE document_id = ?1 AND generation = ?2 AND head_seq > ?3)", params![capture.document_id, capture.generation, capture.base_head_seq], |row| row.get(0))?;
             result.can_restore = file_snapshot.is_some()
                 && !barrier
@@ -658,8 +894,11 @@ fn analyse_content(
                 &context.library_id.0,
                 &capture.draft_id,
             )?;
-            if let Some(scene) = scene {
-                let scene = retained_canvas(scene, mutations)?;
+            let retained_scene = scene
+                .as_ref()
+                .map(|scene| retained_canvas(scene, mutations))
+                .transpose()?;
+            if let Some(scene) = &retained_scene {
                 result.can_copy = scene.page_references.is_empty()
                     && file_snapshot
                         .as_ref()
@@ -667,10 +906,18 @@ fn analyse_content(
                 if !result.can_copy {
                     result.explanation = Some("This Canvas draft references files or Pages that are not included in its retained package. You can export it without discarding the draft.".to_owned());
                 }
-                result.retained = Some(RecoveryPreview::Canvas {
-                    scene: scene.canonical_value(),
-                    files: canvas_preview_bindings(capture, &scene, file_snapshot.as_ref(), None),
-                });
+                result.available[1] = true;
+                if result.selection.includes(RecoveryPreviewView::Retained) {
+                    result.retained = Some(RecoveryPreview::Canvas {
+                        scene: scene.canonical_value(),
+                        files: canvas_preview_bindings(
+                            capture,
+                            scene,
+                            file_snapshot.as_ref(),
+                            None,
+                        ),
+                    });
+                }
             }
             let Some(authority) =
                 authority.filter(|a| a.head.sync_engine == DocumentSyncEngine::CanvasScene)
@@ -678,15 +925,18 @@ fn analyse_content(
                 return Ok(());
             };
             let current = load_canvas_scene(connection, authority)?.scene;
-            result.current = Some(RecoveryPreview::Canvas {
-                scene: current.canonical_value(),
-                files: canvas_preview_bindings(
-                    capture,
-                    &current,
-                    None,
-                    Some((authority, &current)),
-                ),
-            });
+            result.available[0] = true;
+            if result.selection.includes(RecoveryPreviewView::Current) {
+                result.current = Some(RecoveryPreview::Canvas {
+                    scene: current.canonical_value(),
+                    files: canvas_preview_bindings(
+                        capture,
+                        &current,
+                        None,
+                        Some((authority, &current)),
+                    ),
+                });
+            }
             if !same_boundary {
                 if result.can_copy {
                     result.explanation = Some("This draft belongs to an earlier Canvas. Save a copy to keep the current content.".to_owned());
@@ -741,28 +991,38 @@ fn analyse_content(
                 restored = applied.scene;
             }
             // Full-scene equality is sufficient only when it covers every retained intent and snapshot.
-            let snapshot_covered = match &result.retained {
-                Some(RecoveryPreview::Canvas { scene, .. }) => {
-                    parse_canvas_scene(scene)? == current
-                }
-                _ => true,
-            };
+            let snapshot_covered = retained_scene
+                .as_ref()
+                .is_none_or(|scene| *scene == current);
             result.already_saved = exact && restored == current && snapshot_covered;
             result.can_restore = exact
                 && !mutations.is_empty()
                 && authorize_canvas(connection, context, authority, DocumentAccessKind::Write)
                     .is_ok();
-            result.restored = Some(RecoveryPreview::Canvas {
-                scene: restored.canonical_value(),
-                files: canvas_preview_bindings(
-                    capture,
-                    &restored,
-                    file_snapshot.as_ref(),
-                    Some((authority, &current)),
-                ),
-            });
-            if result.retained.is_none() && exact {
-                result.retained = result.restored.clone();
+            result.available[2] = true;
+            let retained_from_restored = retained_scene.is_none() && exact;
+            result.available[1] |= retained_from_restored;
+            if result.selection.includes(RecoveryPreviewView::Restored)
+                || (retained_from_restored
+                    && result.selection.includes(RecoveryPreviewView::Retained))
+            {
+                let preview = RecoveryPreview::Canvas {
+                    scene: restored.canonical_value(),
+                    files: canvas_preview_bindings(
+                        capture,
+                        &restored,
+                        file_snapshot.as_ref(),
+                        Some((authority, &current)),
+                    ),
+                };
+                if retained_from_restored
+                    && result.selection.includes(RecoveryPreviewView::Retained)
+                {
+                    result.retained = Some(preview.clone());
+                }
+                if result.selection.includes(RecoveryPreviewView::Restored) {
+                    result.restored = Some(preview);
+                }
             }
             if !exact {
                 result.explanation = Some("Some Canvas elements changed after these edits. The retained draft remains available for review and export.".to_owned());
@@ -931,11 +1191,11 @@ fn retain_assets(
     connection: &Connection,
     library_id: &str,
     capture: &RecoveryDraftCapture,
-    analysis: &RecoveryDraftInspection,
+    analysis: &RecoveryAnalysis,
 ) -> Result<(), StoreError> {
     // Root canonical ownership and the retained package's references separately from its bytes.
     connection.execute("INSERT OR IGNORE INTO document_recovery_block_roots SELECT ?1, ?2, block_id FROM block_documents WHERE document_id = ?3 AND library_id = ?1", params![library_id, capture.draft_id, capture.document_id])?;
-    if let Some(RecoveryPreview::Document { .. }) = &analysis.retained {
+    if analysis.available[1] && matches!(capture.content, RecoveryDraftContent::Yjs { .. }) {
         let schema =
             BlockDocumentSchema::from_identity(&capture.schema_key, capture.schema_version);
         if let (
@@ -1122,7 +1382,7 @@ impl OwnedDocumentModule {
                 let authority = read_document_authority(&tx, &capture.document_id)?
                     .ok_or_else(|| not_found("Canvas was not found"))?;
                 require_preview(&authority, &resolve)?;
-                let inspection = inspect(&tx, &context, summary, capture.clone())?;
+                let inspection = inspect_selected(&tx, &context, summary, capture.clone(), PreviewSelection::One(RecoveryPreviewView::Restored))?;
                 if !inspection.can_restore {
                     return Err(conflict(
                         "The Canvas changed. Review its recovery options again.",
@@ -1369,7 +1629,7 @@ impl OwnedDocumentModule {
             if let Some(result) = replay(&tx, &operation_id, &request_hash)? { return Ok(result); }
             require_revision(&summary, &resolve)?;
             if let Some(authority) = read_document_authority(&tx, &capture.document_id)? { require_preview(&authority, &resolve)?; }
-            let inspection = inspect(&tx, &context, summary, capture.clone())?;
+            let inspection = inspect_selected(&tx, &context, summary, capture.clone(), PreviewSelection::One(RecoveryPreviewView::Retained))?;
             if !inspection.can_copy { return Err(conflict("This draft does not contain a complete recoverable copy. Export it or keep it for later.")); }
             let mut preview = inspection.retained.ok_or_else(|| invalid_store("Recovery preview is unavailable"))?;
             let file_restore = if let RecoveryDraftContent::Yjs { state, unintegrated_updates } = &capture.content {

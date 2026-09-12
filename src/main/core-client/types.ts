@@ -176,6 +176,12 @@ export interface DatabaseApplyInput {
   readonly intent: DatabaseIntent;
 }
 
+export interface RecoveryCaptureInput {
+  readonly operationId: string;
+  readonly clientSessionId: string;
+  readonly bundle: import("../../shared/block-documents/recovery-bundle").FrozenRecoveryBundle;
+}
+
 export interface OwnedDocumentApplyInput {
   readonly operationId: string;
   readonly clientSessionId: string;
@@ -304,6 +310,11 @@ export interface CoreClientPort {
     read: OwnedDocumentRead,
     options?: CoreRequestOptions,
   ): Promise<OwnedDocumentReadSnapshot>;
+  documentCaptureRecovery(
+    input: RecoveryCaptureInput,
+    options?: CoreRequestOptions,
+  ): Promise<OwnedDocumentApplyResult>;
+  documentExportRecovery(draftId: string, options?: CoreRequestOptions): Promise<Uint8Array>;
   documentApply(
     input: OwnedDocumentApplyInput,
     options?: CoreRequestOptions,

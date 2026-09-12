@@ -156,6 +156,8 @@ const makeHarness = (
     automation: { read: unsupported, apply: unsupported },
     administration: { read: unsupported, apply: unsupported },
     document: {
+      captureRecovery: unsupported,
+      exportRecovery: unsupported,
       read: unsupported,
       apply: unsupported,
       sync: unsupported,

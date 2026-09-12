@@ -1,4 +1,13 @@
-import { encodeRecoveryEnvelope } from "./document-recovery-package";
+import { encodeRecoveryEnvelope, canvasRecoveryBundleInput } from "./document-recovery-package";
+import {
+  RECOVERY_DIRECTORY_STORE,
+  RecoveryStagingStore,
+  installRecoveryDirectory,
+  recoverySummary,
+  frozenRecoveryRecord,
+  readRetainedSource,
+  recoveryRecord,
+} from "./document-recovery-staging";
 import type { PortableCanvasScene } from "../../shared/block-documents";
 import {
   canonicalizeCanvasSceneMutationIntent,
@@ -169,7 +178,7 @@ export class MemoryCanvasSceneOutbox implements CanvasSceneOutbox {
 }
 
 export const CANVAS_SCENE_OUTBOX_DATABASE_NAME = "nodex-canvas-scene-outbox";
-export const CANVAS_SCENE_OUTBOX_DATABASE_VERSION = 4;
+export const CANVAS_SCENE_OUTBOX_DATABASE_VERSION = 5;
 export const MAX_QUARANTINED_MUTATIONS_PER_DOCUMENT = 32;
 const MUTATION_STORE = "canvas-scene-mutations";
 const QUARANTINE_STORE = "canvas-scene-quarantine";
@@ -289,12 +298,7 @@ const intentFromStoredRow = (value: unknown): CanvasSceneMutationIntent => {
     : legacyProjectIntent(record.intent);
 };
 
-const openDatabase = (
-  factory: IDBFactory,
-  // v1-v3 were created by a renderer already bound to one Library but did not
-  // persist that identity. The first v4 opener supplies that missing boundary.
-  migrationLibraryId: string,
-): Promise<IDBDatabase> =>
+const openDatabase = (factory: IDBFactory): Promise<IDBDatabase> =>
   new Promise<IDBDatabase>((resolve, reject) => {
     const request = factory.open(
       CANVAS_SCENE_OUTBOX_DATABASE_NAME,
@@ -302,9 +306,14 @@ const openDatabase = (
     );
     request.onupgradeneeded = (event) => {
       const database = request.result;
+      if (event.oldVersion >= 4) {
+        installRecoveryDirectory(database, request.transaction!, QUARANTINE_STORE, "canvas");
+        return;
+      }
       if (event.oldVersion === 0) {
         createMutationStore(database);
         createQuarantineStore(database);
+        installRecoveryDirectory(database, request.transaction!, QUARANTINE_STORE, "canvas");
         return;
       }
       const transaction = request.transaction;
@@ -321,49 +330,28 @@ const openDatabase = (
       const rebuild = (): void => {
         if (!mutationRows || !quarantineRows) return;
         try {
-          const intents = mutationRows.map(intentFromStoredRow);
-          const quarantined = quarantineRows.map((row) => {
-            if (typeof row !== "object" || row === null || Array.isArray(row)) {
-              throw new TypeError("Canvas quarantine row must be an object");
-            }
-            const record = row as Readonly<Record<string, unknown>>;
-            if (
-              typeof record.rejectedAt !== "number" ||
-              typeof record.error !== "object" ||
-              record.error === null
-            ) {
-              throw new TypeError("Canvas quarantine row metadata is invalid");
-            }
-            return {
-              intent: intentFromStoredRow(record),
-              error: record.error as CanvasSceneMutationError,
-              rejectedAt: record.rejectedAt,
-            };
-          });
+          // Old rows did not persist a Library identity. Retain their original shape
+          // for review/export instead of authorizing replay from the first opener.
           database.deleteObjectStore(MUTATION_STORE);
-          if (database.objectStoreNames.contains(QUARANTINE_STORE)) {
+          if (database.objectStoreNames.contains(QUARANTINE_STORE))
             database.deleteObjectStore(QUARANTINE_STORE);
-          }
-          const mutationStore = createMutationStore(database);
+          createMutationStore(database);
           const quarantineStore = createQuarantineStore(database);
-          for (const intent of intents) {
-            mutationStore.add({
-              libraryId: migrationLibraryId,
-              accessKey: contentAccessContextKey(intent.accessContext),
-              documentId: intent.documentId,
-              mutationId: intent.mutationId,
-              intent,
-            } satisfies StoredCanvasSceneMutation);
+          for (const [origin, rows] of [
+            ["outbox", mutationRows],
+            ["quarantine", quarantineRows],
+          ] as const) {
+            for (const originalSource of rows) {
+              let intent: CanvasSceneMutationIntent | undefined;
+              try {
+                intent = intentFromStoredRow(originalSource);
+              } catch {
+                /* Malformed originals remain exportable. */
+              }
+              quarantineStore.add({ originalSource, legacyOrigin: origin, intent });
+            }
           }
-          for (const rejected of quarantined) {
-            quarantineStore.add({
-              libraryId: migrationLibraryId,
-              accessKey: contentAccessContextKey(rejected.intent.accessContext),
-              documentId: rejected.intent.documentId,
-              mutationId: rejected.intent.mutationId,
-              ...rejected,
-            } satisfies StoredQuarantinedCanvasSceneMutation);
-          }
+          installRecoveryDirectory(database, transaction, QUARANTINE_STORE, "canvas");
         } catch {
           transaction.abort();
         }
@@ -386,6 +374,18 @@ const openDatabase = (
       reject(request.error ?? new Error("Could not open the Canvas scene outbox"));
   });
 
+const canvasRecoverySource = (value: unknown): unknown => {
+  const row = recoveryRecord(value);
+  if (!row) return value;
+  if (Object.hasOwn(row, "originalSource")) return row.originalSource;
+  return Object.fromEntries(
+    Object.entries(row).filter(
+      ([key]) =>
+        !["libraryId", "accessKey", "documentId", "mutationId", "rejectedSequence"].includes(key),
+    ),
+  );
+};
+
 export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
   private databasePromise: Promise<IDBDatabase> | null = null;
   readonly libraryId: string;
@@ -396,6 +396,25 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
   ) {
     this.libraryId = canonicalOutboxLibraryId(libraryId);
   }
+
+  readonly staging = new RecoveryStagingStore({
+    kind: "canvas",
+    storeName: QUARANTINE_STORE,
+    database: () => this.getDatabase(),
+    source: canvasRecoverySource,
+    input: (source) => canvasRecoveryBundleInput(source as QuarantinedCanvasSceneMutation),
+    frozenRow: (original, retainedPackage) => {
+      const row = recoveryRecord(original)!;
+      return {
+        libraryId: row.libraryId,
+        accessKey: row.accessKey,
+        documentId: row.documentId,
+        mutationId: row.mutationId,
+        rejectedSequence: row.rejectedSequence,
+        retainedPackage,
+      };
+    },
+  });
 
   list = async (
     accessContext: ContentAccessContext,
@@ -440,14 +459,17 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
         ),
     )) as readonly StoredQuarantinedCanvasSceneMutation[];
     await transactionComplete(transaction);
-    return [...stored]
-      .sort((left, right) => (left.rejectedSequence ?? 0) - (right.rejectedSequence ?? 0))
-      .map((entry) => ({
-        intent: canonicalizeCanvasSceneMutationIntent(entry.intent),
-        error: entry.error,
-        rejectedAt: entry.rejectedAt,
-        scene: entry.scene,
-      }));
+    return Promise.all(
+      [...stored]
+        .sort((left, right) => (left.rejectedSequence ?? 0) - (right.rejectedSequence ?? 0))
+        .map(
+          async (entry) =>
+            (await readRetainedSource(
+              entry,
+              canvasRecoverySource,
+            )) as QuarantinedCanvasSceneMutation,
+        ),
+    );
   };
 
   put = async (input: CanvasSceneMutationIntent): Promise<void> => {
@@ -515,7 +537,11 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
     const intent = canonicalizeCanvasSceneMutationIntent(input);
     const accessKey = contentAccessContextKey(intent.accessContext);
     const database = await this.getDatabase();
-    const transaction = database.transaction([MUTATION_STORE, QUARANTINE_STORE], "readwrite");
+    const transaction = database.transaction(
+      [MUTATION_STORE, QUARANTINE_STORE, RECOVERY_DIRECTORY_STORE],
+      "readwrite",
+      { durability: "strict" },
+    );
     const activeStore = transaction.objectStore(MUTATION_STORE);
     const activeKey = await requestResult(
       activeStore
@@ -533,7 +559,7 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
         .getKey([this.libraryId, accessKey, intent.documentId, intent.mutationId]),
     );
     if (existingRejectedKey === undefined) {
-      quarantineStore.add({
+      const row = {
         libraryId: this.libraryId,
         accessKey,
         documentId: intent.documentId,
@@ -542,7 +568,9 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
         error,
         rejectedAt,
         scene,
-      } satisfies StoredQuarantinedCanvasSceneMutation);
+      } satisfies StoredQuarantinedCanvasSceneMutation;
+      const key = await requestResult(quarantineStore.add(row));
+      transaction.objectStore(RECOVERY_DIRECTORY_STORE).put(recoverySummary("canvas", key, row));
     }
     activeStore.delete(activeKey);
     const rejectedKeys = await requestResult(
@@ -639,22 +667,29 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
         }
         resolve({
           key: cursor.primaryKey,
-          snapshot: {
-            intent: canonicalizeCanvasSceneMutationIntent(entry.intent),
-            error: entry.error,
-            rejectedAt: entry.rejectedAt,
-            scene: entry.scene,
-          },
+          snapshot: entry as unknown as QuarantinedCanvasSceneMutation,
         });
       };
     });
     await completed;
-    return value;
+    return value
+      ? {
+          key: value.key,
+          snapshot: (await readRetainedSource(
+            value.snapshot,
+            canvasRecoverySource,
+          )) as QuarantinedCanvasSceneMutation,
+        }
+      : null;
   };
 
   acknowledgeRecovery = async (snapshot: QuarantinedCanvasSceneMutation): Promise<void> => {
     const database = await this.getDatabase();
-    const transaction = database.transaction(QUARANTINE_STORE, "readwrite");
+    const transaction = database.transaction(
+      [QUARANTINE_STORE, RECOVERY_DIRECTORY_STORE],
+      "readwrite",
+      { durability: "strict" },
+    );
     const completed = transactionComplete(transaction);
     const store = transaction.objectStore(QUARANTINE_STORE);
     const key = await requestResult(
@@ -669,20 +704,27 @@ export class IndexedDbCanvasSceneOutbox implements CanvasSceneOutbox {
     );
     if (key !== undefined) {
       const current = (await requestResult(store.get(key))) as StoredQuarantinedCanvasSceneMutation;
+      if (frozenRecoveryRecord(current)) {
+        await completed;
+        return;
+      }
       const envelope = {
         intent: canonicalizeCanvasSceneMutationIntent(current.intent),
         error: current.error,
         rejectedAt: current.rejectedAt,
         scene: current.scene,
       };
-      if (encodeRecoveryEnvelope(envelope) === encodeRecoveryEnvelope(snapshot)) store.delete(key);
+      if (encodeRecoveryEnvelope(envelope) === encodeRecoveryEnvelope(snapshot)) {
+        store.delete(key);
+        transaction.objectStore(RECOVERY_DIRECTORY_STORE).delete(`canvas:${JSON.stringify(key)}`);
+      }
     }
     await completed;
   };
 
   private getDatabase(): Promise<IDBDatabase> {
     if (!this.databasePromise) {
-      this.databasePromise = openDatabase(this.factory, this.libraryId).then(
+      this.databasePromise = openDatabase(this.factory).then(
         (database) => {
           database.onversionchange = () => {
             database.close();

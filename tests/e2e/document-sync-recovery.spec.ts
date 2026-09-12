@@ -1,5 +1,6 @@
 import type { IpcApi } from "../../src/shared/ipc-api";
 import * as Y from "yjs";
+import { decodeRecoverySource } from "../../src/shared/block-documents/recovery-bundle";
 import { openPageDocument } from "../../src/shared/block-documents";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -86,8 +87,11 @@ test("editing, native reorder and cancelled structural waits recover through Ele
         targetYRatio: 0.85,
         expectedFeedback: editor.locator("[data-block-transfer-drop-indicator]"),
       });
-      const isAfter = async () =>
-        (await firstBlock.boundingBox())!.y > (await lastBlock.boundingBox())!.y;
+      const isAfter = async () => {
+        const firstBox = await firstBlock.boundingBox();
+        const lastBox = await lastBlock.boundingBox();
+        return firstBox && lastBox ? firstBox.y > lastBox.y : null;
+      };
       await expect.poll(isAfter).toBe(true);
       await firstBlock.locator(".bn-inline-content").click();
       await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Z`);
@@ -227,7 +231,13 @@ test("editing, native reorder and cancelled structural waits recover through Ele
       expect(title.toString()).toBe("Edit and recover");
       title.insert(title.length, " · recovered draft");
       expect(title.toString()).toBe("Edit and recover · recovered draft");
+      const retainedText = [
+        ...retainedDocument.getXmlFragment("body").createTreeWalker(() => true),
+      ].find((node): node is Y.XmlText => node instanceof Y.XmlText);
+      if (!retainedText) throw new Error("Expected retained paragraph content");
+      retainedText.insert(retainedText.length, " Retained offline content.".repeat(3000));
       const retainedState = Array.from(Y.encodeStateAsUpdate(retainedDocument));
+      expect(retainedState.length).toBeGreaterThan(70_000);
       retainedDocument.destroy();
       await page.evaluate(
         async ({ documentId, retainedState }) => {
@@ -285,7 +295,6 @@ test("editing, native reorder and cancelled structural waits recover through Ele
       const audienceOpened = application.waitForEvent("window");
       expect(await page.evaluate(() => window.api?.invoke("window:new", {}))).toBe(true);
       const audience = await audienceOpened;
-      await audience.evaluate(() => window.api?.awaitInitialization?.());
       await audience.getByRole("button", { name: "Open Document Recovery", exact: true }).click();
       await audience.getByRole("tab", { name: "Project Home" }).waitFor();
       await openBoardPageFromCard({
@@ -296,7 +305,10 @@ test("editing, native reorder and cancelled structural waits recover through Ele
       const audienceReview = audience.getByRole("button", { name: "Review", exact: true });
       await expect(audienceReview).toBeVisible();
       await page.bringToFront();
-      await review.click();
+      await page.getByRole("button", { name: "Close Edit and recover tab", exact: true }).click();
+      await expect(editor).toHaveCount(0);
+      await page.getByRole("button", { name: "Content issues", exact: true }).click();
+      await page.getByRole("button", { name: "Review edits", exact: true }).first().click();
       const dialog = page.getByRole("dialog", { name: "Unsaved edits" });
       await expect(
         dialog.getByRole("button", { name: "Restore edits", exact: true }),
@@ -311,39 +323,34 @@ test("editing, native reorder and cancelled structural waits recover through Ele
         contentType: "image/png",
       });
       const exportRecovery = dialog.getByRole("button", { name: "Export", exact: true });
-      const exportPath = test.info().outputPath("document-recovery.json");
-      await application.evaluate(({ BrowserWindow }, destination) => {
-        BrowserWindow.getAllWindows()[0]!.webContents.session.once(
-          "will-download",
-          (_event, download) => {
-            download.setSavePath(destination);
-          },
-        );
+      const exportPath = test.info().outputPath("document-recovery.nodex-recovery");
+      await application.evaluate(({ dialog }, destination) => {
+        dialog.showSaveDialog = async () => ({ canceled: false, filePath: destination });
       }, exportPath);
       await exportRecovery.click();
       await expect
         .poll(async () => {
           try {
-            return JSON.parse(await readFile(exportPath, "utf8"));
+            const bytes = await readFile(exportPath);
+            if (bytes.subarray(0, 4).toString() !== "NDRE") return null;
+            const length = bytes.readUInt32LE(8);
+            const manifest = JSON.parse(bytes.subarray(12, 12 + length).toString()) as {
+              payload_byte_length: number;
+            };
+            return await decodeRecoverySource(
+              bytes.subarray(12 + length, 12 + length + manifest.payload_byte_length),
+            );
           } catch {
             return null;
           }
         })
         .toMatchObject({
-          format: "nodex-document-recovery",
-          version: 2,
-          inspection: expect.objectContaining({
-            capture: expect.objectContaining({
-              source: expect.objectContaining({
-                submissions: [
-                  expect.objectContaining({
-                    clientSessionId: "previous-window",
-                    updateId: "uncertain-save",
-                  }),
-                ],
-              }),
+          submissions: [
+            expect.objectContaining({
+              clientSessionId: "previous-window",
+              updateId: "uncertain-save",
             }),
-          }),
+          ],
         });
       expect((await seed.readPage(manifest.projectId, sourceId)).descriptionPreview).toBe(
         beforeReload,
@@ -362,9 +369,7 @@ test("editing, native reorder and cancelled structural waits recover through Ele
       await expect(review).toHaveCount(0);
       await expect(audienceReview).toHaveCount(0);
       await page.reload();
-      await expect(
-        page.locator(`[data-page-stage-page-id="${sourceId}"]:visible .nfm-editor`),
-      ).toBeVisible();
+      await page.getByRole("tab", { name: "Project Home" }).waitFor();
       await expect(review).toHaveCount(0);
       expect((await seed.readPage(manifest.projectId, sourceId)).title).toBe(
         "Edit and recover · recovered draft",

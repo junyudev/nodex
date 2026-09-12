@@ -1,4 +1,14 @@
-import { encodeRecoveryEnvelope } from "./document-recovery-package";
+import { encodeRecoveryEnvelope, documentRecoveryBundleInput } from "./document-recovery-package";
+import type { DocumentRecoveryScope } from "../../shared/block-documents/document-recovery";
+import {
+  RECOVERY_DIRECTORY_STORE,
+  RecoveryStagingStore,
+  installRecoveryDirectory,
+  recoverySummary,
+  frozenRecoveryRecord,
+  readRetainedSource,
+  recoveryRecord,
+} from "./document-recovery-staging";
 import * as Y from "yjs";
 import type {
   DocumentSyncApplyRequest,
@@ -14,7 +24,7 @@ import {
 } from "../../shared/block-documents";
 
 const DATABASE_NAME = "nodex-document-cache";
-const DATABASE_VERSION = 3;
+const DATABASE_VERSION = 4;
 const CHECKPOINT_STORE = "document-checkpoints";
 const RECOVERY_STORE = "document-recovery";
 const DOCUMENT_ID_INDEX = "document-id";
@@ -203,6 +213,7 @@ const openCheckpointDatabase = (factory: IDBFactory): Promise<IDBDatabase> =>
       const recovery = request.transaction!.objectStore(RECOVERY_STORE);
       if (!recovery.indexNames.contains(DOCUMENT_ID_INDEX))
         recovery.createIndex(DOCUMENT_ID_INDEX, "documentId", { unique: false });
+      installRecoveryDirectory(database, request.transaction!, RECOVERY_STORE, "yjs");
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () =>
@@ -284,7 +295,27 @@ const sameSubmissionPayload = (
 export class IndexedDbDocumentLocalCheckpointStore implements DocumentLocalCheckpointStore {
   private databasePromise: Promise<IDBDatabase> | null = null;
 
-  constructor(private readonly factory: IDBFactory) {}
+  constructor(
+    private readonly factory: IDBFactory,
+    private readonly recoveryScope: DocumentRecoveryScope | null = null,
+  ) {}
+
+  readonly staging = new RecoveryStagingStore({
+    kind: "yjs",
+    storeName: RECOVERY_STORE,
+    database: () => this.getDatabase(),
+    source: (row) => row,
+    input: (source) => documentRecoveryBundleInput(source as DocumentRecoverySnapshot),
+    frozenRow: (original, retainedPackage) => {
+      const row = recoveryRecord(original)!;
+      return {
+        recoveryId: row.recoveryId,
+        documentId: row.documentId,
+        boundaryKey: row.boundaryKey,
+        retainedPackage,
+      };
+    },
+  });
 
   read = async (
     input: DocumentCheckpointBoundary,
@@ -383,7 +414,11 @@ export class IndexedDbDocumentLocalCheckpointStore implements DocumentLocalCheck
   ): Promise<void> => {
     const boundary = validateBoundary(snapshot);
     const database = await this.getDatabase();
-    const transaction = database.transaction([CHECKPOINT_STORE, RECOVERY_STORE], "readwrite");
+    const transaction = database.transaction(
+      [CHECKPOINT_STORE, RECOVERY_STORE, RECOVERY_DIRECTORY_STORE],
+      "readwrite",
+      { durability: "strict" },
+    );
     const completed = transactionComplete(transaction);
     try {
       const checkpoints = transaction.objectStore(CHECKPOINT_STORE);
@@ -426,16 +461,23 @@ export class IndexedDbDocumentLocalCheckpointStore implements DocumentLocalCheck
         boundaryKey: checkpointKey(boundary),
       };
       const recoveries = transaction.objectStore(RECOVERY_STORE);
+      const previous = await requestResult(recoveries.get(snapshot.recoveryId));
       // Never evict unresolved work to make space. A failed transaction leaves the original cache intact.
       if (
         (await requestResult(recoveries.count())) >= 100 &&
-        !(await requestResult(recoveries.get(snapshot.recoveryId)))
+        (!previous || frozenRecoveryRecord(previous))
       ) {
         throw new DocumentLocalCheckpointError(
           "Recovery storage is full. Export recovery before reloading.",
         );
       }
-      recoveries.put(recovery);
+      const next = frozenRecoveryRecord(previous)
+        ? { ...recovery, recoveryId: crypto.randomUUID(), previousRecoveryId: snapshot.recoveryId }
+        : recovery;
+      recoveries.put(next);
+      transaction
+        .objectStore(RECOVERY_DIRECTORY_STORE)
+        .put(recoverySummary("yjs", next.recoveryId, next, this.recoveryScope));
       checkpoints.delete(checkpointKey(boundary));
       await completed;
     } catch (error) {
@@ -461,7 +503,12 @@ export class IndexedDbDocumentLocalCheckpointStore implements DocumentLocalCheck
         .getAll(checkpointKey(validateBoundary(boundary))),
     );
     await transactionComplete(transaction);
-    return values as DocumentRecoverySnapshot[];
+    return Promise.all(
+      values.map(
+        async (row) =>
+          (await readRetainedSource(row, (source) => source)) as DocumentRecoverySnapshot,
+      ),
+    );
   };
 
   /** Summary discovery does not load document snapshots. The store itself is bounded to 100. */
@@ -518,18 +565,31 @@ export class IndexedDbDocumentLocalCheckpointStore implements DocumentLocalCheck
       };
     });
     await completed;
-    return value;
+    return value
+      ? ((await readRetainedSource(value, (source) => source)) as DocumentRecoverySnapshot)
+      : null;
   };
 
   /** Retire only the exact package Core acknowledged; a concurrent recapture remains protected. */
   acknowledgeRecovery = async (snapshot: DocumentRecoverySnapshot): Promise<void> => {
     const database = await this.getDatabase();
-    const transaction = database.transaction(RECOVERY_STORE, "readwrite");
+    const transaction = database.transaction(
+      [RECOVERY_STORE, RECOVERY_DIRECTORY_STORE],
+      "readwrite",
+      { durability: "strict" },
+    );
     const completed = transactionComplete(transaction);
     const store = transaction.objectStore(RECOVERY_STORE);
     const current: unknown = await requestResult(store.get(snapshot.recoveryId));
-    if (encodeRecoveryEnvelope(current) === encodeRecoveryEnvelope(snapshot))
+    if (
+      !frozenRecoveryRecord(current) &&
+      encodeRecoveryEnvelope(current) === encodeRecoveryEnvelope(snapshot)
+    ) {
       store.delete(snapshot.recoveryId);
+      transaction
+        .objectStore(RECOVERY_DIRECTORY_STORE)
+        .delete(`yjs:${JSON.stringify(snapshot.recoveryId)}`);
+    }
     await completed;
   };
 
@@ -553,11 +613,12 @@ export class IndexedDbDocumentLocalCheckpointStore implements DocumentLocalCheck
   }
 }
 
-export const createDefaultDocumentLocalCheckpointStore =
-  (): DocumentLocalCheckpointStore | null => {
-    if (typeof globalThis.indexedDB === "undefined") return null;
-    return new IndexedDbDocumentLocalCheckpointStore(globalThis.indexedDB);
-  };
+export const createDefaultDocumentLocalCheckpointStore = (
+  scope: DocumentRecoveryScope | null = null,
+): DocumentLocalCheckpointStore | null => {
+  if (typeof globalThis.indexedDB === "undefined") return null;
+  return new IndexedDbDocumentLocalCheckpointStore(globalThis.indexedDB, scope);
+};
 
 export const captureDocumentLocalCheckpoint = (
   document: Y.Doc,

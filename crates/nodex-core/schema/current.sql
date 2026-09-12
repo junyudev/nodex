@@ -5060,7 +5060,7 @@ CREATE TABLE block_mutation_body_gc (
   check_after_ms INTEGER NOT NULL DEFAULT 0 CHECK (check_after_ms >= 0)
 ) WITHOUT ROWID, STRICT;
 CREATE INDEX idx_block_mutation_body_gc_due ON block_mutation_body_gc(check_after_ms, mutation_id);
-PRAGMA user_version = 165;
+PRAGMA user_version = 166;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
@@ -5071,7 +5071,8 @@ CREATE TABLE document_recovery_drafts (
     revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
     created_at TEXT NOT NULL,
     received_at TEXT NOT NULL,
-    payload_json TEXT NOT NULL CHECK (json_valid(payload_json)),
+    payload_encoding TEXT NOT NULL CHECK (payload_encoding IN ('legacy_json', 'bundle_v1')),
+    payload BLOB NOT NULL CHECK (typeof(payload) = 'blob'),
     payload_hash TEXT NOT NULL CHECK (length(payload_hash) = 64),
     byte_length INTEGER NOT NULL CHECK (byte_length > 0),
     resolution TEXT CHECK (resolution IN ('already_saved', 'restored', 'copied', 'discarded')),

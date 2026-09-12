@@ -153,7 +153,7 @@ fn document_policy(read: &OwnedDocumentRead) -> ReadBudgetPolicy {
         | OwnedDocumentRead::CanvasCompactionEligibility { .. } => ReadBudgetPolicy::Identity,
         OwnedDocumentRead::PrepareAgentSemanticMutation { .. } => ReadBudgetPolicy::BoundedBatch,
         OwnedDocumentRead::Recovery {
-            read: RecoveryRead::Inspect { .. },
+            read: RecoveryRead::Inspect { .. } | RecoveryRead::Preview { .. },
         }
         | OwnedDocumentRead::RecoveryArtifact { .. }
         | OwnedDocumentRead::SyncYjs { .. }

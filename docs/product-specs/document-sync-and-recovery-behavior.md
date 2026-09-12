@@ -106,8 +106,14 @@ dialog or choosing Later keeps the draft pending without opening another alert.
 A protected failed replica also offers Continue editing to start a fresh canonical
 session. Page and Canvas use the same persisted resolution lifecycle.
 
-The list reads bounded summaries; selecting a draft loads one package and one
-read-only preview. Current content can be compared with After restoring when a
+The list combines bounded local staging and Core summaries without loading package
+contents. Local entries remain visible while Core is unavailable and after the
+original document closes. Each entry distinguishes On this device, Sending,
+Received, and Needs attention, with its own failure and retry action. A received
+package replaces its matching local entry without counting the edits twice.
+Selecting a received draft loads bounded capability metadata and one requested
+read-only preview. A preview that exceeds its display budget is explicitly limited;
+capabilities still use the complete retained content, and export remains available. Current content can be compared with After restoring when a
 safe merge is available, or with Retained draft when no reliable merge exists.
 The Backups settings page also lists Library drafts across documents and
 generations, including drafts whose source no longer exists. Recently handled
@@ -124,9 +130,11 @@ Core determines the available actions:
   pending and exportable; Nodex never marks a partial copy as complete.
 - Discard draft requires an inline confirmation, changes no current content, and
   can be reversed with Undo discard in Recently handled.
-- Export creates a local JSON recovery package containing the retained source
-  envelope, encoded engine bytes, and available readable preview. It does not
-  resolve the draft. Details remain secondary to content and recovery actions.
+- Export saves a `.nodex-recovery` file containing the exact retained payload,
+  integrity metadata and available captured File dependencies. Local packages can
+  be exported before Core accepts them, including rejected or unreadable sources.
+  Export does not require a preview, resolve the draft, or remove local staging.
+  Completion is reported only after the chosen file is fully written.
 
 Already-saved drafts are handled automatically only when Core proves full engine
 containment. Yjs evidence includes deletion sets and every shared type, not just
@@ -143,7 +151,9 @@ converge on Core's recorded result. A changed preview requires review again.
 ## Protection and retention
 
 Core durably receives an immutable, hash-checked recovery package before the
-renderer retires its exact local staging row. Lost replies leave staging bytes
+renderer retires its exact local staging row. The acknowledgement must match the
+draft, source revision and exact submitted-byte digest; deleting the row also
+requires that its persisted revision has not changed. Lost replies leave staging bytes
 intact; repeated reception cannot overwrite a different package under the same
 identity. Drafts are Library-owned and every operation rechecks current access.
 A Core recovery artifact still covers one rejected update rather than a complete

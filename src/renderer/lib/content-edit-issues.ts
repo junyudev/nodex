@@ -24,6 +24,7 @@ export type ContentEditIssueAction =
       readonly scope: DocumentRecoveryScope;
       readonly documentId: string | null;
       readonly draftId?: string;
+      readonly sourceKey?: string;
       readonly prepare?: () => Promise<void>;
       readonly exportLocal?: () => Promise<void>;
     };

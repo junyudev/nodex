@@ -66,7 +66,11 @@ pub enum ClientError {
     #[error("Core protocol is incompatible: {0}")]
     ProtocolIncompatible(String),
     #[error("Core returned HTTP {status}: {message}")]
-    Http { status: u16, message: String },
+    Http {
+        status: u16,
+        message: String,
+        failure: Option<Box<nodex_core_contracts::document::RecoveryPackageFailure>>,
+    },
     #[error("Core request exceeds {maximum} bytes ({actual} bytes)")]
     RequestTooLarge { maximum: usize, actual: usize },
     #[error("Core response exceeds {maximum} bytes (observed at least {observed_at_least} bytes)")]
@@ -422,6 +426,34 @@ impl CoreClient {
         library_scope: bool,
         read: OwnedDocumentRead,
     ) -> Result<OwnedDocumentReadResponse, ClientError> {
+        if let OwnedDocumentRead::SyncYjs { document_id, .. }
+        | OwnedDocumentRead::FetchUpdate { document_id, .. }
+        | OwnedDocumentRead::RecoveryArtifact { document_id, .. } = &read
+        {
+            let document_id = document_id.clone();
+            let bytes = crate::document_module_wire::encode_read(OwnedDocumentReadRequest(nodex_core_contracts::ModuleReadRequest {
+                contract_version: <nodex_core_contracts::document::OwnedDocumentContract as VersionedModuleContract>::VERSION, read,
+            })).map_err(|error| ClientError::InvalidRuntime(error.message))?;
+            let response = self.document_frame(
+                "/core/v1/modules/document/read",
+                &document_id,
+                &bytes,
+                ScopeHeaders::document(project_id, library_scope),
+            )?;
+            if response.header("content-type").is_some_and(|value| {
+                value.starts_with("application/vnd.nodex.document-sync.v3+octet-stream")
+            }) {
+                return crate::document_module_wire::decode_read_response(&response.bytes)
+                    .map_err(|error| ClientError::InvalidRuntime(error.message));
+            }
+            let decoded: OwnedDocumentReadResponse = serde_json::from_slice(&response.bytes)?;
+            if matches!(decoded.0, crate::ResponseEnvelope::Error(_)) {
+                return Ok(decoded);
+            }
+            return Err(ClientError::InvalidRuntime(
+                "Document byte response requires binary transport".into(),
+            ));
+        }
         self.connected_request(
             "/core/v1/modules/document/read",
             &OwnedDocumentReadRequest(nodex_core_contracts::ModuleReadRequest {
@@ -438,11 +470,104 @@ impl CoreClient {
         library_scope: bool,
         request: nodex_core_contracts::ModuleApplyRequest<OwnedDocumentIntent>,
     ) -> Result<OwnedDocumentApplyResponse, ClientError> {
+        if let OwnedDocumentIntent::CaptureRecovery { capture } = &request.intent {
+            let bytes =
+                nodex_core_contracts::document::recovery_bundle::encode(capture, &capture.draft_id)
+                    .map_err(|error| ClientError::InvalidRuntime(error.to_string()))?;
+            let hash = nodex_core_contracts::document::recovery_bundle::payload_hash(&bytes);
+            let version = request.contract_version.to_string();
+            let mut headers = vec![
+                (CONNECTION_HEADER, self.connection_id.as_str()),
+                (CONNECTION_BINDING_HEADER, self.connection_binding.as_str()),
+                (
+                    "content-type",
+                    "application/vnd.nodex.recovery-bundle.v1+octet-stream",
+                ),
+                ("x-nodex-operation-id", request.operation_id.as_str()),
+                ("x-nodex-store-epoch", request.store_epoch.0.as_str()),
+                ("x-nodex-contract-version", version.as_str()),
+                ("x-nodex-payload-hash", hash.as_str()),
+            ];
+            headers.extend(ScopeHeaders::document(project_id, library_scope).values);
+            return request_bytes(
+                &self.socket,
+                &self.auth,
+                "POST",
+                "/core/v1/modules/document/recovery/capture",
+                &bytes,
+                &headers,
+            );
+        }
+        if let OwnedDocumentIntent::ApplyYjsUpdate { document_id, .. }
+        | OwnedDocumentIntent::ApplyCanvasMutation { document_id, .. } = &request.intent
+        {
+            let document_id = document_id.clone();
+            let bytes =
+                crate::document_module_wire::encode_apply(OwnedDocumentApplyRequest(request))
+                    .map_err(|error| ClientError::InvalidRuntime(error.message))?;
+            let response = self.document_frame(
+                "/core/v1/modules/document/apply",
+                &document_id,
+                &bytes,
+                ScopeHeaders::document(project_id, library_scope),
+            )?;
+            if response.header("content-type").is_some_and(|value| {
+                value.starts_with("application/vnd.nodex.document-sync.v3+octet-stream")
+            }) {
+                return crate::document_module_wire::decode_apply_response(&response.bytes)
+                    .map_err(|error| ClientError::InvalidRuntime(error.message));
+            }
+            let decoded: OwnedDocumentApplyResponse = serde_json::from_slice(&response.bytes)?;
+            if matches!(decoded.0, crate::ResponseEnvelope::Error(_)) {
+                return Ok(decoded);
+            }
+            return Err(ClientError::InvalidRuntime(
+                "Document byte response requires binary transport".into(),
+            ));
+        }
         self.connected_request(
             "/core/v1/modules/document/apply",
             &OwnedDocumentApplyRequest(request),
             ScopeHeaders::document(project_id, library_scope),
         )
+    }
+
+    pub fn document_export_recovery(
+        &self,
+        project_id: Option<&str>,
+        library_scope: bool,
+        draft_id: &str,
+    ) -> Result<Vec<u8>, ClientError> {
+        let body = serde_json::to_vec(&nodex_core_contracts::document::RecoveryExportRequest {
+            draft_id: draft_id.into(),
+        })?;
+        let mut headers = vec![
+            (CONNECTION_HEADER, self.connection_id.as_str()),
+            (CONNECTION_BINDING_HEADER, self.connection_binding.as_str()),
+        ];
+        headers.extend(ScopeHeaders::document(project_id, library_scope).values);
+        let response = request_raw_bytes(
+            &self.socket,
+            &self.auth,
+            "POST",
+            "/core/v1/modules/document/recovery/export",
+            &body,
+            &headers,
+        )?;
+        if response.header("content-type").is_some_and(|value| {
+            value.split(';').next() == Some("application/vnd.nodex.recovery-export.v1+octet-stream")
+        }) {
+            return Ok(response.bytes);
+        }
+        let failure: OwnedDocumentReadResponse = serde_json::from_slice(&response.bytes)?;
+        match failure.0 {
+            crate::ResponseEnvelope::Error(error) => {
+                Err(ClientError::InvalidRuntime(error.message))
+            }
+            crate::ResponseEnvelope::Ok(_) => Err(ClientError::InvalidRuntime(
+                "Unexpected recovery export response".into(),
+            )),
+        }
     }
 
     pub fn workspace_read(
@@ -532,6 +657,27 @@ impl CoreClient {
         )
     }
 
+    fn document_frame(
+        &self,
+        path: &str,
+        document_id: &str,
+        bytes: &[u8],
+        scope: ScopeHeaders<'_>,
+    ) -> Result<RawHttpResponse, ClientError> {
+        let mut headers = vec![
+            (CONNECTION_HEADER, self.connection_id.as_str()),
+            (CONNECTION_BINDING_HEADER, self.connection_binding.as_str()),
+            ("x-nodex-client-session-id", self.connection_id.as_str()),
+            ("x-nodex-document-id", document_id),
+            (
+                "content-type",
+                "application/vnd.nodex.document-sync.v3+octet-stream",
+            ),
+        ];
+        headers.extend(scope.values);
+        request_raw_bytes(&self.socket, &self.auth, "POST", path, bytes, &headers)
+    }
+
     fn connected_request<Request: Serialize, Response: DeserializeOwned>(
         &self,
         path: &str,
@@ -606,40 +752,7 @@ fn connected_stream_request(
         )));
     }
 
-    let mut reader = BufReader::new(stream);
-    let head = String::from_utf8(read_http_response_head(&mut reader)?).map_err(|_| {
-        ClientError::InvalidRuntime("Core returned non-UTF-8 HTTP headers".to_owned())
-    })?;
-    if response_content_length(&head).is_some_and(|length| length > maximum_response_bytes) {
-        return Err(ClientError::ResponseTooLarge {
-            maximum: maximum_response_bytes,
-            observed_at_least: response_content_length(&head).expect("length checked"),
-        });
-    }
-    let status = head
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|status| status.parse::<u16>().ok())
-        .ok_or_else(|| ClientError::InvalidRuntime("Core HTTP status is invalid".to_owned()))?;
-    let mut bytes = Vec::new();
-    reader
-        .take(u64::try_from(maximum_response_bytes + 1).unwrap_or(u64::MAX))
-        .read_to_end(&mut bytes)?;
-    if bytes.len() > maximum_response_bytes {
-        return Err(ClientError::ResponseTooLarge {
-            maximum: maximum_response_bytes,
-            observed_at_least: bytes.len(),
-        });
-    }
-    if !(200..300).contains(&status) {
-        let message = serde_json::from_slice::<serde_json::Value>(&bytes)
-            .ok()
-            .and_then(|value| value.get("message")?.as_str().map(str::to_owned))
-            .unwrap_or_else(|| String::from_utf8_lossy(&bytes).trim().to_owned());
-        return Err(ClientError::Http { status, message });
-    }
-    Ok(RawHttpResponse { head, bytes })
+    read_raw_response(&mut BufReader::new(stream), maximum_response_bytes)
 }
 
 fn percent_encode(value: &str) -> String {
@@ -1016,8 +1129,22 @@ fn request_bytes<Response: DeserializeOwned>(
     body: &[u8],
     headers: &[(&str, &str)],
 ) -> Result<Response, ClientError> {
+    let response = request_raw_bytes(socket, auth, method, path, body, headers)?;
+    serde_json::from_slice(&response.bytes).map_err(ClientError::from)
+}
+
+fn request_raw_bytes(
+    socket: &Path,
+    auth: &str,
+    method: &str,
+    path: &str,
+    body: &[u8],
+    headers: &[(&str, &str)],
+) -> Result<RawHttpResponse, ClientError> {
     let document_route = path.starts_with("/core/v1/modules/document/");
-    let maximum_request_bytes = if document_route {
+    let maximum_request_bytes = if path == "/core/v1/modules/document/recovery/capture" {
+        nodex_core_contracts::document::MAX_RECOVERY_BUNDLE_BYTES
+    } else if document_route {
         MAX_DOCUMENT_JSON_REQUEST_BYTES
     } else {
         MAX_ORDINARY_JSON_REQUEST_BYTES
@@ -1028,7 +1155,9 @@ fn request_bytes<Response: DeserializeOwned>(
             actual: body.len(),
         });
     }
-    let maximum_response_bytes = if document_route {
+    let maximum_response_bytes = if path == "/core/v1/modules/document/recovery/export" {
+        nodex_core_contracts::document::MAX_RECOVERY_EXPORT_BYTES
+    } else if document_route {
         MAX_DOCUMENT_RESPONSE_BYTES
     } else {
         MAX_ORDINARY_JSON_RESPONSE_BYTES
@@ -1037,12 +1166,23 @@ fn request_bytes<Response: DeserializeOwned>(
     let mut stream = UnixStream::connect(socket)?;
     stream.set_read_timeout(Some(request_timeout))?;
     stream.set_write_timeout(Some(request_timeout))?;
+    let content_type = headers
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case("content-type"))
+        .map(|(_, value)| *value)
+        .unwrap_or("application/json");
+    if !valid_header(content_type) {
+        return Err(ClientError::InvalidRuntime("Invalid content type".into()));
+    }
     write!(
         stream,
-        "{method} {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {auth}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n",
+        "{method} {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {auth}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n",
         body.len()
     )?;
     for (name, value) in headers {
+        if name.eq_ignore_ascii_case("content-type") {
+            continue;
+        }
         if !valid_header(name) || !valid_header(value) {
             return Err(ClientError::InvalidRuntime(
                 "request header contains invalid bytes".to_owned(),
@@ -1053,42 +1193,149 @@ fn request_bytes<Response: DeserializeOwned>(
     stream.write_all(b"\r\n")?;
     stream.write_all(body)?;
 
-    let mut reader = BufReader::new(stream);
-    let head = read_http_response_head(&mut reader)?;
-    let head = std::str::from_utf8(&head).map_err(|_| {
-        ClientError::InvalidRuntime("Core returned non-UTF-8 HTTP headers".to_owned())
-    })?;
-    if response_content_length(head).is_some_and(|length| length > maximum_response_bytes) {
-        return Err(ClientError::ResponseTooLarge {
-            maximum: maximum_response_bytes,
-            observed_at_least: response_content_length(head)
-                .expect("checked Content-Length is present"),
-        });
-    }
+    read_raw_response(&mut BufReader::new(stream), maximum_response_bytes)
+}
+
+/// All native responses share framing checks, including chunked binary exports.
+fn read_raw_response(
+    reader: &mut impl BufRead,
+    maximum: usize,
+) -> Result<RawHttpResponse, ClientError> {
+    let head = String::from_utf8(read_http_response_head(reader)?)
+        .map_err(|_| ClientError::InvalidRuntime("Core returned non-UTF-8 HTTP headers".into()))?;
     let status = head
         .lines()
         .next()
         .and_then(|line| line.split_whitespace().nth(1))
         .and_then(|status| status.parse::<u16>().ok())
-        .ok_or_else(|| ClientError::InvalidRuntime("Core HTTP status is invalid".to_owned()))?;
-    let mut body = Vec::new();
-    reader
-        .take(u64::try_from(maximum_response_bytes + 1).unwrap_or(u64::MAX))
-        .read_to_end(&mut body)?;
-    if body.len() > maximum_response_bytes {
+        .ok_or_else(|| ClientError::InvalidRuntime("Core HTTP status is invalid".into()))?;
+    let mut lengths = Vec::new();
+    let mut encodings = Vec::new();
+    for line in head.lines().skip(1) {
+        let (name, value) = line
+            .split_once(':')
+            .ok_or_else(|| ClientError::InvalidRuntime("Invalid Core HTTP header".into()))?;
+        if name.eq_ignore_ascii_case("content-length") {
+            lengths.push(
+                value.trim().parse::<usize>().map_err(|_| {
+                    ClientError::InvalidRuntime("Invalid Core Content-Length".into())
+                })?,
+            );
+        }
+        if name.eq_ignore_ascii_case("transfer-encoding") {
+            encodings.push(value.trim().to_ascii_lowercase());
+        }
+    }
+    if lengths.len() > 1
+        || encodings.len() > 1
+        || (!lengths.is_empty() && !encodings.is_empty())
+        || encodings
+            .first()
+            .is_some_and(|encoding| encoding != "chunked")
+    {
+        return Err(ClientError::InvalidRuntime(
+            "Ambiguous Core HTTP body framing".into(),
+        ));
+    }
+    let length = lengths.first().copied();
+    if let Some(length) = length
+        && length > maximum
+    {
         return Err(ClientError::ResponseTooLarge {
-            maximum: maximum_response_bytes,
-            observed_at_least: body.len(),
+            maximum,
+            observed_at_least: length,
         });
     }
-    if !(200..300).contains(&status) {
-        let message = serde_json::from_slice::<serde_json::Value>(&body)
-            .ok()
-            .and_then(|value| value.get("message")?.as_str().map(str::to_owned))
-            .unwrap_or_else(|| String::from_utf8_lossy(&body).trim().to_owned());
-        return Err(ClientError::Http { status, message });
+    let mut bytes = Vec::new();
+    if !encodings.is_empty() {
+        loop {
+            let line = read_http_line(reader, 128)?;
+            let size = usize::from_str_radix(line.split(';').next().unwrap_or("").trim(), 16)
+                .map_err(|_| ClientError::InvalidRuntime("Invalid Core chunk length".into()))?;
+            if size > maximum - bytes.len() {
+                return Err(ClientError::ResponseTooLarge {
+                    maximum,
+                    observed_at_least: bytes.len().saturating_add(size),
+                });
+            }
+            if size == 0 {
+                let mut trailer_bytes = 0;
+                loop {
+                    let trailer =
+                        read_http_line(reader, MAX_HTTP_RESPONSE_HEADER_BYTES - trailer_bytes)?;
+                    trailer_bytes += trailer.len() + 2;
+                    if trailer.is_empty() {
+                        break;
+                    }
+                    if trailer_bytes >= MAX_HTTP_RESPONSE_HEADER_BYTES {
+                        return Err(ClientError::InvalidRuntime(
+                            "Core trailers exceed their bound".into(),
+                        ));
+                    }
+                }
+                break;
+            }
+            let offset = bytes.len();
+            bytes.resize(offset + size, 0);
+            reader.read_exact(&mut bytes[offset..])?;
+            let mut boundary = [0; 2];
+            reader.read_exact(&mut boundary)?;
+            if boundary != *b"\r\n" {
+                return Err(ClientError::InvalidRuntime(
+                    "Invalid Core chunk boundary".into(),
+                ));
+            }
+        }
+    } else {
+        reader.take(maximum as u64 + 1).read_to_end(&mut bytes)?;
+        if bytes.len() > maximum {
+            return Err(ClientError::ResponseTooLarge {
+                maximum,
+                observed_at_least: bytes.len(),
+            });
+        }
+        if length.is_some_and(|length| length != bytes.len()) {
+            return Err(ClientError::InvalidRuntime(
+                "Core response length does not match Content-Length".into(),
+            ));
+        }
     }
-    serde_json::from_slice(&body).map_err(ClientError::from)
+    if !(200..300).contains(&status) {
+        let value = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
+        let message = value
+            .as_ref()
+            .and_then(|value| value.get("message").or_else(|| value.get("error")))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("Core HTTP request failed ({status})"));
+        let failure = value
+            .and_then(|value| value.get("failure").cloned())
+            .and_then(|value| serde_json::from_value(value).ok())
+            .map(Box::new);
+        return Err(ClientError::Http {
+            status,
+            message,
+            failure,
+        });
+    }
+    Ok(RawHttpResponse { head, bytes })
+}
+
+fn read_http_line(reader: &mut impl BufRead, maximum: usize) -> Result<String, ClientError> {
+    let mut line = Vec::new();
+    let mut byte = [0];
+    while line.len() <= maximum {
+        reader.read_exact(&mut byte)?;
+        line.push(byte[0]);
+        if line.ends_with(b"\r\n") {
+            line.truncate(line.len() - 2);
+            return String::from_utf8(line)
+                .map_err(|_| ClientError::InvalidRuntime("Invalid Core HTTP line".into()));
+        }
+    }
+    Err(ClientError::InvalidRuntime(
+        "Core HTTP line exceeds its bound".into(),
+    ))
 }
 
 fn request_timeout(path: &str) -> Duration {
@@ -1118,6 +1365,7 @@ fn read_http_response_head(reader: &mut impl Read) -> Result<Vec<u8>, ClientErro
     ))
 }
 
+#[cfg(test)]
 fn response_content_length(head: &str) -> Option<usize> {
     head.lines().skip(1).find_map(|line| {
         let (name, value) = line.split_once(':')?;
@@ -1208,6 +1456,33 @@ mod tests {
         assert_eq!(
             request_timeout("/core/v1/modules/library/apply"),
             REQUEST_TIMEOUT
+        );
+    }
+    #[test]
+    fn native_binary_response_checks_chunking_lengths_and_bounds() {
+        let parse = |bytes: &[u8], maximum| read_raw_response(&mut io::Cursor::new(bytes), maximum);
+        let chunked =
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nab\r\n1\r\nc\r\n0\r\n\r\n";
+        assert_eq!(parse(chunked, 3).unwrap().bytes, b"abc");
+        assert!(matches!(
+            parse(chunked, 2),
+            Err(ClientError::ResponseTooLarge { .. })
+        ));
+        assert!(parse(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nabc", 10).is_err());
+        assert!(parse(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nabc", 10).is_err());
+        assert!(
+            parse(
+                b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nab",
+                10
+            )
+            .is_err()
+        );
+        assert!(
+            parse(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nTransfer-Encoding: chunked\r\n\r\n",
+                10
+            )
+            .is_err()
         );
     }
 }

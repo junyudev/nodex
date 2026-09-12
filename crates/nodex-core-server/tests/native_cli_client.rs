@@ -130,6 +130,7 @@ fn native_client_cold_starts_reuses_and_reads_the_authenticated_core() {
             project_id: ref delivery_project_id,
         } if library_id == &client.handshake.library_id && delivery_project_id == project_id
     ));
+    verify_native_recovery_bundle(&client, document_id);
     let granted = client
         .library_apply(
             None,
@@ -497,4 +498,74 @@ fn wait_for_runtime_cleanup(home: &Path) {
         assert!(Instant::now() < deadline, "Core runtime did not clean up");
         thread::sleep(Duration::from_millis(20));
     }
+}
+
+fn verify_native_recovery_bundle(client: &CoreClient, document_id: &str) {
+    use nodex_core_contracts::document::*;
+    let bytes: Vec<u8> = (0..70_020).map(|index| index as u8).collect();
+    let capture = RecoveryDraftCapture {
+        draft_id: "draft:native-bytes".into(),
+        document_id: document_id.into(),
+        source_store_epoch: client.handshake.store_epoch.clone(),
+        generation: 1,
+        base_head_seq: 0,
+        created_at: "2026-09-12T00:00:00Z".into(),
+        schema_key: "nodex.page".into(),
+        schema_version: 1,
+        content: RecoveryDraftContent::Yjs {
+            state: bytes.clone(),
+            unintegrated_updates: vec![],
+        },
+        source: serde_json::json!({ "state": bytes, "originalUpdateId": "native:original" }),
+    };
+    let frozen = recovery_bundle::encode(&capture, &capture.draft_id).unwrap();
+    let command = ModuleApplyRequest {
+        contract_version: OWNED_DOCUMENT_CONTRACT_VERSION,
+        operation_id: "capture:native-bytes".into(),
+        store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
+        intent: OwnedDocumentIntent::CaptureRecovery {
+            capture: Box::new(capture),
+        },
+    };
+    let result = client.document_apply(None, true, command.clone()).unwrap();
+    let ResponseEnvelope::Ok(result) = result.0 else {
+        panic!("native capture failed")
+    };
+    assert_eq!(
+        result
+            .outcome()
+            .recovery_capture
+            .as_ref()
+            .unwrap()
+            .stored_payload_hash,
+        recovery_bundle::payload_hash(&frozen)
+    );
+    assert!(matches!(
+        client.document_apply(None, true, command).unwrap().0,
+        ResponseEnvelope::Ok(_)
+    ));
+    let exported = client
+        .document_export_recovery(None, true, "draft:native-bytes")
+        .unwrap();
+    assert_eq!(&exported[..4], b"NDRE");
+    let size = u32::from_le_bytes(exported[8..12].try_into().unwrap()) as usize;
+    assert_eq!(
+        &exported[12 + size..12 + size + frozen.len()],
+        frozen.as_slice()
+    );
+    // The native byte dispatcher must preserve the same subscription admission as Desktop.
+    let response = client
+        .document_read(
+            None,
+            true,
+            OwnedDocumentRead::SyncYjs {
+                document_id: document_id.into(),
+                state_vector: vec![],
+                history_after_head_seq: None,
+            },
+        )
+        .unwrap();
+    assert!(
+        matches!(response.0, ResponseEnvelope::Error(error) if error.code == nodex_core_contracts::CoreErrorCode::Unauthorized)
+    );
 }

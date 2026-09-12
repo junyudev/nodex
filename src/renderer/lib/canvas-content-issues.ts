@@ -1,3 +1,4 @@
+import { exportRecoveryEnvelope } from "./document-recovery-export";
 import {
   contentAccessIdentityKey,
   type ContentAccessIdentity,
@@ -11,14 +12,10 @@ import {
 
 export async function exportCanvasRecovery(
   provider: Pick<CanvasSceneProvider, "exportRecovery">,
+  scope: ContentAccessIdentity & { readonly documentId: string },
 ): Promise<void> {
   const data = await provider.exportRecovery();
-  const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "nodex-canvas-recovery.json";
-  link.click();
-  globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+  await exportRecoveryEnvelope(scope, scope.documentId, data);
 }
 
 /** Observe the shared Canvas provider, so repeated surfaces do not create duplicate problems. */
@@ -84,12 +81,12 @@ export function observeCanvasContentIssues(
                       scope,
                       documentId: scope.documentId,
                       prepare: provider.checkpointRecovery,
-                      exportLocal: () => exportCanvasRecovery(provider),
+                      exportLocal: () => exportCanvasRecovery(provider, scope),
                     },
                     {
                       kind: "run",
                       label: "Export recovery",
-                      run: () => exportCanvasRecovery(provider),
+                      run: () => exportCanvasRecovery(provider, scope),
                     },
                   ]
                 : [{ kind: "run", label: "Retry save", run: () => provider.connect() }],

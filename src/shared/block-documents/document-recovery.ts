@@ -8,6 +8,9 @@ export type RecoveryDraftInspection = components["schemas"]["RecoveryDraftInspec
 export type RecoveryDraftResolve = components["schemas"]["RecoveryDraftResolve"];
 export type RecoveryRead = components["schemas"]["RecoveryRead"];
 export type RecoveryReadValue = components["schemas"]["RecoveryReadValue"];
+export type RecoveryPreviewRequest = components["schemas"]["RecoveryPreviewRequest"];
+export type RecoveryPreviewResult = components["schemas"]["RecoveryPreviewResult"];
+export type RecoveryCaptureReceipt = components["schemas"]["RecoveryCaptureReceipt"];
 export type RecoveryPreview = components["schemas"]["RecoveryPreview"];
 export type RecoveryChoice = components["schemas"]["RecoveryChoice"]["kind"];
 
@@ -22,7 +25,10 @@ export type DocumentRecoveryCommand = DocumentRecoveryScope & {
   readonly operationId: string;
   readonly storeEpoch: string;
 } & (
-    | { readonly kind: "capture"; readonly capture: RecoveryDraftCapture }
+    | {
+        readonly kind: "capture";
+        readonly bundle: import("./recovery-bundle").FrozenRecoveryBundle;
+      }
     | { readonly kind: "resolve"; readonly resolve: RecoveryDraftResolve }
   );
 export type DocumentRecoveryFailure = import("../core-result").CoreResultFailure;
@@ -30,5 +36,24 @@ export type DocumentRecoveryReadResult =
   | { readonly ok: true; readonly value: RecoveryReadValue; readonly storeEpoch: string }
   | DocumentRecoveryFailure;
 export type DocumentRecoveryCommandResult =
-  | LocalCommitCommandSuccess<RecoveryDraftSummary>
+  | LocalCommitCommandSuccess<
+      RecoveryDraftSummary & { readonly capture_receipt?: RecoveryCaptureReceipt }
+    >
+  | DocumentRecoveryFailure;
+
+export type RecoveryExportCommand = DocumentRecoveryScope &
+  (
+    | { readonly kind: "received"; readonly draftId: string }
+    | { readonly kind: "begin"; readonly byteLength: number; readonly payloadHash: string }
+    | {
+        readonly kind: "append";
+        readonly handle: string;
+        readonly offset: number;
+        readonly bytes: Uint8Array;
+      }
+    | { readonly kind: "complete" | "cancel"; readonly handle: string }
+  );
+export type RecoveryExportResult =
+  | { readonly ok: true; readonly status: "saved" | "cancelled" | "written" }
+  | { readonly ok: true; readonly status: "ready"; readonly handle: string }
   | DocumentRecoveryFailure;

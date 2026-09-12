@@ -532,6 +532,7 @@ type PlainResultCommandEndpointPolicy =
   | "files:prepare-local-drop"
   | "files:materialize"
   | "files:save"
+  | "document-recovery:export"
   | "page:occurrence:complete"
   | "page:occurrence:skip"
   | "page:occurrence:update"

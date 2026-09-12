@@ -1503,6 +1503,7 @@ impl OwnedDocumentModule {
                             .map_or_else(|| sqlite_now(&transaction), Ok)?;
                         let committed = crate::ModuleWriterResult {
                             value: OwnedDocumentCommitValue {
+                                recovery_capture: None,
                                 recovery: None,
                                 document_id: executed.primary_document_id.clone(),
                                 generation: executed.generation,
@@ -4293,6 +4294,7 @@ fn committed_value(
 ) -> crate::ModuleWriterResult<OwnedDocumentCommitValue, OwnedDocumentReceipt> {
     crate::ModuleWriterResult {
         value: OwnedDocumentCommitValue {
+            recovery_capture: None,
             recovery: None,
             document_id: authority.head.id.clone(),
             generation: authority.head.generation,

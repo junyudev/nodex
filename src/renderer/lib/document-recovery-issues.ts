@@ -1,3 +1,4 @@
+import { recoveryReviewEntries } from "./document-recovery-entries";
 import { contentAccessIdentityKey } from "../../shared/content-access-context";
 import type { DocumentRecovery } from "./document-recovery";
 import {
@@ -37,17 +38,44 @@ export function createDocumentRecoveryIssueSource(
           },
         ],
       }));
+      const local = recoveryReviewEntries(state).filter((entry) => entry.kind === "staged");
+      for (const entry of local) {
+        const source = entry.source;
+        entries.push({
+          kind: "draft",
+          id: `${module.scope.libraryId}\0local:${source.sourceKey}`,
+          scope: module.scope,
+          location: null,
+          title:
+            source.sourceKind === "canvas" ? "Retained Canvas edits" : "Retained document edits",
+          detail:
+            source.failure?.message ??
+            "Retained on this device. Core has not yet confirmed this package.",
+          actions: [
+            {
+              kind: "review",
+              label: "Review edits",
+              scope: module.scope,
+              documentId: source.documentId,
+              sourceKey: source.sourceKey,
+            },
+          ],
+        });
+      }
+      const moreLocal = state.stagedCount - state.staged.length;
       const remaining = state.pendingCount - drafts.length;
-      if (remaining > 0 || state.error)
+      if (remaining > 0 || moreLocal > 0 || state.error || state.localError)
         entries.push({
           kind: "draft",
           id: `${contentAccessIdentityKey(module.scope)}\0${module.documentId ?? "library"}\0recovery-list`,
           scope: module.scope,
           location: null,
-          title: state.error
-            ? "Couldn’t check unsaved edits"
-            : `${remaining} more retained ${remaining === 1 ? "draft" : "drafts"}`,
-          detail: state.error ?? "Open the review to see the remaining drafts.",
+          title: state.localError
+            ? "Couldn’t read local retained edits"
+            : state.error
+              ? "Couldn’t check received edits"
+              : `${remaining + moreLocal} more retained ${remaining + moreLocal === 1 ? "draft" : "drafts"}`,
+          detail: state.localError ?? state.error ?? "Open the review to see the remaining drafts.",
           actions: [
             {
               kind: "review",

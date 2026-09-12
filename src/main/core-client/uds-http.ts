@@ -1,6 +1,6 @@
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { randomUUID } from "node:crypto";
-import { CORE_TRANSPORT_BUDGETS } from "@nodex/core-protocol";
+import { CORE_TRANSPORT_BUDGETS, type components } from "@nodex/core-protocol";
 
 import { decodeBoundedJson, encodeBoundedJson } from "./codec";
 import { SseParser } from "./sse-parser";
@@ -102,6 +102,7 @@ export class CoreHttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly failure?: components["schemas"]["RecoveryPackageFailure"],
   ) {
     super(message);
     this.name = "CoreHttpError";
@@ -335,7 +336,9 @@ export class UdsHttpTransport {
                 settle(() => resolve(value));
                 return;
               }
-              settle(() => reject(new CoreHttpError(status, errorMessage(value))));
+              settle(() =>
+                reject(new CoreHttpError(status, errorMessage(value), transportFailure(value))),
+              );
             })
             .catch((error: unknown) =>
               settle(() => reject(normalizeTransportError(error, "response"))),
@@ -411,7 +414,9 @@ export class UdsHttpTransport {
                   maximumResponseBytes,
                   "Core Document error response",
                 );
-                settle(() => reject(new CoreHttpError(status, errorMessage(value))));
+                settle(() =>
+                  reject(new CoreHttpError(status, errorMessage(value), transportFailure(value))),
+                );
                 return;
               }
               const contentType = response.headers["content-type"]?.split(";", 1)[0];
@@ -495,7 +500,7 @@ export class UdsHttpTransport {
             ...(body
               ? {
                   "content-length": body.byteLength,
-                  "content-type": "application/octet-stream",
+                  "content-type": requestHeaders["content-type"] ?? "application/octet-stream",
                 }
               : {}),
           },
@@ -510,7 +515,9 @@ export class UdsHttpTransport {
                   Math.min(maximumResponseBytes, MAX_JSON_RESPONSE_BYTES),
                   "Core File Blob error response",
                 );
-                settle(() => reject(new CoreHttpError(status, errorMessage(value))));
+                settle(() =>
+                  reject(new CoreHttpError(status, errorMessage(value), transportFailure(value))),
+                );
                 return;
               }
               settle(() =>
@@ -610,7 +617,7 @@ export class UdsHttpTransport {
                   this.#maximumJsonResponseBytes,
                   "Core event error response",
                 );
-                reject(new CoreHttpError(status, errorMessage(value)));
+                reject(new CoreHttpError(status, errorMessage(value), transportFailure(value)));
               })
               .catch((error: unknown) => reject(normalizeTransportError(error, "response")));
             return;
@@ -867,6 +874,34 @@ const parseContentLength = (response: IncomingMessage): number | undefined => {
   if (typeof raw !== "string" || !/^\d+$/.test(raw)) return undefined;
   const value = Number(raw);
   return Number.isSafeInteger(value) ? value : undefined;
+};
+
+const transportFailure = (
+  value: unknown,
+): components["schemas"]["RecoveryPackageFailure"] | undefined => {
+  if (typeof value !== "object" || value === null || !("failure" in value)) return undefined;
+  const failure = value.failure;
+  if (
+    typeof failure !== "object" ||
+    failure === null ||
+    !("reason" in failure) ||
+    !("effect" in failure) ||
+    ![
+      "request_too_large",
+      "response_too_large",
+      "manifest_too_large",
+      "invalid_manifest",
+      "invalid_json",
+      "unsupported_format",
+      "unsupported_transport",
+      "invalid_digest",
+      "capacity_exhausted",
+      "source_unverified",
+    ].includes(String(failure.reason)) ||
+    !["not_applied", "unknown"].includes(String(failure.effect))
+  )
+    return undefined;
+  return failure as components["schemas"]["RecoveryPackageFailure"];
 };
 
 const errorMessage = (value: unknown): string => {
