@@ -1,0 +1,121 @@
+tests/e2e/structural-interaction-latency.spec.ts
+  s_16535355388fae::t_a7ee1d1757648b 52-54,97,380
+  s_16535355388fae::t_ea0c8e00085d7a 1-51,55-96,98-379,381-482
+src/main/core-client/structural-interactions-scenario.node.test.ts
+  s_16535355388fae::t_a7ee1d1757648b 25-107
+  s_16535355388fae::t_2f9efeab99193f 1-24,108-109
+docs/product-specs/nfm-editor-structural-editing-behavior.md
+  s_16535355388fae::t_cd468d4c5773ff 67-76
+CHANGELOG.md
+  s_16535355388fae::t_42ff98fad1acda 20
+tests/e2e/electron-smoke.spec.ts
+  s_16535355388fae::t_18889dfb3f855f 1,593,595,4728,4731,5145,5148
+crates/nodex-core/src/infrastructure/delivery_atom.rs
+  s_16535355388fae::t_c6e48b769c7133 758,769-787
+docs/ARCHITECTURE.md
+  s_16535355388fae::t_ee8a11e1fca539 623-626
+docs/FRONTEND.md
+  s_16535355388fae::t_8ad78c0a869946 153-158
+docs/product-specs/database-pages-and-views-behavior.md
+  s_16535355388fae::t_9bfc3349817bed 633-649
+docs/product-specs/task-shorthand-page-promotion-behavior.md
+  s_16535355388fae::t_bac78c57472e08 72-76
+scripts/scenarios/adapters/core-client-seed-adapter.ts
+  s_16535355388fae::t_c4c5e2c0c36ce5 213-245,519,525-527
+scripts/scenarios/adapters/renderer-ipc-seed-adapter.ts
+  s_16535355388fae::t_7c4391237f02f6 246-280
+scripts/scenarios/contracts.ts
+  s_16535355388fae::t_0181ec18a23985 1,123-127
+scripts/scenarios/registry.ts
+  s_16535355388fae::t_bb88667ddcbdcc 1-4,20-21
+scripts/scenarios/scenarios/structural-interactions.ts
+  s_16535355388fae::t_ef2a142fe07aae 1-266
+src/main/core-client/block-promotion-history-scenario.node.test.ts
+  s_16535355388fae::t_d9e16ea6139150 1-4,607-671
+src/renderer/components/board/editor/nfm-clipboard-paste-pending-extension.ts
+  s_16535355388fae::t_4354f20239ce60 6-11,13-14,20,72-73,88-112,119-124,128-129,133-147,150-156,175,181-209
+src/renderer/components/board/editor/nfm-editor-extensions.ts
+  s_16535355388fae::t_5728301d144d01 1,263-304,315
+src/renderer/components/board/editor/nfm-editor.tsx
+  s_16535355388fae::t_092863977bf362 1,1575-1612,1617,1627
+src/renderer/components/board/editor/nfm-structural-editing-extension.node.test.ts
+  s_16535355388fae::t_3930c63b7debfc 1,1686-1687,1695-1698,1751-1752,1761
+src/renderer/components/board/editor/nfm-structural-editing-extension.ts
+  s_16535355388fae::t_4a856aa93654a4 1-5,316-323,351,353,732,899,902-928,943,1410-1416,1422-1442,1458-1468,1480-1483
+src/renderer/components/board/editor/nfm-structural-removal-presentation.jsdom.test.ts
+  s_16535355388fae::t_f3def923cbe3d8 1-159
+src/renderer/components/board/editor/nfm-structural-removal-presentation.ts
+  s_16535355388fae::t_08d6e195a34089 1-188
+src/renderer/components/workbench/database-list/database-list-model.node.test.ts
+  s_16535355388fae::t_60234db36f8c3b 448-461
+src/renderer/components/workbench/database-list/database-list-model.ts
+  s_16535355388fae::t_ddb53e5e2e1319 622,628,630-634,638,647,661-665,688-692,730
+src/renderer/components/workbench/database-list/database-list-promotion-display.ts
+  s_16535355388fae::t_d21a275facfe4f 1-28
+src/renderer/components/workbench/database-list/database-list.tsx
+  s_16535355388fae::t_043808da3c076a 1-3,194-197,652-674,789,794,796-798,806,812,816,856-857,891-893,997,1015,1048,1062,1595-1599,1960,2014,2035-2044
+src/renderer/components/workbench/database-list/use-database-list-window.ts
+  s_16535355388fae::t_4eeaaf2f7fd27e 1-5,40,135-147,175,206,552,554-571,635-647,750
+src/renderer/components/workbench/database-promotion-slot.tsx
+  s_16535355388fae::t_d79ab942317ae2 1-31
+src/renderer/components/workbench/database-view-block-drop-command.ts
+  s_16535355388fae::t_7d6e5b083237df 1-3,22-26,63,67-84,132
+src/renderer/components/workbench/database-view-history-adapter.ts
+  s_16535355388fae::t_3583898579ffca 1,25,63-64,215-216,225-226,229-237,243,250,271-275,307-310,379-388
+src/renderer/components/workbench/database-view-mutation-history.ts
+  s_16535355388fae::t_d2a28fa2ffd4b8 1,127-144
+src/renderer/components/workbench/database-view-surface.tsx
+  s_16535355388fae::t_20e4fd0e197c21 1-3,193-196,427-447,998-999,1526,1639-1647,1778-1780,1923-1970
+src/renderer/components/workbench/workbench-database-view-surface.tsx
+  s_16535355388fae::t_fe5864a4645039 288-296,558-563
+src/renderer/components/workbench/workbench-db-view-panel.tsx
+  s_16535355388fae::t_2bdd506e419d82 201-204
+src/renderer/lib/authority-freshness-index.ts
+  s_16535355388fae::t_31aba263ad998e 42-43,148,235,244,290,370
+src/renderer/lib/block-document-mutation-registry.ts
+  s_16535355388fae::t_a5af8cb9074e77 2,26-40,43-44
+src/renderer/lib/board-store.ts
+  s_16535355388fae::t_b1f6f4533d85f9 804,810-817,915,1010,1064,1188-1190,1364-1366,1715-1717
+src/renderer/lib/database-promotion-display.ts
+  s_16535355388fae::t_a7e21f2e2d8d86 1-20
+src/renderer/lib/database-promotion-presentation.node.test.ts
+  s_16535355388fae::t_e650fcd168c575 1-129
+src/renderer/lib/database-promotion-presentation.ts
+  s_16535355388fae::t_2ee2e3a4dd64d9 1-268
+src/renderer/lib/database-promotion-read-evidence.ts
+  s_16535355388fae::t_9a295fa07404a2 1-30
+src/renderer/lib/database-view-render-model.ts
+  s_16535355388fae::t_dd89c9ce3a3a93 1-4,41,498-503,513-527
+src/renderer/lib/receipt-fenced-optimistic-journal.node.test.ts
+  s_16535355388fae::t_f8371ee0185e06 17-98
+src/renderer/lib/receipt-fenced-optimistic-journal.ts
+  s_16535355388fae::t_45b20e88a94b98 36-46,121,159-202,226,244
+src/renderer/lib/renderer-causal-trace.node.test.ts
+  s_16535355388fae::t_874c9bdb64509b 4,321-383
+src/renderer/lib/renderer-causal-trace.ts
+  s_16535355388fae::t_bec8698d2f4b87 80-107,161,553,560-564,578-587,598-634,669-721
+src/renderer/lib/resource-authority-query-cache.tsx
+  s_16535355388fae::t_240ea01ebc254e 116
+src/renderer/lib/surface-history/owner.node.test.ts
+  s_16535355388fae::t_2517b7a66866a3 59-96
+src/renderer/lib/surface-history/owner.ts
+  s_16535355388fae::t_83173ce3f6d4b0 52-85,91,305-311,526-527,543-546,549-554,567,657,747,933-938,943-944,1037,1354-1357
+src/renderer/lib/use-board.ts
+  s_16535355388fae::t_79667d50b93fab 213-219
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "16c88fe7906bd167a60865d55f41f74e8353d38d",
+  "prompts": {},
+  "sessions": {
+    "s_16535355388fae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09092-f4ff-7bf2-8708-15f7037bd227",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
