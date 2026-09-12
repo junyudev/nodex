@@ -1,0 +1,44 @@
+src/renderer/features/local-conversation/conversation-coordination-connection.ts
+  s_a5eaa05fd0049d::t_0e27579dfcb4b4 12,15,28,30,32
+  s_a5eaa05fd0049d::t_bc443223e1e5bc 1,21
+src/main/platform/electron/CodexConversationService.ts
+  s_a5eaa05fd0049d::t_07f8ac9168118c 163-164
+  s_a5eaa05fd0049d::t_0e27579dfcb4b4 18,162,165-166
+src/main/platform/node/CodexPeerClient.ts
+  s_a5eaa05fd0049d::t_e912265c087646 205-206,261,264
+src/shared/codex-conversation-stream.ts
+  s_a5eaa05fd0049d::t_9746a0a43e4901 105-108,148-150,378-381,541-549,553-554
+  s_a5eaa05fd0049d::t_900246a83f4b9f 41-46,54,97-101,109-147,151-165,270-271,382-383,391,434,473-474,540,550-552,555-559
+  s_a5eaa05fd0049d::t_dbe9dbb0e1b72f 560
+src/main/platform/node/CodexPeerTransport.node.test.ts
+  s_a5eaa05fd0049d::t_e912265c087646 5,41,94-97,101-111
+  s_a5eaa05fd0049d::t_0c934f1af8fbe2 98-100
+docs/product-specs/conversation-peer-service.md
+  s_a5eaa05fd0049d::t_bc443223e1e5bc 11-12
+src/shared/codex-conversation-stream.test.ts
+  s_a5eaa05fd0049d::t_4905f2f6f66f13 57-59,65-87,106,115-139,144-146
+  s_a5eaa05fd0049d::t_9746a0a43e4901 60-64,88-105,107-114,140-143
+  s_a5eaa05fd0049d::t_900246a83f4b9f 24
+src/main/platform/electron/CodexConversationService.node.test.ts
+  s_a5eaa05fd0049d::t_0e27579dfcb4b4 22,56,59-60
+  s_a5eaa05fd0049d::t_900246a83f4b9f 64
+  s_a5eaa05fd0049d::t_07f8ac9168118c 57-58
+src/shared/codex-service-root.ts
+  s_a5eaa05fd0049d::t_0e27579dfcb4b4 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e7a9f5840d64472ef12dce0daa4e025c23e73a3",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
