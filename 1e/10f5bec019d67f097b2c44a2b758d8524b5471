@@ -1,0 +1,165 @@
+src/main/core-client/recovery-bundle-transport.node.test.ts
+  s_62c3de8479fd7b::t_9997317da40b52 1-168
+crates/nodex-core-server/src/transport_bounds.rs
+  s_62c3de8479fd7b::t_903f9a456f6dc1 31,37-45,57,60-65,104,107-112,200-202,218-253
+crates/nodex-core/src/document/module/tests/recovery.rs
+  s_62c3de8479fd7b::t_bee3be1542d42d 56-91,282,451-453,583-614,670-672,1148-1249
+src/renderer/features/document-recovery/recovery-review.tsx
+  s_62c3de8479fd7b::t_1f33ee43642487 1-5,10,32,38,49,52-58,61,71-84,87,113-132,142,152-153,189,193-197,209,216,221,243-275,298-302,304,307,334,338-355
+src/renderer/lib/document-recovery.ts
+  s_62c3de8479fd7b::t_709ed217ec39a1 1-2,14-22,41,67-73,77-83,93-99,119-121,154-155,178-179,202-255,257-260,262-266,268-269,271,277,279,281,283-313,315-378,380-386,388-407,409-412,415-421,423-448,463-481,484-501,503-508,510-511,517-521,523-560,564-565,577,581-583,587-588
+CHANGELOG.md
+  s_62c3de8479fd7b::t_481c58ecbb9434 11
+Cargo.lock
+  s_62c3de8479fd7b::t_570ec4642fdcc6 1112,1115
+crates/nodex-core-contracts/Cargo.toml
+  s_62c3de8479fd7b::t_5b42b4ab99cd37 12-13
+crates/nodex-core-contracts/src/collection_audit.rs
+  s_62c3de8479fd7b::t_00b3f6a5b3651a 156
+crates/nodex-core-contracts/src/document.rs
+  s_62c3de8479fd7b::t_598c462457f6b0 16,18,20-21,655-656
+crates/nodex-core-contracts/src/document/recovery.rs
+  s_62c3de8479fd7b::t_5daa09084ba376 6-77,131-140,166-170,179-214,218-220,235-237,264-314
+crates/nodex-core-contracts/src/document/recovery_bundle.rs
+  s_62c3de8479fd7b::t_99985d4ead569f 1-486
+crates/nodex-core-contracts/src/lib.rs
+  s_62c3de8479fd7b::t_075d7789b2d6c2 111-113
+crates/nodex-core-protocol/src/client.rs
+  s_62c3de8479fd7b::t_fd750282d8fd32 69-73,422-449,466-520,528-565,653-673,748,1125-1136,1138-1140,1151-1153,1162-1169,1172,1176-1178,1189-1198,1204-1236,1238-1239,1242-1295,1297-1312,1314-1331,1361,1454-1480
+crates/nodex-core-protocol/src/document_module_wire.rs
+  s_62c3de8479fd7b::t_ceb451e11372b1 1-434
+crates/nodex-core-protocol/src/lib.rs
+  s_62c3de8479fd7b::t_01434c50ac9385 3-4,44-45,51-52,86-96,112-122,1086-1110,1228-1229,1240-1243,1349-1350,1386-1395
+crates/nodex-core-server/src/document_wire.rs
+  s_16535355388fae::t_8a413f5ec594de 28
+crates/nodex-core-server/src/lib.rs
+  s_62c3de8479fd7b::t_da026e7eb3066b 2,526-533,1665-1832,1869-1881,1894-1896,1939-1951,1964-1965,1967-1969,1984-2082,2089-2093,2185-2189,3108-3115
+crates/nodex-core-server/tests/native_cli_client.rs
+  s_62c3de8479fd7b::t_1b3be0991fdabd 133,502-571
+crates/nodex-core/schema/current.sql
+  s_62c3de8479fd7b::t_da3317ed4c2727 5063,5074-5075
+crates/nodex-core/schema/migrations/v165_to_v166.sql
+  s_62c3de8479fd7b::t_6e3e2a76aa2657 1-30
+crates/nodex-core/src/document/event_log.rs
+  s_62c3de8479fd7b::t_37ff4f294218ae 69-74
+crates/nodex-core/src/document/module.rs
+  s_62c3de8479fd7b::t_4786248ff5dc21 1506,4297
+crates/nodex-core/src/document/module/recovery_drafts.rs
+  s_62c3de8479fd7b::t_d5e1b2dbe380df 30-78,80-111,131-148,151,165-196,201-206,215,228-233,235,242-243,246,250-251,259,308,368-408,502-508,526-548,555-572,626,729-745,747-749,785,805-810,837-842,875-880,897-901,909-920,928-939,994-996,1002-1025,1194,1198,1385,1632
+crates/nodex-core/src/infrastructure/migration.rs
+  s_62c3de8479fd7b::t_c5cb187727bf39 239-243,2195-2209,4252-4322
+crates/nodex-core/src/infrastructure/module_receipts.rs
+  s_62c3de8479fd7b::t_445e582896dea0 10-17,156,239
+crates/nodex-core/src/infrastructure/schema.rs
+  s_62c3de8479fd7b::t_e069040f65a098 222
+crates/nodex-core/src/library/files.rs
+  s_62c3de8479fd7b::t_d1fabf6b85fe29 1769-1783,1785-1814
+crates/nodex-store-format/src/lib.rs
+  s_62c3de8479fd7b::t_2e921e59504157 133-136
+docs/ARCHITECTURE.md
+  s_62c3de8479fd7b::t_24da4aac84aedd 166-169
+docs/product-specs/document-sync-and-recovery-behavior.md
+  s_62c3de8479fd7b::t_7097fc63768ce2 109-116,133-137,154-156
+docs/reliability/document-sync-history-and-retention.md
+  s_62c3de8479fd7b::t_0bd6989ced1f1b 405-438
+packages/core-protocol/openapi.json
+  s_62c3de8479fd7b::t_4acb3126ea7378 1018-1203,3143-3152,3316-3325,8377-8394,9034-9044,9064-9068,9074-9078,9084-9093,9129-9163,15069-15154,41184-41373,41561-41565,41581,41604,41607-41614,41752-41906,41971-42075,42078-42095,42154-42171,42219-42225,43853-43862,44026-44035
+packages/core-protocol/src/compatibility.generated.ts
+  s_62c3de8479fd7b::t_c0a3b4ae4615ed 5-6,20,42-43,49-59
+packages/core-protocol/src/generated.ts
+  s_62c3de8479fd7b::t_eb7d9776ee1053 263-294,729,763,2025-2028,2209-2210,2213-2214,2217-2220,2235-2248,3730-3749,9809-9856,9904,9910-9914,9949-9987,10005-10030,10032-10035,10049-10052,10063-10064,10384,10418,11830-11887
+src/main/codex-application/CodexPermissions.node.test.ts
+  s_62c3de8479fd7b::t_aa1dfdd68073ca 159-160
+src/main/core-client/core-client.ts
+  s_16535355388fae::t_945d618d12080e 1-9,546-562,574-628,633-662
+src/main/core-client/document-module-bytes.node.test.ts
+  s_16535355388fae::t_7886822a680d05 1-218
+src/main/core-client/testing/fake-core-client.ts
+  s_62c3de8479fd7b::t_64ee24787571c4 490-498
+src/main/core-client/types.ts
+  s_16535355388fae::t_da226ccf857df7 179-184,313-317
+src/main/core-client/uds-http.ts
+  s_16535355388fae::t_b0c1317fcacc82 3,105,339-341,417-419,503,518-520,620,879-906
+src/main/core-runtime/CoreModules.ts
+  s_16535355388fae::t_1f2b1a43e2421d 123-127,302-315
+src/main/document-recovery-export.node.test.ts
+  s_16535355388fae::t_7e6d8470670de8 1-103
+src/main/document-recovery-export.ts
+  s_62c3de8479fd7b::t_95dbf722f102cd 1-183
+src/main/ipc/handlers/DocumentRecoveryIpc.ts
+  s_16535355388fae::t_7dada2bd04780c 1-9,14,18,34-36,38-74,93-103,110,118-192,197-201,235-271
+src/renderer/components/canvas/canvas-document-surface.tsx
+  s_62c3de8479fd7b::t_5da0dbe42eac09 509
+src/renderer/features/document-recovery/recovery-entry.tsx
+  s_16535355388fae::t_1b694a5c2f86cf 16,22,28,68-75,82-88
+src/renderer/features/document-recovery/recovery-review.test.tsx
+  s_16535355388fae::t_0c565a819cbaaa 1,3,15-20,33-34,40-42,47,50,63-77,101-104,106,110-113,116,158,163,173-190,214-292
+src/renderer/lib/block-document-surface-runtime.ts
+  s_16535355388fae::t_f02b77ffb84aa5 1,274-277,509-513
+src/renderer/lib/canvas-content-issues.ts
+  s_62c3de8479fd7b::t_4dac01b3f7ef10 1,15,18,84,89
+src/renderer/lib/canvas-scene-outbox.node.test.ts
+  s_16535355388fae::t_73aec1f9461ef6 317,327-331,333-336,339,364-374,377,383-393
+src/renderer/lib/canvas-scene-outbox.ts
+  s_16535355388fae::t_0efb815a56dbf6 1-10,181,301,309-312,316,333-334,336,338,340-352,354,377-388,400-418,462-472,540-544,562,571-573,670,675-683,688-692,707-710,717-720,727
+src/renderer/lib/content-edit-issues.ts
+  s_16535355388fae::t_2bf9ca84d39918 27
+src/renderer/lib/document-local-checkpoint.ts
+  s_16535355388fae::t_7ad4a2b1f107f0 1-11,27,216,298-318,417-421,464,468,474-480,506-511,568-570,576-580,584-587,589-592,616-621
+src/renderer/lib/document-recovery-entries.ts
+  s_16535355388fae::t_f0d4461ddde6c2 1-36
+src/renderer/lib/document-recovery-export.ts
+  s_16535355388fae::t_8403e38b71646c 1-67
+src/renderer/lib/document-recovery-issues.ts
+  s_16535355388fae::t_56f92c267c210d 1,41-65,67,73-78
+src/renderer/lib/document-recovery-operation.ts
+  s_16535355388fae::t_0e61311edc0f44 1-55
+src/renderer/lib/document-recovery-package.ts
+  s_16535355388fae::t_bddc75018aaa6e 1,65-108
+src/renderer/lib/document-recovery-staging.node.test.ts
+  s_16535355388fae::t_ae66ad70535ec0 1-136
+src/renderer/lib/document-recovery-staging.ts
+  s_62c3de8479fd7b::t_07debdd8593ae8 1-558
+src/renderer/lib/document-recovery.node.test.ts
+  s_16535355388fae::t_cdbd0c0db42312 1,58-62,72,84-108,119-122,149,152-153,155-157,178-188,271-336
+src/shared/block-documents/document-recovery.ts
+  s_16535355388fae::t_900bae4e7bee2c 11-13,28-31,39-58
+src/shared/block-documents/module-http-contract.ts
+  s_16535355388fae::t_b7f2d815b14baf 1-179
+src/shared/block-documents/recovery-bundle.node.test.ts
+  s_16535355388fae::t_a37be6431b194a 1-77
+src/shared/block-documents/recovery-bundle.ts
+  s_16535355388fae::t_955b0e467ccf8f 1-426
+src/shared/core-failure-evidence.ts
+  s_16535355388fae::t_98af0782cbc9d4 40,50-62,84-104
+src/shared/ipc-api.ts
+  s_62c3de8479fd7b::t_2f0cf08c8deb94 786-789
+src/shared/ipc-endpoint-policy.ts
+  s_62c3de8479fd7b::t_5f35d808291569 535
+tests/e2e/document-sync-recovery.spec.ts
+  s_62c3de8479fd7b::t_20d7aa8100e775 3,90-94,234-238,240,308-311,326-328,334-342,348-351,353,372
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1e10f5bec019d67f097b2c44a2b758d8524b5471",
+  "prompts": {},
+  "sessions": {
+    "s_16535355388fae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09092-f4ff-7bf2-8708-15f7037bd227",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_62c3de8479fd7b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0923f-8a95-7a22-978d-187c114e9ddd",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
