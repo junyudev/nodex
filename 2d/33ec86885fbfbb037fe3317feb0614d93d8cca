@@ -1,0 +1,25 @@
+src/main/codex-application/internal/ConversationEntityState.node.test.ts
+  s_a5eaa05fd0049d::t_6fe5dac64850ed 219-255
+docs/ARCHITECTURE.md
+  s_a5eaa05fd0049d::t_ae532f53e2d100 686-688
+src/main/codex-application/internal/ConversationEntityState.ts
+  s_a5eaa05fd0049d::t_d7a0b04936d2c7 1,162-163,206,907,958-960,999-1000,1044,1056,1065,1096,1130,1151,1180,1241,1440,1587,1637,1713,1730,1752,1761,1778,1803,1827-1829,1870-1871,1877,1882,1999,2084,2086,2207,2209,2365,2374,2387,2395,2415-2416,2422,2431-2432,2447-2450,2463,2477,2490,2494,2518-2520,2522,2527,2532,2539,2554,2575,2602,2611,2620,2629,2638,2649,2671,2676,2685,2709,2730,2744,2756,2770,2787,2805,2829-2832,2834,2837,2845,2855,2873,2884,2886,2900,2903
+src/shared/codex-conversation-entity-document.ts
+  s_a5eaa05fd0049d::t_7e53e5174e3a47 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2d33ec86885fbfbb037fe3317feb0614d93d8cca",
+  "prompts": {},
+  "sessions": {
+    "s_a5eaa05fd0049d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fcc-91a3-7ba0-a4e4-720879ecb167",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
